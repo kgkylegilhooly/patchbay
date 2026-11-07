@@ -183,7 +183,7 @@ export function decideInstance(gotLock: boolean, exiting: ExitingMark | null = n
   return 'focus-and-quit'
 }
 
-const SETTING_KEYS = ['shell', 'permissionMode', 'claudeTerminal', 'claudeCommand', 'codexCommand', 'defaultAgent', 'updateFeed', 'updateCheck', 'envNotPassed', 'notifications',
+const SETTING_KEYS = ['shell', 'permissionMode', 'claudeTerminal', 'claudeCommand', 'codexCommand', 'codexApproval', 'defaultAgent', 'updateFeed', 'updateCheck', 'envNotPassed', 'notifications',
   'sound', 'keepAwake'] as const
 
 /** A settings file that can't be read means defaults: it must never stop the canvas from opening. */

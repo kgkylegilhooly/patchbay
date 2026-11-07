@@ -65,3 +65,25 @@ test('a batch-file codex runs through cmd.exe with every argument quoted', () =>
   expect(launch.args[3]).toMatch(/^"C:\\npm\\codex\.cmd /)
   expect(launch.args[3]).toContain('^^^&')
 })
+
+test("by default Codex asks as it would on its own", () => {
+  const args = buildCodexLaunch(node(), ctx()).args
+  expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox')
+  expect(args.some((a) => a.startsWith('approval_policy='))).toBe(false)
+})
+
+test('never ask keeps the sandbox, and skip all drops both, for new and resumed nodes alike', () => {
+  expect(buildCodexLaunch(node(), ctx({ codexApproval: 'never' })).args).toContain('approval_policy="never"')
+  for (const n of [node({ prompt: 'go' }), node({ sessionId: '01a1b417-7804-7de2-9708-a1a98b5cc824' })]) {
+    const args = buildCodexLaunch(n, ctx({ codexApproval: 'bypass' })).args
+    const flag = args.indexOf('--dangerously-bypass-approvals-and-sandbox')
+    expect(flag).toBeGreaterThan(-1)
+    // Before the prompt's -- or the session id, so Codex reads it as an option.
+    expect(flag).toBeLessThan(args.length - 1)
+    if (n.prompt) expect(flag).toBeLessThan(args.indexOf('--'))
+  }
+})
+
+test('an unknown setting is the default', () => {
+  expect(buildCodexLaunch(node(), ctx({ codexApproval: 'yolo' })).args).toEqual(buildCodexLaunch(node(), ctx()).args)
+})

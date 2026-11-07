@@ -240,6 +240,15 @@ const scenes = {
     await page.click('[data-section="sessions"]')
     await sleep(400)
   },
+  'settings-agents': async (page) => {
+    await page.keyboard.down('Control')
+    await page.keyboard.press(',')
+    await page.keyboard.up('Control')
+    await page.waitForSelector('[data-section="claude"]')
+    await page.click('[data-section="claude"]')
+    await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
+    await sleep(400)
+  },
   'project-menu': async (page) => {
     const tab = await page.$('.project-tab')
     await tab.click({ button: 'right' })

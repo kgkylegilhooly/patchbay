@@ -11,6 +11,8 @@ export interface Settings {
   defaultAgent?: string
   /** What to run instead of `codex`, the same way as claudeCommand. */
   codexCommand?: string
+  /** What Codex may do without asking: '' (Codex's own default), 'never' or 'bypass'. */
+  codexApproval?: string
   /** Where updates come from: github:owner/repo, or an https address holding latest.yml. Empty means no updates. */
   updateFeed?: string
   /** 'off' stops the check at start and every few hours. Check now still works. */

@@ -89,6 +89,14 @@ Everything is in `%APPDATA%\Patchbay`:
 { "shell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "permissionMode": "default" }
 ```
 
+`codexApproval` sets what Codex nodes may do without asking. `never` keeps Codex's sandbox but never asks: anything the
+sandbox blocks comes back to Codex as a failure. `bypass` asks nothing and runs commands without the sandbox, so use it
+only in folders you trust. Leave it out to keep Codex's own default. It's also under Settings > Agents.
+
+```json
+{ "codexApproval": "never" }
+```
+
 `envNotPassed` lists name prefixes of environment variables that sessions don't inherit, separated by spaces or
 commas. It's for starting Patchbay from inside another terminal app, whose sessions must not think Patchbay's are theirs:
 

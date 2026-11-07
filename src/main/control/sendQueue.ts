@@ -6,9 +6,15 @@ export interface SendTiming {
   enterDelayMs: number
   /** How long a delivered message may leave a node looking idle before the next one goes anyway. */
   settleMs: number
+  /**
+   * When an agent still looks idle this long after Enter, Enter goes once more. Codex on Windows can take a long text
+   * and the Enter after it as one paste, leaving the message typed but not sent. Enter on an empty prompt does nothing,
+   * so a second one is harmless when the first worked. Absent means no second Enter.
+   */
+  retryEnterMs?: number
 }
 
-export const DEFAULT_SEND_TIMING: SendTiming = { enterDelayMs: 200, settleMs: 3000 }
+export const DEFAULT_SEND_TIMING: SendTiming = { enterDelayMs: 200, settleMs: 3000, retryEnterMs: 1500 }
 
 export interface SendItem {
   text: string
@@ -61,9 +67,22 @@ export function createSendQueue({
     settling.delete(id)
   }
 
+  /** Agents whose status has moved off idle since they were last typed into, so the message went. */
+  const took = new Set<string>()
+
   const type = (id: string, text: string): void => {
+    took.delete(id)
     host.write(id, text)
-    setTimeout(() => host.write(id, '\r'), timing.enterDelayMs)
+    setTimeout(() => {
+      host.write(id, '\r')
+      const retry = timing.retryEnterMs
+      if (retry === undefined) return
+      const timer = setTimeout(() => {
+        // A terminal has no status, so this only ever presses Enter again for an agent.
+        if (!took.has(id) && tracker.get(id) === 'idle' && host.isRunning(id)) host.write(id, '\r')
+      }, retry)
+      timer.unref?.()
+    }, timing.enterDelayMs)
   }
 
   const deliverNext = (id: string): void => {
@@ -92,6 +111,7 @@ export function createSendQueue({
   }
 
   tracker.onChange((id, status) => {
+    if (status !== 'idle') took.add(id)
     if (status === 'idle') deliverNext(id)
     else stopSettling(id)
   })
@@ -119,6 +139,7 @@ export function createSendQueue({
     },
     forget(id) {
       queues.delete(id)
+      took.delete(id)
       stopSettling(id)
     }
   }

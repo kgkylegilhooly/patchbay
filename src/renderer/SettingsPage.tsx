@@ -33,6 +33,12 @@ const PERMISSION_MODES: Array<[string, string]> = [
   ['bypassPermissions', 'Skip all permission prompts']
 ]
 
+const CODEX_APPROVALS: Array<[string, string]> = [
+  ['', "Codex's own default (asks)"],
+  ['never', 'Never ask, keep the sandbox'],
+  ['bypass', 'Skip all approvals and the sandbox']
+]
+
 const TEST_RESULT = {
   shown: "Windows accepted it. If you didn't see it, check Do Not Disturb, and Patchbay under System > Notifications in Windows Settings.",
   failed: 'Windows refused it. Check Patchbay under System > Notifications in Windows Settings.',
@@ -293,7 +299,20 @@ export function SettingsPage({
                   <option value="codex">Codex</option>
                 </select>
               </Row>
-              <Row title="Permissions" help="What Claude may do without asking." htmlFor="permissionMode">
+              <Row
+                title="Codex permissions"
+                htmlFor="codexApproval"
+                help="What Codex may do without asking. Never ask keeps Codex's sandbox, so anything it blocks comes back to Codex as a failure. Skip all runs every command with no sandbox and no question, so use it only in a folder you trust. New and restarted Codex windows use it."
+              >
+                <select id="codexApproval" name="codexApproval" value={CODEX_APPROVALS.some(([v]) => v === draft?.codexApproval) ? draft?.codexApproval : ''} onChange={(e) => set('codexApproval', e.target.value)}>
+                  {CODEX_APPROVALS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row title="Claude permissions" help="What Claude may do without asking." htmlFor="permissionMode">
                 <select id="permissionMode" name="permissionMode" value={mode} onChange={(e) => set('permissionMode', e.target.value)}>
                   {modes.map(([value, label]) => (
                     <option key={value} value={value}>

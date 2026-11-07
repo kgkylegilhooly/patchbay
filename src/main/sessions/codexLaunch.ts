@@ -9,6 +9,8 @@ export interface CodexLaunchContext extends SessionEnvContext {
   /** Defaults to resolveCodex(). */
   codex?: ClaudeProgram
   codexCommand?: string
+  /** The codexApproval setting: '' for Codex's own default, 'never' or 'bypass'. */
+  codexApproval?: string
 }
 
 /**
@@ -56,6 +58,17 @@ export function codexMcpArgs(cliDir: string): string[] {
   ]
 }
 
+/**
+ * What Codex may do without asking. 'never' keeps its sandbox but never stops to ask: what the sandbox refuses goes
+ * back to the model as a failure. 'bypass' asks nothing and runs without the sandbox. Anything else is Codex's own
+ * default, which asks.
+ */
+export function codexApprovalArgs(mode: string | undefined): string[] {
+  if (mode === 'never') return ['-c', 'approval_policy="never"']
+  if (mode === 'bypass') return ['--dangerously-bypass-approvals-and-sandbox']
+  return []
+}
+
 /** Codex can't load Patchbay's skill as Claude does, so the guide comes through the patchbay tool. */
 export function codexInstructions(): string {
   return [
@@ -73,6 +86,7 @@ export function buildCodexLaunch(node: ClaudeNode, ctx: CodexLaunchContext): Cla
   const options = [
     ...codexHookArgs(ctx.hookScript),
     ...codexMcpArgs(ctx.cliDir),
+    ...codexApprovalArgs(ctx.codexApproval),
     '-c',
     `developer_instructions=${toml(codexInstructions())}`,
     // An update question would hold the session at a screen nobody is watching, as after a restart.
