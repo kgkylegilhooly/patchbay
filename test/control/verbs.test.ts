@@ -1,0 +1,506 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { createAfterGate } from '../../src/main/control/after'
+import { RpcRefusal } from '../../src/main/control/server'
+import { createVerbs } from '../../src/main/control/verbs'
+import { createStatusTracker } from '../../src/main/sessions/statusTracker'
+import type { CanvasNode, ClaudeNode, GroupNode, StickyNode, TerminalNode } from '../../src/shared/model'
+import { claudeNode, fakeHost, fakeRunner, groupNode, memoryStore, terminalNode } from './fakes'
+
+let dir: string
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'patchbay verbs '))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+function setup(extra: CanvasNode[] = [], settleMs = 50) {
+  const store = memoryStore([claudeNode('me', { cwd: dir }), ...extra])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const host = fakeHost()
+  const gate = createAfterGate({ store, tracker, runner })
+  const verbs = createVerbs({ store, runner, tracker, host, gate, timing: { enterDelayMs: 0, settleMs } })
+  const node = <T extends CanvasNode>(id: string) => store.get().nodes.find((n) => n.id === id) as T
+  const edges = () => store.get().edges
+  const link = (from: string, to: string) =>
+    store.dispatch({ op: 'addEdge', edge: { id: `${from}-${to}`, from, to, kind: 'link' } })
+  return { store, tracker, runner, host, gate, verbs, node, edges, link }
+}
+
+const refused = async (p: Promise<unknown>, pattern: RegExp) => {
+  const e = await p.then(
+    () => null,
+    (err) => err
+  )
+  expect(e).toBeInstanceOf(RpcRefusal)
+  expect(e.message).toMatch(pattern)
+}
+
+const ids = (r: unknown) => (r as { id: string }).id
+
+test('open-agent adds a Claude node, an opened edge and a link edge to the caller', async () => {
+  const { verbs, node, edges, runner, store } = setup()
+  const id = ids(await verbs('me', 'open-agent', { prompt: 'do it', title: 'Helper' }))
+  const n = node<ClaudeNode>(id)
+  expect(n).toMatchObject({ kind: 'claude', prompt: 'do it', title: 'Helper', cwd: dir, openedBy: 'me', after: [] })
+  expect(edges().map((e) => [e.from, e.to, e.kind])).toEqual([
+    ['me', id, 'opened'],
+    ['me', id, 'link']
+  ])
+  expect(runner.started).toEqual([id])
+  // It doesn't land on top of the node that opened it.
+  const me = store.get().nodes[0]
+  expect(n.x >= me.x + me.width || n.y >= me.y + me.height).toBe(true)
+})
+
+test('open-agent --agent codex opens a Codex node, and list says which agent each is', async () => {
+  const { verbs, node } = setup()
+  const id = ids(await verbs('me', 'open-agent', { agent: 'codex', prompt: 'review it' }))
+  expect(node<ClaudeNode>(id)).toMatchObject({ kind: 'claude', agent: 'codex', title: 'Codex', prompt: 'review it' })
+  const listed = (await verbs('me', 'list', {})) as { nodes: Array<{ id: string; agent?: string }> }
+  expect(listed.nodes.find((n) => n.id === id)?.agent).toBe('codex')
+  expect(listed.nodes.find((n) => n.id === 'me')?.agent).toBe('claude')
+})
+
+test('open-agent without --agent uses the default agent from Settings', async () => {
+  const store = memoryStore([claudeNode('me', { cwd: dir })])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const host = fakeHost()
+  const gate = createAfterGate({ store, tracker, runner })
+  const verbs = createVerbs({ store, runner, tracker, host, gate, timing: { enterDelayMs: 0, settleMs: 50 }, defaultAgent: () => 'codex' })
+  const id = ids(await verbs('me', 'open-agent', {}))
+  expect(store.get().nodes.find((n) => n.id === id)).toMatchObject({ agent: 'codex', title: 'Codex' })
+  const named = ids(await verbs('me', 'open-agent', { agent: 'claude' }))
+  expect((store.get().nodes.find((n) => n.id === named) as ClaudeNode).agent).toBeUndefined()
+})
+
+test('open-agent refuses an unknown agent', async () => {
+  const { verbs, store } = setup()
+  await refused(verbs('me', 'open-agent', { agent: 'gpt' }), /--agent must be claude or codex/)
+  expect(store.get().nodes).toHaveLength(1)
+})
+
+test('spawn-team can mix Claude and Codex members', async () => {
+  const { verbs, node } = setup()
+  const r = (await verbs('me', 'spawn-team', {
+    label: 'Mixed',
+    members: [{ name: 'writer', prompt: 'draft' }, { name: 'reviewer', agent: 'codex', prompt: 'review', after: ['writer'] }]
+  })) as { members: Record<string, string> }
+  expect(node<ClaudeNode>(r.members.writer).agent).toBeUndefined()
+  expect(node<ClaudeNode>(r.members.reviewer).agent).toBe('codex')
+})
+
+test('two nodes opened by one caller do not land on the same spot', async () => {
+  const { verbs, node } = setup()
+  const a = node(ids(await verbs('me', 'open-agent', {})))
+  const b = node(ids(await verbs('me', 'open-terminal', {})))
+  expect(a.x === b.x && a.y === b.y).toBe(false)
+})
+
+test('open-agent --group inherits the worktree path as cwd', async () => {
+  const worktree = { path: join(dir, 'wt'), branch: 'b', repo: dir }
+  mkdirSync(worktree.path)
+  const { verbs, node } = setup([groupNode('g', { worktree })])
+  const n = node<ClaudeNode>(ids(await verbs('me', 'open-agent', { group: 'g' })))
+  expect(n.cwd).toBe(worktree.path)
+  expect(n.parentId).toBe('g')
+})
+
+test('open-agent --group refuses something that is not a group', async () => {
+  const { verbs, store } = setup([terminalNode('t')])
+  await refused(verbs('me', 'open-agent', { group: 't' }), /not a group/)
+  expect(store.get().nodes).toHaveLength(2)
+})
+
+test('open-agent --prompt-file uses the file contents exactly', async () => {
+  const contents = '  line "one"\r\n\tline $two %PATH%\n\n'
+  const file = join(dir, 'my prompt.md')
+  writeFileSync(file, contents)
+  const { verbs, node } = setup()
+  const n = node<ClaudeNode>(ids(await verbs('me', 'open-agent', { promptFile: file })))
+  expect(n.prompt).toBe(contents)
+})
+
+test('a missing prompt file, or both prompt forms, creates nothing', async () => {
+  const { verbs, store } = setup()
+  await refused(verbs('me', 'open-agent', { promptFile: join(dir, 'nope.md') }), /nope\.md/)
+  const file = join(dir, 'p.md')
+  writeFileSync(file, 'x')
+  await refused(verbs('me', 'open-agent', { prompt: 'x', promptFile: file }), /one of/)
+  expect(store.get().nodes).toHaveLength(1)
+})
+
+test('a prompt too long for a Windows command line is refused up front', async () => {
+  const { verbs, store } = setup()
+  await refused(verbs('me', 'open-agent', { prompt: 'x'.repeat(40000) }), /too long/)
+  expect(store.get().nodes).toHaveLength(1)
+})
+
+test('a cwd that is not an existing folder creates nothing', async () => {
+  const { verbs, store } = setup()
+  await refused(verbs('me', 'open-agent', { cwd: join(dir, 'missing') }), /missing/)
+  await refused(verbs('me', 'open-terminal', { cwd: 'relative/path' }), /absolute/)
+  expect(store.get().nodes).toHaveLength(1)
+})
+
+test('--after arms the node: no launch, an after edge, and a launch once upstream finishes', async () => {
+  const { verbs, node, edges, runner, tracker } = setup([claudeNode('up')])
+  const id = ids(await verbs('me', 'open-agent', { prompt: 'next', after: ['up'] }))
+  expect(runner.started).toEqual([])
+  expect(tracker.get(id)).toBe('queued')
+  expect(node<ClaudeNode>(id).after).toEqual(['up'])
+  expect(edges().some((e) => e.from === 'up' && e.to === id && e.kind === 'after')).toBe(true)
+
+  tracker.apply('up', { type: 'hook', name: 'UserPromptSubmit' })
+  tracker.apply('up', { type: 'hook', name: 'Stop' })
+  expect(runner.started).toEqual([id])
+})
+
+test('--after on a plain terminal is refused', async () => {
+  const { verbs, store } = setup([claudeNode('up')])
+  await refused(verbs('me', 'open-terminal', { after: ['up'] }), /--after/)
+  expect(store.get().nodes).toHaveLength(2)
+})
+
+test('--after naming a terminal or an unknown node is refused', async () => {
+  const { verbs, store } = setup([terminalNode('t')])
+  await refused(verbs('me', 'open-agent', { after: ['t'] }), /"t".*Claude/)
+  await refused(verbs('me', 'open-agent', { after: ['ghost'] }), /ghost/)
+  expect(store.get().nodes).toHaveLength(2)
+})
+
+test('open-terminal starts a terminal with its command', async () => {
+  const { verbs, node, runner, edges } = setup()
+  const id = ids(await verbs('me', 'open-terminal', { command: 'codex --help' }))
+  expect(node<TerminalNode>(id)).toMatchObject({ kind: 'terminal', command: 'codex --help', cwd: dir, openedBy: 'me' })
+  expect(runner.started).toEqual([id])
+  expect(edges().map((e) => e.kind).sort()).toEqual(['link', 'opened'])
+})
+
+test('spawn-team creates all members in one labeled group', async () => {
+  const { verbs, node, runner, tracker, edges } = setup()
+  const r = (await verbs('me', 'spawn-team', {
+    label: 'Docs team',
+    members: [
+      { name: 'writer', prompt: 'write' },
+      { name: 'reviewer', prompt: 'review', after: ['writer'] }
+    ]
+  })) as { group: string; members: Record<string, string> }
+  const { writer, reviewer } = r.members
+  expect(node<GroupNode>(r.group)).toMatchObject({ kind: 'group', title: 'Docs team', openedBy: 'me' })
+  expect(node(writer)).toMatchObject({ parentId: r.group, title: 'writer', openedBy: 'me' })
+  expect(node<ClaudeNode>(reviewer)).toMatchObject({ parentId: r.group, title: 'reviewer', after: [writer] })
+  expect(runner.started).toEqual([writer])
+  expect(tracker.get(reviewer)).toBe('queued')
+  // The later member can read the earlier member's work.
+  expect(edges().some((e) => e.kind === 'link' && e.from === writer && e.to === reviewer)).toBe(true)
+  // Members sit side by side rather than stacked on one spot.
+  expect(node(writer).x).not.toBe(node(reviewer).x)
+
+  tracker.apply(writer, { type: 'hook', name: 'UserPromptSubmit' })
+  tracker.apply(writer, { type: 'hook', name: 'Stop' })
+  expect(runner.started).toEqual([writer, reviewer])
+})
+
+test('a team member can read the member it waited for', async () => {
+  const { verbs, host } = setup()
+  const r = (await verbs('me', 'spawn-team', {
+    label: 'T',
+    members: [{ name: 'a' }, { name: 'b', after: ['a'] }, { name: 'c' }]
+  })) as { members: Record<string, string> }
+  await refused(verbs(r.members.b, 'read', { node: r.members.a }), /no transcript yet/)
+  host.output.set(r.members.c, 'PRIVATE')
+  await refused(verbs(r.members.b, 'read', { node: r.members.c }), /isn't linked/)
+})
+
+test.each([
+  ['a member with no name', [{ prompt: 'x' }]],
+  ['a duplicate name', [{ name: 'a' }, { name: 'a' }]],
+  ['after naming nobody', [{ name: 'a', after: ['ghost'] }]],
+  ['a member after itself', [{ name: 'a', after: ['a'] }]],
+  ['a cycle', [{ name: 'a', after: ['b'] }, { name: 'b', after: ['a'] }]],
+  ['a missing prompt file', [{ name: 'a' }, { name: 'b', promptFile: 'C:/nope/missing.md' }]],
+  ['no members', []],
+  ['members of the wrong type', 'writer']
+])('spawn-team with %s creates nothing', async (_name, members) => {
+  const { verbs, store, runner } = setup()
+  await refused(verbs('me', 'spawn-team', { label: 'T', members }), /./)
+  expect(store.get().nodes).toHaveLength(1)
+  expect(store.get().edges).toHaveLength(0)
+  expect(runner.started).toEqual([])
+})
+
+test('group frames the named nodes and keeps where they are on the canvas', async () => {
+  const { verbs, node } = setup([terminalNode('a', { x: 500, y: 500 }), terminalNode('b', { x: 1200, y: 500 })])
+  const r = (await verbs('me', 'group', { ids: ['a', 'b'], label: 'Pair', color: '#123456' })) as { id: string }
+  const g = node<GroupNode>(r.id)
+  expect(g).toMatchObject({ kind: 'group', title: 'Pair', color: '#123456', parentId: null })
+  expect(node('a').parentId).toBe(r.id)
+  expect(g.x + node('a').x).toBe(500)
+  expect(g.y + node('a').y).toBe(500)
+  expect(g.x + node('b').x).toBe(1200)
+})
+
+test('group refuses an unknown node and creates nothing', async () => {
+  const { verbs, store } = setup()
+  await refused(verbs('me', 'group', { ids: ['ghost'], label: 'x' }), /ghost/)
+  expect(store.get().nodes).toHaveLength(1)
+})
+
+test('arrange lays nodes out and refuses an unknown layout', async () => {
+  const { verbs, node } = setup([terminalNode('a'), terminalNode('b')])
+  await verbs('me', 'arrange', { ids: ['a', 'b'], layout: 'row', gap: 10 })
+  expect(node('b').x).toBe(node('a').x + node('a').width + 10)
+  await refused(verbs('me', 'arrange', { ids: ['a'], layout: 'spiral' }), /spiral/)
+})
+
+test('rename changes a title and refuses an unknown node', async () => {
+  const { verbs, node } = setup([terminalNode('a')])
+  await verbs('me', 'rename', { node: 'a', title: 'Build log' })
+  expect(node('a').title).toBe('Build log')
+  await refused(verbs('me', 'rename', { node: 'ghost', title: 'x' }), /ghost/)
+})
+
+test('sticky adds a note connected to its opener', async () => {
+  const { verbs, node, edges } = setup()
+  const id = ids(await verbs('me', 'sticky', { text: '# Plan' }))
+  expect(node<StickyNode>(id)).toMatchObject({ kind: 'sticky', text: '# Plan', openedBy: 'me' })
+  expect(edges().some((e) => e.from === 'me' && e.to === id && e.kind === 'opened')).toBe(true)
+})
+
+test('link joins the caller to a node it opened, or two nodes it opened', async () => {
+  const { verbs, edges } = setup([
+    terminalNode('mine1', { openedBy: 'me' }),
+    terminalNode('mine2', { openedBy: 'me' })
+  ])
+  await verbs('me', 'link', { to: 'mine1' })
+  await verbs('me', 'link', { from: 'mine1', to: 'mine2' })
+  expect(edges().map((e) => [e.from, e.to, e.kind])).toEqual([
+    ['me', 'mine1', 'link'],
+    ['mine1', 'mine2', 'link']
+  ])
+})
+
+test('link cannot be used to reach a node the caller did not open', async () => {
+  const { verbs, host, edges } = setup([
+    terminalNode('stranger', { openedBy: 'someone-else' }),
+    terminalNode('mine', { openedBy: 'me' })
+  ])
+  host.output.set('stranger', 'PRIVATE')
+  await refused(verbs('me', 'link', { to: 'stranger' }), /"stranger"/)
+  await refused(verbs('me', 'link', { from: 'stranger', to: 'mine' }), /"stranger"/)
+  expect(edges()).toEqual([])
+  await refused(verbs('me', 'read', { node: 'stranger' }), /"stranger"/)
+})
+
+test('read of an unlinked node is refused and returns no content', async () => {
+  const { verbs, host } = setup([terminalNode('other')])
+  host.output.set('other', 'PRIVATE')
+  const e: Error = await verbs('me', 'read', { node: 'other' }).then(
+    () => new Error('it was allowed'),
+    (err) => err
+  )
+  expect(e).toBeInstanceOf(RpcRefusal)
+  expect(e.message).toContain('"other"')
+  expect(e.message).not.toContain('PRIVATE')
+})
+
+test('read of a terminal returns scrollback with ANSI stripped', async () => {
+  const { verbs, host } = setup([terminalNode('t', { openedBy: 'me' })])
+  host.output.set('t', '\x1b[31mone\x1b[0m\r\ntwo\r\nthree\r\n')
+  expect(await verbs('me', 'read', { node: 't' })).toEqual({ text: 'one\ntwo\nthree\n' })
+  expect(await verbs('me', 'read', { node: 't', tail: 2 })).toEqual({ text: 'two\nthree\n' })
+})
+
+test('read works over a link in either direction', async () => {
+  const { verbs, host, link } = setup([terminalNode('a'), terminalNode('b')])
+  host.output.set('a', 'A')
+  host.output.set('b', 'B')
+  link('me', 'a')
+  link('b', 'me')
+  expect(await verbs('me', 'read', { node: 'a' })).toEqual({ text: 'A' })
+  expect(await verbs('me', 'read', { node: 'b' })).toEqual({ text: 'B' })
+})
+
+test('read of a Claude node returns its transcript', async () => {
+  const file = join(dir, 't.jsonl')
+  writeFileSync(file, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] } }) + '\n')
+  const { verbs } = setup([claudeNode('c', { openedBy: 'me', transcriptPath: file })])
+  expect(await verbs('me', 'read', { node: 'c' })).toEqual({ text: '[assistant]\nhi\n' })
+})
+
+test('read says so when a Claude node has no transcript, or it is gone', async () => {
+  const { verbs } = setup([
+    claudeNode('fresh', { openedBy: 'me' }),
+    claudeNode('gone', { openedBy: 'me', transcriptPath: join(dir, 'gone.jsonl') })
+  ])
+  await refused(verbs('me', 'read', { node: 'fresh' }), /no transcript yet/)
+  await refused(verbs('me', 'read', { node: 'gone' }), /no longer exists/)
+})
+
+test('read refuses a bad tail', async () => {
+  const { verbs } = setup([terminalNode('t', { openedBy: 'me' })])
+  await refused(verbs('me', 'read', { node: 't', tail: -1 }), /tail/)
+})
+
+test('send to an idle node writes text + enter; to a busy node queues until idle', async () => {
+  const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })])
+  host.running.add('c')
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  expect(await verbs('me', 'send', { node: 'c', text: 'first' })).toEqual({ delivered: true })
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', 'first'], ['c', '\r']]))
+
+  host.writes.length = 0
+  tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+  expect(await verbs('me', 'send', { node: 'c', text: 'second' })).toEqual({ delivered: false, queued: true })
+  await new Promise((r) => setTimeout(r, 10))
+  expect(host.writes).toEqual([])
+
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', 'second'], ['c', '\r']]))
+})
+
+test.each(['needs-you', 'unknown', 'queued'] as const)('send to a %s node does not type into it', async (state) => {
+  const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })])
+  host.running.add('c')
+  if (state === 'needs-you') tracker.apply('c', { type: 'hook', name: 'PermissionRequest' })
+  if (state === 'unknown') {
+    tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+    tracker.apply('c', { type: 'interrupt-key' })
+  }
+  if (state === 'queued') tracker.apply('c', { type: 'queued' })
+  expect(tracker.get('c')).toBe(state)
+  expect(await verbs('me', 'send', { node: 'c', text: 'yes' })).toEqual({ delivered: false, queued: true })
+  expect(host.writes).toEqual([])
+})
+
+test('queued sends go one at a time, each waiting for the next idle', async () => {
+  const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })], 60000)
+  host.running.add('c')
+  tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+  await verbs('me', 'send', { node: 'c', text: 'one' })
+  await verbs('me', 'send', { node: 'c', text: 'two' })
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', 'one'], ['c', '\r']]))
+
+  tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+  await new Promise((r) => setTimeout(r, 10))
+  expect(host.writes).toHaveLength(2)
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', 'two'], ['c', '\r']]))
+})
+
+test('a send right after a send waits for the first to register, even though status still says idle', async () => {
+  const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })])
+  host.running.add('c')
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await verbs('me', 'send', { node: 'c', text: 'one' })
+  expect(await verbs('me', 'send', { node: 'c', text: 'two' })).toEqual({ delivered: false, queued: true })
+  await new Promise((r) => setTimeout(r, 10))
+  expect(host.writes).toEqual([['c', 'one'], ['c', '\r']])
+
+  // Some input fires no hook, such as a local slash command. The queue must not stick on it.
+  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', 'two'], ['c', '\r']]))
+})
+
+test('send cannot smuggle control keys into a Claude node', async () => {
+  const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })])
+  host.running.add('c')
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await verbs('me', 'send', { node: 'c', text: 'do it\r1\r\x1b[B\x03\nnext line' })
+  await vi.waitFor(() => expect(host.writes).toHaveLength(2))
+  expect(host.writes[0]).toEqual(['c', 'do it\n1\n[B\nnext line'])
+})
+
+test('send to a terminal delivers at once, as a terminal has no status', async () => {
+  const { verbs, host } = setup([terminalNode('t', { openedBy: 'me' })])
+  host.running.add('t')
+  expect(await verbs('me', 'send', { node: 't', text: 'ls -la' })).toEqual({ delivered: true })
+  await vi.waitFor(() => expect(host.writes).toEqual([['t', 'ls -la'], ['t', '\r']]))
+})
+
+test('send is refused for an unlinked node, an exited node, a stopped terminal or empty text', async () => {
+  const { verbs, host, tracker } = setup([
+    claudeNode('stranger'),
+    claudeNode('dead', { openedBy: 'me' }),
+    terminalNode('stopped', { openedBy: 'me' }),
+    claudeNode('c', { openedBy: 'me' })
+  ])
+  tracker.apply('dead', { type: 'process-exit' })
+  await refused(verbs('me', 'send', { node: 'stranger', text: 'x' }), /"stranger"/)
+  await refused(verbs('me', 'send', { node: 'dead', text: 'x' }), /exited/)
+  await refused(verbs('me', 'send', { node: 'stopped', text: 'x' }), /not running/)
+  await refused(verbs('me', 'send', { node: 'c', text: '' }), /text/)
+  expect(host.writes).toEqual([])
+})
+
+test('a queued send to a node closed in the meantime is dropped', async () => {
+  const { verbs, host, tracker, store } = setup([claudeNode('c', { openedBy: 'me' })])
+  host.running.add('c')
+  tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+  await verbs('me', 'send', { node: 'c', text: 'late' })
+  store.dispatch({ op: 'removeNodes', ids: ['c'], at: 1 })
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  await new Promise((r) => setTimeout(r, 10))
+  expect(host.writes).toEqual([])
+})
+
+test('close of a node the caller did not open is refused', async () => {
+  const { verbs, runner, store, link } = setup([terminalNode('linked')])
+  link('me', 'linked')
+  await refused(verbs('me', 'close', { node: 'linked' }), /"linked"/)
+  expect(runner.stopped).toEqual([])
+  expect(store.get().nodes).toHaveLength(2)
+})
+
+test('close stops the session first, removes the node, and records a Claude conversation', async () => {
+  const { verbs, runner, store } = setup([claudeNode('c', { openedBy: 'me', sessionId: 's1' })])
+  const order: string[] = []
+  const stop = runner.stopNode
+  runner.stopNode = async (id) => {
+    order.push(`stop ${store.get().nodes.some((n) => n.id === id)}`)
+    return stop(id)
+  }
+  await verbs('me', 'close', { node: 'c' })
+  expect(order).toEqual(['stop true'])
+  expect(store.get().nodes.map((n) => n.id)).toEqual(['me'])
+  expect(store.get().closed.map((c) => c.sessionId)).toEqual(['s1'])
+})
+
+test('list shows each node, its status and what the caller may do with it', async () => {
+  const { verbs, tracker, link } = setup([
+    claudeNode('c', { openedBy: 'me', prompt: 'PRIVATE PROMPT' }),
+    terminalNode('l'),
+    terminalNode('s')
+  ])
+  link('me', 'l')
+  tracker.apply('c', { type: 'hook', name: 'Stop' })
+  const r = (await verbs('me', 'list', {})) as { self: string; nodes: Array<Record<string, unknown>> }
+  expect(r.self).toBe('me')
+  const by = Object.fromEntries(r.nodes.map((n) => [n.id, n]))
+  expect(by.c).toMatchObject({ kind: 'claude', status: 'idle', access: 'opened' })
+  expect(by.l).toMatchObject({ access: 'linked' })
+  expect(by.s).toMatchObject({ access: null })
+  expect(JSON.stringify(r)).not.toContain('PRIVATE PROMPT')
+})
+
+test.each(['approve', 'answer-approval', 'deny', 'constructor', '__proto__', 'nonsense'])(
+  'verb %s does not exist',
+  async (verb) => {
+    const { verbs } = setup()
+    await refused(verbs('me', verb, {}), /unknown verb/i)
+  }
+)
+
+test('a caller that is no longer on the canvas is refused', async () => {
+  const { verbs } = setup()
+  await refused(verbs('ghost', 'list', {}), /ghost/)
+})

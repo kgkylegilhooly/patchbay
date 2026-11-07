@@ -1,0 +1,3 @@
+# sh cannot run a script with CRLF line endings, whatever core.autocrlf says.
+patchbay text eol=lf
+*.cmd text eol=crlf

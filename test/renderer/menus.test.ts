@@ -1,0 +1,289 @@
+import { describe, expect, test, vi } from 'vitest'
+import { ACTIONS } from '../../src/renderer/actions'
+import {
+  canvasExtensions,
+  canvasMenu,
+  clampToViewport,
+  closedProjectMenu,
+  deleteProjectWarning,
+  editMenu,
+  fileMenu,
+  nodeMenu,
+  projectMenu,
+  settingsMenu,
+  viewMenu,
+  type Commands,
+  type MenuEntry,
+  type MenuItem,
+  type MenuState
+} from '../../src/renderer/menus'
+import { sessionTree } from '../../src/renderer/sessionTree'
+import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
+import { canonicalSpec } from '../../src/core/trigger/arming'
+import { triggerNode } from '../trigger/fixtures'
+
+const commands = new Proxy({} as Commands, { get: () => vi.fn() })
+const state: MenuState = { selectedCount: 0, canCopy: false, canFind: false, sidebar: true, minimap: true, legend: false, snap: false, canUndo: false, canRedo: false, hasWindow: false, canName: false, canCloseProject: true }
+const box = { title: 'T', x: 0, y: 0, width: 100, height: 100, parentId: null }
+const terminal: CanvasNode = { ...box, id: 't', kind: 'terminal', cwd: 'C:\\a' }
+const claude: CanvasNode = { ...box, id: 'c', kind: 'claude', cwd: 'C:\\b', sessionId: null, transcriptPath: null, after: [] }
+const sticky: CanvasNode = { ...box, id: 's', kind: 'sticky', text: '' }
+const group: CanvasNode = { ...box, id: 'g', kind: 'group', worktree: null }
+
+const items = (menu: MenuEntry[]): MenuItem[] => menu.filter((e): e is MenuItem => e !== 'separator')
+const find = (menu: MenuEntry[], id: string): MenuItem | undefined => items(menu).find((i) => i.id === id)
+
+describe('menu bar', () => {
+  test('File, Edit, View and Settings each have working items', () => {
+    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), settingsMenu(commands, state)]) {
+      expect(items(menu).length).toBeGreaterThan(0)
+      for (const item of items(menu)) expect(typeof item.run).toBe('function')
+    }
+  })
+
+  test('Group names itself after the selection', () => {
+    expect(find(fileMenu(commands, state), 'group')?.label).toBe('New group')
+    expect(find(fileMenu(commands, { ...state, selectedCount: 2 }), 'group')?.label).toBe('Group selection')
+  })
+
+  test('Close selected is off with nothing selected', () => {
+    expect(find(fileMenu(commands, state), 'close-selected')?.disabled).toBe(true)
+    expect(find(fileMenu(commands, { ...state, selectedCount: 1 }), 'close-selected')?.disabled).toBe(false)
+  })
+
+  test('Edit follows what the focused terminal can do', () => {
+    expect(find(editMenu(commands, state), 'copy')?.disabled).toBe(true)
+    expect(find(editMenu(commands, state), 'find')?.disabled).toBe(true)
+    const ready = editMenu(commands, { ...state, canCopy: true, canFind: true })
+    expect(find(ready, 'copy')?.disabled).toBe(false)
+    expect(find(ready, 'find')?.disabled).toBe(false)
+  })
+
+  test('View and Settings toggles show their state', () => {
+    expect(find(viewMenu(commands, state), 'toggle-sidebar')?.checked).toBe(true)
+    expect(find(viewMenu(commands, state), 'toggle-legend')?.checked).toBe(false)
+    expect(find(settingsMenu(commands, { ...state, snap: true }), 'toggle-snap')?.checked).toBe(true)
+  })
+})
+
+describe('right-click menus', () => {
+  test('the canvas opens nodes where you clicked', () => {
+    const newTerminal = vi.fn()
+    const c = { ...commands, newTerminal } as Commands
+    const at = { x: 10, y: 20 }
+    find(canvasMenu(c, state, at), 'new-terminal')?.run()
+    expect(newTerminal).toHaveBeenCalledWith(at)
+  })
+
+  test('a busy session asks before closing, an idle one does not', () => {
+    expect(find(nodeMenu(commands, terminal, null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }), 'close')?.confirm).toBeUndefined()
+    const idle = nodeMenu(commands, claude, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false })
+    expect(find(idle, 'close')?.confirm).toBeUndefined()
+    for (const status of ['working', 'needs-you'] as const) {
+      const menu = nodeMenu(commands, claude, status, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false })
+      expect(find(menu, 'close')?.confirm).toBeTruthy()
+    }
+  })
+
+  test('Restart appears only when a session can restart', () => {
+    expect(find(nodeMenu(commands, claude, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }), 'restart')).toBeUndefined()
+    expect(find(nodeMenu(commands, claude, 'exited', { at: { x: 0, y: 0 }, canCopy: false, canRestart: true }), 'restart')).toBeDefined()
+  })
+
+  test('each kind of node gets its own menu', () => {
+    const ctx = { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }
+    expect(find(nodeMenu(commands, terminal, null, ctx), 'paste')).toBeDefined()
+    expect(find(nodeMenu(commands, sticky, null, ctx), 'paste')).toBeUndefined()
+    expect(find(nodeMenu(commands, sticky, null, ctx), 'close')?.label).toBe('Delete note')
+    expect(find(nodeMenu(commands, group, null, ctx), 'close')?.label).toBe('Remove group')
+    expect(find(nodeMenu(commands, group, null, ctx), 'new-terminal')).toBeDefined()
+  })
+
+  test('new sessions from a group menu open in that group', () => {
+    const newTerminal = vi.fn()
+    const c = { ...commands, newTerminal } as Commands
+    const at = { x: 1, y: 2 }
+    find(nodeMenu(c, group, null, { at, canCopy: false, canRestart: false }), 'new-terminal')?.run()
+    expect(newTerminal).toHaveBeenCalledWith(at, 'g')
+  })
+})
+
+describe('icons and shared ids', () => {
+  const at = { x: 0, y: 0 }
+
+  test('every option in the canvas menu has an icon', () => {
+    for (const item of items(canvasMenu(commands, state, at))) expect(item.icon, item.id).toBeTruthy()
+  })
+
+  test('every option in the menu bar menus has an icon', () => {
+    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), settingsMenu(commands, state)]) {
+      for (const item of items(menu)) expect(item.icon, item.id).toBeTruthy()
+    }
+  })
+
+  test('the canvas menu is split into sections with no stray separators', () => {
+    const menu = canvasMenu(commands, state, at)
+    expect(menu.filter((e) => e === 'separator').length).toBeGreaterThanOrEqual(3)
+    expect(menu[0]).not.toBe('separator')
+    expect(menu[menu.length - 1]).not.toBe('separator')
+    expect(menu.some((e, i) => e === 'separator' && menu[i + 1] === 'separator')).toBe(false)
+  })
+
+  test('Spawn a team is in the canvas and File menus, and opens where you clicked', () => {
+    const spawnTeamForm = vi.fn()
+    const c = { ...commands, spawnTeamForm } as Commands
+    find(canvasMenu(c, state, { x: 3, y: 4 }), 'spawn-team')?.run()
+    expect(spawnTeamForm).toHaveBeenCalledWith({ x: 3, y: 4 })
+    expect(find(fileMenu(commands, state), 'spawn-team')).toBeDefined()
+  })
+
+  test('New trigger is in the canvas menu, with an icon, and in the File menu and the palette', () => {
+    const newTriggerForm = vi.fn()
+    const c = { ...commands, newTriggerForm } as Commands
+    expect(canvasExtensions(c, at).map((i) => [i.id, i.icon])).toEqual([['new-trigger', 'trigger']])
+    find(canvasMenu(c, state, at), 'new-trigger')?.run()
+    expect(newTriggerForm).toHaveBeenCalledWith(at)
+    expect(find(fileMenu(commands, state), 'new-trigger')).toBeDefined()
+    expect(ACTIONS.some((a) => a.id === 'new-trigger' && a.icon === 'trigger')).toBe(true)
+  })
+
+  test('New run configuration is beside New run command everywhere', () => {
+    expect(find(canvasMenu(commands, state, at), 'new-run-config')?.icon).toBe('launch')
+    expect(find(fileMenu(commands, state), 'new-run-config')).toBeDefined()
+    expect(ACTIONS.some((a) => a.id === 'new-run-config')).toBe(true)
+  })
+
+  test('a trigger offers Arm only while disarmed, and Run now only while armed', () => {
+    const t = triggerNode('tr')
+    const menu = nodeMenu(commands, t, null, { at, canCopy: false, canRestart: false })
+    expect(find(menu, 'arm-trigger')).toBeDefined()
+    expect(find(menu, 'run-trigger')?.disabled).toBe(true)
+    const armed = nodeMenu(commands, { ...t, armedSpec: canonicalSpec(t) }, null, { at, canCopy: false, canRestart: false })
+    expect(find(armed, 'disarm-trigger')).toBeDefined()
+    expect(find(armed, 'run-trigger')?.disabled).toBe(false)
+  })
+
+  test('a launch.json run node has no free-form command to edit', () => {
+    const run = { id: 'r', kind: 'run' as const, title: 'r', cwd: 'C:\\x', command: 'x', launch: { folder: 'C:\\x', name: 'App' }, x: 0, y: 0, width: 1, height: 1, parentId: null }
+    expect(find(nodeMenu(commands, run, null, { at, canCopy: false, canRestart: false }), 'edit-command')).toBeUndefined()
+  })
+
+  test('the View menu opens the palette', () => {
+    const openPalette = vi.fn()
+    const c = { ...commands, openPalette } as Commands
+    find(viewMenu(c, state), 'open-palette')?.run()
+    expect(openPalette).toHaveBeenCalled()
+  })
+
+  test('Undo and Redo follow what can be done, and say what', () => {
+    expect(find(editMenu(commands, state), 'undo')?.disabled).toBe(true)
+    const ready = editMenu(commands, { ...state, canUndo: true, undoLabel: 'move' })
+    expect(find(ready, 'undo')?.disabled).toBe(false)
+    expect(find(ready, 'undo')?.label).toBe('Undo move')
+  })
+
+  test('menu items that the registry has keep the same ids, so their shortcuts are right', () => {
+    const registered = new Set(ACTIONS.map((a) => a.id))
+    for (const id of ['new-terminal', 'new-claude', 'spawn-team', 'group', 'select-all', 'fit-view', 'tidy', 'recent', 'undo', 'redo', 'copy', 'paste', 'find', 'open-palette', 'open-settings', 'toggle-sidebar', 'zoom-in']) {
+      expect(registered.has(id), id).toBe(true)
+    }
+  })
+})
+
+describe('project menus', () => {
+  const ctx = { sessionTitles: ['Dev', 'Claude'], items: 2, canClose: true, last: false, rename: () => {} }
+
+  test('closing only hides, so it asks nothing', () => {
+    const closeProject = vi.fn()
+    const item = find(projectMenu({ ...commands, closeProject } as Commands, 'a', ctx), 'close-project')!
+    expect(item.confirm).toBeUndefined()
+    expect(item.danger).toBeFalsy()
+    item.run()
+    expect(closeProject).toHaveBeenCalledWith('a')
+  })
+
+  test('with no other project open it cannot close', () => {
+    expect(find(projectMenu(commands, 'a', { ...ctx, canClose: false }), 'close-project')?.disabled).toBe(true)
+  })
+
+  test('deleting always asks, and names what it ends', () => {
+    const item = find(projectMenu(commands, 'a', ctx), 'delete-project')!
+    expect(item.danger).toBe(true)
+    expect(item.confirm).toContain('"Dev"')
+    expect(item.confirm).toContain('"Claude"')
+    expect(item.confirm).toContain('2 notes and groups')
+    expect(item.confirm).toMatch(/for good/)
+    expect(find(projectMenu(commands, 'a', { ...ctx, sessionTitles: [], items: 0 }), 'delete-project')?.confirm).toMatch(/for good/)
+  })
+
+  test('the warning shortens a long list but keeps the count', () => {
+    expect(deleteProjectWarning(['a', 'b', 'c', 'd', 'e'], 0)).toBe('Ends "a", "b", "c" and 2 more. Delete this project for good?')
+    expect(deleteProjectWarning(['a'], 1)).toBe('Ends "a". Removes 1 note or group. Delete this project for good?')
+    expect(deleteProjectWarning(['a', 'b'], 0)).toBe('Ends "a" and "b". Delete this project for good?')
+  })
+
+  test('the last project cannot be deleted', () => {
+    expect(find(projectMenu(commands, 'a', { ...ctx, last: true }), 'delete-project')?.disabled).toBe(true)
+  })
+
+  test('a closed project reopens or deletes', () => {
+    const reopenProject = vi.fn()
+    const menu = closedProjectMenu({ ...commands, reopenProject } as Commands, 'a', { sessionTitles: ['Dev'], items: 0 })
+    find(menu, 'reopen-project')?.run()
+    expect(reopenProject).toHaveBeenCalledWith('a')
+    expect(find(menu, 'delete-project')?.confirm).toContain('"Dev"')
+  })
+
+  test('the File menu offers closed projects back', () => {
+    const reopenProject = vi.fn()
+    const menu = fileMenu({ ...commands, reopenProject } as Commands, { ...state, closedProjects: [{ id: 'b', name: 'Site' }] })
+    const item = find(menu, 'reopen-project-b')!
+    expect(item.label).toContain('Site')
+    item.run()
+    expect(reopenProject).toHaveBeenCalledWith('b')
+  })
+})
+
+describe('clampToViewport', () => {
+  test('leaves a menu that fits where it is', () => {
+    expect(clampToViewport({ x: 100, y: 100 }, { width: 200, height: 300 }, { width: 1000, height: 800 })).toEqual({ x: 100, y: 100 })
+  })
+
+  test('pulls a menu back inside at the right and bottom edges', () => {
+    expect(clampToViewport({ x: 950, y: 750 }, { width: 200, height: 300 }, { width: 1000, height: 800 })).toEqual({ x: 792, y: 492 })
+  })
+
+  test('never goes past the top left, even in a tiny window', () => {
+    expect(clampToViewport({ x: 50, y: 50 }, { width: 500, height: 500 }, { width: 300, height: 300 })).toEqual({ x: 8, y: 8 })
+  })
+})
+
+describe('sessionTree', () => {
+  const doc: CanvasDoc = {
+    version: 3, projects: [], activeProjectId: '',
+    viewport: { x: 0, y: 0, zoom: 1 },
+    edges: [],
+    closed: [],
+    nodes: [
+      { ...group, title: 'Team' },
+      { ...terminal, id: 'in', title: 'Inside', parentId: 'g' },
+      { ...claude, id: 'out', title: 'Outside', cwd: 'C:\\repo' },
+      sticky
+    ]
+  }
+
+  test('lists sessions by group and leaves out notes', () => {
+    const tree = sessionTree(doc, '')
+    expect(tree.groups.map((g) => [g.group.title, g.sessions.map((s) => s.id)])).toEqual([['Team', ['in']]])
+    expect(tree.ungrouped.map((s) => s.id)).toEqual(['out'])
+    expect(tree.total).toBe(2)
+  })
+
+  test('filters by title or folder, ignoring case, and drops empty groups', () => {
+    expect(sessionTree(doc, 'INSIDE').groups[0].sessions[0].id).toBe('in')
+    const byFolder = sessionTree(doc, 'repo')
+    expect(byFolder.ungrouped.map((s) => s.id)).toEqual(['out'])
+    expect(byFolder.groups).toEqual([])
+    expect(byFolder.total).toBe(2)
+  })
+})

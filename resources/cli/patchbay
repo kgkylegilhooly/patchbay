@@ -1,0 +1,6 @@
+#!/bin/sh
+# Git Bash rewrites arguments like /clear into Windows paths when it starts a native program.
+# Switching that off means handing Node a path it can read ourselves.
+dir=$(dirname "$0")
+if command -v cygpath >/dev/null 2>&1; then dir=$(cygpath -m "$dir"); fi
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" exec node "$dir/patchbay.cjs" "$@"

@@ -1,0 +1,95 @@
+import { readFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { nextStatus } from '../../core/status/machine'
+import type { AgentStatus } from '../../shared/model'
+
+/**
+ * While the app is closed, resources/hook.cjs appends each event it can't deliver to a journal, one per node. On
+ * reconnect those events tell what really happened, so a node can go straight to its true status. A session with
+ * an empty journal has told us nothing, and stays `unknown`.
+ */
+export interface MissedHook {
+  hook_event_name?: unknown
+  notification_type?: unknown
+  reason?: unknown
+  source?: unknown
+  session_id?: unknown
+  transcript_path?: unknown
+}
+
+export interface MissedSummary {
+  status: AgentStatus
+  turns: number
+  sessionId?: string
+  transcriptPath?: string
+  /** Only set when the events say. */
+  hasConversation?: boolean
+  promptSubmitted: boolean
+}
+
+const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+
+/** Pure. Every event sets the status outright or leaves it alone, so starting from `unknown` can't invent one. */
+export function foldMissedHooks(events: MissedHook[]): MissedSummary {
+  const summary: MissedSummary = { status: 'unknown', turns: 0, promptSubmitted: false }
+  for (const event of events) {
+    const name = text(event.hook_event_name)
+    if (!name) continue
+    const before = summary.status
+    summary.status = nextStatus(before, { type: 'hook', name, notificationType: text(event.notification_type), reason: text(event.reason) })
+    if (summary.status === 'idle' && before !== 'idle') summary.turns++
+    if (name === 'UserPromptSubmit') {
+      summary.promptSubmitted = true
+      summary.hasConversation = true
+    }
+    if (name === 'SessionStart') {
+      const source = text(event.source)
+      if (source === 'clear') summary.hasConversation = false
+      if (source === 'resume') summary.hasConversation = true
+      const sessionId = text(event.session_id)
+      if (sessionId) {
+        summary.sessionId = sessionId
+        summary.transcriptPath = text(event.transcript_path)
+      }
+    }
+  }
+  return summary
+}
+
+export function missedHooksDir(controlDir: string): string {
+  return join(controlDir, 'missed')
+}
+
+function parseLines(file: string): MissedHook[] {
+  let raw: string
+  try {
+    raw = readFileSync(file, 'utf8')
+  } catch {
+    return []
+  }
+  const events: MissedHook[] = []
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      events.push(JSON.parse(line) as MissedHook)
+    } catch {
+      // A hook killed in the middle of writing leaves a partial line.
+    }
+  }
+  return events
+}
+
+/** Reads and clears a node's journal: its rolled-over older part first, then the current one. */
+export function takeMissedHooks(dir: string, nodeId: string): MissedHook[] {
+  const file = join(dir, `${encodeURIComponent(nodeId)}.jsonl`)
+  const older = `${file}.old`
+  const events = [...parseLines(older), ...parseLines(file)]
+  for (const f of [older, file]) {
+    try {
+      rmSync(f, { force: true })
+    } catch {
+      // Still held open by a hook writing to it. It's read again next time.
+    }
+  }
+  return events
+}

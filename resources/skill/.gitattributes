@@ -1,0 +1,2 @@
+# The skill loader and its test read the front matter with LF, whatever core.autocrlf says.
+*.md text eol=lf
