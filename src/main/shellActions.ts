@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { readTranscript } from '../core/transcript/read'
 import type { CanvasStore } from '../shared/contract'
@@ -11,6 +12,8 @@ export interface LinkDeps {
   /** Resolves to an error message, or an empty string on success. */
   openPath(path: string): Promise<string>
   reveal(path: string): void
+  /** For ~. Defaults to the person's home folder. */
+  home?: string
 }
 
 type LinkResult = { ok: true } | { ok: false; reason: string }
@@ -28,6 +31,49 @@ const RUNNABLE = new Set(
 const SCHEME = /^[a-z][a-z0-9+-]+:/i
 const LOCATION_SUFFIX = /(?::\d+){1,2}$|\(\d+,\d+\)$/
 
+/** A GitHub-style line anchor, as agents write in links: #L12, #L12-L20, #L12C3. */
+const LINE_ANCHOR = /#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?$/i
+
+type Local = { ok: true; paths: string[] } | { ok: false; reason: string }
+
+/**
+ * The Windows paths a path written by a program may mean, most likely first. Agents and shells write the same file
+ * many ways: C:\a\b.ts, C:/a/b.ts, /C:/a/b.ts and file:///C:/a/b.ts (Codex's links), /c/a/b.ts (Git Bash),
+ * ~/b.ts, with a :line:col or #L12 after it, and in a link with spaces as %20.
+ */
+export function localPaths(cwd: string, target: string, home: string): Local {
+  let t = target.trim()
+  if (/^file:/i.test(t)) {
+    let url: URL
+    try {
+      url = new URL(t)
+    } catch {
+      return { ok: false, reason: `That link isn't valid: ${target}` }
+    }
+    if (url.host && url.host.toLowerCase() !== 'localhost') return { ok: false, reason: `Network paths don't open from a terminal: ${target}` }
+    t = url.pathname
+  }
+  t = t.replace(LINE_ANCHOR, '').replace(LOCATION_SUFFIX, '')
+  if (/^[\\/]{2}/.test(t)) return { ok: false, reason: `Network paths don't open from a terminal: ${target}` }
+  const forms = [t]
+  if (/%[0-9a-f]{2}/i.test(t)) {
+    try {
+      const decoded = decodeURIComponent(t)
+      if (/^[\\/]{2}/.test(decoded)) return { ok: false, reason: `Network paths don't open from a terminal: ${target}` }
+      forms.push(decoded)
+    } catch {
+      // Not encoded after all.
+    }
+  }
+  const paths = forms.map((f) => {
+    const drive = /^[\\/]([A-Za-z])(?::?[\\/]|:?$)(.*)$/.exec(f)
+    if (drive) return resolve(`${drive[1].toUpperCase()}:\\`, drive[2])
+    if (f === '~' || /^~[\\/]/.test(f)) return resolve(home, f.slice(2))
+    return resolve(cwd, f)
+  })
+  return { ok: true, paths: [...new Set(paths)] }
+}
+
 function isRunnable(path: string): boolean {
   // Windows ignores trailing dots and spaces, and anything after a colon names a stream of the file.
   const name = basename(path).split(':')[0].replace(/[. ]+$/, '')
@@ -36,7 +82,7 @@ function isRunnable(path: string): boolean {
 }
 
 export async function openTerminalLink(cwd: string, target: string, deps: LinkDeps): Promise<LinkResult> {
-  if (SCHEME.test(target)) {
+  if (SCHEME.test(target) && !/^file:/i.test(target)) {
     let url: URL
     try {
       url = new URL(target)
@@ -53,11 +99,10 @@ export async function openTerminalLink(cwd: string, target: string, deps: LinkDe
       return { ok: false, reason: (e as Error).message }
     }
   }
-  if (/^[\\/]{2}/.test(target)) {
-    return { ok: false, reason: `Network paths don't open from a terminal: ${target}` }
-  }
-  const path = resolve(cwd, target.replace(LOCATION_SUFFIX, ''))
-  if (!deps.exists(path)) return { ok: false, reason: `File not found: ${path}` }
+  const local = localPaths(cwd, target, deps.home ?? homedir())
+  if (!local.ok) return local
+  const path = local.paths.find((p) => deps.exists(p))
+  if (!path) return { ok: false, reason: `File not found: ${local.paths[0]}` }
   if (isRunnable(path)) {
     deps.reveal(path)
     return { ok: true }
@@ -75,14 +120,16 @@ export type ResolvedPath = { ok: true; path: string; folder: string } | { ok: fa
 export function resolveTerminalPath(
   cwd: string,
   target: string,
-  deps: { isDirectory(path: string): boolean | null }
+  deps: { isDirectory(path: string): boolean | null; home?: string }
 ): ResolvedPath {
-  if (SCHEME.test(target)) return { ok: false, reason: `That's a link, not a path: ${target}` }
-  if (/^[\\/]{2}/.test(target)) return { ok: false, reason: `Network paths aren't supported here: ${target}` }
-  const path = resolve(cwd, target.replace(LOCATION_SUFFIX, ''))
-  const dir = deps.isDirectory(path)
-  if (dir === null) return { ok: false, reason: `File not found: ${path}` }
-  return { ok: true, path, folder: dir ? path : dirname(path) }
+  if (SCHEME.test(target) && !/^file:/i.test(target)) return { ok: false, reason: `That's a link, not a path: ${target}` }
+  const local = localPaths(cwd, target, deps.home ?? homedir())
+  if (!local.ok) return local
+  for (const path of local.paths) {
+    const dir = deps.isDirectory(path)
+    if (dir !== null) return { ok: true, path, folder: dir ? path : dirname(path) }
+  }
+  return { ok: false, reason: `File not found: ${local.paths[0]}` }
 }
 
 const IMAGE_TYPES: Record<string, string> = {

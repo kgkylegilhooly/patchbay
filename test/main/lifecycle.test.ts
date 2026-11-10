@@ -153,7 +153,7 @@ describe('openTerminalLink', () => {
     expect(d.calls).toEqual(['external https://example.com/a', 'external http://example.com/b'])
   })
 
-  test.each(['file:///C:/x.exe', 'javascript:alert(1)', 'ms-settings:privacy', 'ftp://example.com/x'])(
+  test.each(['javascript:alert(1)', 'ms-settings:privacy', 'ftp://example.com/x'])(
     'openTerminalLink refuses the scheme of %s',
     async (target) => {
       const d = deps()
@@ -174,6 +174,40 @@ describe('openTerminalLink', () => {
     const d = deps(['\\\\host\\share\\a.txt'])
     const r = await openTerminalLink('C:\\repo', '\\\\host\\share\\a.txt', d)
     expect(r.ok).toBe(false)
+    expect(d.calls).toEqual([])
+  })
+
+  test.each([
+    ['/C:/repo/src/a.ts:12', 'C:\\repo\\src\\a.ts'],
+    ['/c/repo/src/a.ts', 'C:\\repo\\src\\a.ts'],
+    ['C:/repo/src/a.ts#L12-L20', 'C:\\repo\\src\\a.ts'],
+    ['src/a.ts#L12', 'C:\\repo\\src\\a.ts'],
+    ['file:///C:/repo/src/a.ts', 'C:\\repo\\src\\a.ts'],
+    ['file:///C:/My%20Docs/a%20b.md', 'C:\\My Docs\\a b.md'],
+    ['C:/My%20Docs/a%20b.md', 'C:\\My Docs\\a b.md'],
+    ['~/notes/todo.md', 'C:\\Users\\me\\notes\\todo.md'],
+    ['~', 'C:\\Users\\me']
+  ])('%s, as agents and shells write paths, opens %s', async (target, want) => {
+    const d = { ...deps([want]), home: 'C:\\Users\\me' }
+    expect(await openTerminalLink('C:\\repo', target, d)).toEqual({ ok: true })
+    expect(d.calls).toEqual([`open ${want}`])
+  })
+
+  test('a file whose name really has %20 in it still opens', async () => {
+    const d = deps(['C:\\repo\\100%20.txt'])
+    expect(await openTerminalLink('C:\\repo', '100%20.txt', d)).toEqual({ ok: true })
+    expect(d.calls).toEqual(['open C:\\repo\\100%20.txt'])
+  })
+
+  test('a program given as a file link is only shown, never run', async () => {
+    const d = deps(['C:\\x.exe'])
+    expect(await openTerminalLink('C:\\repo', 'file:///C:/x.exe', d)).toEqual({ ok: true })
+    expect(d.calls).toEqual(['reveal C:\\x.exe'])
+  })
+
+  test.each(['file://host/share/a.txt', '%5C%5Chost%5Cshare%5Ca.txt', '//host/share/a.txt'])('the network path %s is refused, however it is written', async (target) => {
+    const d = deps(['\\\\host\\share\\a.txt'])
+    expect((await openTerminalLink('C:\\repo', target, d)).ok).toBe(false)
     expect(d.calls).toEqual([])
   })
 
@@ -203,7 +237,13 @@ describe('resolveTerminalPath', () => {
     expect(resolveTerminalPath('C:\\repo', 'C:\\other\\lib', kinds({ [dir]: 'dir' }))).toEqual({ ok: true, path: dir, folder: dir })
   })
 
-  test.each(['nope.txt', 'https://example.com/a', '\\\\host\\share\\a.txt'])('%s does not resolve', (target) => {
+  test('Show in File Explorer understands the same forms as Open', () => {
+    const file = 'C:\\repo\\src\\a.ts'
+    expect(resolveTerminalPath('C:\\repo', '/c/repo/src/a.ts', kinds({ [file]: 'file' }))).toEqual({ ok: true, path: file, folder: 'C:\\repo\\src' })
+    expect(resolveTerminalPath('C:\\repo', '/C:/repo/src/a.ts#L4', kinds({ [file]: 'file' }))).toEqual({ ok: true, path: file, folder: 'C:\\repo\\src' })
+  })
+
+  test.each(['nope.txt', 'https://example.com/a', '\\\\host\\share\\a.txt', 'file://host/share/a.txt'])('%s does not resolve', (target) => {
     expect(resolveTerminalPath('C:\\repo', target, kinds({})).ok).toBe(false)
   })
 })

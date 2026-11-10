@@ -51,6 +51,18 @@ async function main() {
     c.check('Its status goes working, then idle', Array.isArray(idle), idle)
     console.log('SHOT', await L.shot(page, 'codex-after-first-turn'))
 
+    // A long message is what Codex on Windows took as one paste, leaving it typed but not sent. It goes the way an
+    // agent's patchbay send does, through the send queue.
+    const filler = Array.from({ length: 40 }, (_, i) => `Line ${i + 1} of background you can ignore.`).join(' ')
+    const sent = await page.evaluate((t) => window.patchbay.sendToAgent('cx', t), `${filler} After all that, reply with just the word long.`)
+    const tookLong = await L.waitFor('Codex to take the long message', async () => {
+      await answerSetup('cx')
+      const seen = await L.seenStatuses(page, 'cx')
+      return seen.filter((s) => s === 'working').length >= 2 && (await L.statusOf(page, 'cx')) === 'idle' ? seen : null
+    }, 120000, 1000).catch((e) => e.message)
+    c.check('A long message is sent, not left typed in the box', sent.ok && Array.isArray(tookLong), { sent, tookLong })
+    console.log('SCREEN after long message:\n' + (await text('cx')).split('\n').filter((l) => l.trim()).slice(-8).join('\n'))
+
     await L.submit(page, 'cx', 'Call the patchbay tool with args ["list"] and reply with only the value of its "self" field.')
     let asked = null
     const answered = await L.waitFor('Codex to run patchbay', async () => {

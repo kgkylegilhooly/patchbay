@@ -38,3 +38,16 @@ test('matches give the range of the path, including its line suffix', () => {
   expect(m.path).toBe('src/core/x.ts')
   expect(line.slice(m.start, m.end)).toBe('src/core/x.ts:3:9')
 })
+
+test.each([
+  ['Read /c/Code/repos/app/README.md', '/c/Code/repos/app/README.md'],
+  ['cd /c/Users/me/projects', '/c/Users/me/projects'],
+  ['Wrote ~/notes/todo.md.', '~/notes/todo.md'],
+  ['log at /tmp/build/out.log:4', '/tmp/build/out.log']
+])('Git Bash and home paths keep their start: %s', (line, expected) => {
+  expect(findTerminalPaths(line)).toEqual([expected])
+})
+
+test.each([['type /help for help'], ['run /compact now'], ['a 1/2 cup']])('a slash command or fraction is not a path: %s', (line) => {
+  expect(findTerminalPaths(line)).toEqual([])
+})
