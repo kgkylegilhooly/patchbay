@@ -21,8 +21,21 @@ test('parseNetstat keeps LISTENING over IPv4 and IPv6, once per port, and ignore
   ])
 })
 
-test('parseNetstat survives a localized or garbled line', () => {
-  expect(parseNetstat('  TCP    0.0.0.0:80   0.0.0.0:0   ABHÖREN   100\nnonsense\n  TCP x y LISTENING z\n')).toEqual([])
+test('parseNetstat finds listeners when Windows has translated the LISTENING word', () => {
+  const german = `
+  Proto  Lokale Adresse         Remoteadresse          Status           PID
+  TCP    0.0.0.0:5173           0.0.0.0:0              ABHÖREN         100
+  TCP    127.0.0.1:50000        127.0.0.1:5173         HERGESTELLT     100
+  TCP    [::1]:8080             [::]:0                 ABHÖREN         300
+`
+  expect(parseNetstat(german)).toEqual([
+    { port: 5173, pid: 100 },
+    { port: 8080, pid: 300 }
+  ])
+})
+
+test('parseNetstat survives a garbled line', () => {
+  expect(parseNetstat('nonsense\n  TCP x y LISTENING z\n  TCP 0.0.0.0:80 0.0.0.0:0 LISTENING\n  TCP 0.0.0.0:x 0.0.0.0:0 LISTENING 100\n')).toEqual([])
   expect(parseNetstat('')).toEqual([])
 })
 

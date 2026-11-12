@@ -21,13 +21,16 @@ export interface Approvals {
 const TERMINAL_ONLY = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const SUMMARY_FIELDS = ['command', 'file_path', 'notebook_path', 'url', 'pattern', 'query', 'prompt', 'description']
 const SUMMARY_MAX = 199
+/** Far more than a command anyone would read through, and small enough to send to the page on every change. */
+const DETAIL_MAX = 4000
 
-function summarize(input: Record<string, unknown>): string {
+const cut = (line: string, max: number): string => (line.length <= max ? line : line.slice(0, max - 1).replace(/[\ud800-\udbff]$/, '') + '…')
+
+function describe(input: Record<string, unknown>): Pick<PendingApproval, 'summary' | 'detail'> {
   const field = SUMMARY_FIELDS.map((k) => input[k]).find((v) => typeof v === 'string' && v)
   // Collapsing runs of whitespace stops padding from pushing the dangerous part out of view.
   const line = ((field as string | undefined) ?? JSON.stringify(input)).replace(/[\s\x00-\x1f\x7f]+/g, ' ').trim()
-  if (line.length <= SUMMARY_MAX) return line
-  return line.slice(0, SUMMARY_MAX - 1).replace(/[\ud800-\udbff]$/, '') + '…'
+  return { summary: cut(line, SUMMARY_MAX), detail: cut(line, DETAIL_MAX) }
 }
 
 interface Entry {
@@ -73,7 +76,7 @@ export function createApprovals({ holdMs = 540000 }: { holdMs?: number } = {}): 
         }
         signal?.addEventListener('abort', onAbort)
         entries.set(requestId, {
-          approval: { nodeId, requestId, tool, summary: summarize(input as Record<string, unknown>) },
+          approval: { nodeId, requestId, tool, ...describe(input as Record<string, unknown>) },
           settle
         })
         changed()

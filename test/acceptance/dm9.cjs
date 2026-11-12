@@ -143,7 +143,7 @@ async function main() {
     c.check('DM9: its path is typed into the terminal', true)
     await L.input(page, 'sh', '\x03')
 
-    // The minimap, with a real drag. It pans the view rather than jumping on a click.
+    // The minimap, with a real drag, which pans the view. A click on its own goes to that spot.
     const vpBefore = (await L.doc(page)).viewport
     const map = await (await page.$('.react-flow__minimap')).boundingBox()
     await page.mouse.move(map.x + map.width * 0.5, map.y + map.height * 0.5)

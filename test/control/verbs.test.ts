@@ -6,7 +6,7 @@ import { createAfterGate } from '../../src/main/control/after'
 import { RpcRefusal } from '../../src/main/control/server'
 import { createVerbs } from '../../src/main/control/verbs'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
-import type { CanvasNode, ClaudeNode, GroupNode, StickyNode, TerminalNode } from '../../src/shared/model'
+import type { CanvasNode, ClaudeNode, GroupNode, RunNode, StickyNode, TerminalNode, TriggerNode } from '../../src/shared/model'
 import { claudeNode, fakeHost, fakeRunner, groupNode, memoryStore, terminalNode } from './fakes'
 
 let dir: string
@@ -269,6 +269,26 @@ test('rename changes a title and refuses an unknown node', async () => {
   await refused(verbs('me', 'rename', { node: 'ghost', title: 'x' }), /ghost/)
 })
 
+test('a node in another project is treated as not there by everything that changes the canvas', async () => {
+  const theirs = { projectId: 'theirs' }
+  const { verbs, store, node } = setup([
+    terminalNode('mine'),
+    terminalNode('t', { ...theirs, x: 900, title: 'Theirs' }),
+    claudeNode('c', theirs),
+    groupNode('g', theirs)
+  ])
+  const before = store.get()
+  await refused(verbs('me', 'rename', { node: 't', title: 'Mine now' }), /no node "t"/)
+  await refused(verbs('me', 'arrange', { ids: ['mine', 't'], layout: 'row' }), /no node "t"/)
+  await refused(verbs('me', 'group', { ids: ['mine', 't'], label: 'x' }), /no node "t"/)
+  await refused(verbs('me', 'sticky', { text: 'hi', group: 'g' }), /no node "g"/)
+  await refused(verbs('me', 'open-agent', { group: 'g' }), /no node "g"/)
+  await refused(verbs('me', 'open-agent', { after: ['c'] }), /doesn't exist: "c"/)
+  await refused(verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a', after: ['c'] }] }), /doesn't exist: "c"/)
+  expect(store.get()).toBe(before)
+  expect(node('t')).toMatchObject({ title: 'Theirs', x: 900 })
+})
+
 test('sticky adds a note connected to its opener', async () => {
   const { verbs, node, edges } = setup()
   const id = ids(await verbs('me', 'sticky', { text: '# Plan' }))
@@ -318,6 +338,33 @@ test('read of a terminal returns scrollback with ANSI stripped', async () => {
   host.output.set('t', '\x1b[31mone\x1b[0m\r\ntwo\r\nthree\r\n')
   expect(await verbs('me', 'read', { node: 't' })).toEqual({ text: 'one\ntwo\nthree\n' })
   expect(await verbs('me', 'read', { node: 't', tail: 2 })).toEqual({ text: 'two\nthree\n' })
+})
+
+test('read of a run node returns its output, the same as a terminal', async () => {
+  const run: RunNode = { ...terminalNode('r'), kind: 'run', command: 'npm run dev' }
+  const { verbs, host, link } = setup([run])
+  host.output.set('r', '\x1b[32mready\x1b[0m on 5173\r\nGET /\r\n')
+  link('me', 'r')
+  expect(await verbs('me', 'read', { node: 'r' })).toEqual({ text: 'ready on 5173\nGET /\n' })
+  expect(await verbs('me', 'read', { node: 'r', tail: 1 })).toEqual({ text: 'GET /\n' })
+})
+
+test('read of a trigger returns the prompt it sends', async () => {
+  const trigger: TriggerNode = {
+    ...terminalNode('tr'),
+    kind: 'trigger',
+    schedule: { type: 'interval', everyMs: 60000 },
+    prompt: 'Check the build.',
+    targetId: 'me',
+    armedSpec: null,
+    armedAt: null,
+    nextAt: null,
+    runs: []
+  }
+  const { verbs, link } = setup([trigger])
+  await refused(verbs('me', 'read', { node: 'tr' }), /isn't linked/)
+  link('tr', 'me')
+  expect(await verbs('me', 'read', { node: 'tr' })).toEqual({ text: 'Check the build.' })
 })
 
 test('read works over a link in either direction', async () => {

@@ -1,6 +1,7 @@
 import { Handle, NodeResizer, Position } from '@xyflow/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { PendingApproval } from '../../shared/contract'
 import { isSessionNode, whereShown, type AgentStatus, type CanvasNode } from '../../shared/model'
 import { bridge } from '../bridge'
 import { KindIcon } from '../icons'
@@ -84,12 +85,40 @@ export function Resizer({ node, min }: { node: CanvasNode; min: { w: number; h: 
 
 function Approval({ nodeId }: { nodeId: string }): React.JSX.Element | null {
   const approval = useStore((s) => s.approvals.find((a) => a.nodeId === nodeId))
-  if (!approval) return null
+  // Keyed, so the next request starts on one line again.
+  return approval ? <ApprovalStrip key={approval.requestId} approval={approval} /> : null
+}
+
+/**
+ * One line of what's being asked, and Show all when that line doesn't hold it: the window is narrower than the
+ * text, or the summary was cut. Nobody should have to approve a command they can't read the end of.
+ */
+function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [clipped, setClipped] = useState(false)
+  const text = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = text.current
+    if (!el || open) return
+    const measure = (): void => setClipped(el.scrollWidth > el.clientWidth)
+    measure()
+    const watcher = new ResizeObserver(measure)
+    watcher.observe(el)
+    return () => watcher.disconnect()
+  }, [open])
+  const more = open || clipped || approval.detail !== approval.summary
   return (
-    <div className="strip strip-approval">
+    <div className={`strip strip-approval${open ? ' strip-open' : ''}`}>
       <div className="strip-text">
         <strong>{approval.tool}</strong>
-        <code>{approval.summary}</code>
+        <code ref={text} className={open ? 'nodrag nowheel' : undefined}>
+          {open ? approval.detail : approval.summary}
+        </code>
+        {more && (
+          <button className="strip-more nodrag" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Show less' : 'Show all'}
+          </button>
+        )}
       </div>
       <div className="strip-actions">
         <button className="btn btn-solid" onClick={() => void bridge.answerApproval(approval.requestId, 'allow')}>

@@ -345,6 +345,8 @@ function Canvas(): React.JSX.Element | null {
   const stage = useRef<HTMLElement>(null)
   const onMoveStart = useCallback((_e: unknown, viewport: Viewport) => setCableMotion(stage.current, { moving: true, zoom: viewport.zoom }), [])
   const onMoveEnd = useCallback((_e: unknown, viewport: Viewport) => setCableMotion(stage.current, { moving: false, zoom: viewport.zoom }), [])
+  // A click on the map goes to that spot at the same zoom. A drag still pans.
+  const onMapClick = useCallback((_e: unknown, at: { x: number; y: number }) => void flow.setCenter(at.x, at.y, { zoom: flow.getZoom(), duration: 200 }), [flow])
   // A canvas saved zoomed far out opens that way, with no move to report it.
   const ready = !!doc
   useEffect(() => {
@@ -395,6 +397,7 @@ function Canvas(): React.JSX.Element | null {
             <MiniMap<FlowNode>
               pannable
               zoomable
+              onClick={onMapClick}
               nodeColor={miniMapColor}
               nodeStrokeColor={miniMapStroke}
               nodeStrokeWidth={6}

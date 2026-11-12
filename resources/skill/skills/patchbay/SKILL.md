@@ -122,8 +122,8 @@ patchbay read --node <id> --tail 20
 ```
 
 A Claude node gives its conversation, and `--tail` counts messages. It leaves out thinking and tool calls.
-A terminal gives its recent output with colors removed, and `--tail` counts lines. A full-screen program's
-output will look jumbled.
+A terminal or a run node gives its recent output with colors removed, and `--tail` counts lines. A full-screen
+program's output will look jumbled. A sticky note gives its text, and a trigger gives the prompt it sends.
 
 ## Send a message
 
@@ -195,6 +195,9 @@ patchbay link --from <id> --to <other id>
 ```
 
 Layouts are `grid`, `row` and `column`.
+
+These work on any node in your own project, which are the nodes `patchbay list` shows. A node in another project
+is refused as if it weren't there, and so is one named by `--group` or `--after`.
 
 ## Close
 

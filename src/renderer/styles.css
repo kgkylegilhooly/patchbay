@@ -860,6 +860,52 @@ select {
   white-space: nowrap;
 }
 
+.strip-more {
+  flex: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.strip-more:hover {
+  color: var(--ink);
+}
+
+/*
+ * Show all: the whole text gets the width of the node, wrapped, and scrolls once it's taller than a few lines. The
+ * buttons move to a row of their own underneath.
+ */
+.strip-open {
+  align-items: baseline;
+}
+
+.strip-open .strip-text {
+  display: contents;
+}
+
+.strip-open .strip-text code {
+  flex: 1 1 calc(100% - 6em);
+  max-height: 9.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  cursor: text;
+  user-select: text;
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a50 transparent;
+}
+
+.strip-open .strip-actions {
+  margin-left: auto;
+}
+
 .strip-actions {
   display: flex;
   flex: none;

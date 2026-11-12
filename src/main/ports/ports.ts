@@ -8,15 +8,18 @@ export interface Listener {
 
 type ProcessMap = Map<number, { parent: number; name: string }>
 
+/** A listening socket has nobody at the far end, which netstat writes the same way in every language. */
+const NOBODY = new Set(['0.0.0.0:0', '[::]:0'])
+
 /**
- * Listening sockets from `netstat -ano`. Windows translates the LISTENING word on some languages, and then this
- * finds nothing rather than anything wrong.
+ * Listening sockets from `netstat -ano`. Windows translates the LISTENING word on some languages, so a row counts
+ * by its empty far end rather than by that word.
  */
 export function parseNetstat(text: string): Listener[] {
   const found = new Map<number, number>()
   for (const line of text.split(/\r?\n/)) {
     const parts = line.trim().split(/\s+/)
-    if (parts.length !== 5 || parts[0] !== 'TCP' || parts[3] !== 'LISTENING') continue
+    if (parts.length !== 5 || parts[0] !== 'TCP' || !NOBODY.has(parts[2])) continue
     const port = Number(parts[1].slice(parts[1].lastIndexOf(':') + 1))
     const pid = Number(parts[4])
     if (Number.isInteger(port) && port > 0 && Number.isInteger(pid) && !found.has(port)) found.set(port, pid)

@@ -3,7 +3,7 @@
 // session and reports through Patchbay's real hook and status line scripts, so everything after that is the real path.
 //
 // Set it as the Claude command in settings.json. The prompt picks a status: needs, working, idle, unknown or exit.
-// A "context=NN" word in the prompt also reports that context %.
+// A "context=NN" word in the prompt also reports that context %, and "permission" asks to run a long command.
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 
@@ -28,6 +28,9 @@ const prompt = args.includes('--') ? args[args.indexOf('--') + 1] : ''
 const sessionId = args.includes('--session-id') ? after('--session-id') : after('--resume')
 
 const quoted = (command) => command.match(/"([^"]+)"/)[1]
+
+// Longer than a node is wide, with the part that matters at the far end.
+const LONG_COMMAND = `for f in ${['api', 'auth', 'billing', 'canvas', 'sessions', 'settings', 'updates'].map((d) => `src/${d}/**/*.test.ts`).join(' ')}; do npx vitest run "$f" --reporter=dot || break; done && git add -A && git commit -m "Fix the login redirect" && git push --force origin main`
 
 function runScript(script, argv, payload) {
   return new Promise((resolve) => {
@@ -60,6 +63,10 @@ async function main() {
   if (/\bneeds\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('Notification', { notification_type: 'permission_prompt' })
+  } else if (/\bpermission\b/.test(prompt)) {
+    // Asks to run a long command, and isn't waited for: the request is held until someone answers it.
+    await hook('UserPromptSubmit')
+    void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND } })
   } else if (/\bworking\b/.test(prompt)) {
     await hook('UserPromptSubmit')
   } else if (/\bunknown\b/.test(prompt)) {

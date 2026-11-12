@@ -195,6 +195,11 @@ export function createVerbs({
 }): Verbs {
   const find = (id: string): CanvasNode | undefined => store.get().nodes.find((n) => n.id === id)
   const existing = (id: string): CanvasNode => find(id) ?? refuse(`There is no node "${id}".`)
+  /** For the verbs that change the canvas. A node in another project gets the same answer as one that isn't there. */
+  const ownProject = (caller: CanvasNode, id: string): CanvasNode => {
+    const node = find(id)
+    return node && node.projectId === caller.projectId ? node : refuse(`There is no node "${id}".`)
+  }
   const add = (e: Edge): void => store.dispatch({ op: 'addEdge', edge: e })
 
   const linked = (a: string, b: string): boolean =>
@@ -209,10 +214,10 @@ export function createVerbs({
     return node
   }
 
-  const groupFor = (args: Args): GroupNode | null => {
+  const groupFor = (caller: CanvasNode, args: Args): GroupNode | null => {
     const id = optional(args, 'group')
     if (id === undefined) return null
-    const node = existing(id)
+    const node = ownProject(caller, id)
     if (node.kind !== 'group') refuse(`Node "${id}" is not a group.`)
     return node
   }
@@ -237,9 +242,9 @@ export function createVerbs({
     add(edge(caller, id, 'link'))
   }
 
-  const upstreamClaude = (id: string): void => {
+  const upstreamClaude = (caller: CanvasNode, id: string): void => {
     const node = find(id)
-    if (!node) refuse(`--after names a node that doesn't exist: "${id}".`)
+    if (!node || node.projectId !== caller.projectId) refuse(`--after names a node that doesn't exist: "${id}".`)
     if (node.kind !== 'claude') refuse(`Node "${id}" isn't a Claude or Codex node, so --after can't wait for it.`)
   }
 
@@ -274,9 +279,12 @@ export function createVerbs({
     const node = reachable(caller, id, 'read')
     switch (node.kind) {
       case 'terminal':
+      case 'run':
         return { text: lastLines(stripAnsi(host.snapshot(id).data), count) }
       case 'sticky':
         return { text: lastLines(node.text, count) }
+      case 'trigger':
+        return { text: lastLines(node.prompt, count) }
       case 'group':
         return refuse(`Node "${id}" is a group, which has nothing to read.`)
       case 'browser':
@@ -295,12 +303,12 @@ export function createVerbs({
   // opening nodes
 
   const openAgent = async (caller: CanvasNode, args: Args): Promise<unknown> => {
-    const group = groupFor(args)
+    const group = groupFor(caller, args)
     const cwd = cwdFor(args, caller, group)
     const prompt = promptFrom(args)
     const after = list(args, 'after')
     const agent = agentArg(args, defaultAgent())
-    after.forEach(upstreamClaude)
+    after.forEach((id) => upstreamClaude(caller, id))
 
     const node: ClaudeNode = {
       ...placement(caller, group, SIZES.claude),
@@ -324,7 +332,7 @@ export function createVerbs({
 
   const openTerminal = async (caller: CanvasNode, args: Args): Promise<unknown> => {
     if (args.after !== undefined) refuse('--after only works on Claude nodes, not terminals.')
-    const group = groupFor(args)
+    const group = groupFor(caller, args)
     const cwd = cwdFor(args, caller, group)
     const command = optional(args, 'command')
     const node: TerminalNode = {
@@ -346,7 +354,7 @@ export function createVerbs({
     const given = optional(args, 'url')
     const target = given === undefined ? { ok: true as const, url: BLANK } : checkUrl(given)
     if (!target.ok) refuse(target.reason)
-    const group = groupFor(args)
+    const group = groupFor(caller, args)
     const node: BrowserNode = {
       ...placement(caller, group, SIZES.browser),
       id: randomUUID(),
@@ -402,7 +410,7 @@ export function createVerbs({
         if (ref === name) refuse(`Team member "${name}" can't wait for itself.`)
         const member = ids.get(ref)
         if (member) return member
-        upstreamClaude(ref)
+        upstreamClaude(caller, ref)
         return ref
       })
       return { name, id: ids.get(name)!, agent: agentArg(m, defaultAgent()), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
@@ -464,7 +472,7 @@ export function createVerbs({
   }
 
   const sticky = (caller: CanvasNode, args: Args): unknown => {
-    const group = groupFor(args)
+    const group = groupFor(caller, args)
     const node: StickyNode = {
       ...placement(caller, group, SIZES.sticky),
       id: randomUUID(),
@@ -495,7 +503,7 @@ export function createVerbs({
       return false
     }
     // A child whose group is also named moves with that group.
-    const members = [...chosen].map(existing).filter((n) => !under(n))
+    const members = [...chosen].map((id) => ownProject(caller, id)).filter((n) => !under(n))
     const boxes = members.map((m) => ({ ...absolute(doc, m), width: m.width, height: m.height }))
     const x = Math.min(...boxes.map((b) => b.x)) - GROUP_PADDING
     const y = Math.min(...boxes.map((b) => b.y)) - GROUP_TOP
@@ -517,23 +525,23 @@ export function createVerbs({
     return { id: node.id }
   }
 
-  const arrange = (args: Args): unknown => {
+  const arrange = (caller: CanvasNode, args: Args): unknown => {
     const layout = required(args, 'layout')
     if (layout !== 'grid' && layout !== 'row' && layout !== 'column') {
       refuse(`Unknown layout "${layout}". Use grid, row or column.`)
     }
     const ids = list(args, 'ids')
-    ids.forEach(existing)
+    for (const id of ids) ownProject(caller, id)
     const gap = args.gap
     if (gap !== undefined && (typeof gap !== 'number' || !Number.isFinite(gap) || gap < 0)) refuse('--gap must be 0 or more.')
     store.dispatch({ op: 'arrange', ids, layout, gap: gap as number | undefined })
     return { arranged: ids.length }
   }
 
-  const rename = (args: Args): unknown => {
+  const rename = (caller: CanvasNode, args: Args): unknown => {
     const id = required(args, 'node')
     const title = required(args, 'title')
-    existing(id)
+    ownProject(caller, id)
     store.dispatch({ op: 'patchNode', id, patch: { title } })
     return { id, title }
   }
@@ -618,9 +626,9 @@ export function createVerbs({
       case 'group':
         return group(caller, args)
       case 'arrange':
-        return arrange(args)
+        return arrange(caller, args)
       case 'rename':
-        return rename(args)
+        return rename(caller, args)
       case 'sticky':
         return sticky(caller, args)
       case 'link':

@@ -129,6 +129,35 @@ test('the summary stays under 200 characters and is marked when cut', () => {
   a.clearNode('n')
 })
 
+test('the detail carries the whole command, so its end can be read before approving', () => {
+  const a = createApprovals()
+  const command = `${'npm test && '.repeat(40)}git push --force`
+  void a.request('n', bash(command))
+  const { summary, detail } = onlyPending(a)
+  expect(summary.endsWith('…')).toBe(true)
+  expect(detail).toBe(command)
+  a.clearNode('n')
+})
+
+test('the detail is the summary when nothing was cut, and has a limit of its own', () => {
+  const a = createApprovals()
+  void a.request('short', bash('npm test'))
+  void a.request('huge', bash('x'.repeat(50000)))
+  const [short, huge] = a.pending()
+  expect(short.detail).toBe(short.summary)
+  expect(huge.detail.length).toBe(4000)
+  expect(huge.detail.endsWith('…')).toBe(true)
+  a.clearNode('short')
+  a.clearNode('huge')
+})
+
+test('the detail collapses whitespace too, so padding cannot scroll a command out of view', () => {
+  const a = createApprovals()
+  void a.request('n', bash(`echo hi${'\n'.repeat(300)}rm -rf x`))
+  expect(onlyPending(a).detail).toBe('echo hi rm -rf x')
+  a.clearNode('n')
+})
+
 test('the summary collapses whitespace and control characters, so padding cannot hide a command', () => {
   const a = createApprovals()
   void a.request('n', bash(`echo hi${' '.repeat(500)}\n\t\x1b[2K; rm -rf x`))

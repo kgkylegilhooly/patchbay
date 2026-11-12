@@ -33,6 +33,8 @@ export interface PendingApproval {
   requestId: string
   tool: string
   summary: string
+  /** The same text without the cut, for when the person asks to see all of it. */
+  detail: string
 }
 
 /** Task 10 implements this. Tests use an in-memory one over reduce. */

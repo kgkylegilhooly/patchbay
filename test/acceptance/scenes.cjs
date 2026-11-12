@@ -95,6 +95,19 @@ const showLegend = async (page) => {
   await sleep(150)
 }
 
+/** An agent asking to run a command longer than its window is wide, brought to the middle of the view. */
+const seedApproval = async (page) => {
+  const node = { ...box, id: 'asks', kind: 'claude', title: 'Ship the fix', x: 930, y: 640, prompt: 'permission', sessionId: null, transcriptPath: null, after: [], projectId: 'p1' }
+  await page.evaluate(async (n) => {
+    const cwd = (await window.patchbay.getDoc()).nodes.find((o) => o.id === 'term').cwd
+    await window.patchbay.dispatch({ op: 'addNode', node: { ...n, cwd } })
+    await window.patchbay.startNode(n.id)
+  }, node)
+  await page.waitForSelector('.react-flow__node[data-id="asks"] .strip-approval', { timeout: 15000 })
+  await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Ship the fix'))?.click())
+  await sleep(600)
+}
+
 /** Each one prepares what the picture shows, once the seeded canvas is up. Selectors that only exist after a change are guarded. */
 const scenes = {
   canvas: async () => {},
@@ -165,6 +178,12 @@ const scenes = {
   },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
+    await sleep(200)
+  },
+  'approval-line': (page) => seedApproval(page),
+  approval: async (page) => {
+    await seedApproval(page)
+    await page.evaluate(() => document.querySelector('.react-flow__node[data-id="asks"] .strip-more')?.click())
     await sleep(200)
   },
   status: async (page) => {
