@@ -272,6 +272,80 @@ const scenes = {
     const tab = await page.$('.project-tab')
     await tab.click({ button: 'right' })
     await sleep(200)
+  },
+  note: async () => {},
+  'note-edit': async (page) => {
+    await page.click('.react-flow__node[data-id="note"] .note-body', { count: 2 })
+    await sleep(300)
+    // The code menu only exists once notes have a toolbar.
+    await page.evaluate(() => document.querySelector('.react-flow__node[data-id="note"] [data-note-tool="code"]')?.click())
+    await sleep(200)
+  },
+  // Draws a stroke for real, so the picture shows the pointer path working as well as saved shapes.
+  whiteboard: async (page) => {
+    const surface = await page.$('.react-flow__node[data-id="board"] .wb-surface')
+    const box = await surface.boundingBox()
+    await page.mouse.move(box.x + box.width * 0.62, box.y + box.height * 0.8)
+    await page.mouse.down()
+    for (let i = 1; i <= 24; i++) await page.mouse.move(box.x + box.width * (0.62 + i * 0.012), box.y + box.height * (0.8 - Math.sin(i / 4) * 0.08))
+    await page.mouse.up()
+    await sleep(400)
+  }
+}
+
+const TICKS = '```'
+const noteText = [
+  '## Release checklist',
+  'Ship **v0.4** once the parser tests pass. Details in [the plan](https://example.com/plan).',
+  '',
+  '- [x] Fix the login redirect',
+  '- [ ] Write parser tests',
+  '- [ ] Update `CHANGELOG.md`',
+  '',
+  TICKS + 'json',
+  '{',
+  '  "name": "patchbay",',
+  '  "version": "0.4.0",',
+  '  "private": true,',
+  '  "retries": 3,',
+  '  "tags": ["canvas", "agents", null]',
+  '}',
+  TICKS,
+  '',
+  '> Ask before touching the release branch.'
+].join('\n')
+
+/** Changes to the seeded canvas that have to be there before the app opens, such as where the view starts. */
+const seeds = {
+  note: (doc) => {
+    Object.assign(doc.nodes.find((n) => n.id === 'note'), { text: noteText, width: 460, height: 520 })
+    doc.viewport = { x: -360, y: -680, zoom: 1.1 }
+    doc.projects[0].viewport = doc.viewport
+  },
+  'note-edit': (doc) => seeds.note(doc),
+  whiteboard: (doc) => {
+    doc.nodes = doc.nodes.filter((n) => n.id !== 'note')
+    const ink = '#1f1f22'
+    const blue = '#2f6fd6'
+    const box = (x, label) => [
+      { type: 'rect', color: ink, size: 4, x1: x, y1: 120, x2: x + 130, y2: 190 },
+      { type: 'text', color: ink, size: 4, x: x + 22, y: 140, text: label }
+    ]
+    const shapes = [
+      { type: 'text', color: blue, size: 8, x: 36, y: 30, text: 'Login flow' },
+      ...box(40, 'Browser'),
+      ...box(270, 'API'),
+      ...box(500, 'Auth'),
+      { type: 'arrow', color: ink, size: 4, x1: 176, y1: 155, x2: 262, y2: 155 },
+      { type: 'arrow', color: ink, size: 4, x1: 406, y1: 155, x2: 492, y2: 155 },
+      { type: 'ellipse', color: '#d64545', size: 4, x1: 480, y1: 100, x2: 650, y2: 210 },
+      { type: 'text', color: '#d64545', size: 2, x: 492, y: 222, text: 'Token lost here' },
+      { type: 'pen', color: '#2f9e5b', size: 4, points: [60, 300, 90, 285, 120, 300, 150, 315, 180, 300, 210, 285, 240, 300] },
+      { type: 'line', color: ink, size: 2, x1: 40, y1: 260, x2: 640, y2: 260 }
+    ]
+    doc.nodes.push({ id: 'board', kind: 'whiteboard', title: 'Login flow sketch', x: 660, y: 660, width: 700, height: 460, parentId: null, projectId: 'p1', shapes })
+    doc.viewport = { x: -360, y: -680, zoom: 1.1 }
+    doc.projects[0].viewport = doc.viewport
   }
 }
 
@@ -295,9 +369,11 @@ function prepare(name, cwdRoot) {
   // For the run configuration pictures: one that runs, a compound, and ones that can't, each saying why.
   fs.mkdirSync(path.join(cwd, '.vscode'))
   fs.writeFileSync(path.join(cwd, '.vscode', 'launch.json'), launchJsonExample)
+  const doc = canvas(cwd)
+  seeds[name]?.(doc)
   return {
     cwd,
-    doc: canvas(cwd),
+    doc,
     settings: { claudeCommand: `node "${fake}"`, notifications: 'off', sound: 'off' },
     act: scenes[name]
   }

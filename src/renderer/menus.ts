@@ -61,6 +61,7 @@ export interface Commands {
   runTriggerNow(id: string): void
   editRunCommand(id: string): void
   newSticky(at?: Point): void
+  newWhiteboard(at?: Point): void
   group(at?: Point): void
   closeSelected(): void
   closeNode(id: string): void
@@ -135,7 +136,8 @@ export function addMenu(c: Commands, at?: Point): MenuEntry[] {
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
     { id: 'spawn-team', label: 'Spawn a team…', icon: 'team', run: () => c.spawnTeamForm(at) },
     { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
-    { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) }
+    { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
+    { id: 'new-whiteboard', label: 'New whiteboard', icon: 'whiteboard', run: () => c.newWhiteboard(at) }
   ]
 }
 
@@ -255,6 +257,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     ...extensions,
     'separator',
     { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
+    { id: 'new-whiteboard', label: 'New whiteboard', icon: 'whiteboard', run: () => c.newWhiteboard(at) },
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group(at) },
     'separator',
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
@@ -280,6 +283,7 @@ export function nodeMenu(
     run: () => c.closeNode(node.id)
   })
   if (node.kind === 'sticky') return [close('Delete note')]
+  if (node.kind === 'whiteboard') return [close('Delete whiteboard')]
   if (node.kind === 'trigger') {
     const armed = isArmed(node)
     return [

@@ -234,6 +234,10 @@ export interface PatchbayBridge {
   /** When each session last did something, since the app started. A session with no entry shows no time. */
   getActivity(): Promise<Record<string, number>>
   onActivity(cb: (id: string, at: number) => void): () => void
+  /** Main asks for a whiteboard's SVG drawn as a PNG, for an agent's export. The page answers with whiteboardRendered. */
+  onRenderWhiteboard(cb: (requestId: string, svg: string, width: number, height: number) => void): () => void
+  /** Null if the picture couldn't be made. */
+  whiteboardRendered(requestId: string, png: Uint8Array | null): void
   /** Asks Claude for a title from the session's recent output. Spends a little plan quota, so it's only run on a click. Doesn't apply it. */
   nameWithAi(id: string): Promise<{ ok: true; title: string } | { ok: false; reason: string }>
 }

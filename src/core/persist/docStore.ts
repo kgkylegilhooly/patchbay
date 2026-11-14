@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sanitizeBoard } from '../../shared/board'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
+import { isWhiteboardShape, LIMITS } from '../../shared/whiteboard'
 import {
   isMissingFile,
   readIfPresentSync,
@@ -109,6 +110,8 @@ function isNode(n: unknown): boolean {
       )
     case 'sticky':
       return isString(n.text)
+    case 'whiteboard':
+      return Array.isArray(n.shapes) && n.shapes.length <= LIMITS.shapes && n.shapes.every(isWhiteboardShape)
     case 'trigger':
       return (
         isSchedule(n.schedule) &&

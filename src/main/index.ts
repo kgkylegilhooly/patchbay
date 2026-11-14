@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
@@ -10,6 +11,7 @@ import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
+import { createWhiteboardExporter } from './whiteboardExport'
 import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
@@ -119,6 +121,30 @@ function createWindow(onClose: (e: ElectronEvent) => void, icon: string): Browse
   if (devUrl) void win.loadURL(devUrl)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
   return win
+}
+
+const RENDER_TIMEOUT_MS = 8000
+const renders = new Map<string, (png: unknown) => void>()
+ipcMain.on('pb:whiteboardRendered', (e, requestId: string, png: unknown) => {
+  if (e.sender !== mainWindow?.webContents) return
+  renders.get(requestId)?.(png)
+})
+
+/** Asks the app window to draw a board's SVG as a PNG. Null if there's no window, or it doesn't answer in time. */
+function renderWhiteboard(svg: string, width: number, height: number): Promise<unknown> {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return Promise.resolve(null)
+  const requestId = randomUUID()
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => done(null), RENDER_TIMEOUT_MS)
+    const done = (png: unknown): void => {
+      clearTimeout(timer)
+      renders.delete(requestId)
+      resolve(png)
+    }
+    renders.set(requestId, done)
+    win.webContents.send('pb:onRenderWhiteboard', requestId, svg, width, height)
+  })
 }
 
 function focusWindow(): void {
@@ -273,7 +299,8 @@ async function boot(): Promise<void> {
   const github = createGithubReader(store, work.git, work.gh)
   // One line into each session, shared by `patchbay send` and triggers.
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id) })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
+  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
@@ -299,7 +326,13 @@ async function boot(): Promise<void> {
   const server: ControlServer = await startControlServer({
     secret,
     endpointFile,
-    onHook: (id, payload, signal) => runner.handleHook(id, payload, signal),
+    onHook: async (id, payload, signal) => {
+      const answer = await runner.handleHook(id, payload, signal)
+      if (payload.hook_event_name !== 'SessionStart') return answer
+      // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
+      const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
+      return { ...((answer as object | undefined) ?? {}), context }
+    },
     onRpc: (caller, verb, args) => verbs(caller, verb, args),
     onUsage: (id, report) => usage.report(id, report)
   })

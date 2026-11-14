@@ -63,7 +63,8 @@ export function appTakesKey(key: string, focus: KeyFocus, overTerminal: boolean)
 export function keyFocusOf(target: { closest?: (selector: string) => unknown; tagName?: string; isContentEditable?: boolean } | null): KeyFocus {
   if (target?.closest?.('.xterm')) return 'terminal'
   const tag = target?.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return 'text'
+  // A whiteboard keeps Ctrl+Z and the like for its own drawing, as a text field does.
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable || target?.closest?.('[data-own-keys]')) return 'text'
   return 'canvas'
 }
 

@@ -8,6 +8,7 @@ const REQUEST_TIMEOUT_MS = 30000
 
 // How each flag is read: text, list (commas or repeats), int, or path (resolved against this folder).
 const VERBS = {
+  whoami: {},
   list: {},
   'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', after: 'list' },
   'open-agent': {
@@ -24,6 +25,8 @@ const VERBS = {
   arrange: { ids: 'list', layout: 'text', gap: 'int' },
   rename: { node: 'text', title: 'text' },
   sticky: { text: 'text', title: 'text', group: 'text' },
+  'open-whiteboard': { title: 'text', group: 'text' },
+  whiteboard: { node: 'text' },
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
   send: { node: 'text', text: 'text' },
@@ -45,6 +48,7 @@ const VERBS = {
 const USAGE = `Usage: patchbay <verb> [--flag value]
 
   guide         prints how to use Patchbay, with every rule
+  whoami        who you are on the canvas: your node, who opened you, your links and team
   list
   open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD]
   open-agent    [--prompt TEXT | --prompt-file FILE] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
@@ -54,6 +58,8 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
   rename        --node ID --title T
   sticky        --text MARKDOWN [--title T] [--group ID]
+  open-whiteboard [--title T] [--group ID]
+  whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT
@@ -212,7 +218,7 @@ function finish(verb, status, text) {
   }
   if (status !== 200) fail(reply.error || `Patchbay answered HTTP ${status}.`)
   const { result } = reply
-  if (verb === 'read' && typeof result?.text === 'string') process.stdout.write(result.text)
+  if ((verb === 'read' || verb === 'whoami') && typeof result?.text === 'string') process.stdout.write(result.text)
   else process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
 }
 

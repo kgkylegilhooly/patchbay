@@ -76,6 +76,8 @@ export function codexInstructions(): string {
     'The `patchbay` MCP tool opens other agents and terminals, spawns teams, and reads from and sends to other nodes.',
     'Its sandbox-free route is the tool, not the shell: a `patchbay` shell command is usually blocked by the sandbox.',
     'Before using it the first time, call the tool with args ["guide"], which explains every verb and its rules.',
+    'Call it with ["whoami"] to see which node you are, who opened you and who you work with.',
+    'A message that starts with "[Patchbay message from ...]" came from another node, not from the person.',
     'Use it when asked to work in parallel, hand work to another agent, or check on one.'
   ].join(' ')
 }

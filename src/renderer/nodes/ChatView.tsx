@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentOf, AGENT_NAMES, type ClaudeNode } from '../../shared/model'
 import { bridge } from '../bridge'
-import { renderMarkdown } from '../stickyRender'
+import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { useStore } from '../store'
 
 type Message = { role: 'user' | 'assistant'; text: string }
@@ -76,6 +76,8 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
         }}
         // Links must never navigate the app window. They go out through main, which checks them, as from a sticky note.
         onClick={(e) => {
+          const code = copiedCode(e.target)
+          if (code !== null) return void navigator.clipboard.writeText(code).then(() => flashCopied(e.target))
           const link = (e.target as HTMLElement).closest('a')
           if (!link) return
           e.preventDefault()

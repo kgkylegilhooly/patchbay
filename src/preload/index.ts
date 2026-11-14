@@ -5,7 +5,7 @@ import { exposeWork } from './work'
 /**
  * Every bridge method is one channel named `pb:<method>`:
  * - Requests are ipcRenderer.invoke, so main serves them with ipcMain.handle.
- * - `input`, `resize` and `noteFocus` are fire-and-forget, so main serves them with ipcMain.on.
+ * - `input`, `resize`, `noteFocus` and `whiteboardRendered` are fire-and-forget, so main serves them with ipcMain.on.
  * - `onDoc`, `onStatus`, `onNodeError`, `onOutput`, `onApprovals` and `onCenterNode` are pushed by main with
  *   webContents.send on the channel of the same name, passing the callback's arguments in order.
  */
@@ -100,6 +100,8 @@ const bridge: PatchbayBridge = {
   reopenClosed: (closedId) => invoke('reopenClosed', closedId),
   readClosedTranscript: (closedId) => invoke('readClosedTranscript', closedId),
   noteFocus: (id) => ipcRenderer.send('pb:noteFocus', id),
+  onRenderWhiteboard: (cb) => listen('onRenderWhiteboard', cb),
+  whiteboardRendered: (requestId, png) => ipcRenderer.send('pb:whiteboardRendered', requestId, png),
   onCenterNode: (cb) => listen('onCenterNode', cb),
   getActivity: () => invoke('getActivity'),
   onActivity: (cb) => listen('onActivity', cb),

@@ -103,6 +103,8 @@ describe('key routing', () => {
     expect(keyFocusOf(element('TEXTAREA'))).toBe('text')
     expect(keyFocusOf(element('DIV', false, true))).toBe('text')
     expect(keyFocusOf(element('BODY'))).toBe('canvas')
+    // A whiteboard keeps Ctrl+Z for its own drawing.
+    expect(keyFocusOf({ tagName: 'DIV', closest: (s: string) => (s === '[data-own-keys]' ? {} : null) })).toBe('text')
     expect(keyFocusOf(null)).toBe('canvas')
   })
 })

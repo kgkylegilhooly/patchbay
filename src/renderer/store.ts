@@ -10,6 +10,7 @@ import { absolutePosition, newTerminal } from './newNodes'
 import { loadPrefs, type TerminalLook } from './prefs'
 import { EMPTY_HISTORY, entryFor, recordEntry, stepBack, stepForward, type History } from './undoHistory'
 import type { UsageMode } from './usageView'
+import { svgToPng } from './whiteboardImage'
 
 interface State {
   doc: CanvasDoc | null
@@ -116,6 +117,11 @@ export async function connectStore(): Promise<void> {
   )
   bridge.onApprovals((approvals) => useStore.setState({ approvals }))
   bridge.onChime(playChime)
+  bridge.onRenderWhiteboard((requestId, svg, width, height) => {
+    svgToPng(svg, width, height)
+      .then(async (png) => bridge.whiteboardRendered(requestId, new Uint8Array(await png.arrayBuffer())))
+      .catch(() => bridge.whiteboardRendered(requestId, null))
+  })
   bridge.onReattach((ids) =>
     useStore.setState((s) => {
       const epochs = { ...s.epochs }
@@ -209,18 +215,19 @@ export function undoState(): { canUndo: boolean; canRedo: boolean; undoLabel?: s
   }
 }
 
-/** Closing a session can't be undone, because that would mean starting a process. Deleting a note or group can. */
+/** Closing a session can't be undone, because that would mean starting a process. Deleting a note, board or group can. */
 export function closeNodes(ids: string[]): void {
   const nodes = useStore.getState().doc?.nodes ?? []
   const closing = new Set(ids)
   // A trigger isn't layout: undoing its deletion would bring back something that sends prompts.
   const sessions = nodes.filter((n) => closing.has(n.id) && (isSessionNode(n) || n.kind === 'trigger')).map((n) => n.id)
   // A browser's page and history can't be put back, so like a session it's closed for good.
-  const layout = nodes.filter((n) => closing.has(n.id) && (n.kind === 'sticky' || n.kind === 'group'))
+  const layout = nodes.filter((n) => closing.has(n.id) && (n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group'))
   const pages = nodes.filter((n) => closing.has(n.id) && n.kind === 'browser').map((n) => n.id)
   if (pages.length) dispatch({ op: 'removeNodes', ids: pages, at: Date.now() })
   if (layout.length) {
-    const label = layout.every((n) => n.kind === 'sticky') ? 'delete note' : 'remove group'
+    const kinds = new Set(layout.map((n) => n.kind))
+    const label = kinds.size > 1 ? 'delete' : kinds.has('sticky') ? 'delete note' : kinds.has('whiteboard') ? 'delete whiteboard' : 'remove group'
     undoable(label, [{ op: 'removeNodes', ids: layout.map((n) => n.id), at: Date.now() }])
   }
   if (sessions.length) dispatch({ op: 'removeNodes', ids: sessions, at: Date.now() })

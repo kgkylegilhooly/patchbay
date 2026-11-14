@@ -32,6 +32,7 @@ export const ACTIONS: Action[] = [
   { id: 'new-trigger', section: 'New', label: 'New trigger…', icon: 'trigger', keywords: ['schedule', 'cron', 'timer', 'interval', 'repeat'], run: (c) => c.newTriggerForm() },
   { id: 'new-browser', section: 'New', label: 'New browser', icon: 'browser', keywords: ['web', 'page', 'url', 'site', 'localhost'], run: (c) => c.newBrowser() },
   { id: 'new-sticky', section: 'New', label: 'New note', icon: 'note', key: 'Ctrl+Shift+N', keywords: ['sticky', 'text'], run: (c) => c.newSticky() },
+  { id: 'new-whiteboard', section: 'New', label: 'New whiteboard', icon: 'whiteboard', key: 'Ctrl+Shift+D', keywords: ['draw', 'sketch', 'paint', 'diagram', 'canvas'], run: (c) => c.newWhiteboard() },
   { id: 'spawn-team', section: 'New', label: 'Spawn a team…', icon: 'team', keywords: ['agents', 'lead', 'workstreams', 'parallel'], run: (c) => c.spawnTeamForm() },
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 

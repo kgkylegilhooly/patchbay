@@ -1,7 +1,8 @@
 'use strict'
 // Claude Code runs this for each hook event. It forwards the event to Patchbay's control server.
 // Whatever goes wrong, it exits 0 quickly and quietly, so it can never block or disturb Claude.
-// The one wait allowed is for a person to answer a permission request.
+// The one wait allowed is for a person to answer a permission request. At the start of a session it also prints
+// where the agent is on the canvas, for the agent to read.
 //
 // Sessions outlive the app, so this often runs with no app to talk to. An event that can't be delivered goes in a
 // journal for the app to read when it reconnects. A permission request gets no answer, which leaves Claude's own
@@ -90,6 +91,14 @@ function printDecision(text) {
   process.stdout.write(JSON.stringify(output), done)
 }
 
+/** Where the agent is on the canvas, given to it as context when its session starts. */
+function printContext(text) {
+  const { context } = JSON.parse(text)
+  if (typeof context !== 'string' || !context) return done()
+  const output = { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context.slice(0, 4000) } }
+  process.stdout.write(JSON.stringify(output), done)
+}
+
 function send(raw) {
   const { PATCHBAY_ENDPOINT_FILE: file, PATCHBAY_NODE_ID: nodeId, PATCHBAY_TOKEN: token } = process.env
   if (!file || !nodeId || !token) return done()
@@ -119,6 +128,7 @@ function send(raw) {
       res.on('end', () => {
         undelivered = null
         if (held) printDecision(Buffer.concat(chunks).toString('utf8'))
+        else if (fields.hook_event_name === 'SessionStart') printContext(Buffer.concat(chunks).toString('utf8'))
         else done()
       })
       res.on('error', giveUp)

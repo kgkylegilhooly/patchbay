@@ -6,7 +6,9 @@ import { BLANK, checkUrl, TIMEOUTS } from '../../shared/browserPolicy'
 import type { BrowserDriver } from '../browser/driver'
 import type { CanvasStore, SessionHost } from '../../shared/contract'
 import type { GithubIssue, GithubPr } from '../../shared/git'
-import { agentOf, isSessionNode, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode } from '../../shared/model'
+import { agentOf, isSessionNode, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode } from '../../shared/model'
+import type { WhiteboardExporter } from '../whiteboardExport'
+import { describeWhoAmI, quoteTitle, whoami } from './whoami'
 import type { NodeRunner } from '../sessions/nodeRunner'
 import type { StatusTracker } from '../sessions/statusTracker'
 import type { AfterGate } from './after'
@@ -22,7 +24,8 @@ const GAP = 40
 const SIZES = {
   terminal: { width: 560, height: 340 },
   claude: { width: 620, height: 420 },
-  sticky: { width: 240, height: 180 },
+  sticky: { width: 280, height: 220 },
+  whiteboard: { width: 640, height: 460 },
   group: { width: 640, height: 400 },
   browser: { width: 760, height: 560 }
 }
@@ -178,8 +181,11 @@ export function createVerbs({
   github,
   timing = DEFAULT_SEND_TIMING,
   queue,
+  whiteboards,
   defaultAgent = () => 'claude'
 }: {
+  /** Turns a board into files an agent can open. Without it, boards can still be read as text. */
+  whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
   defaultAgent?: () => AgentKind
   github?: GithubRead
@@ -252,6 +258,17 @@ export function createVerbs({
 
   const sendQueue = queue ?? createSendQueue({ host, tracker, exists: (id) => !!find(id), timing })
 
+  /**
+   * The first line of a message to an agent, saying which node sent it, so the agent can tell a lead from a peer and
+   * from the person, whose own messages carry no such line. Only an agent is offered a way to reply.
+   */
+  const senderLine = (caller: string): string => {
+    const from = find(caller)
+    if (!from) return '[Patchbay message from another node]'
+    const reply = from.kind === 'claude' ? ` Reply with: patchbay send --node ${from.id} --text "..."` : ''
+    return `[Patchbay message from ${quoteTitle(from.title)} (node ${from.id}).${reply}]`
+  }
+
   const send = (caller: string, args: Args): unknown => {
     const id = required(args, 'node')
     const raw = required(args, 'text')
@@ -264,8 +281,9 @@ export function createVerbs({
     }
     if (node.kind !== 'claude') refuse(`Can't send to node "${id}": it isn't a terminal or an agent node.`)
     if (tracker.get(id) === 'exited') refuse(`Node "${id}" has exited, so nothing would read this.`)
-    const text = plainText(raw)
-    if (!text.trim()) refuse('--text has nothing to send.')
+    const body = plainText(raw)
+    if (!body.trim()) refuse('--text has nothing to send.')
+    const text = `${senderLine(caller)}\n${body}`
     return sendQueue.add(id, { text }) === 'queued' ? { delivered: false, queued: true } : { delivered: true }
   }
 
@@ -283,6 +301,11 @@ export function createVerbs({
         return { text: lastLines(stripAnsi(host.snapshot(id).data), count) }
       case 'sticky':
         return { text: lastLines(node.text, count) }
+      case 'whiteboard': {
+        const words = node.shapes.flatMap((s) => (s.type === 'text' ? [s.text] : []))
+        const told = `A whiteboard with ${node.shapes.length} shape${node.shapes.length === 1 ? '' : 's'}. To see it, run: patchbay whiteboard --node ${id}`
+        return { text: [told, ...(words.length ? ['Text on it:', ...words.map((w) => `- ${w}`)] : [])].join('\n') }
+      }
       case 'trigger':
         return { text: lastLines(node.prompt, count) }
       case 'group':
@@ -485,6 +508,25 @@ export function createVerbs({
     return { id: node.id }
   }
 
+  const openWhiteboard = (caller: CanvasNode, args: Args): unknown => {
+    const group = groupFor(caller, args)
+    const node: WhiteboardNode = { ...placement(caller, group, SIZES.whiteboard), id: randomUUID(), kind: 'whiteboard', title: optional(args, 'title') || 'Whiteboard', shapes: [] }
+    store.dispatch({ op: 'addNode', node })
+    // Linked as well as opened, so the cable shows the person which agent the board is for.
+    connect(caller.id, node.id)
+    return { id: node.id }
+  }
+
+  /** A board as a PNG to look at and an SVG beside it, with the text written on it. */
+  const whiteboard = async (caller: string, args: Args): Promise<unknown> => {
+    const id = required(args, 'node')
+    const node = reachable(caller, id, 'export')
+    if (node.kind !== 'whiteboard') refuse(`Node "${id}" is a ${node.kind}, not a whiteboard.`)
+    if (!whiteboards) refuse('Whiteboards cannot be exported here.')
+    const out = await whiteboards.export(node as WhiteboardNode)
+    return { ...out, ...(out.image ? {} : { problem: 'The app window could not draw the picture, so only the SVG was saved.' }) }
+  }
+
   // arranging
 
   const group = (caller: CanvasNode, args: Args): unknown => {
@@ -596,6 +638,7 @@ export function createVerbs({
         ...(n.kind === 'terminal' || n.kind === 'run' ? { cwd: n.cwd, running: host.isRunning(n.id) } : {}),
         ...(n.kind === 'group' && n.worktree ? { branch: n.worktree.branch, cwd: n.worktree.path } : {}),
         ...(n.kind === 'browser' ? { url: n.url, held: !!n.held } : {}),
+        ...(n.kind === 'whiteboard' ? { shapes: n.shapes.length } : {}),
         // An agent can see what triggers there are. Only the person can arm one, and the prompt stays with read access.
         ...(n.kind === 'trigger'
           ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
@@ -613,6 +656,10 @@ export function createVerbs({
       return browserVerb(callerId, verb, args)
     }
     switch (verb) {
+      case 'whoami': {
+        const w = whoami(store.get(), callerId, accessOf, (id) => tracker.get(id))
+        return { ...w, text: describeWhoAmI(w) }
+      }
       case 'list':
         return listNodes(callerId)
       case 'open-terminal':
@@ -631,6 +678,10 @@ export function createVerbs({
         return rename(caller, args)
       case 'sticky':
         return sticky(caller, args)
+      case 'open-whiteboard':
+        return openWhiteboard(caller, args)
+      case 'whiteboard':
+        return whiteboard(callerId, args)
       case 'link':
         return link(callerId, args)
       case 'read':

@@ -19,7 +19,8 @@ const TOOL = {
     'read another node\'s conversation or output, send it a message, use browser nodes, and organize the canvas.',
     'Pass the words you would type after `patchbay`, one per item, for example ["open-agent", "--agent", "claude",',
     '"--prompt", "Review the parser"] or ["read", "--node", "<id>", "--tail", "5"].',
-    'Call it with ["guide"] before the first use: it explains every verb and its rules.'
+    'Call it with ["guide"] before the first use: it explains every verb and its rules.',
+    '["whoami"] says which node you are, who opened you and who you work with.'
   ].join(' '),
   inputSchema: {
     type: 'object',

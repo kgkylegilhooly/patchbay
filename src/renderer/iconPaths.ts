@@ -50,7 +50,26 @@ export const PATHS = {
   'arrow-down': 'M12 4v16M6 14l6 6 6-6',
   'text-larger': 'M3 19l5-13 5 13M4.8 15h6.4M18 7v6M15 10h6',
   'text-smaller': 'M3 19l5-13 5 13M4.8 15h6.4M15 10h6',
-  'text-size': 'M3 19l5-13 5 13M4.8 15h6.4M15 19l3-8 3 8M16 16.5h4'
+  'text-size': 'M3 19l5-13 5 13M4.8 15h6.4M15 19l3-8 3 8M16 16.5h4',
+  bold: 'M7 5h5.5a3.5 3.5 0 0 1 0 7H7zM7 12h6.5a3.5 3.5 0 0 1 0 7H7z',
+  italic: 'M10 5h8M6 19h8M14 5l-4 14',
+  heading: 'M6 5v14M18 5v14M6 12h12',
+  list: 'M9.5 6H20M9.5 12H20M9.5 18H20M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+  checklist: 'M3.5 6.5l1.8 1.8L8.5 5M3.5 16.5l1.8 1.8 3.2-3.3M12 7h8M12 17h8',
+  quote: 'M5 5v14M9.5 8H19M9.5 12H19M9.5 16h6',
+  'code-inline': 'M9 7l-5 5 5 5M15 7l5 5-5 5',
+  'code-block': 'M4 4.5h16v15H4zM9.5 9.5L7 12l2.5 2.5M14.5 9.5L17 12l-2.5 2.5',
+  drop: 'M12 3.5c3.1 3.6 5.5 6.7 5.5 9.9a5.5 5.5 0 0 1-11 0c0-3.2 2.4-6.3 5.5-9.9z',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  pen: 'M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19zM4 20h5',
+  eraser: 'M9 19l-4.3-4.3a1.5 1.5 0 0 1 0-2.1L13.6 3.7a1.5 1.5 0 0 1 2.1 0l4.6 4.6a1.5 1.5 0 0 1 0 2.1L11 19.5M9 19h11M8.5 9l6.5 6.5',
+  line: 'M5 19L19 5',
+  rect: 'M4.5 6h15v12h-15z',
+  ellipse: 'M12 5.5c4.4 0 8 2.9 8 6.5s-3.6 6.5-8 6.5-8-2.9-8-6.5 3.6-6.5 8-6.5z',
+  arrow: 'M5 19L19 5M10 5h9v9',
+  text: 'M5 6V4.5h14V6M12 4.5v15M9 19.5h6',
+  whiteboard: 'M3.5 4.5h17v12h-17zM8 20.5l2-4M16 20.5l-2-4M7 12.5c1.5-2.5 3-3.5 4-2s2 1.5 3.5-1 2.5-1.5 2.5-1.5',
+  image: 'M4 5h16v14H4zM4 16l4.5-4.5 4 4 2.5-2.5L20 18M15.5 8.5h.01'
 } as const
 
 export type IconName = keyof typeof PATHS | 'claude' | 'codex' | 'terminal' | 'run'

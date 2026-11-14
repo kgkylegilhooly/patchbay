@@ -1,12 +1,13 @@
 import { BLANK } from '../shared/browserPolicy'
-import { DISARMED, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type GroupNode, type RunNode, type StickyNode, type TerminalNode, type TriggerNode } from '../shared/model'
+import { DISARMED, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type GroupNode, type RunNode, type StickyNode, type TerminalNode, type TriggerNode, type WhiteboardNode } from '../shared/model'
 
 export const SIZES = {
   trigger: { width: 360, height: 400 },
   terminal: { width: 560, height: 340 },
   run: { width: 560, height: 300 },
   claude: { width: 620, height: 420 },
-  sticky: { width: 240, height: 180 },
+  sticky: { width: 280, height: 220 },
+  whiteboard: { width: 640, height: 460 },
   group: { width: 640, height: 400 },
   browser: { width: 760, height: 560 }
 }
@@ -96,6 +97,10 @@ export function newBrowser(p: Place, id: string, url: string = BLANK): BrowserNo
 
 export function newSticky(p: Place, id: string): StickyNode {
   return { ...placed(p, SIZES.sticky), id, kind: 'sticky', title: 'Note', text: '' }
+}
+
+export function newWhiteboard(p: Place, id: string): WhiteboardNode {
+  return { ...placed(p, SIZES.whiteboard), id, kind: 'whiteboard', title: 'Whiteboard', shapes: [] }
 }
 
 /** The frame for a new group around these nodes, or an empty one at the given spot. */

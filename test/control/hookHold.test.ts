@@ -25,6 +25,7 @@ beforeEach(async () => {
     secret: SECRET,
     endpointFile,
     onHook: async (id, payload, signal) => {
+      if (payload.hook_event_name === 'SessionStart') return { context: 'You are "Parser" on the Patchbay canvas.' }
       if (payload.hook_event_name !== 'PermissionRequest') return {}
       return { decision: await approvals.request(id, payload, signal) }
     },
@@ -84,6 +85,16 @@ test('hook.cjs prints allow and deny JSON in the form Claude Code reads', async 
   expect(output.hookEventName).toBe('PermissionRequest')
   expect(output.decision.behavior).toBe('deny')
   expect(output.decision.message).toEqual(expect.any(String))
+}, 20000)
+
+test('hook.cjs hands the canvas context to the agent when its session starts, and prints nothing for other events', async () => {
+  const start = await startHook({ hook_event_name: 'SessionStart', source: 'startup' }).finished
+  expect(start.code).toBe(0)
+  expect(JSON.parse(start.stdout)).toEqual({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'You are "Parser" on the Patchbay canvas.' }
+  })
+  const stop = await startHook({ hook_event_name: 'Stop' }).finished
+  expect(stop).toEqual({ code: 0, stdout: '' })
 }, 20000)
 
 test('hook.cjs holds past its usual 2 s limit while waiting for an answer', async () => {

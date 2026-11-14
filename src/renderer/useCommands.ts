@@ -5,7 +5,7 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
-import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, SIZES } from './newNodes'
+import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
@@ -168,6 +168,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       disarmTrigger: (id) => void bridge.disarmTrigger(id),
       runTriggerNow: (id) => void bridge.runTriggerNow(id),
       newSticky: (at) => undoable('add note', [{ op: 'addNode', node: newSticky(place(at), crypto.randomUUID()) }]),
+      // Not undoable: redoing it would bring the board back empty, losing what was drawn since. Deleting it is undoable.
+      newWhiteboard: (at) => void dispatch({ op: 'addNode', node: newWhiteboard(place(at), crypto.randomUUID()) }),
       group: (at) => {
         const members = groupMembers(doc(), selectedRef.current)
         const id = crypto.randomUUID()

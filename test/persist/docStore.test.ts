@@ -237,7 +237,9 @@ test.each<[string, unknown]>([
   ['a node of an unknown kind', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'toaster' }] }],
   ['a terminal with no cwd', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], cwd: undefined }] }],
   ['a bad edge', { ...docTitled('a'), edges: [{ id: 'e', from: 'a', to: 'b', kind: 'nope' }] }],
-  ['a bad closed entry', { ...docTitled('a'), closed: [{ id: 'c' }] }]
+  ['a bad closed entry', { ...docTitled('a'), closed: [{ id: 'c' }] }],
+  ['a whiteboard with no shapes list', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'whiteboard', shapes: undefined }] }],
+  ['a whiteboard shape whose color is not a color', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'whiteboard', shapes: [{ type: 'line', color: 'red;}', size: 2, x1: 0, y1: 0, x2: 1, y2: 1 }] }] }]
 ])('migrate rejects %s', (_name, raw) => {
   expect(() => migrate(raw)).toThrow()
 })
@@ -253,7 +255,8 @@ test('migrate accepts a current doc with every node kind', () => {
       { ...base, kind: 'group', id: 'g2', worktree: null },
       { ...base, kind: 'terminal', id: 't', cwd: 'c', parentId: 'g' },
       { ...base, kind: 'claude', id: 'c', cwd: 'c', sessionId: null, transcriptPath: null, after: ['t'] },
-      { ...base, kind: 'sticky', id: 's', text: '# hi' }
+      { ...base, kind: 'sticky', id: 's', text: '# hi' },
+      { ...base, kind: 'whiteboard', id: 'w', shapes: [{ type: 'pen', color: '#1f1f22', size: 4, points: [0, 0, 5, 5] }, { type: 'text', color: '#2f6fd6', size: 2, x: 1, y: 1, text: 'hi' }] }
     ],
     edges: [{ id: 'e', from: 'c', to: 't', kind: 'opened' }],
     closed: [{ id: 'x', title: 't', cwd: 'c', sessionId: 's', transcriptPath: null, closedAt: 5 }],

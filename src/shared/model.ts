@@ -94,6 +94,18 @@ export interface StickyNode extends Base {
   text: string
 }
 
+/** A shape drawn on a whiteboard, in pixels from the top left of its drawing area. */
+export type WhiteboardShape =
+  | { type: 'pen'; color: string; size: number; points: number[] }
+  | { type: 'line' | 'arrow' | 'rect' | 'ellipse'; color: string; size: number; x1: number; y1: number; x2: number; y2: number }
+  | { type: 'text'; color: string; size: number; x: number; y: number; text: string }
+
+/** A board to draw on. Like a note it's layout, and agents linked to it can export it as a picture. */
+export interface WhiteboardNode extends Base {
+  kind: 'whiteboard'
+  shapes: WhiteboardShape[]
+}
+
 export interface GroupNode extends Base {
   kind: 'group'
   worktree: { path: string; branch: string; repo: string } | null
@@ -108,7 +120,7 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | GroupNode | BrowserNode | TriggerNode
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {

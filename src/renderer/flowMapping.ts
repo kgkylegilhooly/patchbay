@@ -31,7 +31,7 @@ function toFlowNode(node: CanvasNode, statuses: Record<string, AgentStatus>): Fl
     data: { node, status }
   }
   if (node.parentId) flow.parentId = node.parentId
-  if (isSessionNode(node) || node.kind === 'browser') flow.dragHandle = '.pb-drag'
+  if (isSessionNode(node) || node.kind === 'browser' || node.kind === 'whiteboard') flow.dragHandle = '.pb-drag'
   if (node.kind === 'group') flow.zIndex = -1
   return flow
 }

@@ -225,9 +225,11 @@ describe('a Claude target', () => {
     service.runNow('tr')
     tracker.apply('t', { type: 'hook', name: 'Stop' })
     const typed = () => host.writes.filter(([, d]) => d !== '\r').map(([, d]) => d)
-    expect(typed()).toEqual(['from an agent'])
+    // An agent's message says who sent it. A trigger's prompt goes as the person set it.
+    const fromAgent = expect.stringMatching(/^\[Patchbay message from "me" \(node me\)\..*\]\nfrom an agent$/)
+    expect(typed()).toEqual([fromAgent])
     vi.advanceTimersByTime(20)
-    expect(typed()).toEqual(['from an agent', 'check the build'])
+    expect(typed()).toEqual([fromAgent, 'check the build'])
   })
 })
 

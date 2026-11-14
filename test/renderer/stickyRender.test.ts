@@ -13,7 +13,10 @@ const CASES = {
   jsLink: '[click](javascript:window.pwned=1)',
   iframe: '<iframe src="https://example.com"></iframe>text',
   style: '<p style="position:fixed">x</p><style>body{display:none}</style>',
-  normal: '**bold** and `code`\n\n- one\n- [x] two\n\n[site](https://example.com)'
+  normal: '**bold** and `code`\n\n- one\n- [x] two\n\n[site](https://example.com)',
+  code: '```json\n{ "a": 1, "b": true }\n```',
+  evilCode: '```"><img src=x onerror=window.pwned=1>\n</code></pre><script>window.pwned=1</script>\n```',
+  tasks: '- [ ] one\n- [x] two'
 }
 
 // DOMPurify does nothing without a DOM, so its real behavior is only proven in a real one.
@@ -55,7 +58,7 @@ app.whenReady().then(async () => {
     const cases = \${JSON.stringify(cases)}
     const out = {}
     for (const k of Object.keys(cases)) {
-      out[k] = Sticky.renderMarkdown(cases[k])
+      out[k] = Sticky.renderMarkdown(cases[k], { tasks: k === 'tasks' })
       const holder = document.createElement('div')
       holder.innerHTML = out[k]
       document.body.appendChild(holder)
@@ -105,6 +108,25 @@ app.whenReady().then(async () => {
     expect(results.normal).toContain('<code>code</code>')
     expect(results.normal).toContain('<li>')
     expect(results.normal).toContain('href="https://example.com"')
+  })
+
+  test('fenced code is colored inside a block with its language and a copy control', () => {
+    expect(results.code).toContain('class="code-block"')
+    expect(results.code).toContain('<span class="code-lang">JSON</span>')
+    expect(results.code).toContain('class="code-copy"')
+    expect(results.code).toContain('<span class="tok-key">"a"</span>')
+    expect(results.code).toContain('<span class="tok-literal">true</span>')
+  })
+
+  test('hostile code and language names stay text', () => {
+    expect(results.evilCode).not.toMatch(/<img|<script|onerror/i)
+  })
+
+  test('task boxes are numbered, and only clickable where asked', () => {
+    expect(results.tasks).toContain('data-task="0"')
+    expect(results.tasks).toContain('data-task="1"')
+    expect(results.tasks).not.toContain('disabled')
+    expect(results.normal).toContain('disabled')
   })
 })
 

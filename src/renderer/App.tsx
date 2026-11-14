@@ -41,6 +41,7 @@ import { ClaudeNode } from './nodes/ClaudeNode'
 import { GroupNode } from './nodes/GroupNode'
 import { RunNode } from './nodes/RunNode'
 import { StickyNode } from './nodes/StickyNode'
+import { WhiteboardNode } from './nodes/WhiteboardNode'
 import { TerminalNode } from './nodes/TerminalNode'
 import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
@@ -54,7 +55,7 @@ import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
 
-const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode }
+const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode }
 const edgeTypes = { cable: CableEdge }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -70,6 +71,7 @@ const STATUS_COLORS: Record<string, string> = {
 function miniMapColor(node: FlowNode): string {
   if (node.data.node.kind === 'group') return 'transparent'
   if (node.data.node.kind === 'sticky') return '#a89a2b'
+  if (node.data.node.kind === 'whiteboard') return '#d8d8d2'
   if (node.data.node.kind === 'trigger') return '#e7b53f'
   return node.data.status ? (STATUS_COLORS[node.data.status] ?? '#a3abbd') : '#a3abbd'
 }
