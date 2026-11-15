@@ -1,28 +1,69 @@
 # Patchbay
 
-A Windows canvas of live terminals and Claude agents. For one person, on one PC.
+A Windows canvas of live terminals, Claude Code and Codex agents, notes and whiteboards. For one person, on one PC.
 
-## Run
+## Build and run
 
-Needs Node 22 and git. The `claude` command is needed for Claude nodes, and the GitHub CLI (`gh`) only for issues on the
-board.
+Patchbay is built from this folder's code. There are three ways to run it, depending on what you're doing.
+
+| To | Run | You get |
+|---|---|---|
+| Work on the code, with reloading | `npm run dev` | The app, run from source, reloading as you edit |
+| Build the app to use | `npm run package` | `release\win-unpacked\Patchbay.exe`, which runs from that folder, with nothing installed |
+| Build an installer | `npm run dist` | The same, plus `release\Patchbay-Setup-0.1.0.exe`, which installs it |
+
+### What you need
+
+- Windows, Node 22 and git.
+- The `claude` command for Claude nodes, and the `codex` command for Codex nodes.
+- The GitHub CLI (`gh`) only for issues and pull requests on the board.
+
+Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it.
+
+### First time
 
 ```sh
 npm install
+```
+
+### Run from source
+
+```sh
 npm run dev
 ```
 
-## Package
+### Build the app from the code
 
 ```sh
 npm run package
 ```
 
-This makes an unsigned, unpacked app at `release\win-unpacked\Patchbay.exe`, which runs without the dev server. Node
-must still be on PATH, because Claude hooks and the `patchbay` command run on it.
+This builds `release\win-unpacked\Patchbay.exe`. Run it from there, or pin it to the taskbar. Nothing is installed, so
+building again replaces it.
 
-A running session host keeps the program's files open, so Windows won't let them be replaced. Before packaging over an
-app you're using, or running `npm install`, choose **File > Stop all sessions and quit**.
+### Build an installer
+
+```sh
+npm run dist
+```
+
+This builds the app as above and `release\Patchbay-Setup-0.1.0.exe`, named for the version in `package.json`. Running
+the installer puts Patchbay in
+`%LOCALAPPDATA%\Programs\patchbay`, for your Windows account only, with a Start menu entry and a desktop shortcut.
+It updates an installed copy in place, and `release\Patchbay-Setup-0.1.0.exe /S` installs without asking. To remove
+it, use **Uninstall Patchbay** in that folder or in Windows' installed apps.
+
+The app and installer aren't signed, so Windows SmartScreen may warn the first time. Choose **More info**, then
+**Run anyway**.
+
+### Before you build over a copy you're using
+
+A running Patchbay, and its background session host, keep the program's files open, so Windows won't let them be
+replaced. Before `npm run package`, installing over an installed copy, or `npm install`, choose
+**File > Stop all sessions and quit** in that copy.
+
+Your canvas, notes, whiteboards and settings live in `%APPDATA%\Patchbay`, apart from the program, so building,
+installing and uninstalling leave them alone. See [Where data lives](#where-data-lives).
 
 ## Sessions keep running
 
@@ -77,6 +118,8 @@ Everything is in `%APPDATA%\Patchbay`:
 | `pastes\` | Images pasted into terminals |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
+| `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
+| `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
 | `sessions\` | The hook settings passed to each Claude node |
 | `control\endpoint.json`, `secret` | How sessions reach the app. Keep `secret` private. The endpoint file only exists while the app is open |
 | `control\host-secret`, `host.json`, `host.log` | How the app reaches the session host, and what the host last did. Keep `host-secret` private |
@@ -121,6 +164,11 @@ with the real one.
 `--packaged` runs it against the packaged build. `test/acceptance/quitloop.cjs` repeats quitting and counts how often
 Electron's exit hangs and has to be ended by force. `triggers.cjs`, `runconfig.cjs` and `links.cjs` check triggers,
 launch.json run nodes and the moving cables, using the stand-in Claude and no quota.
+
+`whiteboard.cjs` (whiteboard export and pasted pictures) and `messages.cjs` (messages along cables, agents' note
+changes, the palette) use no quota. Set `PB_USE_PACKAGED=1` to run either against the build from `npm run package`.
+`team-real.cjs` starts a real lead and teammate on the packaged build to check they work as the Patchbay skill teaches,
+and spends a little quota.
 
 `--user-data-dir=<folder>` runs the app on a separate profile, away from your real canvas, with its own session host.
 
