@@ -4,6 +4,9 @@ import type { WhiteboardNode as WhiteboardModel, WhiteboardShape } from '../../s
 import { BOARD_COLORS, BOARD_SIZES, moveShape, shapeAt, shapeBox, shapesIn, shapeSvg, shapesSvg, textSize, thinPoints, touches, whiteboardSvg } from '../../shared/whiteboard'
 import type { FlowNode } from '../flowMapping'
 import { Icon, type IconName } from '../icons'
+import { bridge } from '../bridge'
+import { useBoardImages } from '../boardImages'
+import { keyFocusOf } from '../keys'
 import { closeNodes, patchNode } from '../store'
 import { svgToPng } from '../whiteboardImage'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
@@ -63,8 +66,10 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const shapes = erasing ?? pending ?? node.shapes
   // Selected shapes follow the pointer while they're dragged, and are saved where they land.
   const shown = useMemo(() => (moving ? shapes.map((s, i) => (chosen.includes(i) ? moveShape(s, moving.dx, moving.dy) : s)) : shapes), [shapes, chosen, moving])
+  const pictures = useMemo(() => [...new Set(shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])))], [shapes])
+  const images = useBoardImages(pictures)
   // Rebuilding a busy board's markup on every pointer move is what made drawing lag, so it's built only when it changes.
-  const ink = useMemo(() => shapesSvg(shown), [shown])
+  const ink = useMemo(() => shapesSvg(shown, images), [shown, images])
 
   const pickTool = (t: Tool): void => {
     setTool(t)
@@ -235,9 +240,67 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     e.stopPropagation()
   }
 
+  const flash = (text: string): void => {
+    setCopied(text)
+    setTimeout(() => setCopied(null), 2500)
+  }
+
+  /**
+   * Puts a pasted or dropped picture on the board, centered where it was dropped or the pointer last was, and shrunk
+   * to fit if it's bigger than the board. It's left selected, so it can be moved straight away.
+   */
+  const addPicture = async (blob: Blob, at: { x: number; y: number } | null): Promise<void> => {
+    const el = surface.current
+    if (!el) return
+    let file: string
+    let natural: { width: number; height: number }
+    try {
+      file = await bridge.saveBoardImage(new Uint8Array(await blob.arrayBuffer()), blob.type)
+      const bitmap = await createImageBitmap(blob)
+      natural = { width: bitmap.width, height: bitmap.height }
+      bitmap.close()
+    } catch (e) {
+      return flash(e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'That picture could not be added.')
+    }
+    const room = { width: el.offsetWidth, height: el.offsetHeight }
+    const scale = Math.min(1, (room.width * 0.8) / natural.width, (room.height * 0.8) / natural.height)
+    const width = r1(natural.width * scale)
+    const height = r1(natural.height * scale)
+    const center = at ?? { x: room.width / 2, y: room.height / 2 }
+    const x = r1(Math.max(0, Math.min(room.width - width, center.x - width / 2)))
+    const y = r1(Math.max(0, Math.min(room.height - height, center.y - height / 2)))
+    const next: WhiteboardShape[] = [...shapes, { type: 'image', color, size, x, y, width, height, file }]
+    commit(next)
+    setTool('select')
+    setChosen([next.length - 1])
+  }
+
+  const pictureIn = (items: DataTransferItemList | undefined): Blob | null => {
+    for (const item of items ?? []) if (item.kind === 'file' && /^image\/(png|jpeg|webp|gif)$/.test(item.type)) return item.getAsFile()
+    return null
+  }
+
+  // A picture pasted while the board is selected, or while its paper has the keyboard, lands on it. A paste into a
+  // text field or a terminal stays there.
+  const pasted = useRef<(e: ClipboardEvent) => void>(() => {})
+  pasted.current = (e) => {
+    const target = e.target as Element | null
+    const onPaper = !!target && !!surface.current?.contains(target)
+    if (!onPaper && (!selected || keyFocusOf(target) !== 'canvas')) return
+    const picture = pictureIn(e.clipboardData?.items)
+    if (!picture) return
+    e.preventDefault()
+    void addPicture(picture, cursor)
+  }
+  useEffect(() => {
+    const listen = (e: ClipboardEvent): void => pasted.current(e)
+    document.addEventListener('paste', listen)
+    return () => document.removeEventListener('paste', listen)
+  }, [])
+
   const copyImage = async (): Promise<void> => {
     try {
-      const out = whiteboardSvg(shapes, surface.current?.offsetWidth ?? node.width, surface.current?.offsetHeight ?? node.height)
+      const out = whiteboardSvg(shapes, surface.current?.offsetWidth ?? node.width, surface.current?.offsetHeight ?? node.height, images)
       const png = await svgToPng(out.svg, out.width, out.height, 2)
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
       setCopied('Copied')
@@ -348,6 +411,15 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
         onPointerCancel={onUp}
         onPointerLeave={() => setCursor(null)}
         onKeyDown={onKey}
+        onDragOver={(e) => {
+          if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          const picture = pictureIn(e.dataTransfer.items)
+          if (!picture) return
+          e.preventDefault()
+          void addPicture(picture, at(e as unknown as React.PointerEvent))
+        }}
       >
         <svg className="wb-svg" aria-hidden="true">
           <g dangerouslySetInnerHTML={{ __html: ink }} />
@@ -360,7 +432,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
           {marquee && <rect className="wb-marquee" {...marqueeBox(marquee)} />}
           {tool === 'eraser' && cursor && <circle className="wb-eraser" cx={cursor.x} cy={cursor.y} r={ERASER} />}
         </svg>
-        {!shapes.length && !live && !typing && <p className="wb-hint">Draw here. Link an agent to this board and it can export it as a picture.</p>}
+        {!shapes.length && !live && !typing && <p className="wb-hint">Draw here, or select the board and paste a screenshot with Ctrl+V. Link an agent to this board and it can export it as a picture.</p>}
         {typing && (
           <textarea
             className="wb-type"

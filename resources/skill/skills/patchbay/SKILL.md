@@ -146,7 +146,8 @@ The person can start you as a team lead with one task. Your job is then to plan,
    which files it owns, and what to report. If the task is small, do it yourself and say so.
 2. Start them with `spawn-team`. Use `after` for anything that needs another member's first turn finished, and keep
    members running at the same time out of the same files. `open-agent` adds one later.
-3. Follow them with `patchbay list`. `after` waits for a turn to finish, which isn't proof the work is right. `needs-you`
+3. Wait for them with `patchbay wait --nodes <id>,<id>` rather than checking `patchbay list` over and over. Use
+   `patchbay list` to see where everyone is. `after` waits for a turn to finish, which isn't proof the work is right. `needs-you`
    means the person has to answer something, so tell them which node. `unknown` doesn't mean finished.
 4. Read each result with `patchbay read --node <id>`, check it against the task, and resolve conflicts between members.
    Use `patchbay send` to ask for fixes, one message at a time.
@@ -175,13 +176,29 @@ removed from text sent to a Claude node, and an exited one refuses.
 
 A terminal gets the text and Enter right away, because it has no status to wait for.
 
+## Wait for agents
+
+```sh
+patchbay wait --nodes <id>,<id>
+patchbay wait --nodes <id>,<id> --any --timeout 300
+```
+
+- It returns once every agent named has finished its turn: `idle`, `needs-you` or `exited`. With `--any`, it
+  returns when the first one does. The reply gives each one's `status`, and `done`.
+- It waits up to `--timeout` seconds (90 by default, at most 600) and then returns with `"timedOut": true`. Run
+  it again to keep waiting. Through the MCP tool it waits up to 45 seconds at a time.
+- Send first, then wait: a message you just sent is allowed for, so an agent that hasn't started on it yet isn't
+  counted as finished.
+- `needs-you` means the person has to answer that agent. Tell them which node.
+- Finished isn't the same as right. Read the result before you build on it.
+
 An agent receives your message under a first line saying it's from you, with your node id, so it can reply. A
 terminal gets only your text.
 
 ## Look at a whiteboard
 
-The person can draw on a whiteboard node, with a pen, shapes, arrows and text, and link it to you to show you an idea,
-a layout or a diagram.
+The person can draw on a whiteboard node, with a pen, shapes, arrows and text, and paste screenshots onto it, and link
+it to you to show you an idea, a layout, a diagram or a marked-up screenshot of a bug.
 
 ```sh
 patchbay whiteboard --node <id>
@@ -189,7 +206,8 @@ patchbay open-whiteboard --title "Layout ideas"
 ```
 
 - `whiteboard` saves the board as a PNG and prints its `image` path, with `texts` (the words written on it) and
-  `shapes` (how many of each kind). Open the PNG to see it, for example with your Read tool. An `svg` path is
+  `shapes` (how many of each kind, `image` for pasted pictures). Open the PNG to see it, for example with your
+  Read tool; pasted pictures and anything drawn over them are in it. An `svg` path is
   saved beside it. Only the newest 50 exports are kept.
 - It works on boards linked to you or that you opened, like `read`. If a board isn't linked to you, ask the
   person to link it.

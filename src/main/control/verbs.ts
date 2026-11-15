@@ -6,7 +6,7 @@ import { BLANK, checkUrl, TIMEOUTS } from '../../shared/browserPolicy'
 import type { BrowserDriver } from '../browser/driver'
 import type { CanvasStore, SessionHost } from '../../shared/contract'
 import type { GithubIssue, GithubPr } from '../../shared/git'
-import { agentOf, isSessionNode, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode } from '../../shared/model'
+import { agentOf, isSessionNode, type AgentKind, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode } from '../../shared/model'
 import type { WhiteboardExporter } from '../whiteboardExport'
 import { describeWhoAmI, quoteTitle, whoami } from './whoami'
 import type { NodeRunner } from '../sessions/nodeRunner'
@@ -33,6 +33,17 @@ const GROUP_PADDING = 24
 const GROUP_TOP = 64
 
 export type VerbTiming = SendTiming
+
+export interface WaitTiming {
+  pollMs: number
+  /** How long an agent that was already idle must stay idle to count as finished, in case a message hasn't reached it yet. */
+  graceMs: number
+}
+export const DEFAULT_WAIT_TIMING: WaitTiming = { pollMs: 250, graceMs: 2000 }
+const WAIT_DEFAULT_S = 90
+const WAIT_MAX_S = 600
+/** An agent in one of these isn't working: it finished its turn, needs the person, or ended. */
+const SETTLED = new Set<AgentStatus>(['idle', 'needs-you', 'exited'])
 
 type Args = Record<string, unknown>
 
@@ -183,8 +194,10 @@ export function createVerbs({
   queue,
   whiteboards,
   onMessage,
+  waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude'
 }: {
+  waitTiming?: WaitTiming
   /** A node sent another a message, so the canvas can show it travel down the cable between them. */
   onMessage?: (from: string, to: string) => void
   /** Turns a board into files an agent can open. Without it, boards can still be read as text. */
@@ -291,6 +304,59 @@ export function createVerbs({
     const queued = sendQueue.add(id, { text }) === 'queued'
     onMessage?.(caller, id)
     return queued ? { delivered: false, queued: true } : { delivered: true }
+  }
+
+  /**
+   * Holds the caller until the agents it names have finished their turns, so a lead can wait on its team without
+   * polling. A node that's busy, or has a message on its way, counts as finished once it settles. One that's already
+   * idle counts once it has stayed idle a moment, which leaves time for a message just sent to start it.
+   */
+  const wait = (caller: string, args: Args): Promise<unknown> => {
+    const given = Array.isArray(args.nodes) ? (args.nodes as unknown[]) : args.node !== undefined ? [args.node] : []
+    if (!given.length || !given.every((v) => typeof v === 'string' && v)) refuse('Pass --nodes ID,ID.')
+    const ids = [...new Set(given as string[])]
+    for (const id of ids) {
+      const node = reachable(caller, id, 'wait on')
+      if (node.kind !== 'claude') refuse(`Node "${id}" is a ${node.kind}, which has no turns to wait for. Only agent nodes can be waited on.`)
+    }
+    const timeout = args.timeout ?? WAIT_DEFAULT_S
+    if (!Number.isInteger(timeout) || (timeout as number) < 1 || (timeout as number) > WAIT_MAX_S) refuse(`--timeout must be a whole number of seconds from 1 to ${WAIT_MAX_S}.`)
+    const any = args.any === true
+    const started = Date.now()
+    const moved = new Set<string>()
+    const settledAt = new Map<string, number>()
+    const finished = (id: string, now: number): boolean => {
+      const status = tracker.get(id) ?? 'unknown'
+      if (!find(id)) return true
+      if (!SETTLED.has(status) || sendQueue.busy(id)) {
+        moved.add(id)
+        settledAt.delete(id)
+        return false
+      }
+      if (!settledAt.has(id)) settledAt.set(id, now)
+      return moved.has(id) || now - settledAt.get(id)! >= waitTiming.graceMs
+    }
+    return new Promise((resolve) => {
+      const check = (): boolean => {
+        const now = Date.now()
+        const done = ids.filter((id) => finished(id, now))
+        const over = any ? done.length > 0 : done.length === ids.length
+        const timedOut = now - started >= (timeout as number) * 1000
+        if (!over && !timedOut) return false
+        resolve({
+          done: over,
+          ...(over ? {} : { timedOut: true }),
+          nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
+          waitedSeconds: Math.round((now - started) / 100) / 10
+        })
+        return true
+      }
+      if (check()) return
+      const timer = setInterval(() => {
+        if (check()) clearInterval(timer)
+      }, waitTiming.pollMs)
+      timer.unref?.()
+    })
   }
 
   // read
@@ -704,6 +770,8 @@ export function createVerbs({
         return sticky(caller, args)
       case 'note':
         return note(callerId, args)
+      case 'wait':
+        return wait(callerId, args)
       case 'open-whiteboard':
         return openWhiteboard(caller, args)
       case 'whiteboard':

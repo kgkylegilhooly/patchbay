@@ -20,6 +20,10 @@ export const BOARD_SIZES = [2, 4, 8]
 export const LIMITS = { shapes: 2000, points: 4000, text: 500, coord: 100000 }
 
 const HEX = /^#[0-9a-f]{3,8}$/i
+/** A pasted picture's file: its SHA-256 and type, so nothing in a save file can name any other path. */
+export const IMAGE_FILE = /^[0-9a-f]{64}\.(png|jpg|webp|gif)$/
+/** Finds a picture's contents as a data URL, or null when it isn't there or isn't loaded yet. */
+export type ImageSource = (file: string) => string | null
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= LIMITS.coord
 
 /** Whether a saved shape is one this can draw. Anything else in a save file is refused, like any bad node. */
@@ -37,6 +41,8 @@ export function isWhiteboardShape(v: unknown): v is WhiteboardShape {
       return isNum(s.x1) && isNum(s.y1) && isNum(s.x2) && isNum(s.y2)
     case 'text':
       return isNum(s.x) && isNum(s.y) && typeof s.text === 'string' && s.text.length > 0 && s.text.length <= LIMITS.text
+    case 'image':
+      return isNum(s.x) && isNum(s.y) && isNum(s.width) && isNum(s.height) && s.width > 0 && s.height > 0 && typeof s.file === 'string' && IMAGE_FILE.test(s.file)
     default:
       return false
   }
@@ -78,8 +84,11 @@ const escapeXml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, 
 export const textSize = (size: number): number => 12 + size * 2.5
 const FONT = "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif"
 
+/** A data URL is only used if it's an image one, because it goes into an attribute. */
+const SAFE_IMAGE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/
+
 /** One shape as SVG markup. The color has been checked, and text is escaped. */
-export function shapeSvg(s: WhiteboardShape): string {
+export function shapeSvg(s: WhiteboardShape, images?: ImageSource): string {
   const color = HEX.test(s.color) ? s.color : BOARD_COLORS[0]
   const stroke = `stroke="${color}" stroke-width="${s.size}" stroke-linecap="round" stroke-linejoin="round" fill="none"`
   switch (s.type) {
@@ -97,6 +106,12 @@ export function shapeSvg(s: WhiteboardShape): string {
       return `<rect x="${Math.min(s.x1, s.x2)}" y="${Math.min(s.y1, s.y2)}" width="${Math.abs(s.x2 - s.x1)}" height="${Math.abs(s.y2 - s.y1)}" rx="3" ${stroke}/>`
     case 'ellipse':
       return `<ellipse cx="${r1((s.x1 + s.x2) / 2)}" cy="${r1((s.y1 + s.y2) / 2)}" rx="${r1(Math.abs(s.x2 - s.x1) / 2)}" ry="${r1(Math.abs(s.y2 - s.y1) / 2)}" ${stroke}/>`
+    case 'image': {
+      const data = images?.(s.file)
+      if (data && SAFE_IMAGE.test(data)) return `<image href="${data}" x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" preserveAspectRatio="none"/>`
+      // Still loading, or its file has gone: the space it takes, so nothing drawn over it looks out of place.
+      return `<rect x="${s.x}" y="${s.y}" width="${s.width}" height="${s.height}" fill="#ececea" stroke="#b8b8be" stroke-dasharray="6 4"/>`
+    }
     case 'text': {
       const size = textSize(s.size)
       const lines = s.text.split('\n')
@@ -106,8 +121,8 @@ export function shapeSvg(s: WhiteboardShape): string {
   }
 }
 
-export function shapesSvg(shapes: WhiteboardShape[]): string {
-  return shapes.map(shapeSvg).join('')
+export function shapesSvg(shapes: WhiteboardShape[], images?: ImageSource): string {
+  return shapes.map((s) => shapeSvg(s, images)).join('')
 }
 
 export interface Box {
@@ -122,6 +137,7 @@ export function shapeBox(s: WhiteboardShape): Box {
   const pad = s.size / 2 + 1
   let xs: number[]
   let ys: number[]
+  if (s.type === 'image') return { x: s.x, y: s.y, width: s.width, height: s.height }
   if (s.type === 'pen') {
     xs = s.points.filter((_, i) => i % 2 === 0)
     ys = s.points.filter((_, i) => i % 2 === 1)
@@ -156,11 +172,11 @@ export function exportBox(shapes: WhiteboardShape[], width: number, height: numb
 }
 
 /** The whole board as a standalone SVG file, paper included. */
-export function whiteboardSvg(shapes: WhiteboardShape[], width: number, height: number): { svg: string; width: number; height: number } {
+export function whiteboardSvg(shapes: WhiteboardShape[], width: number, height: number, images?: ImageSource): { svg: string; width: number; height: number } {
   const b = exportBox(shapes, width, height)
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${b.width}" height="${b.height}" viewBox="${b.x} ${b.y} ${b.width} ${b.height}">` +
-    `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${BOARD_PAPER}"/>${shapesSvg(shapes)}</svg>`
+    `<rect x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}" fill="${BOARD_PAPER}"/>${shapesSvg(shapes, images)}</svg>`
   return { svg, width: b.width, height: b.height }
 }
 
@@ -204,6 +220,7 @@ export function touches(s: WhiteboardShape, x: number, y: number, radius: number
       }
       return false
     }
+    case 'image':
     case 'text': {
       const b = shapeBox(s)
       return x >= b.x - radius && x <= b.x + b.width + radius && y >= b.y - radius && y <= b.y + b.height + radius
@@ -230,7 +247,7 @@ export function shapesIn(shapes: WhiteboardShape[], box: Box): number[] {
 /** A shape moved by dx, dy. */
 export function moveShape(s: WhiteboardShape, dx: number, dy: number): WhiteboardShape {
   if (s.type === 'pen') return { ...s, points: s.points.map((v, i) => r1(v + (i % 2 ? dy : dx))) }
-  if (s.type === 'text') return { ...s, x: r1(s.x + dx), y: r1(s.y + dy) }
+  if (s.type === 'text' || s.type === 'image') return { ...s, x: r1(s.x + dx), y: r1(s.y + dy) }
   return { ...s, x1: r1(s.x1 + dx), y1: r1(s.y1 + dy), x2: r1(s.x2 + dx), y2: r1(s.y2 + dy) }
 }
 

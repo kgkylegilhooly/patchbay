@@ -99,6 +99,8 @@ export type WhiteboardShape =
   | { type: 'pen'; color: string; size: number; points: number[] }
   | { type: 'line' | 'arrow' | 'rect' | 'ellipse'; color: string; size: number; x1: number; y1: number; x2: number; y2: number }
   | { type: 'text'; color: string; size: number; x: number; y: number; text: string }
+  /** A pasted picture, saved as a file in app data and named by its content. Every shape has a color and size; a picture doesn't use them. */
+  | { type: 'image'; color: string; size: number; x: number; y: number; width: number; height: number; file: string }
 
 /** A board to draw on. Like a note it's layout, and agents linked to it can export it as a picture. */
 export interface WhiteboardNode extends Base {

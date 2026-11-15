@@ -240,6 +240,10 @@ export interface PatchbayBridge {
   onRenderWhiteboard(cb: (requestId: string, svg: string, width: number, height: number) => void): () => void
   /** Null if the picture couldn't be made. */
   whiteboardRendered(requestId: string, png: Uint8Array | null): void
+  /** Keeps a picture pasted onto a whiteboard, and gives the name the board saves for it. */
+  saveBoardImage(bytes: Uint8Array, mime: string): Promise<string>
+  /** A board's picture as a data URL, or null if it's gone. */
+  readBoardImage(file: string): Promise<string | null>
   /** Asks Claude for a title from the session's recent output. Spends a little plan quota, so it's only run on a click. Doesn't apply it. */
   nameWithAi(id: string): Promise<{ ok: true; title: string } | { ok: false; reason: string }>
 }

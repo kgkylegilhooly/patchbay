@@ -34,6 +34,8 @@ export interface SendQueue {
   drop(match: (id: string, item: SendItem) => boolean): void
   /** Forgets a node, as when it closes. */
   forget(id: string): void
+  /** A message is waiting for the node, or was typed so recently its status can't show it yet. */
+  busy(id: string): boolean
 }
 
 /** What's safe to type into Claude: nothing here can press a key at a prompt. Enter is sent separately. */
@@ -129,6 +131,9 @@ export function createSendQueue({
       return 'queued'
     },
     type,
+    busy(id) {
+      return settling.has(id) || (queues.get(id)?.length ?? 0) > 0
+    },
     drop(match) {
       for (const [id, queue] of queues) {
         const dropped = queue.filter((item) => match(id, item))

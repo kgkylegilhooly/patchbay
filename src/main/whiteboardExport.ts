@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { join } from 'node:path'
 import type { WhiteboardNode } from '../shared/model'
 import { boardArea, describeBoard, whiteboardSvg } from '../shared/whiteboard'
+import { readBoardImage } from './boardImages'
 
 /** Exports kept on disk. Older ones go, oldest first, so they can't pile up. */
 const KEPT = 50
@@ -43,7 +44,8 @@ export function createWhiteboardExporter({ dir, render }: { dir: string; render:
   return {
     async export(node) {
       const area = boardArea(node)
-      const { svg, width, height } = whiteboardSvg(node.shapes, area.width, area.height)
+      // Pictures go into the SVG itself, so it shows them wherever it's opened, and so the window can draw them.
+      const { svg, width, height } = whiteboardSvg(node.shapes, area.width, area.height, (file) => readBoardImage(join(dir, 'images'), file))
       mkdirSync(dir, { recursive: true })
       const base = join(dir, `board-${new Date().toISOString().replace(/[:.]/g, '-')}-${node.id.slice(0, 8)}`)
       writeFileSync(`${base}.svg`, svg)

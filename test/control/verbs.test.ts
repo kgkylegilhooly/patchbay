@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAfterGate } from '../../src/main/control/after'
 import { RpcRefusal } from '../../src/main/control/server'
 import { createVerbs } from '../../src/main/control/verbs'
@@ -569,6 +569,56 @@ test('a message that goes out is reported for the canvas to show, and a refused 
   await verbs('me', 'send', { node: 't', text: 'ls' })
   await refused(verbs('me', 'send', { node: 'far', text: 'hi' }), /isn't linked/)
   expect(sent).toEqual(['me>c', 'me>t'])
+})
+
+describe('wait', () => {
+  const make = () => {
+    const store = memoryStore([claudeNode('me'), claudeNode('a', { openedBy: 'me' }), claudeNode('b', { openedBy: 'me' }), terminalNode('t', { openedBy: 'me' }), claudeNode('far')])
+    const tracker = createStatusTracker({ notify: () => {} })
+    const runner = fakeRunner()
+    const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }), waitTiming: { pollMs: 5, graceMs: 60 } })
+    const status = (id: string, hook: string) => tracker.apply(id, { type: 'hook', name: hook })
+    return { verbs, status, store }
+  }
+
+  test('holds until a working agent finishes its turn', async () => {
+    const { verbs, status } = make()
+    status('a', 'UserPromptSubmit')
+    let settled = false
+    const waiting = verbs('me', 'wait', { nodes: ['a'], timeout: 5 }).then((r) => ((settled = true), r))
+    await new Promise((r) => setTimeout(r, 40))
+    expect(settled).toBe(false)
+    status('a', 'Stop')
+    expect(await waiting).toMatchObject({ done: true, nodes: { a: 'idle' } })
+  })
+
+  test('an agent already idle counts only once it has stayed idle a moment', async () => {
+    const { verbs, status } = make()
+    status('a', 'Stop')
+    const started = Date.now()
+    expect(await verbs('me', 'wait', { node: 'a' })).toMatchObject({ done: true, nodes: { a: 'idle' } })
+    expect(Date.now() - started).toBeGreaterThanOrEqual(55)
+  })
+
+  test('waits for every agent named, or the first with --any, and gives up at the timeout', async () => {
+    const { verbs, status } = make()
+    status('a', 'UserPromptSubmit')
+    status('b', 'UserPromptSubmit')
+    const all = verbs('me', 'wait', { nodes: ['a', 'b'], timeout: 1 })
+    const first = verbs('me', 'wait', { nodes: ['a', 'b'], any: true, timeout: 5 })
+    status('a', 'PermissionRequest')
+    expect(await first).toMatchObject({ done: true, nodes: { a: 'needs-you', b: 'working' } })
+    expect(await all).toMatchObject({ done: false, timedOut: true, nodes: { a: 'needs-you', b: 'working' } })
+  })
+
+  test('is refused for a terminal, a node out of reach, or a bad timeout', async () => {
+    const { verbs } = make()
+    await refused(verbs('me', 'wait', { nodes: ['t'] }), /no turns to wait for/)
+    await refused(verbs('me', 'wait', { nodes: ['far'] }), /isn't linked to you/)
+    await refused(verbs('me', 'wait', { nodes: ['a'], timeout: 0 }), /--timeout/)
+    await refused(verbs('me', 'wait', { nodes: ['a'], timeout: 601 }), /--timeout/)
+    await refused(verbs('me', 'wait', {}), /--nodes/)
+  })
 })
 
 test('send is refused for an unlinked node, an exited node, a stopped terminal or empty text', async () => {

@@ -243,6 +243,8 @@ function Canvas(): React.JSX.Element | null {
       if (!action || !appTakesKey(key, focus, isOverTerminal(action, overrides))) return
       // The board covers the canvas, so a canvas key is left alone, for the board's own fields to use.
       if (s.boardOpen && !worksOverBoard(action)) return
+      // With no terminal to paste into, Ctrl+V is left to the page, so a selected whiteboard can take a picture.
+      if (action.id === 'paste' && !actionReady(action, keyboard.current.menuState())) return
       e.preventDefault()
       e.stopPropagation()
       // Holding a key down steps through sizes and windows, but shouldn't open a window per repeat.

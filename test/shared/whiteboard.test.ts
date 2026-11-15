@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { WhiteboardShape } from '../../src/shared/model'
-import { boardArea, describeBoard, exportBox, isWhiteboardShape, moveShape, penPath, shapeAt, shapesIn, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
+import { boardArea, describeBoard, exportBox, isWhiteboardShape, moveShape, penPath, shapeAt, shapeBox, shapesIn, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
 
 const pen = (points: number[]): WhiteboardShape => ({ type: 'pen', color: '#1f1f22', size: 4, points })
 
@@ -87,4 +87,29 @@ test('a board describes itself by its shapes and its words', () => {
 
 test('the paper is the node less its header, toolbar and margins', () => {
   expect(boardArea({ width: 640, height: 460 })).toEqual({ width: 626, height: 376 })
+})
+
+describe('pictures', () => {
+  const file = `${'ab'.repeat(32)}.png`
+  const picture: WhiteboardShape = { type: 'image', color: '#000', size: 2, x: 10, y: 20, width: 100, height: 50, file }
+
+  test('a picture names only a file this saves, by its content', () => {
+    expect(isWhiteboardShape(picture)).toBe(true)
+    for (const bad of ['../secret.png', 'C:\\x.png', `${'ab'.repeat(32)}.exe`, 'abc.png']) expect(isWhiteboardShape({ ...picture, file: bad }), bad).toBe(false)
+    expect(isWhiteboardShape({ ...picture, width: 0 })).toBe(false)
+  })
+
+  test('it draws from an image data URL, and as a placeholder without one', () => {
+    const data = 'data:image/png;base64,iVBORw0KGgo='
+    expect(shapeSvg(picture, () => data)).toBe(`<image href="${data}" x="10" y="20" width="100" height="50" preserveAspectRatio="none"/>`)
+    expect(shapeSvg(picture)).toMatch(/^<rect x="10" y="20" width="100" height="50"/)
+    expect(shapeSvg(picture, () => 'javascript:alert(1)" onload="x')).toMatch(/^<rect /)
+  })
+
+  test('it moves, is picked inside its area, and fills its box', () => {
+    expect(moveShape(picture, 5, 5)).toMatchObject({ x: 15, y: 25, width: 100 })
+    expect(shapeAt([picture], 60, 40, 6)).toBe(0)
+    expect(shapeBox(picture)).toEqual({ x: 10, y: 20, width: 100, height: 50 })
+    expect(describeBoard([picture]).shapes).toEqual({ image: 1 })
+  })
 })

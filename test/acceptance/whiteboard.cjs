@@ -74,6 +74,44 @@ async function main() {
     c.check('A node that is not linked is refused', refused.status === 400 && /isn't linked to you/.test(refused.json.error), refused.json)
     const who = await rpc(profile, 'agent', 'whoami', {})
     c.check('whoami lists the linked board', /"board" \(whiteboard, node board\)/.test(who.json.result?.text ?? ''), who.json.result?.text)
+    // A screenshot pasted while the board is selected: a picture made in the page, handed over as a paste would be.
+    const page = app.page
+    await L.fitView?.(page)
+    await page.click('.react-flow__node[data-id="board"] .wb-head .title')
+    const passed = await page.evaluate(() => {
+      let prevented = null
+      const watch = (e) => (prevented = e.defaultPrevented)
+      window.addEventListener('keydown', watch)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, bubbles: true, cancelable: true }))
+      window.removeEventListener('keydown', watch)
+      return prevented
+    })
+    c.check('Ctrl+V on the canvas, with no terminal to paste into, is left for the page', passed === false, passed)
+    await page.evaluate(async () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 240
+      canvas.height = 120
+      const g = canvas.getContext('2d')
+      g.fillStyle = '#2f9e5b'
+      g.fillRect(0, 0, 240, 120)
+      g.fillStyle = '#fff'
+      g.font = '28px sans-serif'
+      g.fillText('PASTED', 60, 72)
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'))
+      const data = new DataTransfer()
+      data.items.add(new File([blob], 'shot.png', { type: 'image/png' }))
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    })
+    const pictured = await L.waitFor('the picture on the board', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.find((s) => s.type === 'image'), 10000).catch(() => null)
+    c.check('A pasted picture is added to the selected board, fitted inside it', pictured && pictured.width === 240 && pictured.height === 120 && /^[0-9a-f]{64}\.png$/.test(pictured.file), pictured)
+    c.check('Its file is kept in app data, not in the canvas file', pictured && fs.existsSync(path.join(profile, 'whiteboards', 'images', pictured.file)) && !fs.readFileSync(path.join(profile, 'canvas.json'), 'utf8').includes('base64'))
+    const shown = await L.waitFor('the picture drawn', () => page.$('.react-flow__node[data-id="board"] .wb-svg image[href^="data:image/png"]'), 5000).catch(() => null)
+    c.check('The board draws it', !!shown)
+    const again = await rpc(profile, 'agent', 'whiteboard', { node: 'board' })
+    const svg = again.json.result?.svg ? fs.readFileSync(again.json.result.svg, 'utf8') : ''
+    const png2 = again.json.result?.image ? fs.readFileSync(again.json.result.image) : null
+    c.check('An agent\'s export includes the picture', svg.includes('<image href="data:image/png;base64,') && again.json.result.shapes.image === 1 && png2 && png2.length > png.length, { shapes: again.json.result?.shapes, bytes: png2?.length })
+    if (process.env.PB_KEEP_EXPORT && png2) fs.writeFileSync(process.env.PB_KEEP_EXPORT.replace(/\.png$/, '-picture.png'), png2)
     // The profile goes when this ends, so the picture is kept elsewhere for looking at, when asked.
     if (png && process.env.PB_KEEP_EXPORT) fs.copyFileSync(r.image, process.env.PB_KEEP_EXPORT)
     c.check('No page errors in the app window', app.problems.length === 0, app.problems.slice(0, 3))

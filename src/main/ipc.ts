@@ -31,6 +31,7 @@ import type { UsageSecret } from './usage/usageSecret'
 import type { UsageService } from './usage/usageService'
 import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
+import { readBoardImage, saveBoardImage } from './boardImages'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 
 export interface IpcServices {
@@ -344,6 +345,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   })
 
   ipcMain.handle('pb:savePastedImage', (_e, bytes: Uint8Array, mime: string) => savePastedImage(dataDir, bytes, mime))
+  ipcMain.handle('pb:saveBoardImage', (_e, bytes: Uint8Array, mime: string) => saveBoardImage(join(dataDir, 'whiteboards', 'images'), bytes, mime))
+  ipcMain.handle('pb:readBoardImage', (_e, file: string) => readBoardImage(join(dataDir, 'whiteboards', 'images'), file))
   ipcMain.handle('pb:openTerminalLink', (_e, nodeId: string, target: string) => {
     const node = find(nodeId)
     const cwd = isSession(node) ? node.cwd : homedir()

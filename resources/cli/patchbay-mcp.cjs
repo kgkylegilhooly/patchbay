@@ -20,7 +20,8 @@ const TOOL = {
     'Pass the words you would type after `patchbay`, one per item, for example ["open-agent", "--agent", "claude",',
     '"--prompt", "Review the parser"] or ["read", "--node", "<id>", "--tail", "5"].',
     'Call it with ["guide"] before the first use: it explains every verb and its rules.',
-    '["whoami"] says which node you are, who opened you and who you work with.'
+    '["whoami"] says which node you are, who opened you and who you work with.',
+    '["wait", "--nodes", "<id>,<id>"] returns when those agents finish their turns; it waits up to 45 seconds, so call it again if it says timedOut.'
   ].join(' '),
   inputSchema: {
     type: 'object',
@@ -40,7 +41,11 @@ function error(id, code, message) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } })}\n`)
 }
 
-function runCli(args) {
+/** Codex gives up on a tool call after about a minute, so a wait through here is kept shorter, and asked again. */
+const MCP_WAIT_S = 45
+
+function runCli(given) {
+  const args = given[0] === 'wait' && !given.includes('--timeout') ? [...given, '--timeout', String(MCP_WAIT_S)] : given
   return new Promise((resolve) => {
     execFile(process.execPath, [CLI, ...args], { env: process.env, timeout: CALL_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (e, stdout, stderr) => {
       const failed = !!e

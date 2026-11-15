@@ -291,6 +291,38 @@ const scenes = {
     await page.mouse.up()
     await sleep(400)
   },
+  // Pastes a real screenshot of the sidebar onto the selected board, then circles part of it in red, as someone
+  // pointing an agent at a problem would.
+  'whiteboard-picture': async (page) => {
+    const shot = await page.screenshot({ clip: { x: 14, y: 160, width: 300, height: 170 }, encoding: 'base64' })
+    await page.click('.react-flow__node[data-id="board"] .wb-head .title')
+    await page.evaluate(async (b64) => {
+      // The page's content policy blocks fetching a data URL, so the bytes are decoded by hand.
+      const blob = new Blob([Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0))], { type: 'image/png' })
+      const data = new DataTransfer()
+      data.items.add(new File([blob], 'shot.png', { type: 'image/png' }))
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    }, shot)
+    await page.waitForSelector('.react-flow__node[data-id="board"] .wb-svg image')
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Ellipse"]')
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Red"]')
+    const surface = await page.$('.react-flow__node[data-id="board"] .wb-surface')
+    const box = await surface.boundingBox()
+    const scale = box.width / (await surface.evaluate((el) => el.offsetWidth))
+    const to = (x, y) => [box.x + x * scale, box.y + y * scale]
+    const picture = await page.evaluate(() => window.patchbay.getDoc().then((d) => d.nodes.find((n) => n.id === 'board').shapes.find((s) => s.type === 'image')))
+    const [x1, y1] = [picture.x + 10, picture.y + 40]
+    const [x2, y2] = [picture.x + picture.width - 10, picture.y + 100]
+    await page.mouse.move(...to(x1, y1))
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(...to(x1 + ((x2 - x1) * i) / 10, y1 + ((y2 - y1) * i) / 10))
+    await page.mouse.up()
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Text"]')
+    await page.mouse.click(...to(x2 + 20, y1 + 20))
+    await page.keyboard.type('Why is this one stuck?')
+    await page.keyboard.press('Enter')
+    await sleep(500)
+  },
   // Drag-selects the left half of the diagram with the select tool, then moves it down, leaving it selected.
   'whiteboard-select': async (page) => {
     await page.click('.react-flow__node[data-id="board"] [aria-label="Select and move"]')
@@ -342,6 +374,10 @@ const seeds = {
   },
   'note-edit': (doc) => seeds.note(doc),
   'whiteboard-select': (doc) => seeds.whiteboard(doc),
+  'whiteboard-picture': (doc) => {
+    seeds.whiteboard(doc)
+    Object.assign(doc.nodes.find((n) => n.id === 'board'), { title: 'Stuck agent', shapes: [] })
+  },
   whiteboard: (doc) => {
     doc.nodes = doc.nodes.filter((n) => n.id !== 'note')
     const ink = '#1f1f22'

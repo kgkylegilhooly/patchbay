@@ -31,6 +31,7 @@ const VERBS = {
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
   send: { node: 'text', text: 'text' },
+  wait: { nodes: 'list', node: 'text', timeout: 'int', any: 'flag' },
   close: { node: 'text' },
   issues: { state: 'text', limit: 'int', number: 'int' },
   prs: { state: 'text', limit: 'int' },
@@ -65,6 +66,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT
+  wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600)
   close         --node ID
   issues        [--state open|closed|all] [--limit N] [--number N]   (read-only)
   prs           [--state open|closed|merged|all] [--limit N]         (read-only)
@@ -189,7 +191,8 @@ function call(verb, args) {
       port: endpointPort(file),
       path: '/rpc',
       method: 'POST',
-      timeout: REQUEST_TIMEOUT_MS,
+      // A wait holds the line open with nothing said until it's done, so the limit follows the wait's own.
+      timeout: verb === 'wait' ? ((args.timeout ?? 90) + 15) * 1000 : REQUEST_TIMEOUT_MS,
       headers: {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
