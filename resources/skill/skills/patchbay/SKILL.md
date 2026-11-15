@@ -141,7 +141,9 @@ patchbay wait --nodes <writer id>,<reviewer id> --timeout 300
 patchbay read --node <reviewer id> --tail 2
 ```
 
-When the JSON is awkward to quote in your shell, write it to a file and use `--members-file team.json`.
+Briefs are long, and an apostrophe in one (as in "don't") ends a single-quoted argument in the shell, so the
+command fails. For anything longer than a line, write the team to a file with your file-writing tool and use
+`--members-file team.json`, or give each member a `promptFile`. The same goes for `open-agent --prompt-file`.
 
 ## Lead a team
 
@@ -165,7 +167,7 @@ A member starts knowing nothing but its brief and this skill. Write each one so 
 ```text
 Goal: Add tests for the CSV parser's quoting rules.
 You own: src/parser/csv.ts, test/parser/csv.test.ts
-Don't touch: anything else, and don't commit. I'll commit.
+Leave alone: every other file. The lead commits, so do not commit.
 Done when: npm test passes, with cases for quotes, escaped quotes and empty fields.
 Report: when done or stuck, send me what you changed, what you ran, and anything left, in under 10 lines.
 Ask me: if a rule is unclear. Ask once, and say what you'd do if I don't answer.
@@ -183,7 +185,7 @@ files it owns, one at a time. Nobody pushes unless the person asked for that in 
 ### Finish the team
 
 When the work is checked, close the members you opened with `patchbay close --node <id>`, so the canvas doesn't
-fill with finished agents. Leave one open if the person may want to look at its conversation, and say which. A
+fill with finished agents. Closing the last member of a team you spawned removes its empty group too. Leave one open if the person may want to look at its conversation, and say which. A
 note or whiteboard you made can stay, since the person may want it.
 
 ## Read a node
@@ -225,6 +227,8 @@ patchbay wait --nodes <id>,<id> --any --timeout 300
   it again to keep waiting. Through the MCP tool it waits up to 45 seconds at a time.
 - Send first, then wait: a message you just sent is allowed for, so an agent that hasn't started on it yet isn't
   counted as finished.
+- Anything those agents sent you while you waited comes back in the reply's `messages`, so you don't get it
+  again as a new prompt later. Read it there.
 - `needs-you` means the person has to answer that agent. Tell them which node.
 - Finished isn't the same as right. Read the result before you build on it.
 

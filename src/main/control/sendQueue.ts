@@ -18,6 +18,9 @@ export const DEFAULT_SEND_TIMING: SendTiming = { enterDelayMs: 200, settleMs: 30
 
 export interface SendItem {
   text: string
+  /** The node that sent it, and what it said without the line naming it, for a message `wait` may hand over. */
+  from?: string
+  said?: string
   /** Asked just before it's typed. Saying no drops it rather than delivering something no longer wanted. */
   stillWanted?: () => boolean
   /** Only for an item that had to wait. One delivered at once is reported by add's result. */
@@ -36,6 +39,8 @@ export interface SendQueue {
   forget(id: string): void
   /** A message is waiting for the node, or was typed so recently its status can't show it yet. */
   busy(id: string): boolean
+  /** Takes waiting messages for a node out of its queue, to be handed over some other way. They count as delivered. */
+  take(id: string, match: (item: SendItem) => boolean): SendItem[]
 }
 
 /** What's safe to type into Claude: nothing here can press a key at a prompt. Enter is sent separately. */
@@ -133,6 +138,14 @@ export function createSendQueue({
     type,
     busy(id) {
       return settling.has(id) || (queues.get(id)?.length ?? 0) > 0
+    },
+    take(id, match) {
+      const queue = queues.get(id) ?? []
+      const taken = queue.filter(match)
+      if (!taken.length) return []
+      queues.set(id, queue.filter((item) => !taken.includes(item)))
+      for (const item of taken) item.onDelivered?.()
+      return taken
     },
     drop(match) {
       for (const [id, queue] of queues) {

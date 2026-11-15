@@ -60,7 +60,8 @@ function rpc(profile, node, verb, args) {
 async function main() {
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
   seed(profile)
-  const app = await L.launch({ profile })
+  // PB_USE_PACKAGED runs the packaged build in release/ instead of the built dev output.
+  const app = await L.launch({ profile, exe: process.env.PB_USE_PACKAGED ? L.packagedExe : undefined })
   try {
     await L.waitFor('the control endpoint', () => fs.existsSync(path.join(profile, 'control', 'endpoint.json')), 20000)
     const out = await rpc(profile, 'agent', 'whiteboard', { node: 'board' })

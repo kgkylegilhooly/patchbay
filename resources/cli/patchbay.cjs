@@ -99,7 +99,11 @@ function parseFlags(verb, words) {
   const args = {}
   for (let i = 0; i < words.length; i++) {
     const word = words[i]
-    if (!word.startsWith('--')) fail(`Unexpected "${word}". Flags look like --name value.`)
+    if (!word.startsWith('--')) {
+      // Usually a quote mark inside a long text, such as the one in "don't", that ended the shell's quoting early.
+      const cut = i > 0 && /\s/.test(words[i - 1] ?? '') ? ' A quote mark inside your text may have ended it early. Put long text in a file instead, with --prompt-file or --members-file.' : ''
+      fail(`Unexpected "${word}". Flags look like --name value.${cut}`)
+    }
     const eq = word.indexOf('=')
     const flag = eq === -1 ? word.slice(2) : word.slice(2, eq)
     const kind = Object.hasOwn(spec, flag) ? spec[flag] : undefined
@@ -147,7 +151,13 @@ function teamMembers(args) {
   try {
     list = JSON.parse(text)
   } catch (e) {
-    fail(`The team members aren't valid JSON: ${e.message}`)
+    // A Windows path such as C:\Code isn't valid JSON, where a backslash starts an escape. Doubling the backslashes
+    // that start no escape keeps what was meant, and only text that wasn't valid JSON is ever changed.
+    try {
+      list = JSON.parse(text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\'))
+    } catch {
+      fail(`The team members aren't valid JSON: ${e.message}. Write Windows paths with forward slashes, as in C:/Code/app.`)
+    }
   }
   if (!Array.isArray(list)) fail('The team members must be a JSON list.')
   const resolved = list.map((m) => {

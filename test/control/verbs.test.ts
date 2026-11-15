@@ -91,6 +91,20 @@ test('open-agent refuses an unknown agent', async () => {
   expect(store.get().nodes).toHaveLength(1)
 })
 
+test('closing the last member of a team takes its empty group too, but only a group the caller made', async () => {
+  const { verbs, store } = setup([groupNode('mine-g', { openedBy: 'me' }), claudeNode('solo', { openedBy: 'me', parentId: 'mine-g' }), groupNode('theirs-g'), claudeNode('in-theirs', { openedBy: 'me', parentId: 'theirs-g' })])
+  const team = (await verbs('me', 'spawn-team', { label: 'Pair', members: [{ name: 'a' }, { name: 'b' }] })) as { group: string; members: Record<string, string> }
+  const has = (id: string) => store.get().nodes.some((n) => n.id === id)
+  expect(await verbs('me', 'close', { node: team.members.a })).toEqual({ closed: team.members.a })
+  expect(has(team.group)).toBe(true)
+  expect(await verbs('me', 'close', { node: team.members.b })).toEqual({ closed: team.members.b, removedGroup: team.group })
+  expect(has(team.group)).toBe(false)
+  await verbs('me', 'close', { node: 'solo' })
+  expect(has('mine-g')).toBe(false)
+  await verbs('me', 'close', { node: 'in-theirs' })
+  expect(has('theirs-g')).toBe(true)
+})
+
 test('spawn-team can mix Claude and Codex members', async () => {
   const { verbs, node } = setup()
   const r = (await verbs('me', 'spawn-team', {
@@ -623,6 +637,28 @@ describe('wait', () => {
     status('a', 'PermissionRequest')
     expect(await first).toMatchObject({ done: true, nodes: { a: 'needs-you', b: 'working' } })
     expect(await all).toMatchObject({ done: false, timedOut: true, nodes: { a: 'needs-you', b: 'working' } })
+  })
+
+  test('hands over what the agents waited on sent the caller meanwhile, so it is not typed in again later', async () => {
+    const store = memoryStore([claudeNode('me'), claudeNode('a', { openedBy: 'me' }), claudeNode('b', { openedBy: 'me' })])
+    store.dispatch({ op: 'addEdge', edge: { id: 'l', from: 'me', to: 'a', kind: 'link' } })
+    store.dispatch({ op: 'addEdge', edge: { id: 'l2', from: 'me', to: 'b', kind: 'link' } })
+    const tracker = createStatusTracker({ notify: () => {} })
+    const runner = fakeRunner()
+    const host = fakeHost()
+    host.running.add('me')
+    const verbs = createVerbs({ store, runner, tracker, host, gate: createAfterGate({ store, tracker, runner }), timing: { enterDelayMs: 0, settleMs: 5 }, waitTiming: { pollMs: 5, graceMs: 60 } })
+    const status = (id: string, hook: string) => tracker.apply(id, { type: 'hook', name: hook })
+    status('me', 'UserPromptSubmit')
+    status('a', 'UserPromptSubmit')
+    const waiting = verbs('me', 'wait', { nodes: ['a'], timeout: 5 })
+    expect(await verbs('a', 'send', { node: 'me', text: 'FAREWELL.md is written.' })).toEqual({ delivered: false, queued: true })
+    await verbs('b', 'send', { node: 'me', text: 'not from a' })
+    status('a', 'Stop')
+    expect(await waiting).toMatchObject({ done: true, messages: [{ from: 'a', text: 'FAREWELL.md is written.' }] })
+    // Only b's message is still waiting for the caller to go idle.
+    status('me', 'Stop')
+    await vi.waitFor(() => expect(host.writes.filter(([, d]) => d !== '\r').map(([, d]) => d.split('\n').at(-1))).toEqual(['not from a']))
   })
 
   test('is refused for a terminal, a node out of reach, or a bad timeout', async () => {

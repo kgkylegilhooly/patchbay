@@ -304,7 +304,7 @@ export function createVerbs({
     const body = plainText(raw)
     if (!body.trim()) refuse('--text has nothing to send.')
     const text = `${senderLine(caller)}\n${body}`
-    const queued = sendQueue.add(id, { text }) === 'queued'
+    const queued = sendQueue.add(id, { text, from: caller, said: body }) === 'queued'
     onMessage?.(caller, id, body)
     return queued ? { delivered: false, queued: true } : { delivered: true }
   }
@@ -346,10 +346,14 @@ export function createVerbs({
         const over = any ? done.length > 0 : done.length === ids.length
         const timedOut = now - started >= (timeout as number) * 1000
         if (!over && !timedOut) return false
+        // What they sent the caller meanwhile is waiting for it to go idle. Handed over here, it doesn't arrive again
+        // as a fresh prompt after the caller has already moved on.
+        const handed = sendQueue.take(caller, (item) => !!item.from && ids.includes(item.from))
         resolve({
           done: over,
           ...(over ? {} : { timedOut: true }),
           nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
+          ...(handed.length ? { messages: handed.map((m) => ({ from: m.from, text: m.said ?? m.text })) } : {}),
           waitedSeconds: Math.round((now - started) / 100) / 10
         })
         return true
@@ -710,6 +714,13 @@ export function createVerbs({
       host.forget?.(id)
     }
     store.dispatch({ op: 'removeNodes', ids: [id], at: Date.now() })
+    // A team's group, emptied by closing its last member, would be left as a bare frame. It goes too, but only one
+    // the caller made, and only when nothing else is in it.
+    const group = node.parentId ? find(node.parentId) : undefined
+    if (group?.kind === 'group' && group.openedBy === caller && !store.get().nodes.some((n) => n.parentId === group.id)) {
+      store.dispatch({ op: 'removeNodes', ids: [group.id], at: Date.now() })
+      return { closed: id, removedGroup: group.id }
+    }
     return { closed: id }
   }
 

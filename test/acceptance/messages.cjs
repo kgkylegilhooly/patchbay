@@ -56,7 +56,8 @@ async function main() {
   const cwd = L.workDir('messages')
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
   seed(profile, cwd)
-  const app = await L.launch({ profile })
+  // PB_USE_PACKAGED runs the packaged build in release/ instead of the built dev output.
+  const app = await L.launch({ profile, exe: process.env.PB_USE_PACKAGED ? L.packagedExe : undefined })
   const page = app.page
   try {
     for (const id of ['lead', 'dev']) await L.waitFor(`the ${id} shell`, async () => /\$|>/.test(await L.snapshot(page, id)), 30000)

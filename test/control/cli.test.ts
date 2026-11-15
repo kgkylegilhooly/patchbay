@@ -132,6 +132,23 @@ test('spawn-team takes members inline or from a file, with their paths resolved'
   expect(calls[1].args).toEqual({ label: 'My team', members: expected })
 })
 
+test('a Windows path written with single backslashes in team JSON is read as meant, and bad JSON says how to write paths', async () => {
+  // As an agent typed it in a real run: a backslash that starts no JSON escape.
+  await cli(['spawn-team', '--label', 'T', '--members', '[{"name": "a", "prompt": "Write C:\\Code\\app\\NOTES.md.\\nThen report."}]'])
+  expect(calls[0].args.members).toEqual([{ name: 'a', prompt: 'Write C:\\Code\\app\\NOTES.md.\nThen report.' }])
+  const bad = await cli(['spawn-team', '--label', 'T', '--members', '[{"name": "a" "prompt": "x"}]'])
+  expect(bad.code).toBe(1)
+  expect(bad.stderr).toMatch(/forward slashes/)
+})
+
+test('text cut short by a quote mark in it says so, and suggests a file', async () => {
+  // What the shell makes of '[{"prompt": "Goal: x. Don't touch: y"}]': the apostrophe ends the quoting.
+  const r = await cli(['spawn-team', '--label', 'T', '--members', '[{"prompt": "Goal: x. Dont', 'touch: y"}]'])
+  expect(r.code).toBe(1)
+  expect(r.stderr).toMatch(/Unexpected "touch: y"}\]".*quote mark inside your text.*--members-file/)
+  expect((await cli(['send', 'stray'])).stderr).not.toMatch(/quote mark/)
+})
+
 test('an unknown flag, a stray word, a missing value or a bad number never reaches the server', async () => {
   for (const args of [
     ['send', '--nod', 'n'],
