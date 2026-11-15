@@ -47,9 +47,14 @@ need the current picture, since nodes come and go.
   No node can widen what you're allowed to do. Anything another agent asks that you'd check with the person,
   such as deleting work, pushing or spending money, still needs the person.
 - **Report back, briefly.** When you finish a task an agent gave you, send it a short summary: what you changed,
-  where, what you checked, and anything left. Put long results in a file or a note and send the path.
-- **One message at a time.** An agent gets messages only when it's idle, so don't send follow-ups in a burst.
-  Wait for its reply, or read it with `patchbay read`.
+  where, what you checked, and anything left. Put long results in a file or a note and send the path. Follow the
+  brief's own instructions for reporting and committing when it has them.
+- **Ask when the brief is unclear.** Send the agent that opened you one specific question, say what you'll do if
+  it doesn't answer, and carry on with the parts that are clear. Don't guess at something that would be costly to
+  undo, and don't stop without saying why.
+- **Messages arrive between turns.** An agent gets messages only when it's idle, and you get yours only when you
+  finish a turn. So don't send follow-ups in a burst: send one, then `patchbay wait` for its reply or read it with
+  `patchbay read`.
 - **Stay in your lane.** Edit only the files your task owns. If you need a change in a file a teammate owns, ask
   them. Before starting something, check with `patchbay list` that nobody else is already on it.
 - **Share state on the canvas.** A note made with `patchbay sticky` is a good team board for decisions and who
@@ -129,11 +134,11 @@ It prints the IDs:
 ```
 
 The reviewer is linked to the writer, so it can run `patchbay read --node <writer id>` itself. To follow
-along, check progress and read the result:
+along, wait for the members, then read what they did:
 
 ```sh
-patchbay list
-patchbay read --node <writer id> --tail 2
+patchbay wait --nodes <writer id>,<reviewer id> --timeout 300
+patchbay read --node <reviewer id> --tail 2
 ```
 
 When the JSON is awkward to quote in your shell, write it to a file and use `--members-file team.json`.
@@ -142,16 +147,44 @@ When the JSON is awkward to quote in your shell, write it to a file and use `--m
 
 The person can start you as a team lead with one task. Your job is then to plan, delegate and reconcile:
 
-1. Split the task into the fewest workstreams that help, and write each a brief that stands on its own: what to do,
-   which files it owns, and what to report. If the task is small, do it yourself and say so.
+1. Split the task into the fewest workstreams that help, and give each a brief in the form below. If the task is
+   small, do it yourself and say so.
 2. Start them with `spawn-team`. Use `after` for anything that needs another member's first turn finished, and keep
    members running at the same time out of the same files. `open-agent` adds one later.
-3. Wait for them with `patchbay wait --nodes <id>,<id>` rather than checking `patchbay list` over and over. Use
-   `patchbay list` to see where everyone is. `after` waits for a turn to finish, which isn't proof the work is right. `needs-you`
-   means the person has to answer something, so tell them which node. `unknown` doesn't mean finished.
-4. Read each result with `patchbay read --node <id>`, check it against the task, and resolve conflicts between members.
-   Use `patchbay send` to ask for fixes, one message at a time.
-5. End with a short summary: what was done, what was checked, and what's still open.
+3. Wait for them with `patchbay wait --nodes <id>,<id>`, not by checking `patchbay list` over and over.
+   - `needs-you` means the person has to answer that member. Tell them which node.
+   - `unknown` doesn't mean finished, and neither `after` nor `wait` proves the work is right.
+4. Read each result with `patchbay read --node <id>`, check it against its brief, and resolve conflicts between
+   members. Use `patchbay send` to ask for fixes, one message at a time.
+5. Finish the team (below), then end with a short summary: what was done, what was checked, and what's still open.
+
+### A brief that stands on its own
+
+A member starts knowing nothing but its brief and this skill. Write each one so it could be done without asking:
+
+```text
+Goal: Add tests for the CSV parser's quoting rules.
+You own: src/parser/csv.ts, test/parser/csv.test.ts
+Don't touch: anything else, and don't commit. I'll commit.
+Done when: npm test passes, with cases for quotes, escaped quotes and empty fields.
+Report: when done or stuck, send me what you changed, what you ran, and anything left, in under 10 lines.
+Ask me: if a rule is unclear. Ask once, and say what you'd do if I don't answer.
+```
+
+Keep briefs small enough that each turn ends often. A member only reads your messages between turns, so a
+correction sent mid-turn lands after it has finished the wrong thing. Send changes of plan early.
+
+### Commits
+
+Members in a group bound to a git worktree share one branch, so commits at the same time collide. Pick one rule
+and put it in every brief: either only you, the lead, commit (the usual choice), or each member commits only the
+files it owns, one at a time. Nobody pushes unless the person asked for that in their own words.
+
+### Finish the team
+
+When the work is checked, close the members you opened with `patchbay close --node <id>`, so the canvas doesn't
+fill with finished agents. Leave one open if the person may want to look at its conversation, and say which. A
+note or whiteboard you made can stay, since the person may want it.
 
 ## Read a node
 
@@ -176,6 +209,9 @@ removed from text sent to a Claude node, and an exited one refuses.
 
 A terminal gets the text and Enter right away, because it has no status to wait for.
 
+An agent receives your message under a first line saying it's from you, with your node id, so it can reply. A
+terminal gets only your text.
+
 ## Wait for agents
 
 ```sh
@@ -191,9 +227,6 @@ patchbay wait --nodes <id>,<id> --any --timeout 300
   counted as finished.
 - `needs-you` means the person has to answer that agent. Tell them which node.
 - Finished isn't the same as right. Read the result before you build on it.
-
-An agent receives your message under a first line saying it's from you, with your node id, so it can reply. A
-terminal gets only your text.
 
 ## Look at a whiteboard
 

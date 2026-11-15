@@ -126,6 +126,12 @@ describe('the team lead prompt', () => {
     expect(prompt).toMatch(/reconcile/i)
   })
 
+  test('waits rather than polls, settles who commits, and closes the team at the end', () => {
+    expect(prompt).toContain('patchbay wait')
+    expect(prompt).toMatch(/who commits/)
+    expect(prompt).toContain('patchbay close')
+  })
+
   test('fits the limit on prompts', () => {
     expect(teamLeadPrompt('x'.repeat(100)).length).toBeLessThan(28000)
   })
