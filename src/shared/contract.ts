@@ -131,6 +131,15 @@ export interface NodeMessage {
   at: number
 }
 
+/** Shapes an agent drew on a whiteboard: the board had `before` shapes, and the agent's are the ones after them. */
+export interface BoardEdit {
+  id: string
+  by: string
+  before: number
+  after: number
+  at: number
+}
+
 /** An agent's change to a note, with the text from before it, so the person can undo it. */
 export interface NoteEdit {
   id: string
@@ -254,6 +263,8 @@ export interface PatchbayBridge {
   getMessages(): Promise<NodeMessage[]>
   /** An agent changed a note with `patchbay note`. */
   onNoteEdit(cb: (edit: NoteEdit) => void): () => void
+  /** An agent drew on a whiteboard with `patchbay draw`. */
+  onBoardEdit(cb: (edit: BoardEdit) => void): () => void
   /** When each session last did something, since the app started. A session with no entry shows no time. */
   getActivity(): Promise<Record<string, number>>
   onActivity(cb: (id: string, at: number) => void): () => void

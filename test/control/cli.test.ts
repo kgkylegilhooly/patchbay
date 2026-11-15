@@ -271,7 +271,7 @@ test('the skill is a plugin whose description and body cover every verb', () => 
   expect(manifest.name).toBe('patchbay')
   const skill = readFileSync('resources/skill/skills/patchbay/SKILL.md', 'utf8')
   expect(skill).toMatch(/^---\nname: patchbay\ndescription: .+\n---\n/)
-  for (const verb of ['whoami', 'list', 'open-terminal', 'open-agent', 'spawn-team', 'group', 'arrange', 'rename', 'sticky', 'note', 'link', 'read', 'send', 'wait', 'close', 'whiteboard', 'open-whiteboard']) {
+  for (const verb of ['whoami', 'list', 'open-terminal', 'open-agent', 'spawn-team', 'group', 'arrange', 'rename', 'sticky', 'note', 'link', 'read', 'send', 'wait', 'close', 'whiteboard', 'open-whiteboard', 'draw']) {
     expect(skill).toContain(`patchbay ${verb}`)
   }
 })

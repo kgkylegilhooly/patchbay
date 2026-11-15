@@ -91,6 +91,28 @@ test('open-agent refuses an unknown agent', async () => {
   expect(store.get().nodes).toHaveLength(1)
 })
 
+test('draw lays a diagram out on a reachable board, from text or a file, grows the board, and says who drew', async () => {
+  const edits: unknown[] = []
+  const board = { x: 0, y: 0, width: 300, height: 200, parentId: null, id: 'b', kind: 'whiteboard', title: 'Sketch', shapes: [], openedBy: 'me' } as CanvasNode
+  const store = memoryStore([claudeNode('me'), board, terminalNode('t', { openedBy: 'me' })])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }), onBoardEdit: (e) => edits.push(e) })
+  const diagram = { boxes: [{ id: 'a', label: 'A long label for the first box' }, { id: 'b', label: 'B' }], arrows: [{ from: 'a', to: 'b', label: 'calls' }] }
+  expect(await verbs('me', 'draw', { node: 'b', diagram: JSON.stringify(diagram) })).toEqual({ id: 'b', added: 6, look: 'patchbay whiteboard --node b' })
+  const drawn = store.get().nodes.find((n) => n.id === 'b') as WhiteboardNode
+  expect(drawn.shapes).toHaveLength(6)
+  expect(drawn.width).toBeGreaterThan(300)
+  expect(edits).toEqual([{ id: 'b', by: 'me', before: 0, after: 6, at: expect.any(Number) }])
+  const file = join(dir, 'sketch.json')
+  writeFileSync(file, JSON.stringify(diagram))
+  expect(await verbs('me', 'draw', { node: 'b', diagramFile: file })).toMatchObject({ added: 6 })
+  await refused(verbs('me', 'draw', { node: 't', diagram: '{}' }), /terminal, not a whiteboard/)
+  await refused(verbs('me', 'draw', { node: 'b', diagram: '{nope' }), /isn't valid JSON/)
+  await refused(verbs('me', 'draw', { node: 'b', diagram: '{"boxes": []}' }), /at least one box/)
+  await refused(verbs('me', 'draw', { node: 'b' }), /--diagram/)
+})
+
 test('closing the last member of a team takes its empty group too, but only a group the caller made', async () => {
   const { verbs, store } = setup([groupNode('mine-g', { openedBy: 'me' }), claudeNode('solo', { openedBy: 'me', parentId: 'mine-g' }), groupNode('theirs-g'), claudeNode('in-theirs', { openedBy: 'me', parentId: 'theirs-g' })])
   const team = (await verbs('me', 'spawn-team', { label: 'Pair', members: [{ name: 'a' }, { name: 'b' }] })) as { group: string; members: Record<string, string> }

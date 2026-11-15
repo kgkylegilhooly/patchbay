@@ -4,9 +4,11 @@ import { isAbsolute } from 'node:path'
 import { lastLines, readTranscript, stripAnsi } from '../../core/transcript/read'
 import { BLANK, checkUrl, TIMEOUTS } from '../../shared/browserPolicy'
 import type { BrowserDriver } from '../browser/driver'
-import type { CanvasStore, NoteEdit, SessionHost } from '../../shared/contract'
+import type { BoardEdit, CanvasStore, NoteEdit, SessionHost } from '../../shared/contract'
+import { isDiagramError, layoutDiagram, readDiagram } from '../../shared/diagram'
+import { boardSizeFor } from '../../shared/whiteboard'
 import type { GithubIssue, GithubPr } from '../../shared/git'
-import { agentOf, isSessionNode, type AgentKind, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode } from '../../shared/model'
+import { agentOf, isSessionNode, type AgentKind, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode, type WhiteboardShape } from '../../shared/model'
 import type { WhiteboardExporter } from '../whiteboardExport'
 import { describeWhoAmI, quoteTitle, whoami } from './whoami'
 import type { NodeRunner } from '../sessions/nodeRunner'
@@ -195,6 +197,7 @@ export function createVerbs({
   whiteboards,
   onMessage,
   onNoteEdit,
+  onBoardEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude'
 }: {
@@ -203,6 +206,8 @@ export function createVerbs({
   onMessage?: (from: string, to: string, text: string) => void
   /** An agent changed a note, so the person can see who did, and undo it. */
   onNoteEdit?: (edit: NoteEdit) => void
+  /** An agent drew on a whiteboard, likewise. */
+  onBoardEdit?: (edit: BoardEdit) => void
   /** Turns a board into files an agent can open. Without it, boards can still be read as text. */
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
@@ -615,6 +620,46 @@ export function createVerbs({
     return { id: node.id }
   }
 
+  /**
+   * Draws a diagram on a whiteboard, from boxes and the arrows between them, laid out below what's already there. It
+   * only ever adds, and the person sees who drew and can undo it.
+   */
+  const draw = (caller: string, args: Args): unknown => {
+    const id = required(args, 'node')
+    const inline = optional(args, 'diagram')
+    const file = optional(args, 'diagramFile')
+    if ((inline === undefined) === (file === undefined)) refuse('Pass one of --diagram JSON or --diagram-file FILE.')
+    const node = reachable(caller, id, 'draw on')
+    if (node.kind !== 'whiteboard') refuse(`Node "${id}" is a ${node.kind}, not a whiteboard.`)
+    let text = inline ?? ''
+    if (file !== undefined) {
+      try {
+        text = readFileSync(file, 'utf8')
+      } catch (e) {
+        refuse(`Could not read the diagram file ${file}: ${(e as Error).message}`)
+      }
+    }
+    let raw: unknown
+    try {
+      raw = JSON.parse(text)
+    } catch (e) {
+      refuse(`The diagram isn't valid JSON: ${(e as Error).message}. Put it in a file and use --diagram-file if quoting is awkward.`)
+    }
+    const board = node as WhiteboardNode
+    let added: WhiteboardShape[] = []
+    try {
+      added = layoutDiagram(readDiagram(raw), board.shapes)
+    } catch (e) {
+      if (isDiagramError(e)) refuse(e.message)
+      throw e
+    }
+    const next = [...board.shapes, ...added]
+    // The board grows to show the drawing, so nothing an agent drew is hidden past its edge.
+    store.dispatch({ op: 'patchNode', id, patch: { shapes: next, ...boardSizeFor(next, board) } as Partial<CanvasNode> })
+    onBoardEdit?.({ id, by: caller, before: board.shapes.length, after: next.length, at: Date.now() })
+    return { id, added: added.length, look: `patchbay whiteboard --node ${id}` }
+  }
+
   /** A board as a PNG to look at and an SVG beside it, with the text written on it. */
   const whiteboard = async (caller: string, args: Args): Promise<unknown> => {
     const id = required(args, 'node')
@@ -791,6 +836,8 @@ export function createVerbs({
         return openWhiteboard(caller, args)
       case 'whiteboard':
         return whiteboard(callerId, args)
+      case 'draw':
+        return draw(callerId, args)
       case 'link':
         return link(callerId, args)
       case 'read':

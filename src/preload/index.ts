@@ -106,6 +106,7 @@ const bridge: PatchbayBridge = {
   onMessage: (cb) => listen('onMessage', cb),
   getMessages: () => invoke('getMessages'),
   onNoteEdit: (cb) => listen('onNoteEdit', cb),
+  onBoardEdit: (cb) => listen('onBoardEdit', cb),
   saveBoardImage: (bytes, mime) => invoke('saveBoardImage', bytes, mime),
   readBoardImage: (file) => invoke('readBoardImage', file),
   getActivity: () => invoke('getActivity'),

@@ -7,7 +7,8 @@ import { Icon, type IconName } from '../icons'
 import { bridge } from '../bridge'
 import { useBoardImages } from '../boardImages'
 import { keyFocusOf } from '../keys'
-import { closeNodes, patchNode } from '../store'
+import { relativeTime } from '../sidebarView'
+import { closeNodes, patchNode, useStore } from '../store'
 import { svgToPng } from '../whiteboardImage'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 
@@ -47,7 +48,8 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const [erasing, setErasing] = useState<WhiteboardShape[] | null>(null)
   const [pending, setPending] = useState<WhiteboardShape[] | null>(null)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
-  const [typing, setTyping] = useState<{ x: number; y: number; text: string } | null>(null)
+  /** Text being typed: new at a point, or, with `index`, a change to text already on the board, in its own color and size. */
+  const [typing, setTyping] = useState<{ x: number; y: number; text: string; index?: number; color?: string; size?: number } | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const history = useRef<{ past: WhiteboardShape[][]; future: WhiteboardShape[][] }>({ past: [], future: [] })
   const [, setStep] = useState(0)
@@ -120,7 +122,13 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   }
 
   const finishText = (): void => {
-    if (typing && typing.text.trim()) commit([...shapes, { type: 'text', color, size, x: typing.x, y: typing.y, text: typing.text.slice(0, 500) }])
+    if (typing?.index !== undefined) {
+      const old = shapes[typing.index]
+      // Emptied text goes, as it would in any editor. Unchanged text changes nothing.
+      if (old?.type === 'text' && typing.text !== old.text) {
+        commit(typing.text.trim() ? shapes.map((s, i) => (i === typing.index ? { ...old, text: typing.text.slice(0, 500) } : s)) : shapes.filter((_, i) => i !== typing.index))
+      }
+    } else if (typing && typing.text.trim()) commit([...shapes, { type: 'text', color, size, x: typing.x, y: typing.y, text: typing.text.slice(0, 500) }])
     setTyping(null)
   }
 
@@ -221,6 +229,14 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     if ('x2' in live && Math.hypot(live.x2 - live.x1, live.y2 - live.y1) > 3) commit([...shapes, live])
   }
 
+  /** Opens text already on the board for changing, where it is, in its own color and size. */
+  const editText = (index: number): void => {
+    const s = shapes[index]
+    if (s?.type !== 'text') return
+    setChosen([])
+    setTyping({ x: s.x, y: s.y, text: s.text, index, color: s.color, size: s.size })
+  }
+
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (typing) return
     const key = e.key.toLowerCase()
@@ -233,6 +249,12 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
       commit(shapes.filter((_, i) => !chosen.includes(i)))
       setChosen([])
     } else if (plain && chosen.length && key === 'escape') setChosen([])
+    else if (e.ctrlKey && !e.altKey && key === 'd' && chosen.length) {
+      // A copy, a little down and to the right, selected so it can be moved straight away.
+      const copies = chosen.map((i) => moveShape(shapes[i], 16, 16))
+      commit([...shapes, ...copies])
+      setChosen(copies.map((_, i) => shapes.length + i))
+    } else if (plain && chosen.length === 1 && key === 'enter' && shapes[chosen[0]]?.type === 'text') editText(chosen[0])
     else if (plain && chosen.length && nudge) changeChosen((s) => moveShape(s, nudge[0] * (e.shiftKey ? 10 : 1), nudge[1] * (e.shiftKey ? 10 : 1)))
     else if (plain && !e.shiftKey && BY_KEY[key]) pickTool(BY_KEY[key])
     else return
@@ -308,6 +330,19 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
       setCopied('Could not copy')
     }
     setTimeout(() => setCopied(null), 1500)
+  }
+
+  // What an agent drew shows who drew it until the person keeps or undoes it. Once the board changes otherwise, it's theirs.
+  const drawn = useStore((s) => s.boardEdits[node.id])
+  const agentDrawing = drawn && drawn.after === node.shapes.length ? drawn : null
+  const settleDrawing = (): void =>
+    useStore.setState((s) => {
+      const { [node.id]: _settled, ...rest } = s.boardEdits
+      return { boardEdits: rest }
+    })
+  const drawers = (ids: string[]): string => {
+    const names = ids.map((id) => useStore.getState().doc?.nodes.find((n) => n.id === id)?.title ?? 'a closed agent')
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
   }
 
   const { past, future } = history.current
@@ -411,6 +446,13 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
         onPointerCancel={onUp}
         onPointerLeave={() => setCursor(null)}
         onKeyDown={onKey}
+        onDoubleClick={(e) => {
+          // Double-clicking text with the select tool changes it.
+          if (tool !== 'select' || typing) return
+          const p = at(e as unknown as React.PointerEvent)
+          const hit = shapeAt(shapes, p.x, p.y, REACH)
+          if (hit >= 0 && shapes[hit].type === 'text') editText(hit)
+        }}
         onDragOver={(e) => {
           if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) e.preventDefault()
         }}
@@ -432,6 +474,19 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
           {marquee && <rect className="wb-marquee" {...marqueeBox(marquee)} />}
           {tool === 'eraser' && cursor && <circle className="wb-eraser" cx={cursor.x} cy={cursor.y} r={ERASER} />}
         </svg>
+        {agentDrawing && (
+          <div className="wb-drawn" role="status" onPointerDown={(e) => e.stopPropagation()}>
+            <span className="wb-drawn-text">
+              <strong>{drawers(agentDrawing.by)}</strong> drew {agentDrawing.after - agentDrawing.before} shapes {relativeTime(agentDrawing.at, Date.now())}
+            </span>
+            <button type="button" className="btn" title="Take away what the agent drew" onClick={() => (patchNode(node.id, { shapes: node.shapes.slice(0, agentDrawing.before) }), settleDrawing())}>
+              Undo
+            </button>
+            <button type="button" className="btn" onClick={settleDrawing}>
+              Keep
+            </button>
+          </div>
+        )}
         {!shapes.length && !live && !typing && <p className="wb-hint">Draw here, or select the board and paste a screenshot with Ctrl+V. Link an agent to this board and it can export it as a picture.</p>}
         {typing && (
           <textarea
@@ -440,7 +495,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
             autoFocus
             rows={1}
             value={typing.text}
-            style={{ left: typing.x, top: typing.y, color, fontSize: textSize(size) }}
+            style={{ left: typing.x, top: typing.y, color: typing.color ?? color, fontSize: textSize(typing.size ?? size) }}
             onChange={(e) => setTyping({ ...typing, text: e.target.value })}
             onPointerDown={(e) => e.stopPropagation()}
             onBlur={finishText}

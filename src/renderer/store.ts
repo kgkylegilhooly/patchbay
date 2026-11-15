@@ -11,7 +11,7 @@ import { loadPrefs, type TerminalLook } from './prefs'
 import { EMPTY_HISTORY, entryFor, recordEntry, stepBack, stepForward, type History } from './undoHistory'
 import type { UsageMode } from './usageView'
 import { svgToPng } from './whiteboardImage'
-import { joinNoteEdit, type AgentNoteEdits } from './noteEdit'
+import { joinBoardEdit, joinNoteEdit, type AgentBoardEdits, type AgentNoteEdits } from './noteEdit'
 import { PULSE_MS, pulseCable } from './cableMotion'
 
 /** As many as main keeps. */
@@ -72,6 +72,8 @@ interface State {
   messages: NodeMessage[]
   /** Agents' changes to notes, by note, until the person keeps or undoes them. */
   noteEdits: Record<string, AgentNoteEdits>
+  /** Agents' drawing on whiteboards, by board, likewise. */
+  boardEdits: Record<string, AgentBoardEdits>
 }
 
 export const useStore = create<State>(() => ({
@@ -107,7 +109,8 @@ export const useStore = create<State>(() => ({
   runProblem: {},
   pulses: {},
   messages: [],
-  noteEdits: {}
+  noteEdits: {},
+  boardEdits: {}
 }))
 
 /** Loads everything from main, subscribing first so nothing that changes meanwhile is missed. */
@@ -131,6 +134,7 @@ export async function connectStore(): Promise<void> {
   )
   bridge.onApprovals((approvals) => useStore.setState({ approvals }))
   bridge.onChime(playChime)
+  bridge.onBoardEdit((edit) => useStore.setState((s) => ({ boardEdits: { ...s.boardEdits, [edit.id]: joinBoardEdit(s.boardEdits[edit.id], edit) } })))
   bridge.onNoteEdit((edit) => useStore.setState((s) => ({ noteEdits: { ...s.noteEdits, [edit.id]: joinNoteEdit(s.noteEdits[edit.id], edit) } })))
   bridge.onMessage((message) => {
     const { from, to } = message

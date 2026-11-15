@@ -95,6 +95,20 @@ export function joinNoteEdit(shown: AgentNoteEdits | undefined, edit: { by: stri
   return { by: [edit.by], before: edit.before, after: edit.after, at: edit.at }
 }
 
+/** Agents' drawing on one board since the person last kept or undid it: the shapes past `before` are theirs. */
+export interface AgentBoardEdits {
+  by: string[]
+  before: number
+  after: number
+  at: number
+}
+
+/** As for notes: drawing that follows straight on is undone together, and any other change starts afresh. */
+export function joinBoardEdit(shown: AgentBoardEdits | undefined, edit: { by: string; before: number; after: number; at: number }): AgentBoardEdits {
+  if (shown && shown.after === edit.before) return { by: shown.by.includes(edit.by) ? shown.by : [...shown.by, edit.by], before: shown.before, after: edit.after, at: edit.at }
+  return { by: [edit.by], before: edit.before, after: edit.after, at: edit.at }
+}
+
 const TASK = /^((?:[ \t]*>)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)([ xX])(\][ \t])/
 const FENCE = /^[ \t]*(?:>[ \t]*)*(`{3,}|~{3,})/
 

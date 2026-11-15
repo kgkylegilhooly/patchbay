@@ -28,6 +28,7 @@ const VERBS = {
   note: { node: 'text', text: 'text', append: 'text' },
   'open-whiteboard': { title: 'text', group: 'text' },
   whiteboard: { node: 'text' },
+  draw: { node: 'text', diagram: 'text', 'diagram-file': 'path' },
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
   send: { node: 'text', text: 'text' },
@@ -63,6 +64,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened
   open-whiteboard [--title T] [--group ID]
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
+  draw          --node ID (--diagram JSON | --diagram-file FILE)   draws boxes and arrows on a whiteboard
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT

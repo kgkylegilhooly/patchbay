@@ -115,6 +115,58 @@ async function main() {
     if (process.env.PB_KEEP_EXPORT && png2) fs.writeFileSync(process.env.PB_KEEP_EXPORT.replace(/\.png$/, '-picture.png'), png2)
     // The profile goes when this ends, so the picture is kept elsewhere for looking at, when asked.
     if (png && process.env.PB_KEEP_EXPORT) fs.copyFileSync(r.image, process.env.PB_KEEP_EXPORT)
+    // The agent sketches back: boxes and arrows, laid out for it, below what's there, with the board grown to show it.
+    const diagram = {
+      title: 'Checkout, as I understand it',
+      boxes: [{ id: 'cart', label: 'Cart page' }, { id: 'api', label: 'Orders API' }, { id: 'pay', label: 'Payment\nprovider', color: 'blue' }, { id: 'mail', label: 'Receipt email', color: 'green' }],
+      arrows: [{ from: 'cart', to: 'api', label: 'POST /orders' }, { from: 'api', to: 'pay', label: 'charge' }, { from: 'api', to: 'mail' }]
+    }
+    const sizeBefore = (await L.doc(page)).nodes.find((n) => n.id === 'board')
+    const drew = await rpc(profile, 'agent', 'draw', { node: 'board', diagram: JSON.stringify(diagram) })
+    const boardAfter = (await L.doc(page)).nodes.find((n) => n.id === 'board')
+    c.check('A linked agent draws a diagram on the board', drew.status === 200 && drew.json.result?.added === 14, drew.json)
+    c.check('The board grows to show it', boardAfter.height > sizeBefore.height, [sizeBefore.height, boardAfter.height])
+    const notice = await L.waitFor('the drawn-by notice', () => page.$eval('.react-flow__node[data-id="board"] .wb-drawn', (n) => n.textContent), 3000).catch(() => '')
+    c.check('The board says which agent drew on it', /agent drew 14 shapes/.test(notice), notice)
+    if (process.env.PB_SHOTS) {
+      await L.fitView?.(page)
+      await L.sleep(400)
+      const shot = await page.$('.react-flow__node[data-id="board"]')
+      await shot.screenshot({ path: path.join(process.env.PB_SHOTS, 'board-drawn.png') })
+    }
+    const refusedDraw = await rpc(profile, 'stranger', 'draw', { node: 'board', diagram: JSON.stringify(diagram) })
+    c.check('A node that is not linked cannot draw on it', refusedDraw.status === 400, refusedDraw.json)
+    const badDraw = await rpc(profile, 'agent', 'draw', { node: 'board', diagram: '{"boxes": [{"id": "a"}], "arrows": [{"from": "a", "to": "b"}]}' })
+    c.check('A diagram with a mistake is refused with what to fix', badDraw.status === 400 && /Arrow 1/.test(badDraw.json.error), badDraw.json)
+    await page.click('.react-flow__node[data-id="board"] .wb-drawn .btn')
+    const undone = await L.waitFor('the drawing taken away', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length === boardAfter.shapes.length - 14, 3000).catch(() => false)
+    c.check('Undo takes away what the agent drew, and nothing else', undone && !(await page.$('.wb-drawn')))
+
+    // Text already on the board changes in place: double-click it with the select tool and type.
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Select and move"]')
+    const surface = await page.$('.react-flow__node[data-id="board"] .wb-surface')
+    const box = await surface.boundingBox()
+    const scale = box.width / (await surface.evaluate((el) => el.offsetWidth))
+    const word = (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.find((s) => s.type === 'text' && s.text === 'Checkout')
+    await page.mouse.click(box.x + (word.x + 20) * scale, box.y + (word.y + 10) * scale, { count: 2 })
+    await page.waitForSelector('.react-flow__node[data-id="board"] .wb-type', { timeout: 3000 }).catch(() => {})
+    await page.keyboard.down('Control')
+    await page.keyboard.press('a')
+    await page.keyboard.up('Control')
+    await page.keyboard.type('Checkout v2')
+    await page.keyboard.press('Enter')
+    const renamed = await L.waitFor('the text changed', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.some((s) => s.type === 'text' && s.text === 'Checkout v2'), 3000).catch(() => false)
+    c.check('Double-clicking text with the select tool changes it in place', renamed)
+
+    // Ctrl+D copies what's selected.
+    const before = (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length
+    await page.mouse.click(box.x + (word.x + 20) * scale, box.y + (word.y + 10) * scale)
+    await page.keyboard.down('Control')
+    await page.keyboard.press('d')
+    await page.keyboard.up('Control')
+    const copied = await L.waitFor('the copy', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length === before + 1, 3000).catch(() => false)
+    c.check('Ctrl+D copies the selected shape', copied)
+
     c.check('No page errors in the app window', app.problems.length === 0, app.problems.slice(0, 3))
   } finally {
     await app.quit().catch(() => {})

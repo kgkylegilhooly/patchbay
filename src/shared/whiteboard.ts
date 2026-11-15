@@ -14,6 +14,18 @@ export function boardArea(node: { width: number; height: number }): { width: num
   return { width: Math.max(1, Math.round(node.width - CHROME.width)), height: Math.max(1, Math.round(node.height - CHROME.height)) }
 }
 
+/** How big a board node has to be to show all its shapes, but never smaller than it is now. */
+export function boardSizeFor(shapes: WhiteboardShape[], node: { width: number; height: number }): { width: number; height: number } {
+  let right = 0
+  let bottom = 0
+  for (const s of shapes) {
+    const b = shapeBox(s)
+    right = Math.max(right, b.x + b.width)
+    bottom = Math.max(bottom, b.y + b.height)
+  }
+  return { width: Math.max(node.width, Math.ceil(right + 30 + CHROME.width)), height: Math.max(node.height, Math.ceil(bottom + 30 + CHROME.height)) }
+}
+
 /** The first is the default pen. */
 export const BOARD_COLORS = ['#1f1f22', '#d64545', '#e8862f', '#2f9e5b', '#2f6fd6', '#8a4fd6']
 export const BOARD_SIZES = [2, 4, 8]
