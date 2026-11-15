@@ -24,7 +24,10 @@ function seed(profile, cwd) {
       term('dev', 640),
       { id: 'board', kind: 'sticky', title: 'Note', text: '## Release checklist\n- [ ] bump the version', x: 0, y: 360, width: 280, height: 200, parentId: null, projectId: 'p1' }
     ],
-    edges: [{ id: 'cable', from: 'lead', to: 'dev', kind: 'link' }],
+    edges: [
+      { id: 'cable', from: 'lead', to: 'dev', kind: 'link' },
+      { id: 'to-note', from: 'lead', to: 'board', kind: 'link' }
+    ],
     closed: []
   }
   fs.writeFileSync(path.join(profile, 'canvas.json'), JSON.stringify(doc))
@@ -72,6 +75,27 @@ async function main() {
     c.check('A reply runs the other way down the same cable', back.status === 200 && backWay === '1;0', backWay)
     await L.waitFor('the worker to run it', async () => (await L.snapshot(page, 'dev')).includes('hello-from-lead'), 10000).catch(() => {})
     c.check('The worker got the text', (await L.snapshot(page, 'dev')).includes('hello-from-lead'))
+
+    // Clicking the cable lists what was said along it.
+    const middle = await page.$eval('.react-flow__edge[data-id="cable"] .react-flow__edge-interaction', (p) => {
+      const at = p.getPointAtLength(p.getTotalLength() / 2)
+      const m = p.getScreenCTM()
+      return { x: at.x * m.a + m.e, y: at.y * m.d + m.f }
+    })
+    await page.mouse.click(middle.x, middle.y)
+    const log = await L.waitFor('the cable panel', () => page.$$eval('.cable-log li', (lis) => lis.map((li) => li.textContent)), 3000).catch(() => [])
+    c.check('A selected cable lists the messages both ways, newest last', log.length === 2 && /Lead to Worker/.test(log[0]) && /echo hello-from-lead/.test(log[0]) && /Worker to Lead/.test(log[1]), log)
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'cable-log.png') })
+
+    // An agent adds to the person's note: the note says who, and Undo puts it back.
+    const added = await rpc(profile, 'lead', 'note', { node: 'board', append: '- [ ] tag the release (Lead)' })
+    c.check('A linked agent adds a line to the note', added.status === 200, added.json)
+    const footer = await L.waitFor('the change notice', () => page.$eval('.react-flow__node[data-id="board"] .note-edited', (f) => f.textContent), 3000).catch(() => '')
+    c.check('The note says which agent changed it', /Changed by Lead/.test(footer), footer)
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'note-edited.png') })
+    await page.click('.react-flow__node[data-id="board"] .note-edited-undo')
+    const restored = await L.waitFor('the note put back', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').text === '## Release checklist\n- [ ] bump the version', 3000).catch(() => false)
+    c.check('Undo puts back the text from before, and the notice goes', restored && !(await page.$('.note-edited')))
 
     await page.click('.react-flow__pane')
     await page.keyboard.down('Control')

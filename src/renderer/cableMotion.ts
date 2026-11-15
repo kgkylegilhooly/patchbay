@@ -1,3 +1,4 @@
+import type { NodeMessage } from '../shared/contract'
 import type { Edge } from '../shared/model'
 
 /** Every kind of cable on the canvas. `trigger` is drawn from a trigger's target and is never saved as an edge. */
@@ -22,6 +23,11 @@ export function pulseCable(edges: Edge[], from: string, to: string): { id: strin
   const between = edges.filter((e) => (e.from === from && e.to === to) || (e.from === to && e.to === from))
   const edge = between.find((e) => e.kind === 'link') ?? between.find((e) => e.kind === 'opened') ?? between[0]
   return edge ? { id: edge.id, reverse: edge.from !== from } : null
+}
+
+/** The latest messages either way between the two nodes a cable joins, oldest first, as its panel lists them. */
+export function cableMessages(messages: NodeMessage[], a: string, b: string, limit = 6): NodeMessage[] {
+  return messages.filter((m) => (m.from === a && m.to === b) || (m.from === b && m.to === a)).slice(-limit)
 }
 
 /** Below this the dots are too small to read, so moving them only costs paint. */

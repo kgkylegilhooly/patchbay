@@ -6,7 +6,8 @@ import type { FlowNode } from '../flowMapping'
 import { CODE_LANGUAGES } from '../highlight'
 import { Icon, type IconName } from '../icons'
 import { codeBlock, indent, link, prefixLines, toggleTask, wrap, type TextEdit } from '../noteEdit'
-import { closeNodes, patchNode } from '../store'
+import { relativeTime } from '../sidebarView'
+import { closeNodes, patchNode, useStore } from '../store'
 import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 
@@ -183,6 +184,18 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
   const [picking, setPicking] = useState(false)
   const html = useMemo(() => renderMarkdown(node.text, { tasks: true }), [node.text])
   const color = noteColor(node.color)
+  // An agent's changes show until the person keeps or undoes them. Once the note changes some other way, they're past undoing.
+  const edits = useStore((s) => s.noteEdits[node.id])
+  const agentEdits = edits && edits.after === node.text ? edits : null
+  const settle = (): void =>
+    useStore.setState((s) => {
+      const { [node.id]: _settled, ...rest } = s.noteEdits
+      return { noteEdits: rest }
+    })
+  const editors = (ids: string[]): string => {
+    const names = ids.map((id) => useStore.getState().doc?.nodes.find((n) => n.id === id)?.title ?? 'a closed agent')
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
+  }
 
   const onBodyClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     const target = e.target as HTMLElement
@@ -253,6 +266,19 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
         <button type="button" className="note-body note-empty nodrag" onClick={() => setEditing(true)}>
           Write a note
         </button>
+      )}
+      {agentEdits && !editing && (
+        <footer className="note-edited nodrag" role="status">
+          <span className="note-edited-text">
+            Changed by <strong>{editors(agentEdits.by)}</strong> {relativeTime(agentEdits.at, Date.now())}
+          </span>
+          <button type="button" className="btn note-edited-undo" title="Put back the text from before the agent's change" onClick={() => (patchNode(node.id, { text: agentEdits.before }), settle())}>
+            Undo
+          </button>
+          <button type="button" className="icon-btn" aria-label="Keep the change" title="Keep the change" onClick={settle}>
+            <Icon name="check" size={15} />
+          </button>
+        </footer>
       )}
     </div>
   )

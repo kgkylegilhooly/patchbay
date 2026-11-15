@@ -4,7 +4,7 @@ import { isAbsolute } from 'node:path'
 import { lastLines, readTranscript, stripAnsi } from '../../core/transcript/read'
 import { BLANK, checkUrl, TIMEOUTS } from '../../shared/browserPolicy'
 import type { BrowserDriver } from '../browser/driver'
-import type { CanvasStore, SessionHost } from '../../shared/contract'
+import type { CanvasStore, NoteEdit, SessionHost } from '../../shared/contract'
 import type { GithubIssue, GithubPr } from '../../shared/git'
 import { agentOf, isSessionNode, type AgentKind, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type Edge, type GroupNode, type StickyNode, type TerminalNode, type WhiteboardNode } from '../../shared/model'
 import type { WhiteboardExporter } from '../whiteboardExport'
@@ -194,12 +194,15 @@ export function createVerbs({
   queue,
   whiteboards,
   onMessage,
+  onNoteEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude'
 }: {
   waitTiming?: WaitTiming
-  /** A node sent another a message, so the canvas can show it travel down the cable between them. */
-  onMessage?: (from: string, to: string) => void
+  /** A node sent another a message, so the canvas can show it travel down the cable between them, and keep it. */
+  onMessage?: (from: string, to: string, text: string) => void
+  /** An agent changed a note, so the person can see who did, and undo it. */
+  onNoteEdit?: (edit: NoteEdit) => void
   /** Turns a board into files an agent can open. Without it, boards can still be read as text. */
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
@@ -293,7 +296,7 @@ export function createVerbs({
       // A terminal has no status to wait for, and may need control keys.
       if (!host.isRunning(id)) refuse(`Node "${id}" is not running.`)
       sendQueue.type(id, raw)
-      onMessage?.(caller, id)
+      onMessage?.(caller, id, plainText(raw))
       return { delivered: true }
     }
     if (node.kind !== 'claude') refuse(`Can't send to node "${id}": it isn't a terminal or an agent node.`)
@@ -302,7 +305,7 @@ export function createVerbs({
     if (!body.trim()) refuse('--text has nothing to send.')
     const text = `${senderLine(caller)}\n${body}`
     const queued = sendQueue.add(id, { text }) === 'queued'
-    onMessage?.(caller, id)
+    onMessage?.(caller, id, body)
     return queued ? { delivered: false, queued: true } : { delivered: true }
   }
 
@@ -595,6 +598,7 @@ export function createVerbs({
     const before = (node as StickyNode).text
     const next = text ?? (before && !before.endsWith('\n') ? `${before}\n${append}` : `${before}${append}`)
     store.dispatch({ op: 'patchNode', id, patch: { text: next } })
+    onNoteEdit?.({ id, by: caller, before, after: next, at: Date.now() })
     return { id, chars: next.length }
   }
 

@@ -78,6 +78,23 @@ export function indent(from: number, to: number): TextEdit {
   return { from, to, insert: '  ', select: [from + 2, from + 2] }
 }
 
+/** Agents' changes to one note since the person last kept or undid them: who made them, and the text before the first. */
+export interface AgentNoteEdits {
+  by: string[]
+  before: string
+  after: string
+  at: number
+}
+
+/**
+ * Adds an agent's change to those already showing on a note. Changes that follow on from each other are undone
+ * together. One made after the note changed some other way, as when the person edited it, starts afresh.
+ */
+export function joinNoteEdit(shown: AgentNoteEdits | undefined, edit: { by: string; before: string; after: string; at: number }): AgentNoteEdits {
+  if (shown && shown.after === edit.before) return { by: shown.by.includes(edit.by) ? shown.by : [...shown.by, edit.by], before: shown.before, after: edit.after, at: edit.at }
+  return { by: [edit.by], before: edit.before, after: edit.after, at: edit.at }
+}
+
 const TASK = /^((?:[ \t]*>)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)([ xX])(\][ \t])/
 const FENCE = /^[ \t]*(?:>[ \t]*)*(`{3,}|~{3,})/
 

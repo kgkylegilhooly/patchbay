@@ -1,14 +1,19 @@
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from '@xyflow/react'
-import { memo } from 'react'
-import { cableDirection } from '../cableMotion'
+import { memo, useMemo } from 'react'
+import { cableDirection, cableMessages } from '../cableMotion'
+import { relativeTime } from '../sidebarView'
 import { cablePath, type FlowEdge } from '../flowMapping'
 import { dispatch, patchNode, useStore } from '../store'
 
-export const CableEdge = memo(function CableEdge({ id, source, sourceX, sourceY, targetX, targetY, selected, data, markerEnd }: EdgeProps<FlowEdge>) {
+export const CableEdge = memo(function CableEdge({ id, source, target, sourceX, sourceY, targetX, targetY, selected, data, markerEnd }: EdgeProps<FlowEdge>) {
   const { path, midX, sagY } = cablePath(sourceX, sourceY, targetX, targetY)
   const kind = data?.kind
   const oneWay = !!kind && cableDirection(kind) === 'forward'
   const pulse = useStore((s) => s.pulses[id])
+  const messages = useStore((s) => s.messages)
+  // Only a selected cable shows what was said along it, so only one works it out.
+  const said = useMemo(() => (selected && kind === 'link' ? cableMessages(messages, source, target) : []), [selected, kind, messages, source, target])
+  const titleOf = (nodeId: string): string => useStore.getState().doc?.nodes.find((n) => n.id === nodeId)?.title ?? 'A closed node'
   const unplug = kind === 'link' ? () => dispatch({ op: 'removeEdge', id }) : kind === 'trigger' ? () => patchNode(source, { targetId: null }) : null
   return (
     <>
@@ -27,6 +32,25 @@ export const CableEdge = memo(function CableEdge({ id, source, sourceX, sourceY,
       )}
       {selected && unplug && (
         <EdgeLabelRenderer>
+          {said.length > 0 && (
+            <section
+              className="cable-log nodrag nopan nowheel"
+              aria-label={`Messages between ${titleOf(source)} and ${titleOf(target)}`}
+              style={{ transform: `translate(-50%, calc(-100% - 24px)) translate(${midX}px, ${sagY}px)` }}
+            >
+              <h3 className="cable-log-head">Recent messages</h3>
+              <ol>
+                {said.map((m) => (
+                  <li key={`${m.at}-${m.from}`}>
+                    <div className="cable-log-meta">
+                      <strong>{titleOf(m.from)}</strong> to {titleOf(m.to)}, {relativeTime(m.at, Date.now())}
+                    </div>
+                    <p className="cable-log-text">{m.text}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           <button
             className="btn unplug nodrag nopan"
             style={{ transform: `translate(-50%, -50%) translate(${midX}px, ${sagY}px)` }}

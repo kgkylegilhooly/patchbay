@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IMAGE_FILE } from '../shared/whiteboard'
 
@@ -20,6 +20,35 @@ export function saveBoardImage(dir: string, bytes: Uint8Array, mime: string): st
   const path = join(dir, file)
   if (!existsSync(path)) writeFileSync(path, bytes)
   return file
+}
+
+/** Old enough that no board coming back from a recent backup could still want it. */
+const UNUSED_KEPT_MS = 24 * 60 * 60_000
+
+/**
+ * Deletes pictures no board uses, as at startup, when there's no undo history that could bring a board back. Only
+ * files this saves are touched, and only once they're a day old. Returns how many went.
+ */
+export function pruneBoardImages(dir: string, used: Set<string>, now = Date.now()): number {
+  let removed = 0
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return 0
+  }
+  for (const name of names) {
+    if (!IMAGE_FILE.test(name) || used.has(name)) continue
+    const path = join(dir, name)
+    try {
+      if (now - statSync(path).mtimeMs < UNUSED_KEPT_MS) continue
+      rmSync(path, { force: true })
+      removed++
+    } catch {
+      // A picture that can't be removed now can go next time.
+    }
+  }
+  return removed
 }
 
 /** A saved picture as a data URL, or null if the name isn't one this saves or the file has gone. */

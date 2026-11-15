@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { codeBlock, link, prefixLines, toggleTask, wrap, type TextEdit } from '../../src/renderer/noteEdit'
+import { codeBlock, joinNoteEdit, link, prefixLines, toggleTask, wrap, type TextEdit } from '../../src/renderer/noteEdit'
 
 const apply = (text: string, e: TextEdit): { text: string; selected: string } => {
   const next = text.slice(0, e.from) + e.insert + text.slice(e.to)
@@ -73,5 +73,19 @@ describe('toggleTask', () => {
   test('changes nothing when the count disagrees with what is shown', () => {
     expect(toggleTask(text, 0, 4)).toBeNull()
     expect(toggleTask(text, 5, 3)).toBeNull()
+  })
+})
+
+describe('agent edits to a note', () => {
+  test('changes that follow on from each other are kept together, under every agent that made them', () => {
+    const first = joinNoteEdit(undefined, { by: 'a', before: 'x', after: 'x\n1', at: 1 })
+    const second = joinNoteEdit(first, { by: 'b', before: 'x\n1', after: 'x\n1\n2', at: 2 })
+    expect(second).toEqual({ by: ['a', 'b'], before: 'x', after: 'x\n1\n2', at: 2 })
+    expect(joinNoteEdit(second, { by: 'a', before: 'x\n1\n2', after: 'y', at: 3 }).by).toEqual(['a', 'b'])
+  })
+
+  test('a change after the note changed some other way starts afresh', () => {
+    const first = joinNoteEdit(undefined, { by: 'a', before: 'x', after: 'x\n1', at: 1 })
+    expect(joinNoteEdit(first, { by: 'b', before: 'edited by the person', after: 'z', at: 2 })).toEqual({ by: ['b'], before: 'edited by the person', after: 'z', at: 2 })
   })
 })

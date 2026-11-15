@@ -123,6 +123,23 @@ export interface BrowserState {
 
 export type BrowserStep = 'back' | 'forward' | 'reload' | 'stop'
 
+/** A message one node sent another with `patchbay send`. The text is as written, without the line naming the sender. */
+export interface NodeMessage {
+  from: string
+  to: string
+  text: string
+  at: number
+}
+
+/** An agent's change to a note, with the text from before it, so the person can undo it. */
+export interface NoteEdit {
+  id: string
+  by: string
+  before: string
+  after: string
+  at: number
+}
+
 export interface PatchbayBridge {
   /** Tells main which page belongs to which node, once the canvas has drawn it. */
   browserAttached(nodeId: string, contentsId: number): Promise<void>
@@ -232,7 +249,11 @@ export interface PatchbayBridge {
   /** Main asks for a node to be centered, as when its notification is clicked. */
   onCenterNode(cb: (id: string) => void): () => void
   /** One node sent another a message with `patchbay send`. */
-  onMessage(cb: (from: string, to: string) => void): () => void
+  onMessage(cb: (message: NodeMessage) => void): () => void
+  /** The messages sent between nodes since the app started, newest last. */
+  getMessages(): Promise<NodeMessage[]>
+  /** An agent changed a note with `patchbay note`. */
+  onNoteEdit(cb: (edit: NoteEdit) => void): () => void
   /** When each session last did something, since the app started. A session with no entry shows no time. */
   getActivity(): Promise<Record<string, number>>
   onActivity(cb: (id: string, at: number) => void): () => void

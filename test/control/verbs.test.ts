@@ -379,6 +379,19 @@ test('note adds to any note the caller can reach, and replaces only one it opene
   await refused(verbs('me', 'note', { node: 'me', append: 'x' }), /isn't linked|not a note/)
 })
 
+test('an agent\'s change to a note is reported with the text from before it, so the person can undo it', async () => {
+  const edits: unknown[] = []
+  const theirs: StickyNode = { x: 0, y: 0, width: 280, height: 220, parentId: null, id: 'theirs', kind: 'sticky', title: 'Board', text: 'a' }
+  const store = memoryStore([claudeNode('me'), theirs])
+  store.dispatch({ op: 'addEdge', edge: { id: 'l', from: 'me', to: 'theirs', kind: 'link' } })
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }), onNoteEdit: (e) => edits.push(e) })
+  await verbs('me', 'note', { node: 'theirs', append: 'b' })
+  await refused(verbs('me', 'note', { node: 'theirs', text: 'gone' }), /only add/)
+  expect(edits).toEqual([{ id: 'theirs', by: 'me', before: 'a', after: 'a\nb', at: expect.any(Number) }])
+})
+
 test('link joins the caller to a node it opened, or two nodes it opened', async () => {
   const { verbs, edges } = setup([
     terminalNode('mine1', { openedBy: 'me' }),
@@ -564,11 +577,12 @@ test('a message that goes out is reported for the canvas to show, and a refused 
   const runner = fakeRunner()
   const host = fakeHost()
   host.running.add('t')
-  const verbs = createVerbs({ store, runner, tracker, host, gate: createAfterGate({ store, tracker, runner }), onMessage: (from, to) => sent.push(`${from}>${to}`) })
-  await verbs('me', 'send', { node: 'c', text: 'hi' })
+  const verbs = createVerbs({ store, runner, tracker, host, gate: createAfterGate({ store, tracker, runner }), onMessage: (from, to, text) => sent.push(`${from}>${to}: ${text}`) })
+  await verbs('me', 'send', { node: 'c', text: 'hi\x1b[B' })
   await verbs('me', 'send', { node: 't', text: 'ls' })
   await refused(verbs('me', 'send', { node: 'far', text: 'hi' }), /isn't linked/)
-  expect(sent).toEqual(['me>c', 'me>t'])
+  // The text kept is what was said, without the line naming the sender, and without control keys.
+  expect(sent).toEqual(['me>c: hi[B', 'me>t: ls'])
 })
 
 describe('wait', () => {

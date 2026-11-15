@@ -12,6 +12,8 @@ import { loadOrCreateSecret, startControlServer, type ControlServer } from './co
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { createWhiteboardExporter } from './whiteboardExport'
+import { createMessageLog } from './messageLog'
+import { pruneBoardImages } from './boardImages'
 import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
@@ -193,6 +195,11 @@ async function boot(): Promise<void> {
     app.exit(1)
     return
   }
+  // Nothing can bring back a deleted board at startup, so pictures no board uses can go, once they're old enough.
+  pruneBoardImages(
+    join(dataDir, 'whiteboards', 'images'),
+    new Set(store.get().nodes.flatMap((n) => (n.kind === 'whiteboard' ? n.shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])) : [])))
+  )
 
   // Held until clicked: Electron drops the click handler of a notification that's been collected.
   const showing = new Set<Notification>()
@@ -299,8 +306,10 @@ async function boot(): Promise<void> {
   const github = createGithubReader(store, work.git, work.gh)
   // One line into each session, shared by `patchbay send` and triggers.
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id) })
+  const messages = createMessageLog()
+  ipcMain.handle('pb:getMessages', () => messages.all())
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to) => broadcast('pb:onMessage', from, to), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => broadcast('pb:onNoteEdit', edit), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { BrowserState, NodeError, PendingApproval, PortInfo, RunResult } from '../shared/contract'
+import type { BrowserState, NodeError, NodeMessage, PendingApproval, PortInfo, RunResult } from '../shared/contract'
 import { isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode, type CanvasOp } from '../shared/model'
 import type { UsageState } from '../shared/usage'
 import { bridge } from './bridge'
@@ -11,7 +11,11 @@ import { loadPrefs, type TerminalLook } from './prefs'
 import { EMPTY_HISTORY, entryFor, recordEntry, stepBack, stepForward, type History } from './undoHistory'
 import type { UsageMode } from './usageView'
 import { svgToPng } from './whiteboardImage'
+import { joinNoteEdit, type AgentNoteEdits } from './noteEdit'
 import { PULSE_MS, pulseCable } from './cableMotion'
+
+/** As many as main keeps. */
+const MESSAGES_KEPT = 300
 
 interface State {
   doc: CanvasDoc | null
@@ -64,6 +68,10 @@ interface State {
   runProblem: Record<string, string>
   /** Cables carrying a message right now, by edge id. `at` tells one message from the next on the same cable. */
   pulses: Record<string, { at: number; reverse: boolean }>
+  /** What nodes have sent each other since the app started, newest last. */
+  messages: NodeMessage[]
+  /** Agents' changes to notes, by note, until the person keeps or undoes them. */
+  noteEdits: Record<string, AgentNoteEdits>
 }
 
 export const useStore = create<State>(() => ({
@@ -97,7 +105,9 @@ export const useStore = create<State>(() => ({
   boardOpen: false,
   triggerAsk: null,
   runProblem: {},
-  pulses: {}
+  pulses: {},
+  messages: [],
+  noteEdits: {}
 }))
 
 /** Loads everything from main, subscribing first so nothing that changes meanwhile is missed. */
@@ -121,7 +131,10 @@ export async function connectStore(): Promise<void> {
   )
   bridge.onApprovals((approvals) => useStore.setState({ approvals }))
   bridge.onChime(playChime)
-  bridge.onMessage((from, to) => {
+  bridge.onNoteEdit((edit) => useStore.setState((s) => ({ noteEdits: { ...s.noteEdits, [edit.id]: joinNoteEdit(s.noteEdits[edit.id], edit) } })))
+  bridge.onMessage((message) => {
+    const { from, to } = message
+    useStore.setState((s) => ({ messages: [...s.messages, message].slice(-MESSAGES_KEPT) }))
     const cable = pulseCable(useStore.getState().doc?.edges ?? [], from, to)
     if (!cable) return
     const at = Date.now()
@@ -152,6 +165,8 @@ export async function connectStore(): Promise<void> {
   void bridge.getRuns().then((runs) => useStore.setState((s) => ({ runs: { ...runs, ...s.runs } })))
   bridge.onPorts((ports) => useStore.setState({ ports }))
   void bridge.getPorts().then((ports) => useStore.setState({ ports }))
+  // Any that arrived while this loaded are newer, so they go after.
+  void bridge.getMessages().then((earlier) => useStore.setState((s) => ({ messages: [...earlier, ...s.messages.filter((m) => !earlier.some((e) => e.at === m.at && e.from === m.from && e.to === m.to))].slice(-MESSAGES_KEPT) })))
   bridge.onBrowserState((id, state) =>
     useStore.setState((s) => {
       const browsers = { ...s.browsers }

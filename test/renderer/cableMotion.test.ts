@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { cableDirection, isFarZoom, pulseCable } from '../../src/renderer/cableMotion'
+import { cableDirection, cableMessages, isFarZoom, pulseCable } from '../../src/renderer/cableMotion'
 import { cablePath, toFlow } from '../../src/renderer/flowMapping'
 import type { CanvasDoc, CanvasNode, Edge } from '../../src/shared/model'
 import { claudeNode, terminalNode } from '../control/fakes'
@@ -68,4 +68,12 @@ describe('a message on a cable', () => {
     expect(pulseCable([e('a', 'dev', 'lead', 'after')], 'lead', 'dev')).toEqual({ id: 'a', reverse: true })
     expect(pulseCable([e('l', 'a', 'b', 'link')], 'a', 'c')).toBeNull()
   })
+})
+
+test('a cable lists the latest messages either way between its two nodes', () => {
+  const m = (from: string, to: string, at: number) => ({ from, to, text: `${from}${at}`, at })
+  const messages = [m('a', 'b', 1), m('b', 'a', 2), m('a', 'c', 3), m('a', 'b', 4)]
+  expect(cableMessages(messages, 'a', 'b').map((x) => x.at)).toEqual([1, 2, 4])
+  expect(cableMessages(messages, 'b', 'a', 2).map((x) => x.at)).toEqual([2, 4])
+  expect(cableMessages(messages, 'b', 'c')).toEqual([])
 })

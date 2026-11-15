@@ -1,8 +1,8 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { MAX_IMAGE_BYTES, readBoardImage, saveBoardImage } from '../../src/main/boardImages'
+import { MAX_IMAGE_BYTES, pruneBoardImages, readBoardImage, saveBoardImage } from '../../src/main/boardImages'
 
 let dir: string
 beforeEach(() => (dir = join(mkdtempSync(join(tmpdir(), 'pb-images-')), 'images')))
@@ -25,4 +25,17 @@ test('other kinds of file, empty or huge pictures are refused, and only saved na
   expect(() => saveBoardImage(dir, new Uint8Array(MAX_IMAGE_BYTES + 1), 'image/png')).toThrow(/over/)
   expect(readBoardImage(dir, '../../canvas.json')).toBeNull()
   expect(readBoardImage(dir, `${'0'.repeat(64)}.png`)).toBeNull()
+})
+
+test('pictures no board uses are deleted once a day old, and nothing else in the folder is touched', () => {
+  const used = saveBoardImage(dir, bytes, 'image/png')
+  const stale = saveBoardImage(dir, new Uint8Array([1, 2]), 'image/png')
+  const fresh = saveBoardImage(dir, new Uint8Array([3, 4]), 'image/png')
+  writeFileSync(join(dir, 'notes.txt'), 'keep me')
+  const day = 24 * 60 * 60_000
+  utimesSync(join(dir, stale), new Date(Date.now() - 2 * day), new Date(Date.now() - 2 * day))
+  utimesSync(join(dir, used), new Date(Date.now() - 2 * day), new Date(Date.now() - 2 * day))
+  expect(pruneBoardImages(dir, new Set([used]))).toBe(1)
+  expect(readdirSync(dir).sort()).toEqual([used, fresh, 'notes.txt'].sort())
+  expect(pruneBoardImages(join(dir, 'missing'), new Set())).toBe(0)
 })
