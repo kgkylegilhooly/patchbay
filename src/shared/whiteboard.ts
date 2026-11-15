@@ -211,6 +211,29 @@ export function touches(s: WhiteboardShape, x: number, y: number, radius: number
   }
 }
 
+/** The topmost shape whose ink is within reach of a point, or -1. */
+export function shapeAt(shapes: WhiteboardShape[], x: number, y: number, reach: number): number {
+  for (let i = shapes.length - 1; i >= 0; i--) if (touches(shapes[i], x, y, reach)) return i
+  return -1
+}
+
+/** The shapes lying wholly inside a box, as a drag to select picks them. */
+export function shapesIn(shapes: WhiteboardShape[], box: Box): number[] {
+  const out: number[] = []
+  shapes.forEach((s, i) => {
+    const b = shapeBox(s)
+    if (b.x >= box.x && b.y >= box.y && b.x + b.width <= box.x + box.width && b.y + b.height <= box.y + box.height) out.push(i)
+  })
+  return out
+}
+
+/** A shape moved by dx, dy. */
+export function moveShape(s: WhiteboardShape, dx: number, dy: number): WhiteboardShape {
+  if (s.type === 'pen') return { ...s, points: s.points.map((v, i) => r1(v + (i % 2 ? dy : dx))) }
+  if (s.type === 'text') return { ...s, x: r1(s.x + dx), y: r1(s.y + dy) }
+  return { ...s, x1: r1(s.x1 + dx), y1: r1(s.y1 + dy), x2: r1(s.x2 + dx), y2: r1(s.y2 + dy) }
+}
+
 /** A plain account of a board for an agent: what's on it, and the words written on it. */
 export function describeBoard(shapes: WhiteboardShape[]): { shapes: Record<string, number>; texts: string[] } {
   const counts: Record<string, number> = {}

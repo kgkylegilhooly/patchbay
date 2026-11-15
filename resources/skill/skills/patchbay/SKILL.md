@@ -53,7 +53,8 @@ need the current picture, since nodes come and go.
 - **Stay in your lane.** Edit only the files your task owns. If you need a change in a file a teammate owns, ask
   them. Before starting something, check with `patchbay list` that nobody else is already on it.
 - **Share state on the canvas.** A note made with `patchbay sticky` is a good team board for decisions and who
-  owns what, and every linked agent can read it. A whiteboard the person links to you shows what they mean
+  owns what. Every agent linked to it can read it and add to it with `patchbay note --node <id> --append "..."`,
+  so keep entries short and say who wrote them. A whiteboard the person links to you shows what they mean
   better than words; look at it.
 
 ## What you may touch
@@ -249,11 +250,16 @@ patchbay group --ids <id>,<id> --label "Backend" --color "#3b6"
 patchbay arrange --ids <id>,<id>,<id> --layout grid --gap 40
 patchbay rename --node <id> --title "Parser tests"
 patchbay sticky --text "## Decisions so far" --title "Notes" --group <group id>
+patchbay note --node <note id> --append "- Parser: tests pass (Tester)"
+patchbay note --node <note id> --text "## Decisions so far"
 patchbay link --to <id>
 patchbay link --from <id> --to <other id>
 ```
 
 Layouts are `grid`, `row` and `column`.
+
+`note --append` adds a line to any note you can read, including the person's own. `note --text` replaces the whole
+text, and only works on notes you opened.
 
 These work on any node in your own project, which are the nodes `patchbay list` shows. A node in another project
 is refused as if it weren't there, and so is one named by `--group` or `--after`.

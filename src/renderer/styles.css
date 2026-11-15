@@ -1936,6 +1936,25 @@ select {
   cursor: text;
 }
 
+.wb-surface.wb-select {
+  cursor: default;
+}
+
+.wb-chosen {
+  fill: rgb(47 111 214 / 0.05);
+  stroke: #2f6fd6;
+  stroke-width: 1.2;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+.wb-marquee {
+  fill: rgb(47 111 214 / 0.08);
+  stroke: #2f6fd6;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 .wb-surface.wb-eraser {
   cursor: none;
 }

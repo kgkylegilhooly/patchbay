@@ -508,6 +508,24 @@ export function createVerbs({
     return { id: node.id }
   }
 
+  /**
+   * Changes a note's text, so a note can serve as a team's shared board. Adding to a note works on any note the caller
+   * can reach. Replacing its text only works on a note the caller opened, so an agent can't wipe the person's own.
+   */
+  const note = (caller: string, args: Args): unknown => {
+    const id = required(args, 'node')
+    const text = optional(args, 'text')
+    const append = optional(args, 'append')
+    if ((text === undefined) === (append === undefined)) refuse('Pass one of --text or --append.')
+    const node = reachable(caller, id, 'change')
+    if (node.kind !== 'sticky') refuse(`Node "${id}" is a ${node.kind}, not a note.`)
+    if (text !== undefined && node.openedBy !== caller) refuse(`You can only add to note "${id}", because you didn't open it. Use --append.`)
+    const before = (node as StickyNode).text
+    const next = text ?? (before && !before.endsWith('\n') ? `${before}\n${append}` : `${before}${append}`)
+    store.dispatch({ op: 'patchNode', id, patch: { text: next } })
+    return { id, chars: next.length }
+  }
+
   const openWhiteboard = (caller: CanvasNode, args: Args): unknown => {
     const group = groupFor(caller, args)
     const node: WhiteboardNode = { ...placement(caller, group, SIZES.whiteboard), id: randomUUID(), kind: 'whiteboard', title: optional(args, 'title') || 'Whiteboard', shapes: [] }
@@ -678,6 +696,8 @@ export function createVerbs({
         return rename(caller, args)
       case 'sticky':
         return sticky(caller, args)
+      case 'note':
+        return note(callerId, args)
       case 'open-whiteboard':
         return openWhiteboard(caller, args)
       case 'whiteboard':

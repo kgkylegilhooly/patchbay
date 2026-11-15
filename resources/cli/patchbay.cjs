@@ -25,6 +25,7 @@ const VERBS = {
   arrange: { ids: 'list', layout: 'text', gap: 'int' },
   rename: { node: 'text', title: 'text' },
   sticky: { text: 'text', title: 'text', group: 'text' },
+  note: { node: 'text', text: 'text', append: 'text' },
   'open-whiteboard': { title: 'text', group: 'text' },
   whiteboard: { node: 'text' },
   link: { from: 'text', to: 'text' },
@@ -58,6 +59,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
   rename        --node ID --title T
   sticky        --text MARKDOWN [--title T] [--group ID]
+  note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened
   open-whiteboard [--title T] [--group ID]
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
   link          --to ID [--from ID]

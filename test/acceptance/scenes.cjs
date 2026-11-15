@@ -290,6 +290,24 @@ const scenes = {
     for (let i = 1; i <= 24; i++) await page.mouse.move(box.x + box.width * (0.62 + i * 0.012), box.y + box.height * (0.8 - Math.sin(i / 4) * 0.08))
     await page.mouse.up()
     await sleep(400)
+  },
+  // Drag-selects the left half of the diagram with the select tool, then moves it down, leaving it selected.
+  'whiteboard-select': async (page) => {
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Select and move"]')
+    const surface = await page.$('.react-flow__node[data-id="board"] .wb-surface')
+    const box = await surface.boundingBox()
+    const scale = box.width / (await surface.evaluate((el) => el.offsetWidth))
+    const to = (x, y) => [box.x + x * scale, box.y + y * scale]
+    const drag = async (from, until) => {
+      await page.mouse.move(...to(...from))
+      await page.mouse.down()
+      for (let i = 1; i <= 12; i++) await page.mouse.move(...to(from[0] + ((until[0] - from[0]) * i) / 12, from[1] + ((until[1] - from[1]) * i) / 12))
+      await page.mouse.up()
+      await sleep(250)
+    }
+    await drag([20, 100], [430, 240])
+    await drag([40, 150], [40, 270])
+    await sleep(300)
   }
 }
 
@@ -323,6 +341,7 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   'note-edit': (doc) => seeds.note(doc),
+  'whiteboard-select': (doc) => seeds.whiteboard(doc),
   whiteboard: (doc) => {
     doc.nodes = doc.nodes.filter((n) => n.id !== 'note')
     const ink = '#1f1f22'

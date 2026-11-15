@@ -363,6 +363,22 @@ test('sticky adds a note connected to its opener', async () => {
   expect(edges().some((e) => e.from === 'me' && e.to === id && e.kind === 'opened')).toBe(true)
 })
 
+test('note adds to any note the caller can reach, and replaces only one it opened', async () => {
+  const theirs: StickyNode = { x: 0, y: 0, width: 280, height: 220, parentId: null, id: 'theirs', kind: 'sticky', title: 'Team board', text: '## Owners' }
+  const { verbs, node, link } = setup([theirs, { ...theirs, id: 'far', text: 'secret' }])
+  link('theirs', 'me')
+  expect(await verbs('me', 'note', { node: 'theirs', append: '- parser: me' })).toEqual({ id: 'theirs', chars: 22 })
+  expect(node<StickyNode>('theirs').text).toBe('## Owners\n- parser: me')
+  await refused(verbs('me', 'note', { node: 'theirs', text: 'gone' }), /only add to note "theirs"/)
+  await refused(verbs('me', 'note', { node: 'far', append: 'x' }), /isn't linked to you/)
+  await refused(verbs('me', 'note', { node: 'theirs' }), /one of --text or --append/)
+  await refused(verbs('me', 'note', { node: 'theirs', text: 'a', append: 'b' }), /one of --text or --append/)
+  const mine = ids(await verbs('me', 'sticky', { text: 'draft' }))
+  await verbs('me', 'note', { node: mine, text: '# Final' })
+  expect(node<StickyNode>(mine).text).toBe('# Final')
+  await refused(verbs('me', 'note', { node: 'me', append: 'x' }), /isn't linked|not a note/)
+})
+
 test('link joins the caller to a node it opened, or two nodes it opened', async () => {
   const { verbs, edges } = setup([
     terminalNode('mine1', { openedBy: 'me' }),

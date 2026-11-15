@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { WhiteboardShape } from '../../src/shared/model'
-import { boardArea, describeBoard, exportBox, isWhiteboardShape, penPath, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
+import { boardArea, describeBoard, exportBox, isWhiteboardShape, moveShape, penPath, shapeAt, shapesIn, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
 
 const pen = (points: number[]): WhiteboardShape => ({ type: 'pen', color: '#1f1f22', size: 4, points })
 
@@ -57,6 +57,28 @@ test('the eraser touches a shape only near its ink', () => {
   const ellipse: WhiteboardShape = { type: 'ellipse', color: '#000', size: 2, x1: 0, y1: 0, x2: 100, y2: 50 }
   expect(touches(ellipse, 100, 25, 3)).toBe(true)
   expect(touches(ellipse, 50, 25, 3)).toBe(false)
+})
+
+describe('selecting and moving', () => {
+  const line: WhiteboardShape = { type: 'line', color: '#000', size: 2, x1: 0, y1: 0, x2: 100, y2: 0 }
+  const label: WhiteboardShape = { type: 'text', color: '#000', size: 2, x: 200, y: 200, text: 'hi' }
+  const stroke = pen([10, 300, 20, 310])
+
+  test('a click picks the topmost shape near its ink, or nothing', () => {
+    expect(shapeAt([line, { ...line, color: '#fff' }], 50, 3, 6)).toBe(1)
+    expect(shapeAt([line], 50, 40, 6)).toBe(-1)
+  })
+
+  test('a drag box picks only the shapes wholly inside it', () => {
+    expect(shapesIn([line, label, stroke], { x: -10, y: -10, width: 400, height: 260 })).toEqual([0, 1])
+    expect(shapesIn([line, label, stroke], { x: 0, y: 0, width: 50, height: 50 })).toEqual([])
+  })
+
+  test('every kind of shape moves by the same amount', () => {
+    expect(moveShape(line, 5, -2)).toMatchObject({ x1: 5, y1: -2, x2: 105, y2: -2 })
+    expect(moveShape(label, 1.25, 0)).toMatchObject({ x: 201.3, y: 200 })
+    expect(moveShape(stroke, 1, 2)).toMatchObject({ points: [11, 302, 21, 312] })
+  })
 })
 
 test('a board describes itself by its shapes and its words', () => {

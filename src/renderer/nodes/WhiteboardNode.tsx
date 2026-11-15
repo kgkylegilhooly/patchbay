@@ -1,16 +1,17 @@
 import type { NodeProps } from '@xyflow/react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { WhiteboardNode as WhiteboardModel, WhiteboardShape } from '../../shared/model'
-import { BOARD_COLORS, BOARD_SIZES, shapeSvg, shapesSvg, textSize, thinPoints, touches, whiteboardSvg } from '../../shared/whiteboard'
+import { BOARD_COLORS, BOARD_SIZES, moveShape, shapeAt, shapeBox, shapesIn, shapeSvg, shapesSvg, textSize, thinPoints, touches, whiteboardSvg } from '../../shared/whiteboard'
 import type { FlowNode } from '../flowMapping'
 import { Icon, type IconName } from '../icons'
 import { closeNodes, patchNode } from '../store'
 import { svgToPng } from '../whiteboardImage'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 
-type Tool = 'pen' | 'eraser' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'text'
+type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'text'
 
 const TOOLS: Array<{ tool: Tool; icon: IconName; label: string; key: string }> = [
+  { tool: 'select', icon: 'pointer', label: 'Select and move', key: 'V' },
   { tool: 'pen', icon: 'pen', label: 'Pen', key: 'P' },
   { tool: 'eraser', icon: 'eraser', label: 'Eraser', key: 'E' },
   { tool: 'line', icon: 'line', label: 'Line', key: 'L' },
@@ -23,10 +24,16 @@ const BY_KEY = Object.fromEntries(TOOLS.map((t) => [t.key.toLowerCase(), t.tool]
 const COLOR_NAMES = ['Black', 'Red', 'Orange', 'Green', 'Blue', 'Purple']
 const SIZE_NAMES = ['Thin', 'Medium', 'Thick']
 const ERASER = 8
+/** How near a click has to be to a shape's ink to pick it. */
+const REACH = 6
 /** Steps of drawing that Undo can take back, per board, while it's on screen. */
 const HISTORY = 100
+const ARROWS: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }
 
 const r1 = (n: number): number => Math.round(n * 10) / 10
+
+type Marquee = { x1: number; y1: number; x2: number; y2: number }
+const marqueeBox = (m: Marquee) => ({ x: Math.min(m.x1, m.x2), y: Math.min(m.y1, m.y2), width: Math.abs(m.x2 - m.x1), height: Math.abs(m.y2 - m.y1) })
 
 export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as WhiteboardModel
@@ -43,10 +50,31 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const [, setStep] = useState(0)
   const surface = useRef<HTMLDivElement>(null)
   const points = useRef<number[]>([])
+  /** Indexes of the selected shapes, in drawing order. */
+  const [chosen, setChosen] = useState<number[]>([])
+  const [moving, setMoving] = useState<{ from: { x: number; y: number }; dx: number; dy: number } | null>(null)
+  const [marquee, setMarquee] = useState<Marquee | null>(null)
 
   // What was committed shows straight away, until the saved board comes back with it.
-  useEffect(() => setPending(null), [node.shapes])
+  useEffect(() => {
+    setPending(null)
+    setChosen((c) => c.filter((i) => i < node.shapes.length))
+  }, [node.shapes])
   const shapes = erasing ?? pending ?? node.shapes
+  // Selected shapes follow the pointer while they're dragged, and are saved where they land.
+  const shown = useMemo(() => (moving ? shapes.map((s, i) => (chosen.includes(i) ? moveShape(s, moving.dx, moving.dy) : s)) : shapes), [shapes, chosen, moving])
+  // Rebuilding a busy board's markup on every pointer move is what made drawing lag, so it's built only when it changes.
+  const ink = useMemo(() => shapesSvg(shown), [shown])
+
+  const pickTool = (t: Tool): void => {
+    setTool(t)
+    setChosen([])
+  }
+
+  /** Changes only the selected shapes, as one step of undo. */
+  const changeChosen = (change: (s: WhiteboardShape) => WhiteboardShape): void => {
+    if (chosen.length) commit(shapes.map((s, i) => (chosen.includes(i) ? change(s) : s)))
+  }
 
   const commit = (next: WhiteboardShape[], record = true, before = shapes): void => {
     if (record) {
@@ -65,6 +93,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     h.past = h.past.slice(0, -1)
     h.future = [...h.future, shapes]
     commit(prev, false)
+    setChosen([])
   }
 
   const redo = (): void => {
@@ -74,6 +103,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     h.future = h.future.slice(0, -1)
     h.past = [...h.past, shapes]
     commit(next, false)
+    setChosen([])
   }
 
   /** A pointer's place on the board. The canvas zoom scales the board, so it's undone here. */
@@ -96,6 +126,17 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     // So Ctrl+Z reaches the board, without the ring that's there for keyboard users.
     e.currentTarget.focus({ focusVisible: false } as FocusOptions)
     const p = at(e)
+    if (tool === 'select') {
+      e.currentTarget.setPointerCapture(e.pointerId)
+      const hit = shapeAt(shapes, p.x, p.y, REACH)
+      if (hit < 0) {
+        if (!e.shiftKey) setChosen([])
+        return setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y })
+      }
+      // Pressing a selected shape drags the whole selection. Shift adds to it.
+      setChosen(chosen.includes(hit) ? chosen : e.shiftKey ? [...chosen, hit] : [hit])
+      return setMoving({ from: p, dx: 0, dy: 0 })
+    }
     if (tool === 'text') {
       e.preventDefault()
       return setTyping({ ...p, text: '' })
@@ -115,7 +156,11 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     const p = at(e)
     setCursor(p)
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-    if (erasing) {
+    if (moving) {
+      setMoving({ ...moving, dx: r1(p.x - moving.from.x), dy: r1(p.y - moving.from.y) })
+    } else if (marquee) {
+      setMarquee({ ...marquee, x2: p.x, y2: p.y })
+    } else if (erasing) {
       const left = erasing.filter((s) => !touches(s, p.x, p.y, ERASER))
       if (left.length !== erasing.length) setErasing(left)
     } else if (live?.type === 'pen') {
@@ -148,6 +193,17 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const onUp = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
     e.currentTarget.releasePointerCapture(e.pointerId)
+    if (moving) {
+      setMoving(null)
+      if (moving.dx || moving.dy) commit(shown)
+      return
+    }
+    if (marquee) {
+      setMarquee(null)
+      const found = shapesIn(shapes, marqueeBox(marquee))
+      setChosen(e.shiftKey ? [...new Set([...chosen, ...found])] : found)
+      return
+    }
     if (erasing) {
       const before = pending ?? node.shapes
       setErasing(null)
@@ -163,9 +219,17 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const onKey = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (typing) return
     const key = e.key.toLowerCase()
+    const plain = !e.ctrlKey && !e.altKey
+    const nudge = ARROWS[key]
     if (e.ctrlKey && !e.altKey && (key === 'y' || (key === 'z' && e.shiftKey))) redo()
     else if (e.ctrlKey && !e.altKey && key === 'z') undo()
-    else if (!e.ctrlKey && !e.altKey && !e.shiftKey && BY_KEY[key]) setTool(BY_KEY[key])
+    else if (e.ctrlKey && !e.altKey && key === 'a' && tool === 'select') setChosen(shapes.map((_, i) => i))
+    else if (plain && chosen.length && (key === 'delete' || key === 'backspace')) {
+      commit(shapes.filter((_, i) => !chosen.includes(i)))
+      setChosen([])
+    } else if (plain && chosen.length && key === 'escape') setChosen([])
+    else if (plain && chosen.length && nudge) changeChosen((s) => moveShape(s, nudge[0] * (e.shiftKey ? 10 : 1), nudge[1] * (e.shiftKey ? 10 : 1)))
+    else if (plain && !e.shiftKey && BY_KEY[key]) pickTool(BY_KEY[key])
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -215,7 +279,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
               className={`wb-tool${tool === t.tool ? ' wb-on' : ''}`}
               aria-label={t.label}
               title={`${t.label} (${t.key})`}
-              onClick={() => setTool(t.tool)}
+              onClick={() => pickTool(t.tool)}
             >
               <Icon name={t.icon} size={16} />
             </button>
@@ -231,7 +295,10 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
               className={`wb-color${color === c ? ' wb-on' : ''}`}
               aria-label={COLOR_NAMES[i]}
               title={COLOR_NAMES[i]}
-              onClick={() => setColor(c)}
+              onClick={() => {
+                setColor(c)
+                changeChosen((s) => ({ ...s, color: c }))
+              }}
             >
               <span style={{ background: c }} />
             </button>
@@ -247,7 +314,10 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
               className={`wb-size${size === s ? ' wb-on' : ''}`}
               aria-label={SIZE_NAMES[i]}
               title={SIZE_NAMES[i]}
-              onClick={() => setSize(s)}
+              onClick={() => {
+                setSize(s)
+                changeChosen((shape) => ({ ...shape, size: s }))
+              }}
             >
               <span style={{ width: s + 3, height: s + 3 }} />
             </button>
@@ -280,8 +350,14 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
         onKeyDown={onKey}
       >
         <svg className="wb-svg" aria-hidden="true">
-          <g dangerouslySetInnerHTML={{ __html: shapesSvg(shapes) }} />
+          <g dangerouslySetInnerHTML={{ __html: ink }} />
           {live && <g dangerouslySetInnerHTML={{ __html: shapeSvg(live) }} />}
+          {chosen.map((i) => {
+            if (!shown[i]) return null
+            const b = shapeBox(shown[i])
+            return <rect key={i} className="wb-chosen" x={b.x - 3} y={b.y - 3} width={b.width + 6} height={b.height + 6} />
+          })}
+          {marquee && <rect className="wb-marquee" {...marqueeBox(marquee)} />}
           {tool === 'eraser' && cursor && <circle className="wb-eraser" cx={cursor.x} cy={cursor.y} r={ERASER} />}
         </svg>
         {!shapes.length && !live && !typing && <p className="wb-hint">Draw here. Link an agent to this board and it can export it as a picture.</p>}
