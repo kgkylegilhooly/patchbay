@@ -557,6 +557,20 @@ test('send to a terminal delivers at once, as a terminal has no status', async (
   await vi.waitFor(() => expect(host.writes).toEqual([['t', 'ls -la'], ['t', '\r']]))
 })
 
+test('a message that goes out is reported for the canvas to show, and a refused one is not', async () => {
+  const sent: string[] = []
+  const store = memoryStore([claudeNode('me'), claudeNode('c', { openedBy: 'me' }), terminalNode('t', { openedBy: 'me' }), claudeNode('far')])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const host = fakeHost()
+  host.running.add('t')
+  const verbs = createVerbs({ store, runner, tracker, host, gate: createAfterGate({ store, tracker, runner }), onMessage: (from, to) => sent.push(`${from}>${to}`) })
+  await verbs('me', 'send', { node: 'c', text: 'hi' })
+  await verbs('me', 'send', { node: 't', text: 'ls' })
+  await refused(verbs('me', 'send', { node: 'far', text: 'hi' }), /isn't linked/)
+  expect(sent).toEqual(['me>c', 'me>t'])
+})
+
 test('send is refused for an unlinked node, an exited node, a stopped terminal or empty text', async () => {
   const { verbs, host, tracker } = setup([
     claudeNode('stranger'),

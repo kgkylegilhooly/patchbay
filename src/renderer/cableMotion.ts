@@ -11,6 +11,19 @@ export function cableDirection(kind: CableKind): 'forward' | 'both' {
   return kind === 'link' ? 'both' : 'forward'
 }
 
+/** How long a message's pulse shows on its cable. */
+export const PULSE_MS = 2600
+
+/**
+ * The cable a message between two nodes travels down, and whether that's against the cable's own direction. A link
+ * says most about who may message whom, so it's preferred, then the cable from the node that opened the other.
+ */
+export function pulseCable(edges: Edge[], from: string, to: string): { id: string; reverse: boolean } | null {
+  const between = edges.filter((e) => (e.from === from && e.to === to) || (e.from === to && e.to === from))
+  const edge = between.find((e) => e.kind === 'link') ?? between.find((e) => e.kind === 'opened') ?? between[0]
+  return edge ? { id: edge.id, reverse: edge.from !== from } : null
+}
+
 /** Below this the dots are too small to read, so moving them only costs paint. */
 export const FAR_ZOOM = 0.3
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { fuzzyScore, noteRecent, rankPalette } from '../../src/renderer/palette'
+import { fuzzyScore, noteRecent, placeItem, rankPalette } from '../../src/renderer/palette'
 import { nearestInDirection } from '../../src/renderer/nodeNav'
 import { teamLeadPrompt } from '../../src/renderer/teamPrompt'
 import { clampFontSize, FONT_SIZE, steppedFontSize, windowFontSize } from '../../src/renderer/prefs'
@@ -60,6 +60,21 @@ describe('palette ranking', () => {
   test('recent breaks a tie', () => {
     expect(ids('new', ['new-claude'])[0]).toBe('new-claude')
     expect(ids('new', ['new-terminal'])[0]).toBe('new-terminal')
+  })
+
+  test('notes, boards, browsers and groups are listed, and found by what is in them', () => {
+    const base = { x: 0, y: 0, width: 1, height: 1, parentId: null }
+    const note = placeItem({ ...base, id: 'n', kind: 'sticky', title: 'Note', text: '## Release checklist\n- [ ] bump the **version**' })
+    expect(note).toMatchObject({ label: 'Release checklist', kind: 'Note', icon: 'note' })
+    expect(placeItem({ ...base, id: 'n2', kind: 'sticky', title: 'Plans', text: '' })?.label).toBe('Plans')
+    expect(placeItem({ ...base, id: 'n3', kind: 'sticky', title: 'Note', text: '' })?.label).toBe('Note')
+    const board = placeItem({ ...base, id: 'w', kind: 'whiteboard', title: 'Sketch', shapes: [{ type: 'text', color: '#000', size: 2, x: 0, y: 0, text: 'Auth service' }] })
+    expect(board).toMatchObject({ label: 'Sketch', kind: 'Whiteboard', keywords: ['Auth service'] })
+    expect(placeItem({ ...base, id: 'b', kind: 'browser', title: 'App', url: 'http://localhost:3000' })?.keywords).toEqual(['http://localhost:3000'])
+    expect(placeItem({ ...base, id: 't', kind: 'terminal', title: 'x', cwd: 'c' })).toBeNull()
+    const found = rankPalette('bump the', [{ id: 'n', ...note! }, { id: 'w', ...board! }], [])
+    expect(found.map((i) => i.id)).toEqual(['n'])
+    expect(rankPalette('auth', [{ id: 'n', ...note! }, { id: 'w', ...board! }], []).map((i) => i.id)).toEqual(['w'])
   })
 
   test('noting one moves it to the front, and the list stays short', () => {

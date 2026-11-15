@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { cableDirection, isFarZoom } from '../../src/renderer/cableMotion'
+import { cableDirection, isFarZoom, pulseCable } from '../../src/renderer/cableMotion'
 import { cablePath, toFlow } from '../../src/renderer/flowMapping'
 import type { CanvasDoc, CanvasNode, Edge } from '../../src/shared/model'
 import { claudeNode, terminalNode } from '../control/fakes'
@@ -51,5 +51,21 @@ describe('which way a cable runs', () => {
   test('the dots stop far out', () => {
     expect(isFarZoom(0.2)).toBe(true)
     expect(isFarZoom(0.5)).toBe(false)
+  })
+})
+
+describe('a message on a cable', () => {
+  const e = (id: string, from: string, to: string, kind: Edge['kind']): Edge => ({ id, from, to, kind })
+
+  test('travels the link between the two nodes, in either direction', () => {
+    const edges = [e('o', 'lead', 'dev', 'opened'), e('l', 'lead', 'dev', 'link'), e('x', 'dev', 'other', 'link')]
+    expect(pulseCable(edges, 'lead', 'dev')).toEqual({ id: 'l', reverse: false })
+    expect(pulseCable(edges, 'dev', 'lead')).toEqual({ id: 'l', reverse: true })
+  })
+
+  test('falls back to the cable from the opener, and needs a cable to show at all', () => {
+    expect(pulseCable([e('o', 'lead', 'dev', 'opened')], 'dev', 'lead')).toEqual({ id: 'o', reverse: true })
+    expect(pulseCable([e('a', 'dev', 'lead', 'after')], 'lead', 'dev')).toEqual({ id: 'a', reverse: true })
+    expect(pulseCable([e('l', 'a', 'b', 'link')], 'a', 'c')).toBeNull()
   })
 })

@@ -11,6 +11,7 @@ import { loadPrefs, type TerminalLook } from './prefs'
 import { EMPTY_HISTORY, entryFor, recordEntry, stepBack, stepForward, type History } from './undoHistory'
 import type { UsageMode } from './usageView'
 import { svgToPng } from './whiteboardImage'
+import { PULSE_MS, pulseCable } from './cableMotion'
 
 interface State {
   doc: CanvasDoc | null
@@ -61,6 +62,8 @@ interface State {
   triggerAsk: { kind: 'edit' | 'arm'; id: string } | null
   /** Why a launch.json run didn't start, until dismissed or run again. */
   runProblem: Record<string, string>
+  /** Cables carrying a message right now, by edge id. `at` tells one message from the next on the same cable. */
+  pulses: Record<string, { at: number; reverse: boolean }>
 }
 
 export const useStore = create<State>(() => ({
@@ -93,7 +96,8 @@ export const useStore = create<State>(() => ({
   gitFolder: null,
   boardOpen: false,
   triggerAsk: null,
-  runProblem: {}
+  runProblem: {},
+  pulses: {}
 }))
 
 /** Loads everything from main, subscribing first so nothing that changes meanwhile is missed. */
@@ -117,6 +121,19 @@ export async function connectStore(): Promise<void> {
   )
   bridge.onApprovals((approvals) => useStore.setState({ approvals }))
   bridge.onChime(playChime)
+  bridge.onMessage((from, to) => {
+    const cable = pulseCable(useStore.getState().doc?.edges ?? [], from, to)
+    if (!cable) return
+    const at = Date.now()
+    useStore.setState((s) => ({ pulses: { ...s.pulses, [cable.id]: { at, reverse: cable.reverse } } }))
+    setTimeout(() => {
+      useStore.setState((s) => {
+        if (s.pulses[cable.id]?.at !== at) return s
+        const { [cable.id]: _done, ...pulses } = s.pulses
+        return { pulses }
+      })
+    }, PULSE_MS)
+  })
   bridge.onRenderWhiteboard((requestId, svg, width, height) => {
     svgToPng(svg, width, height)
       .then(async (png) => bridge.whiteboardRendered(requestId, new Uint8Array(await png.arrayBuffer())))

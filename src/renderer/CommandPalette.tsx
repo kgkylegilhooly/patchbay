@@ -4,17 +4,17 @@ import { ACTIONS, actionReady } from './actions'
 import { Icon, type IconName } from './icons'
 import { currentKey } from './keys'
 import type { Commands, MenuState } from './menus'
-import { rankPalette, type PaletteItem } from './palette'
+import { placeItem, rankPalette, type PaletteItem } from './palette'
 import { useStore } from './store'
 
 interface Entry extends PaletteItem {
   icon: IconName
-  kind: 'Action' | 'Session' | 'Project'
+  kind: 'Action' | 'Session' | 'Project' | 'Note' | 'Whiteboard' | 'Browser' | 'Group'
   shortcut?: string | null
   run: () => void
 }
 
-/** A centered search over every action and every open session. It holds the keyboard while it's open. */
+/** A centered search over every action, and every session, note, board, browser and group in open projects. It holds the keyboard while it's open. */
 export function CommandPalette({
   commands,
   state,
@@ -51,6 +51,13 @@ export function CommandPalette({
       if (project && !isProjectOpen(project)) return []
       return [{ id: `session:${n.id}`, label: n.title, detail: project?.name, keywords: [n.cwd], icon: n.kind, kind: 'Session', run: () => commands.revealNode(n.id) }]
     })
+    // After sessions, so a session and a note of the same name list the session first.
+    const places = (doc?.nodes ?? []).flatMap((n): Entry[] => {
+      const item = placeItem(n)
+      const project = n.projectId ? projects.get(n.projectId) : undefined
+      if (!item || (project && !isProjectOpen(project))) return []
+      return [{ id: `node:${n.id}`, ...item, detail: project?.name, run: () => commands.revealNode(n.id) }]
+    })
     const closed = (doc?.projects ?? []).filter((p) => !isProjectOpen(p)).map((p): Entry => ({
       id: `reopen:${p.id}`,
       label: `Reopen project: ${p.name}`,
@@ -59,7 +66,7 @@ export function CommandPalette({
       kind: 'Project',
       run: () => commands.reopenProject(p.id)
     }))
-    return [...actions, ...sessions, ...closed]
+    return [...actions, ...sessions, ...places, ...closed]
   }, [commands, doc, overrides, state])
 
   const shown = useMemo(() => rankPalette(query, entries, recent), [entries, query, recent])
@@ -82,10 +89,10 @@ export function CommandPalette({
         <input
           className="palette-input"
           name="palette"
-          aria-label="Search actions and sessions"
+          aria-label="Search actions, sessions, notes and boards"
           aria-controls="palette-list"
           aria-activedescendant={shown[current] ? `palette-${current}` : undefined}
-          placeholder="Search actions and sessions"
+          placeholder="Search actions, sessions, notes and boards"
           autoFocus
           spellCheck={false}
           value={query}

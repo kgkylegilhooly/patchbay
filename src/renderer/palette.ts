@@ -1,3 +1,5 @@
+import type { CanvasNode } from '../shared/model'
+
 /** Fuzzy search for the command palette. Pure, so the ranking can be tested without a window. */
 
 export interface PaletteItem {
@@ -39,8 +41,12 @@ export function fuzzyScore(query: string, text: string): number | null {
  * they only count when the query appears in them unbroken.
  */
 function unbrokenScore(query: string, text: string | undefined, penalty: number): number | null {
-  const q = query.replace(/\s+/g, '').toLowerCase()
-  if (!text || !q || !text.toLowerCase().includes(q)) return null
+  const words = query.trim().replace(/\s+/g, ' ').toLowerCase()
+  const q = words.replace(/ /g, '')
+  if (!text || !q) return null
+  // As typed, for a phrase in a note, or run together, for a path the query spells out in pieces.
+  const t = text.toLowerCase()
+  if (!t.includes(q) && !t.replace(/\s+/g, ' ').includes(words)) return null
   const s = fuzzyScore(q, text)
   return s === null ? null : s - penalty
 }
@@ -66,6 +72,31 @@ export function rankPalette<T extends PaletteItem>(query: string, items: T[], re
     .filter((r): r is { item: T; order: number; score: number } => r.score !== null)
     .sort((a, b) => b.score - a.score || (recency.get(b.item.id) ?? 0) - (recency.get(a.item.id) ?? 0) || a.order - b.order)
     .map((r) => r.item)
+}
+
+/** Text searched in a note or on a board. Past this, a match would rarely be what someone's looking for. */
+const SEARCHED_CHARS = 4000
+
+/**
+ * How a node that isn't a session appears in the palette: notes by title or, for an untitled one, their first line,
+ * and found by anything in their text. Null for kinds the palette doesn't list.
+ */
+export function placeItem(node: CanvasNode): { label: string; kind: 'Note' | 'Whiteboard' | 'Browser' | 'Group'; icon: 'note' | 'whiteboard' | 'browser' | 'group'; keywords: string[] } | null {
+  switch (node.kind) {
+    case 'sticky': {
+      const first = node.text.split('\n').map((l) => l.replace(/^[\s#>*+-]*(\[[ xX]\]\s*)?/, '').trim()).find(Boolean)
+      const label = node.title !== 'Note' || !first ? node.title : first.slice(0, 80)
+      return { label, kind: 'Note', icon: 'note', keywords: [node.text.slice(0, SEARCHED_CHARS)] }
+    }
+    case 'whiteboard':
+      return { label: node.title, kind: 'Whiteboard', icon: 'whiteboard', keywords: [node.shapes.flatMap((s) => (s.type === 'text' ? [s.text] : [])).join(' ').slice(0, SEARCHED_CHARS)] }
+    case 'browser':
+      return { label: node.title, kind: 'Browser', icon: 'browser', keywords: [node.url] }
+    case 'group':
+      return { label: node.title, kind: 'Group', icon: 'group', keywords: node.worktree ? [node.worktree.branch] : [] }
+    default:
+      return null
+  }
 }
 
 const RECENT_LIMIT = 8

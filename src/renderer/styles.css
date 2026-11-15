@@ -1242,6 +1242,45 @@ select {
   }
 }
 
+/* A message travelling between two nodes. The cable glows and fades as the pulse runs along it. */
+.cable-lit {
+  stroke: color-mix(in srgb, var(--cable, var(--cable-link)) 70%, white);
+  stroke-width: 4;
+  stroke-linecap: round;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px var(--cable, var(--cable-link)));
+  animation: cable-lit 2.6s ease-out forwards;
+}
+
+.cable-pulse {
+  fill: #fff;
+  stroke: var(--cable, var(--cable-link));
+  stroke-width: 2.5;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px var(--cable, var(--cable-link)));
+}
+
+@keyframes cable-lit {
+  from {
+    opacity: 0.95;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* The glow alone says a message went by. */
+@media (prefers-reduced-motion: reduce) {
+  .cable-pulse {
+    display: none;
+  }
+
+  .cable-lit {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
 /* The view moving already means repainting everything. Far out, the dots are too small to read. */
 .stage[data-canvas-moving] .cable-flow,
 .stage[data-canvas-far] .cable-flow {

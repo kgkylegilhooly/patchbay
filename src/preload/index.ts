@@ -103,6 +103,7 @@ const bridge: PatchbayBridge = {
   onRenderWhiteboard: (cb) => listen('onRenderWhiteboard', cb),
   whiteboardRendered: (requestId, png) => ipcRenderer.send('pb:whiteboardRendered', requestId, png),
   onCenterNode: (cb) => listen('onCenterNode', cb),
+  onMessage: (cb) => listen('onMessage', cb),
   getActivity: () => invoke('getActivity'),
   onActivity: (cb) => listen('onActivity', cb),
   nameWithAi: (id) => invoke('nameWithAi', id)

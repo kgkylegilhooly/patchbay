@@ -182,8 +182,11 @@ export function createVerbs({
   timing = DEFAULT_SEND_TIMING,
   queue,
   whiteboards,
+  onMessage,
   defaultAgent = () => 'claude'
 }: {
+  /** A node sent another a message, so the canvas can show it travel down the cable between them. */
+  onMessage?: (from: string, to: string) => void
   /** Turns a board into files an agent can open. Without it, boards can still be read as text. */
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
@@ -277,6 +280,7 @@ export function createVerbs({
       // A terminal has no status to wait for, and may need control keys.
       if (!host.isRunning(id)) refuse(`Node "${id}" is not running.`)
       sendQueue.type(id, raw)
+      onMessage?.(caller, id)
       return { delivered: true }
     }
     if (node.kind !== 'claude') refuse(`Can't send to node "${id}": it isn't a terminal or an agent node.`)
@@ -284,7 +288,9 @@ export function createVerbs({
     const body = plainText(raw)
     if (!body.trim()) refuse('--text has nothing to send.')
     const text = `${senderLine(caller)}\n${body}`
-    return sendQueue.add(id, { text }) === 'queued' ? { delivered: false, queued: true } : { delivered: true }
+    const queued = sendQueue.add(id, { text }) === 'queued'
+    onMessage?.(caller, id)
+    return queued ? { delivered: false, queued: true } : { delivered: true }
   }
 
   // read

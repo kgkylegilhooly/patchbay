@@ -231,6 +231,8 @@ export interface PatchbayBridge {
   noteFocus(id: string | null): void
   /** Main asks for a node to be centered, as when its notification is clicked. */
   onCenterNode(cb: (id: string) => void): () => void
+  /** One node sent another a message with `patchbay send`. */
+  onMessage(cb: (from: string, to: string) => void): () => void
   /** When each session last did something, since the app started. A session with no entry shows no time. */
   getActivity(): Promise<Record<string, number>>
   onActivity(cb: (id: string, at: number) => void): () => void
