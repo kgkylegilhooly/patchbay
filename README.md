@@ -118,6 +118,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `pastes\` | Images pasted into terminals |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
+| `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
 | `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
 | `sessions\` | The hook settings passed to each Claude node |

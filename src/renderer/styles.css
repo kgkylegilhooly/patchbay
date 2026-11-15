@@ -2183,6 +2183,68 @@ circle.wb-eraser {
   flex: 1;
 }
 
+/* A team's progress, in the group's header. It takes the room the spacer would. */
+.team {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.team-lights {
+  display: inline-flex;
+  flex: none;
+  gap: 3px;
+}
+
+.team-light {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6d6d75;
+}
+
+.team-working {
+  background: var(--led-working);
+}
+
+.team-idle {
+  background: var(--led-idle);
+}
+
+.team-needs-you {
+  background: var(--led-needs);
+  box-shadow: 0 0 6px var(--led-needs);
+}
+
+.team-starting,
+.team-queued {
+  background: var(--led-waiting);
+}
+
+.team-summary {
+  flex: none;
+  white-space: nowrap;
+}
+
+.team-latest {
+  flex: 1;
+  min-width: 0;
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.team-latest strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .branch {
   overflow: hidden;
   padding: 1px 8px;

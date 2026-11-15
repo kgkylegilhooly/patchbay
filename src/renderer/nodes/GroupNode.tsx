@@ -1,9 +1,10 @@
 import type { NodeProps } from '@xyflow/react'
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { GroupNode as GroupModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
-import { closeNodes, patchNode } from '../store'
+import { closeNodes, patchNode, useStore } from '../store'
+import { teamStatus } from '../teamStatus'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 
 export const GROUP_COLORS = ['#49c2c9', '#e2b04a', '#e0689b', '#7fa8ff', '#62dc8a']
@@ -120,6 +121,32 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
   )
 }
 
+/** A team at a glance: a light per agent, how many are in each state, and the latest thing one of them said. */
+function Team({ groupId }: { groupId: string }): React.JSX.Element {
+  const nodes = useStore((s) => s.doc?.nodes)
+  const statuses = useStore((s) => s.statuses)
+  const messages = useStore((s) => s.messages)
+  const team = useMemo(() => teamStatus(nodes ?? [], statuses, messages, groupId), [nodes, statuses, messages, groupId])
+  if (!team.members.length) return <span className="rack-spacer" />
+  const titleOf = (id: string): string => nodes?.find((n) => n.id === id)?.title ?? 'a closed node'
+  const latest = team.latest
+  return (
+    <span className="team" role="status" aria-label={`Team: ${team.summary}`}>
+      <span className="team-lights" aria-hidden="true">
+        {team.members.map((m) => (
+          <span key={m.id} className={`team-light team-${m.status}`} title={`${m.title}: ${m.status}`} />
+        ))}
+      </span>
+      <span className="team-summary">{team.summary}</span>
+      {latest && (
+        <span className="team-latest" title={`${titleOf(latest.from)} to ${titleOf(latest.to)}: ${latest.text}`}>
+          <strong>{titleOf(latest.from)}</strong> to {titleOf(latest.to)}: {latest.text.split('\n')[0]}
+        </span>
+      )}
+    </span>
+  )
+}
+
 export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as GroupModel
   const [binding, setBinding] = useState(false)
@@ -154,7 +181,7 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<F
             Bind worktree
           </button>
         )}
-        <span className="rack-spacer" />
+        <Team groupId={node.id} />
         <button
           className="icon-btn nodrag"
           aria-label={`Ungroup ${node.title}`}

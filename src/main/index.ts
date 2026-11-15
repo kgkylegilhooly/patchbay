@@ -306,7 +306,7 @@ async function boot(): Promise<void> {
   const github = createGithubReader(store, work.git, work.gh)
   // One line into each session, shared by `patchbay send` and triggers.
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id) })
-  const messages = createMessageLog()
+  const messages = createMessageLog(join(dataDir, 'messages.json'))
   ipcMain.handle('pb:getMessages', () => messages.all())
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
   const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => broadcast('pb:onNoteEdit', edit), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
@@ -468,6 +468,7 @@ async function boot(): Promise<void> {
       await saver.flush()
       await docStore.flush().catch((e: unknown) => failures.push(e))
       await usage.flush()
+      await messages.flush()
     }
     // Saved before stopping sessions in case that hangs, and after because stopping can change the doc.
     await save()

@@ -109,6 +109,16 @@ async function main() {
     c.check('The palette finds the note by a phrase in its text, under its first line', rows.length > 0 && /Release checklist/.test(rows[0]) && /Note/.test(rows[0]), rows.slice(0, 3))
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'palette-note.png') })
     c.check('No page errors in the app window', app.problems.length === 0, app.problems.slice(0, 3))
+
+    // Quit and open again on the same profile: what the nodes said is still there.
+    await app.quit()
+    const reopened = await L.launch({ profile, exe: process.env.PB_USE_PACKAGED ? L.packagedExe : undefined })
+    try {
+      const kept = await reopened.page.evaluate(() => window.patchbay.getMessages())
+      c.check('Messages between nodes are still there after Patchbay restarts', kept.some((m) => m.text.includes('hello-from-lead')) && kept.some((m) => m.text.includes('echo done')), kept.map((m) => m.text))
+    } finally {
+      await reopened.quit().catch(() => {})
+    }
   } finally {
     await app.quit().catch(() => {})
     L.cleanup(profile)
