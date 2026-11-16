@@ -8,7 +8,7 @@ import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessages, readTranscript, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
-import { isSessionNode, type AgentStatus, type BrowserNode, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode } from '../shared/model'
+import { isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
 import type { Settings } from '../shared/settings'
 import { createActivityLog } from './activity'
 import type { LiveBrowserDriver } from './browser/driver'
@@ -64,6 +64,11 @@ export interface IpcServices {
   onSettingsSaved?: () => void
 }
 
+/** The doc with each whiteboard's shapes left out. The window keeps them from onBoardShapes. */
+export function withoutShapes(doc: CanvasDoc): CanvasDoc {
+  return doc.nodes.some((n) => n.kind === 'whiteboard') ? { ...doc, nodes: doc.nodes.map((n) => (n.kind === 'whiteboard' ? { ...n, shapes: [] } : n)) } : doc
+}
+
 export function broadcast(channel: string, ...args: unknown[]): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, ...args)
@@ -107,7 +112,21 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   })
   runner.onError((id, error: NodeError | null) => broadcast('pb:onNodeError', id, error))
   approvals.onChange((pending: PendingApproval[]) => broadcast('pb:onApprovals', pending))
-  store.subscribe((doc) => broadcast('pb:onDoc', doc))
+  // A busy whiteboard can hold megabytes of strokes, and copying them to the window with every change anywhere made
+  // the whole canvas lag. So a board's shapes go only when they change, and the doc carries its boards without them.
+  const sentShapes = new Map<string, WhiteboardShape[]>()
+  store.subscribe((doc) => {
+    const boards = new Set<string>()
+    for (const n of doc.nodes) {
+      if (n.kind !== 'whiteboard') continue
+      boards.add(n.id)
+      if (sentShapes.get(n.id) === n.shapes) continue
+      sentShapes.set(n.id, n.shapes)
+      broadcast('pb:onBoardShapes', n.id, n.shapes)
+    }
+    for (const id of sentShapes.keys()) if (!boards.has(id)) sentShapes.delete(id)
+    broadcast('pb:onDoc', withoutShapes(doc))
+  })
 
   /** A new terminal with no folder means the worktree of its group, or else the home folder. */
   const withDefaultFolder = (op: CanvasOp): CanvasOp => {

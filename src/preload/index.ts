@@ -34,6 +34,7 @@ const bridge: PatchbayBridge = {
   getDoc: () => invoke('getDoc'),
   dispatch: (op) => invoke('dispatch', op),
   onDoc: (cb) => listen('onDoc', cb),
+  onBoardShapes: (cb) => listen('onBoardShapes', cb),
   getStatuses: () => invoke('getStatuses'),
   onStatus: (cb) => listen('onStatus', cb),
   getErrors: () => invoke('getErrors'),

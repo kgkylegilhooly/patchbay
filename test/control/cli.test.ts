@@ -266,11 +266,24 @@ test.runIf(existsSync(BASH))('a checkout keeps the shim in LF, or sh could not r
   expect(readFileSync(join(CLI_DIR, 'patchbay'), 'utf8')).not.toContain('\r')
 })
 
+test('guide prints the whole skill, reference files included, for agents that cannot open them', async () => {
+  const r = await cli(['guide'])
+  expect(r.code).toBe(0)
+  expect(r.stdout).not.toMatch(/^---/)
+  expect(r.stdout).toContain('# Driving the Patchbay canvas')
+  for (const title of ['# Whiteboards on the Patchbay canvas', '# Browser nodes on the Patchbay canvas', '# GitHub issues and pull requests from Patchbay']) expect(r.stdout).toContain(title)
+  expect(calls).toEqual([])
+})
+
 test('the skill is a plugin whose description and body cover every verb', () => {
   const manifest = JSON.parse(readFileSync('resources/skill/.claude-plugin/plugin.json', 'utf8'))
   expect(manifest.name).toBe('patchbay')
-  const skill = readFileSync('resources/skill/skills/patchbay/SKILL.md', 'utf8')
-  expect(skill).toMatch(/^---\nname: patchbay\ndescription: .+\n---\n/)
+  const main = readFileSync('resources/skill/skills/patchbay/SKILL.md', 'utf8')
+  expect(main).toMatch(/^---\r?\nname: patchbay\r?\ndescription: .+\r?\n---\r?\n/)
+  // The main file names each reference file, and every verb is in one of them.
+  const extra = ['whiteboards.md', 'browser.md', 'github.md']
+  for (const f of extra) expect(main).toContain(`(${f})`)
+  const skill = [main, ...extra.map((f) => readFileSync(`resources/skill/skills/patchbay/${f}`, 'utf8'))].join('\n')
   for (const verb of ['whoami', 'list', 'open-terminal', 'open-agent', 'spawn-team', 'group', 'arrange', 'rename', 'sticky', 'note', 'link', 'read', 'send', 'wait', 'close', 'whiteboard', 'open-whiteboard', 'draw']) {
     expect(skill).toContain(`patchbay ${verb}`)
   }

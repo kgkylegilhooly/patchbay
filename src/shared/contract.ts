@@ -1,5 +1,5 @@
 import type { LaunchItem } from './launch'
-import type { AgentStatus, CanvasDoc, CanvasOp, TriggerRun } from './model'
+import type { AgentStatus, CanvasDoc, CanvasOp, TriggerRun, WhiteboardShape } from './model'
 
 export type Refusal = { ok: false; reason: string }
 
@@ -161,9 +161,13 @@ export interface PatchbayBridge {
   onBrowserState(cb: (id: string, state: BrowserState | null) => void): () => void
   /** Opens a port a session is serving in a new browser node beside it. False if it isn't listed for that node. */
   openPortInBrowser(nodeId: string, port: number): Promise<boolean>
+  /** The whole doc, whiteboard shapes included. */
   getDoc(): Promise<CanvasDoc>
   dispatch(op: CanvasOp): Promise<void>
+  /** Each change to the doc. Whiteboards come with no shapes: those arrive by onBoardShapes, and only when they change. */
   onDoc(cb: (d: CanvasDoc) => void): () => void
+  /** A whiteboard's shapes, sent before the doc that changed them. */
+  onBoardShapes(cb: (id: string, shapes: WhiteboardShape[]) => void): () => void
   getStatuses(): Promise<Record<string, AgentStatus>>
   /** null means the node has no status to show, as with a terminal that's running. */
   onStatus(cb: (id: string, s: AgentStatus | null) => void): () => void

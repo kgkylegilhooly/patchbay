@@ -249,9 +249,12 @@ function main() {
     return
   }
   // The full guide, for agents that can't load Patchbay's skill themselves, such as Codex.
+  // The skill's main file, then the reference files beside it, since an agent reading this can't open those itself.
   if (verb === 'guide') {
-    const skill = require('node:path').join(__dirname, '..', 'skill', 'skills', 'patchbay', 'SKILL.md')
-    process.stdout.write(require('node:fs').readFileSync(skill, 'utf8').replace(/^---[\s\S]*?---\s*/, ''))
+    const dir = path.join(__dirname, '..', 'skill', 'skills', 'patchbay')
+    const extra = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && f !== 'SKILL.md').sort()
+    const parts = [fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8').replace(/^---[\s\S]*?---\s*/, ''), ...extra.map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))]
+    process.stdout.write(parts.join('\n\n'))
     return
   }
   if (!Object.hasOwn(VERBS, verb)) fail(`Unknown verb "${verb}".\n\n${USAGE}`)

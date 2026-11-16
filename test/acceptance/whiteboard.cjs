@@ -138,9 +138,13 @@ async function main() {
     c.check('A node that is not linked cannot draw on it', refusedDraw.status === 400, refusedDraw.json)
     const badDraw = await rpc(profile, 'agent', 'draw', { node: 'board', diagram: '{"boxes": [{"id": "a"}], "arrows": [{"from": "a", "to": "b"}]}' })
     c.check('A diagram with a mistake is refused with what to fix', badDraw.status === 400 && /Arrow 1/.test(badDraw.json.error), badDraw.json)
+    // The drawing grew the board, which can push its notice past the window's edge, so the view fits it first.
+    await L.fitView(page)
+    await L.sleep(400)
     await page.click('.react-flow__node[data-id="board"] .wb-drawn .btn')
     const undone = await L.waitFor('the drawing taken away', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length === boardAfter.shapes.length - 14, 3000).catch(() => false)
-    c.check('Undo takes away what the agent drew, and nothing else', undone && !(await page.$('.wb-drawn')))
+    const after = (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length
+    c.check('Undo takes away what the agent drew, and nothing else', undone && !(await page.$('.wb-drawn')), { shapes: after, expected: boardAfter.shapes.length - 14, notice: await page.$eval('.wb-drawn', (n) => n.textContent).catch(() => null) })
 
     // Text already on the board changes in place: double-click it with the select tool and type.
     await page.click('.react-flow__node[data-id="board"] [aria-label="Select and move"]')

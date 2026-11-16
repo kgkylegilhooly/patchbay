@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { BrowserState, NodeError, NodeMessage, PendingApproval, PortInfo, RunResult } from '../shared/contract'
-import { isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode, type CanvasOp } from '../shared/model'
+import { isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode, type CanvasOp, type WhiteboardShape } from '../shared/model'
 import type { UsageState } from '../shared/usage'
 import { bridge } from './bridge'
 import { playChime } from './chime'
@@ -16,6 +16,16 @@ import { PULSE_MS, pulseCable } from './cableMotion'
 
 /** As many as main keeps. */
 const MESSAGES_KEPT = 300
+
+/**
+ * Each whiteboard's shapes, as main last sent them. A doc arrives with its boards' shapes left out, and they go back
+ * in from here, as the same array while they're unchanged, so a board only redraws when its own shapes change.
+ */
+const boardShapes = new Map<string, WhiteboardShape[]>()
+function withBoardShapes(doc: CanvasDoc): CanvasDoc {
+  if (!doc.nodes.some((n) => n.kind === 'whiteboard')) return doc
+  return { ...doc, nodes: doc.nodes.map((n) => (n.kind === 'whiteboard' ? { ...n, shapes: boardShapes.get(n.id) ?? n.shapes } : n)) }
+}
 
 interface State {
   doc: CanvasDoc | null
@@ -115,7 +125,8 @@ export const useStore = create<State>(() => ({
 
 /** Loads everything from main, subscribing first so nothing that changes meanwhile is missed. */
 export async function connectStore(): Promise<void> {
-  bridge.onDoc((doc) => useStore.setState({ doc }))
+  bridge.onBoardShapes((id, shapes) => boardShapes.set(id, shapes))
+  bridge.onDoc((doc) => useStore.setState({ doc: withBoardShapes(doc) }))
   bridge.onStatus((id, status) =>
     useStore.setState((s) => {
       const statuses = { ...s.statuses }
@@ -191,8 +202,10 @@ export async function connectStore(): Promise<void> {
     bridge.getErrors(),
     bridge.getApprovals()
   ])
+  // Shapes already sent are newer than these, which were read before them.
+  for (const n of doc.nodes) if (n.kind === 'whiteboard' && !boardShapes.has(n.id)) boardShapes.set(n.id, n.shapes)
   useStore.setState((s) => ({
-    doc: s.doc ?? doc,
+    doc: s.doc ? withBoardShapes(s.doc) : doc,
     statuses: { ...statuses, ...s.statuses },
     errors,
     approvals
