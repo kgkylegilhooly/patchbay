@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, delimiter, join } from 'node:path'
+import { basename, delimiter, dirname, join } from 'node:path'
 import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
@@ -261,8 +261,30 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
   const statusLine = ctx.statusLineScript
     ? { statusLine: { type: 'command', command: `node "${ctx.statusLineScript.replace(/\\/g, '/')}"`, ...(own?.padding === undefined ? {} : { padding: own.padding }) } }
     : {}
-  writeFileSync(file, JSON.stringify({ hooks, ...statusLine }, null, 2))
+  const dataDir = dirname(ctx.sessionDir)
+  const permissions = { allow: patchbayPermissions([ctx.pluginDir, join(dataDir, 'whiteboards'), join(dataDir, 'browser-shots')]) }
+  writeFileSync(file, JSON.stringify({ hooks, ...statusLine, permissions }, null, 2))
   return file
+}
+
+/** The `patchbay` verbs that only look: nothing they do changes the canvas, sends anything or runs anything. */
+const LOOKING_VERBS = ['whoami', 'list', 'read', 'wait', 'whiteboard', 'issues', 'prs', 'guide']
+
+/** A Windows path as Claude Code matches it in a rule: C:\Users\me becomes //c/Users/me. */
+export function rulePath(path: string): string {
+  const posix = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const drive = /^([A-Za-z]):(\/.*)?$/.exec(posix)
+  return drive ? `//${drive[1].toLowerCase()}${drive[2] ?? ''}` : posix.startsWith('/') ? `/${posix}` : posix
+}
+
+/**
+ * What an agent may do without asking, on top of the person's own rules: read Patchbay's skill and the pictures it
+ * exports, and run the verbs that only look. Without these, an agent opening the skill's reference files or a
+ * whiteboard it exported, or asking `patchbay whoami`, stopped at a permission prompt each time. Everything that
+ * changes or sends anything still asks, and the person's own deny rules still win.
+ */
+export function patchbayPermissions(readable: string[]): string[] {
+  return [...readable.map((dir) => `Read(${rulePath(dir)}/**)`), ...LOOKING_VERBS.flatMap((verb) => [`Bash(patchbay ${verb})`, `Bash(patchbay ${verb} *)`])]
 }
 
 function defaultLaunch(ctx: ClaudeLaunchContext, args: string[]): { file: string; args: string[] } {

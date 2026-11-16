@@ -22,6 +22,8 @@ const LETTER = textSize(INK) * 0.56
 const LINE = textSize(INK) * 1.25
 const SMALL_LETTER = textSize(1) * 0.56
 const SMALL_LINE = textSize(1) * 1.25
+/** Space between arrows that join the same two boxes. */
+const PARALLEL = 14
 const PAD = { x: 18, y: 14 }
 const GAP = { along: 90, across: 36 }
 const MARGIN = 30
@@ -66,15 +68,36 @@ export function readDiagram(raw: unknown): DiagramSpec {
 export const isDiagramError = (e: unknown): e is Error => e instanceof DiagramError
 
 /**
- * Each box's column: one past the furthest box with an arrow into it, so arrows run one way where they can. A cycle
- * can't push a box out forever, because no box goes further than there are boxes.
+ * The arrows that point back at a box already on the way to them, as a response does to its request. They're drawn,
+ * but left out when placing boxes, or a request and its reply would push each other's boxes ever further along.
  */
+function backArrows(spec: DiagramSpec): Set<number> {
+  const out = new Map<string, number[]>()
+  ;(spec.arrows ?? []).forEach((a, i) => out.set(a.from, [...(out.get(a.from) ?? []), i]))
+  const state = new Map<string, 'open' | 'done'>()
+  const back = new Set<number>()
+  const visit = (id: string): void => {
+    state.set(id, 'open')
+    for (const i of out.get(id) ?? []) {
+      const to = spec.arrows![i].to
+      if (state.get(to) === 'open') back.add(i)
+      else if (!state.has(to)) visit(to)
+    }
+    state.set(id, 'done')
+  }
+  // In the order given, so the first box is where the flow starts.
+  for (const b of spec.boxes) if (!state.has(b.id)) visit(b.id)
+  return back
+}
+
+/** Each box's column: one past the furthest box with an arrow into it, leaving out arrows that point back. */
 function columns(spec: DiagramSpec): Map<string, number> {
   const level = new Map(spec.boxes.map((b) => [b.id, 0]))
+  const back = backArrows(spec)
   for (let pass = 0; pass < spec.boxes.length; pass++) {
     let moved = false
-    for (const a of spec.arrows ?? []) {
-      if (a.from === a.to) continue
+    for (const [i, a] of (spec.arrows ?? []).entries()) {
+      if (a.from === a.to || back.has(i)) continue
       const want = Math.min(level.get(a.from)! + 1, spec.boxes.length - 1)
       if (want > level.get(a.to)!) {
         level.set(a.to, want)
@@ -141,21 +164,37 @@ export function layoutDiagram(spec: DiagramSpec, existing: WhiteboardShape[]): W
     shapes.push({ type: 'rect', color, size: INK, x1: r1(p.x), y1: r1(p.y), x2: r1(p.x + p.w), y2: r1(p.y + p.h) })
     shapes.push({ type: 'text', color, size: INK, x: r1(p.x + PAD.x), y: r1(p.y + PAD.y), text: b.label })
   }
+  // Arrows between the same two boxes, either way, run side by side rather than on top of each other.
+  const pairKey = (a: { from: string; to: string }): string => [a.from, a.to].sort().join('\u0000')
+  const pairs = new Map<string, number>()
+  const seen = new Map<string, number>()
+  for (const a of spec.arrows ?? []) pairs.set(pairKey(a), (pairs.get(pairKey(a)) ?? 0) + 1)
   for (const a of spec.arrows ?? []) {
     if (a.from === a.to) continue
     const from = placed.get(a.from)!
     const to = placed.get(a.to)!
-    const start = edgeOf(from, { x: to.x + to.w / 2, y: to.y + to.h / 2 })
-    const end = edgeOf(to, { x: from.x + from.w / 2, y: from.y + from.h / 2 })
+    let start = edgeOf(from, { x: to.x + to.w / 2, y: to.y + to.h / 2 })
+    let end = edgeOf(to, { x: from.x + from.w / 2, y: from.y + from.h / 2 })
+    const key = pairKey(a)
+    const count = pairs.get(key)!
+    const nth = seen.get(key) ?? 0
+    seen.set(key, nth + 1)
+    const across = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
+    // How far this one sits from the middle line between the boxes: negative is above, or left when it runs down.
+    const shift = (nth - (count - 1) / 2) * PARALLEL
+    if (shift) {
+      start = across ? { x: start.x, y: start.y + shift } : { x: start.x + shift, y: start.y }
+      end = across ? { x: end.x, y: end.y + shift } : { x: end.x + shift, y: end.y }
+    }
     shapes.push({ type: 'arrow', color: COLORS.black, size: INK, x1: r1(start.x), y1: r1(start.y), x2: r1(end.x), y2: r1(end.y) })
     if (a.label) {
       const midX = (start.x + end.x) / 2
       const midY = (start.y + end.y) / 2
       const width = a.label.length * SMALL_LETTER
-      // Clear of the line: above one that runs across, to the right of one that runs down.
-      const across = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
-      const x = across ? midX - width / 2 : midX + 8
-      const y = across ? midY - SMALL_LINE - 6 : midY - SMALL_LINE / 2
+      // Clear of the line, on its own side: above or below one that runs across, left or right of one that runs down.
+      const below = shift > 0
+      const x = across ? midX - width / 2 : below ? midX + 8 : midX - width - 8
+      const y = across ? (below ? midY + 6 : midY - SMALL_LINE - 6) : midY - SMALL_LINE / 2
       shapes.push({ type: 'text', color: COLORS.blue, size: 1, x: r1(x), y: r1(y), text: a.label })
     }
   }

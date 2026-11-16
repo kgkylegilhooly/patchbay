@@ -141,6 +141,16 @@ test('a Windows path written with single backslashes in team JSON is read as mea
   expect(bad.stderr).toMatch(/forward slashes/)
 })
 
+test('team JSON whose \\\\ arrived halved, as Git Bash passes it, still finds the brief and folder it names', async () => {
+  // What a real lead's correct JSON became on the way in: \f and \r would otherwise be read as escapes.
+  const halved = '[{"name": "farewell", "promptFile": "C:\\Users\\me\\scratchpad\\farewell-brief.md", "cwd": "C:\\Code\\repos\\team"}]'
+  await cli(['spawn-team', '--label', 'T', '--members', halved])
+  expect(calls[0].args.members).toEqual([{ name: 'farewell', promptFile: 'C:\\Users\\me\\scratchpad\\farewell-brief.md', cwd: 'C:\\Code\\repos\\team' }])
+  // Valid JSON is read as it is, newlines in a prompt included.
+  await cli(['spawn-team', '--label', 'T', '--members', '[{"name": "a", "prompt": "one\\ntwo", "cwd": "C:/x"}]'])
+  expect((calls[1].args.members as Array<{ prompt: string }>)[0].prompt).toBe('one\ntwo')
+})
+
 test('text cut short by a quote mark in it says so, and suggests a file', async () => {
   // What the shell makes of '[{"prompt": "Goal: x. Don't touch: y"}]': the apostrophe ends the quoting.
   const r = await cli(['spawn-team', '--label', 'T', '--members', '[{"prompt": "Goal: x. Dont', 'touch: y"}]'])

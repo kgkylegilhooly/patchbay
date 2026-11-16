@@ -113,6 +113,30 @@ test('draw lays a diagram out on a reachable board, from text or a file, grows t
   await refused(verbs('me', 'draw', { node: 'b' }), /--diagram/)
 })
 
+test('draw --replace takes back only the caller\'s own last drawing, and only while the board is as it left it', async () => {
+  const person = [{ type: 'text', color: '#000', size: 2, x: 0, y: 0, text: 'mine' }]
+  const board = { x: 0, y: 0, width: 300, height: 200, parentId: null, id: 'b', kind: 'whiteboard', title: 'Sketch', shapes: person } as CanvasNode
+  const store = memoryStore([claudeNode('me'), claudeNode('other'), board])
+  store.dispatch({ op: 'addEdge', edge: { id: 'l', from: 'me', to: 'b', kind: 'link' } })
+  store.dispatch({ op: 'addEdge', edge: { id: 'l2', from: 'other', to: 'b', kind: 'link' } })
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }) })
+  const shapes = () => (store.get().nodes.find((n) => n.id === 'b') as WhiteboardNode).shapes
+  const one = JSON.stringify({ boxes: [{ id: 'a', label: 'First try' }] })
+  const two = JSON.stringify({ boxes: [{ id: 'a', label: 'Second try' }, { id: 'c', label: 'C' }] })
+  await refused(verbs('me', 'draw', { node: 'b', diagram: one, replace: true }), /Nothing of yours to replace/)
+  await verbs('me', 'draw', { node: 'b', diagram: one })
+  expect(shapes()).toHaveLength(3)
+  expect(await verbs('me', 'draw', { node: 'b', diagram: two, replace: true })).toMatchObject({ added: 4, replaced: 2 })
+  expect(shapes().map((s) => (s.type === 'text' ? s.text : s.type))).toEqual(['mine', 'rect', 'Second try', 'rect', 'C'])
+  // Someone else's drawing, or a board changed since, isn't the caller's to replace.
+  await refused(verbs('other', 'draw', { node: 'b', diagram: one, replace: true }), /Nothing of yours to replace/)
+  store.dispatch({ op: 'patchNode', id: 'b', patch: { shapes: [...shapes(), { type: 'text', color: '#000', size: 2, x: 5, y: 5, text: 'person added' }] } as Partial<CanvasNode> })
+  await refused(verbs('me', 'draw', { node: 'b', diagram: one, replace: true }), /changed since/)
+  expect(shapes()).toHaveLength(6)
+})
+
 test('closing the last member of a team takes its empty group too, but only a group the caller made', async () => {
   const { verbs, store } = setup([groupNode('mine-g', { openedBy: 'me' }), claudeNode('solo', { openedBy: 'me', parentId: 'mine-g' }), groupNode('theirs-g'), claudeNode('in-theirs', { openedBy: 'me', parentId: 'theirs-g' })])
   const team = (await verbs('me', 'spawn-team', { label: 'Pair', members: [{ name: 'a' }, { name: 'b' }] })) as { group: string; members: Record<string, string> }

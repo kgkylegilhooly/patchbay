@@ -169,8 +169,9 @@ Goal: Add tests for the CSV parser's quoting rules.
 You own: src/parser/csv.ts, test/parser/csv.test.ts
 Leave alone: every other file. The lead commits, so do not commit.
 Done when: npm test passes, with cases for quotes, escaped quotes and empty fields.
-Report: when done or stuck, send me what you changed, what you ran, and anything left, in under 10 lines.
-Ask me: if a rule is unclear. Ask once, and say what you'd do if I don't answer.
+Report: when done or stuck, run patchbay send --node <your id> --text "..." with what you changed, what you ran,
+  and anything left, in under 10 lines. A reply in your own window does not reach me.
+Ask me: the same way, if a rule is unclear. Ask once, and say what you would do if I do not answer.
 ```
 
 Keep briefs small enough that each turn ends often. A member only reads your messages between turns, so a

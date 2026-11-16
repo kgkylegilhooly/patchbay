@@ -66,3 +66,27 @@ describe('reading what an agent sent', () => {
     expect(readDiagram({ boxes: [{ id: 'cache' }] }).boxes[0].label).toBe('cache')
   })
 })
+
+test('a request and its response between the same boxes keep the boxes in order, and run side by side', () => {
+  // As a real agent described a three-tier app: requests one way, responses back.
+  const flow = readDiagram({
+    boxes: [{ id: 'browser', label: 'Browser' }, { id: 'web', label: 'Web server' }, { id: 'app', label: 'App server' }, { id: 'db', label: 'Database' }],
+    arrows: [
+      { from: 'browser', to: 'web', label: '1. Request' }, { from: 'web', to: 'app', label: '2. Call' }, { from: 'app', to: 'db', label: '3. Query' },
+      { from: 'db', to: 'app', label: '4. Rows' }, { from: 'app', to: 'web', label: '5. Result' }, { from: 'web', to: 'browser', label: '6. Response' }
+    ]
+  })
+  const shapes = layoutDiagram(flow, [])
+  const x = (label: string) => shapeBox(shapes[shapes.findIndex((s) => s.type === 'text' && s.text === label) - 1]).x
+  expect(x('Browser')).toBeLessThan(x('Web server'))
+  expect(x('Web server')).toBeLessThan(x('App server'))
+  expect(x('App server')).toBeLessThan(x('Database'))
+  const arrows = shapes.filter((s) => s.type === 'arrow') as Array<{ y1: number; y2: number; x1: number }>
+  // The request to the web server and the response from it are apart, not one on top of the other.
+  const there = arrows[0]
+  const back = arrows[5]
+  expect(Math.abs(there.y1 - back.y2)).toBeGreaterThanOrEqual(10)
+  // Each label sits clear of the other's.
+  const label = (t: string) => shapes.find((s) => s.type === 'text' && s.text === t) as { y: number }
+  expect(Math.abs(label('1. Request').y - label('6. Response').y)).toBeGreaterThan(15)
+})

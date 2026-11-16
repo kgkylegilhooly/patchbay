@@ -27,10 +27,16 @@ function leadPrompt(task) {
 function toolCalls(file) {
   if (!file || !fs.existsSync(file)) return []
   const calls = []
+  // Claude Code can write the same tool call to its transcript more than once, so each is counted by its id.
+  const seen = new Set()
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     try {
       const e = JSON.parse(line)
-      for (const part of e.message?.content ?? []) if (part?.type === 'tool_use') calls.push({ tool: part.name, command: part.input?.command ?? part.input?.file_path ?? '' })
+      for (const part of e.message?.content ?? []) {
+        if (part?.type !== 'tool_use' || seen.has(part.id)) continue
+        seen.add(part.id)
+        calls.push({ tool: part.name, command: part.input?.command ?? part.input?.file_path ?? '' })
+      }
     } catch {}
   }
   return calls
@@ -81,10 +87,13 @@ async function main() {
     await L.openNode(page, L.claude('lead', work, 20, 20, { title: 'Team lead', prompt: leadPrompt(task) }))
     const started = Date.now()
     let calmSince = null
+    // Teammates are noted while they're on the canvas, since closing one takes its cables, and with them who opened it.
+    const seenMembers = new Set()
     for (;;) {
       await L.sleep(3000)
       const doc = await L.doc(page)
       const members = doc.nodes.filter((n) => n.kind === 'claude' && n.id !== 'lead')
+      for (const m of members) seenMembers.add(m.id)
       const leadStatus = await L.statusOf(page, 'lead')
       const settled = leadStatus === 'idle' || leadStatus === 'exited'
       calmSince = settled ? (calmSince ?? Date.now()) : null
@@ -107,7 +116,7 @@ async function main() {
     // The agents the lead opened, whether still on the canvas or closed. A team's group is opened by the lead too, but isn't one.
     // Recently closed keeps a conversation under an id of its own, so a closed teammate is known by its messages.
     const agents = new Set([...doc.nodes.filter((n) => n.kind === 'claude').map((n) => n.id), ...messages.flatMap((m) => [m.from, m.to]), ...opened.filter((id) => !doc.nodes.some((n) => n.id === id && n.kind === 'group'))])
-    const memberIds = [...new Set([...opened, ...messages.flatMap((m) => [m.from, m.to])])].filter((id) => id !== 'lead' && agents.has(id))
+    const memberIds = [...new Set([...seenMembers, ...opened, ...messages.flatMap((m) => [m.from, m.to])])].filter((id) => id !== 'lead' && (agents.has(id) || seenMembers.has(id)))
     const groups = opened.filter((id) => !agents.has(id))
 
     console.log('\n--- lead commands ---')
@@ -121,7 +130,13 @@ async function main() {
     console.log('')
 
     c.check('The lead knows where it is: it ran whoami or got the canvas context', commands.some((x) => /^patchbay whoami/.test(x)) || (lead?.transcriptPath && fs.readFileSync(lead.transcriptPath, 'utf8').includes('on the Patchbay canvas')))
-    const brief = commands.find((x) => /^patchbay (open-agent|spawn-team)/.test(x)) ?? ''
+    const startCmd = commands.filter((x) => /^patchbay (open-agent|spawn-team)/.test(x)).pop() ?? ''
+    // A lead following the skill may put the brief in a file and name it with promptFile or --prompt-file.
+    const files = (text) => [...text.matchAll(/"promptFile":\s*"([^"]+)"|--(?:prompt|members)-file\s+"?([^"\s]+)/g)].map((m) => (m[1] ?? m[2]).replace(/\\\\/g, '\\'))
+    const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '')
+    // A members file can itself name prompt files, so those are read too.
+    const outer = files(startCmd).map(read)
+    const brief = [startCmd, ...outer, ...outer.flatMap(files).map(read)].join('\n')
     c.check('The lead started one teammate', /^patchbay (open-agent|spawn-team)/.test(brief), brief.slice(0, 300))
     c.check('Its brief names the files the teammate owns and how to report back', /FAREWELL\.md/.test(brief) && /report|send/i.test(brief), brief.slice(0, 600))
     c.check('The lead waited with patchbay wait', commands.some((x) => /^patchbay wait/.test(x)))

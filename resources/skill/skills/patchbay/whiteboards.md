@@ -52,4 +52,8 @@ patchbay draw --node <board id> --diagram-file sketch.json
   undo it, so draw to show, not to decide.
 - Write the JSON to a file with your file-writing tool and use `--diagram-file`; `--diagram '<json>'` works for short
   ones without apostrophes.
-- Then look at the result with `patchbay whiteboard --node <board id>`.
+- Then look at the result with `patchbay whiteboard --node <board id>`. To redo it, fix the JSON and draw again
+  with `--replace`, which takes away your last drawing first. That only works while nobody has changed the board
+  since, so it never takes away anyone else's work.
+- Arrows that go both ways between two boxes, such as a request and its response, are drawn side by side, so
+  you can show both.

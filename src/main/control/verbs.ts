@@ -624,6 +624,9 @@ export function createVerbs({
    * Draws a diagram on a whiteboard, from boxes and the arrows between them, laid out below what's already there. It
    * only ever adds, and the person sees who drew and can undo it.
    */
+  /** Each board's last drawing by an agent, and the shapes it left, which is what --replace may take back. */
+  const lastDraws = new Map<string, { by: string; before: number; shapes: WhiteboardShape[] }>()
+
   const draw = (caller: string, args: Args): unknown => {
     const id = required(args, 'node')
     const inline = optional(args, 'diagram')
@@ -646,18 +649,29 @@ export function createVerbs({
       refuse(`The diagram isn't valid JSON: ${(e as Error).message}. Put it in a file and use --diagram-file if quoting is awkward.`)
     }
     const board = node as WhiteboardNode
+    // --replace takes away the caller's own last drawing first, but only while the board is exactly as it left it, so
+    // nothing anyone else drew, the person included, can go with it.
+    let base = board.shapes
+    if (args.replace === true) {
+      const last = lastDraws.get(id)
+      if (!last || last.by !== caller || last.shapes !== board.shapes) {
+        refuse(`Nothing of yours to replace on board "${id}": you haven't drawn on it, or it has changed since you did. Draw without --replace to add to it.`)
+      }
+      base = board.shapes.slice(0, last!.before)
+    }
     let added: WhiteboardShape[] = []
     try {
-      added = layoutDiagram(readDiagram(raw), board.shapes)
+      added = layoutDiagram(readDiagram(raw), base)
     } catch (e) {
       if (isDiagramError(e)) refuse(e.message)
       throw e
     }
-    const next = [...board.shapes, ...added]
+    const next = [...base, ...added]
     // The board grows to show the drawing, so nothing an agent drew is hidden past its edge.
     store.dispatch({ op: 'patchNode', id, patch: { shapes: next, ...boardSizeFor(next, board) } as Partial<CanvasNode> })
-    onBoardEdit?.({ id, by: caller, before: board.shapes.length, after: next.length, at: Date.now() })
-    return { id, added: added.length, look: `patchbay whiteboard --node ${id}` }
+    lastDraws.set(id, { by: caller, before: base.length, shapes: next })
+    onBoardEdit?.({ id, by: caller, before: base.length, after: next.length, at: Date.now() })
+    return { id, added: added.length, ...(base !== board.shapes ? { replaced: board.shapes.length - base.length } : {}), look: `patchbay whiteboard --node ${id}` }
   }
 
   /** A board as a PNG to look at and an SVG beside it, with the text written on it. */

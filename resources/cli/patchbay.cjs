@@ -28,7 +28,7 @@ const VERBS = {
   note: { node: 'text', text: 'text', append: 'text' },
   'open-whiteboard': { title: 'text', group: 'text' },
   whiteboard: { node: 'text' },
-  draw: { node: 'text', diagram: 'text', 'diagram-file': 'path' },
+  draw: { node: 'text', diagram: 'text', 'diagram-file': 'path', replace: 'flag' },
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
   send: { node: 'text', text: 'text' },
@@ -64,7 +64,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened
   open-whiteboard [--title T] [--group ID]
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
-  draw          --node ID (--diagram JSON | --diagram-file FILE)   draws boxes and arrows on a whiteboard
+  draw          --node ID (--diagram JSON | --diagram-file FILE) [--replace]   draws boxes and arrows on a whiteboard
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT
@@ -138,6 +138,31 @@ function parseFlags(verb, words) {
   return args
 }
 
+/** A path field that came out holding a tab, newline or other control character was read wrong, as from C:\temp. */
+const garbledPath = (list) =>
+  Array.isArray(list) && list.some((m) => m && ['cwd', 'promptFile'].some((k) => typeof m[k] === 'string' && /[\x00-\x1f]/.test(m[k])))
+
+/**
+ * Team JSON as meant, even when its Windows paths arrive with single backslashes. Git Bash hands a quoted argument to
+ * Windows programs with each \\ halved, so even correct JSON such as "C:\\Code" arrives as "C:\Code", which isn't
+ * valid. Text that is valid JSON is read as it is. Otherwise backslashes that can't start an escape are doubled; and if
+ * a path still comes out with a control character in it, as \t in C:\temp would, every backslash is taken literally.
+ */
+function readTeamJson(text) {
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    const attempts = [text.replace(/\\(?!["\\/nrt]|u[0-9a-fA-F]{4})/g, '\\\\'), text.replace(/\\(?!")/g, '\\\\')]
+    for (const attempt of attempts) {
+      try {
+        const list = JSON.parse(attempt)
+        if (!garbledPath(list)) return list
+      } catch {}
+    }
+    fail(`The team members aren't valid JSON: ${e.message}. Write Windows paths with forward slashes, as in C:/Code/app, or put the team in a file and use --members-file.`)
+  }
+}
+
 function teamMembers(args) {
   const { members, membersFile, ...rest } = args
   if ((members === undefined) === (membersFile === undefined)) fail('Give one of --members and --members-file.')
@@ -149,18 +174,7 @@ function teamMembers(args) {
       fail(`Could not read ${membersFile}: ${e.message}`)
     }
   }
-  let list
-  try {
-    list = JSON.parse(text)
-  } catch (e) {
-    // A Windows path such as C:\Code isn't valid JSON, where a backslash starts an escape. Doubling the backslashes
-    // that start no escape keeps what was meant, and only text that wasn't valid JSON is ever changed.
-    try {
-      list = JSON.parse(text.replace(/\\(?!["\\/bfnrtu])/g, '\\\\'))
-    } catch {
-      fail(`The team members aren't valid JSON: ${e.message}. Write Windows paths with forward slashes, as in C:/Code/app.`)
-    }
-  }
+  const list = readTeamJson(text)
   if (!Array.isArray(list)) fail('The team members must be a JSON list.')
   const resolved = list.map((m) => {
     if (typeof m !== 'object' || m === null) return m

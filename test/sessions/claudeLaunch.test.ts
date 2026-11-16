@@ -5,6 +5,8 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   buildClaudeLaunch,
   claudeAt,
+  patchbayPermissions,
+  rulePath,
   resolveClaude,
   type ClaudeLaunchContext
 } from '../../src/main/sessions/claudeLaunch'
@@ -91,6 +93,27 @@ test('settings file path with spaces is one arg', () => {
   expect(settings).toContain(' ')
   expect(JSON.parse(readFileSync(settings, 'utf8')).hooks).toBeDefined()
   expect(after(launch.args, '--plugin-dir')).toBe('C:\\Program Files\\Patchbay\\resources\\skill')
+})
+
+test('an agent may read Patchbay\'s skill and exports, and run the verbs that only look, without asking', () => {
+  const launch = buildClaudeLaunch(node(), ctx())
+  const { permissions } = JSON.parse(readFileSync(after(launch.args, '--settings'), 'utf8'))
+  expect(permissions.allow).toContain('Read(//c/Program Files/Patchbay/resources/skill/**)')
+  expect(permissions.allow.some((r: string) => /^Read\(.*\/whiteboards\/\*\*\)$/.test(r))).toBe(true)
+  expect(permissions.allow).toContain('Bash(patchbay whoami)')
+  expect(permissions.allow).toContain('Bash(patchbay whiteboard *)')
+  // Anything that changes the canvas, sends, or runs something still asks.
+  for (const verb of ['send', 'open-agent', 'open-terminal', 'spawn-team', 'draw', 'note', 'close', 'link', 'sticky', 'browser']) {
+    expect(permissions.allow.some((r: string) => r.startsWith(`Bash(patchbay ${verb}`))).toBe(false)
+  }
+  expect(permissions.deny).toBeUndefined()
+})
+
+test('paths are written the way Claude Code matches them on Windows', () => {
+  expect(rulePath('C:\\Users\\me\\AppData\\Roaming\\Patchbay\\whiteboards')).toBe('//c/Users/me/AppData/Roaming/Patchbay/whiteboards')
+  expect(rulePath('D:/data/')).toBe('//d/data')
+  expect(rulePath('/home/me/patchbay')).toBe('//home/me/patchbay')
+  expect(patchbayPermissions([])).toEqual(expect.arrayContaining(['Bash(patchbay list)', 'Bash(patchbay list *)']))
 })
 
 test('the settings file names every hook, with the script quoted and in forward slashes', () => {
