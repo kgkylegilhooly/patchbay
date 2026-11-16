@@ -426,9 +426,11 @@ async function boot(): Promise<void> {
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
 
-  await startDead()
-  // Only now that sessions are back, so a slot that passed while closed is judged against the real state.
-  triggers.start()
+  // The window doesn't wait for sessions to come back, which took a second or more with many of them: it shows them
+  // starting. Triggers do wait, so a slot that passed while closed is judged against the real state.
+  void startDead()
+    .catch((e: unknown) => console.error('Patchbay could not restart every session:', e))
+    .then(() => triggers.start())
   usage.setOff(currentSettings().usageSource === 'off')
   usagePoller.start()
   // Codex's limits and both accounts come from asking the programs themselves, which spends no quota.

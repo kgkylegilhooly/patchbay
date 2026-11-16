@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { MenuPanel } from './Menu'
 import { editMenu, fileMenu, settingsMenu, viewMenu, type Commands, type MenuEntry, type MenuState } from './menus'
 import { ProjectTabs } from './ProjectTabs'
@@ -15,7 +15,7 @@ const BUILD: Record<Name, (c: Commands, s: MenuState) => MenuEntry[]> = {
 }
 
 /** The app's title bar: the window's own buttons are drawn over its right end. */
-export function TopBar({ commands, state }: { commands: Commands; state: () => MenuState }): React.JSX.Element {
+function TopBarView({ commands, state }: { commands: Commands; state: () => MenuState }): React.JSX.Element {
   const [open, setOpen] = useState<Name | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -65,3 +65,6 @@ export function TopBar({ commands, state }: { commands: Commands; state: () => M
     </header>
   )
 }
+
+/** Drawn again only when what it's given changes, so moving things on the canvas leaves it alone. */
+export const TopBar = memo(TopBarView)

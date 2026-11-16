@@ -13,7 +13,7 @@ import {
   type Viewport
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { isTriggerTarget, targetsFor } from '../core/trigger/arming'
 import { isProjectOpen, type CanvasDoc, type RunNode as RunNodeModel, type TriggerNode as TriggerNodeModel } from '../shared/model'
 import { SshForm } from './SshForm'
@@ -29,6 +29,7 @@ import { CommandPalette } from './CommandPalette'
 import { Dock } from './Dock'
 import { dragOps } from './dragOps'
 import { type FlowEdge, type FlowNode, mergeFlowNodes, toFlow } from './flowMapping'
+import { shareEdges } from './docShare'
 import { actionForKey, appTakesKey, isOverTerminal, keyFocusOf, keyFromEvent } from './keys'
 import { FocusView } from './FocusView'
 import { ContextMenu } from './Menu'
@@ -103,14 +104,12 @@ function Canvas(): React.JSX.Element | null {
   const initialViewport = useRef<Viewport | null>(null)
   if (doc && !initialViewport.current) initialViewport.current = doc.viewport
 
-  useEffect(() => {
+  // Before the browser paints, so a change shows in the frame it arrived in rather than the one after.
+  useLayoutEffect(() => {
     if (!doc) return
     const mapped = toFlow(doc, statuses)
     setNodes((prev) => mergeFlowNodes(prev, mapped.nodes))
-    setEdges((prev) => {
-      const selected = new Set(prev.filter((e) => e.selected).map((e) => e.id))
-      return mapped.edges.map((e) => (selected.has(e.id) ? { ...e, selected: true } : e))
-    })
+    setEdges((prev) => shareEdges(prev, mapped.edges))
   }, [doc, statuses])
 
   const selected = useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes])
@@ -173,6 +172,7 @@ function Canvas(): React.JSX.Element | null {
   const [menu, setMenu] = useState<{ at: Point; entries: MenuEntry[]; label: string } | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const toggleRecent = useCallback(() => setRecentOpen((o) => !o), [])
+  const closeSidebar = useCallback(() => setPref('sidebar'), [setPref])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const openSettings = useCallback(() => setSettingsOpen(true), [])
   const [projectFormOpen, setProjectFormOpen] = useState(false)
@@ -197,7 +197,8 @@ function Canvas(): React.JSX.Element | null {
     if (viewport) void flow.setViewport(viewport)
   }, [activeProjectId, flow])
 
-  const menuState = (): MenuState => {
+  // Reads only refs and the store when called, so it can stay one function, which lets the panels it's given skip redraws.
+  const menuState = useCallback((): MenuState => {
     const terminal = focusedTerminal()
     const current = useStore.getState().doc
     const windowId = currentWindow(selectedRef.current)
@@ -219,7 +220,7 @@ function Canvas(): React.JSX.Element | null {
       board: useStore.getState().boardOpen,
       focus: !!useStore.getState().focus
     }
-  }
+  }, [])
   const keyboard = useRef({ commands, menuState })
   keyboard.current = { commands, menuState }
 
@@ -422,7 +423,7 @@ function Canvas(): React.JSX.Element | null {
           </ul>
         )}
         {prefs.sidebar && (
-          <Sidebar commands={commands} prefs={prefs} onPrefs={updatePrefs} onClose={() => setPref('sidebar')} />
+          <Sidebar commands={commands} prefs={prefs} onPrefs={updatePrefs} onClose={closeSidebar} />
         )}
         <Dock commands={commands} sidebar={prefs.sidebar} recent={recentOpen} groupLabel={selected.length ? 'Group selection' : 'New group'} />
         {form?.kind === 'run-config' && (

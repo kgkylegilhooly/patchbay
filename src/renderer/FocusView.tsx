@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import { isSessionNode } from '../shared/model'
 import { closePane, leaves, setRatio, showIn, splitPane, type Pane, type PanePath } from './focusLayout'
 import { leaveFocus, registerSlot, setFocusLayout } from './focusState'
@@ -90,7 +90,7 @@ function PaneView({ root, path, pane }: { root: Pane; path: PanePath; pane: Pane
 }
 
 /** Session windows in split panes, filling the app, instead of the canvas. */
-export function FocusView(): React.JSX.Element | null {
+function FocusViewView(): React.JSX.Element | null {
   const focus = useStore((s) => s.focus)
   if (!focus) return null
   return (
@@ -110,3 +110,6 @@ export function FocusView(): React.JSX.Element | null {
     </section>
   )
 }
+
+/** Drawn again only when what it's given changes, so moving things on the canvas leaves it alone. */
+export const FocusView = memo(FocusViewView)

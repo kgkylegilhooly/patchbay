@@ -13,6 +13,7 @@ import type { UsageMode } from './usageView'
 import { svgToPng } from './whiteboardImage'
 import { joinBoardEdit, joinNoteEdit, type AgentBoardEdits, type AgentNoteEdits } from './noteEdit'
 import { PULSE_MS, pulseCable } from './cableMotion'
+import { shareDoc } from './docShare'
 
 /** As many as main keeps. */
 const MESSAGES_KEPT = 300
@@ -126,7 +127,7 @@ export const useStore = create<State>(() => ({
 /** Loads everything from main, subscribing first so nothing that changes meanwhile is missed. */
 export async function connectStore(): Promise<void> {
   bridge.onBoardShapes((id, shapes) => boardShapes.set(id, shapes))
-  bridge.onDoc((doc) => useStore.setState({ doc: withBoardShapes(doc) }))
+  bridge.onDoc((doc) => useStore.setState((s) => ({ doc: shareDoc(s.doc, withBoardShapes(doc)) })))
   bridge.onStatus((id, status) =>
     useStore.setState((s) => {
       const statuses = { ...s.statuses }

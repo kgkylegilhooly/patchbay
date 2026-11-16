@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { isSessionNode, whereShown, type Project } from '../shared/model'
 import { bridge } from './bridge'
 import { Icon, KindIcon } from './icons'
@@ -88,7 +88,7 @@ function SectionHead({ id, label, count, open, onToggle, help, badge }: { id: st
   )
 }
 
-export function Sidebar({ commands, prefs, onPrefs, onClose }: { commands: Commands; prefs: Prefs; onPrefs: (patch: Partial<Prefs>) => void; onClose: () => void }): React.JSX.Element | null {
+function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands; prefs: Prefs; onPrefs: (patch: Partial<Prefs>) => void; onClose: () => void }): React.JSX.Element | null {
   const doc = useStore((s) => s.doc)
   const statuses = useStore((s) => s.statuses)
   const attention = useStore((s) => s.attention)
@@ -248,3 +248,6 @@ export function Sidebar({ commands, prefs, onPrefs, onClose }: { commands: Comma
     </aside>
   )
 }
+
+/** Drawn again only when what it's given changes, so moving things on the canvas leaves it alone. */
+export const Sidebar = memo(SidebarView)

@@ -1,5 +1,5 @@
 import { useViewport } from '@xyflow/react'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { ClaudeIcon, CodexIcon, Icon, type IconName } from './icons'
 import { MenuPanel } from './Menu'
 import { addMenu, type Commands } from './menus'
@@ -25,7 +25,7 @@ function DockButton({
   )
 }
 
-export function Dock({
+function DockView({
   commands,
   sidebar,
   recent,
@@ -91,3 +91,6 @@ export function Dock({
     </div>
   )
 }
+
+/** Drawn again only when what it's given changes, so moving things on the canvas leaves it alone. */
+export const Dock = memo(DockView)
