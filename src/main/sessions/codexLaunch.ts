@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import type { ClaudeNode } from '../../shared/model'
-import { claudeAt, customLaunch, programArgs, sessionEnv, type ClaudeLaunch, type ClaudeProgram, type SessionEnvContext } from './claudeLaunch'
+import { claudeAt, customLaunch, LOOKING_VERBS, programArgs, sessionEnv, type ClaudeLaunch, type ClaudeProgram, type SessionEnvContext } from './claudeLaunch'
 
 export interface CodexLaunchContext extends SessionEnvContext {
   hookScript: string
@@ -67,6 +67,19 @@ export function codexApprovalArgs(mode: string | undefined): string[] {
   if (mode === 'never') return ['-c', 'approval_policy="never"']
   if (mode === 'bypass') return ['--dangerously-bypass-approvals-and-sandbox']
   return []
+}
+
+/** The tool Codex calls Patchbay's MCP server by, as its permission requests name it. */
+export const CODEX_PATCHBAY_TOOL = 'mcp__patchbay__patchbay'
+
+/**
+ * A Codex call to Patchbay that only looks, which goes ahead without asking, as the same verbs do for Claude through
+ * its settings. Codex has no such rules, so without this every `whoami` and `guide` stopped at a prompt.
+ */
+export function isLookingCall(toolName: unknown, toolInput: unknown): boolean {
+  if (toolName !== CODEX_PATCHBAY_TOOL) return false
+  const args = (toolInput as { args?: unknown } | null)?.args
+  return Array.isArray(args) && typeof args[0] === 'string' && LOOKING_VERBS.includes(args[0])
 }
 
 /** Codex can't load Patchbay's skill as Claude does, so the guide comes through the patchbay tool. */

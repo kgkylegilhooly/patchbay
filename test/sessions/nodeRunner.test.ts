@@ -36,12 +36,15 @@ interface FakeHost extends SessionHost {
   specs: SessionSpec[]
   exit(id: string, code: number): void
   failNext(e: Error): void
+  /** Output from a session, as the program would print it. */
+  emit(id: string, data: string): void
 }
 
 /** Records what would run. A test decides when a session exits and with what code. */
 function fakeHost(): FakeHost {
   const running = new Set<string>()
   const exits: Array<(id: string, code: number) => void> = []
+  const outputs: Array<(id: string, data: string, seq: number) => void> = []
   const specs: SessionSpec[] = []
   let failure: Error | null = null
   const exit = (id: string, code: number): void => {
@@ -52,6 +55,9 @@ function fakeHost(): FakeHost {
     pid: () => null,
     specs,
     exit,
+    emit(id, data) {
+      for (const cb of outputs) cb(id, data, 0)
+    },
     failNext(e) {
       failure = e
     },
@@ -71,7 +77,9 @@ function fakeHost(): FakeHost {
     },
     isRunning: (id) => running.has(id),
     snapshot: () => ({ data: 'SCROLLBACK', seq: 1 }),
-    onOutput() {},
+    onOutput(cb) {
+      outputs.push(cb)
+    },
     onExit(cb) {
       exits.push(cb)
     }
@@ -189,6 +197,25 @@ test('hooks drive the status, with notification type and end reason passed along
   expect(tracker.get('c')).toBe('exited')
 })
 
+test('a Claude at its folder-trust question needs the person; ordinary startup output does not', async () => {
+  const { runner, host, tracker } = setup([claude(), claude({ id: 'd' })])
+  await runner.startNode('c')
+  await runner.startNode('d')
+  host.emit('d', 'Welcome to Claude Code\r\n')
+  host.emit('c', 'Quick safety check: Is this a project you created or one you trust?\r\n 1. Yes, I trust this folder')
+  expect(tracker.get('c')).toBe('needs-you')
+  expect(tracker.get('d')).toBe('starting')
+})
+
+test('a Claude Patchbay call through the MCP tool name is not let through: only Codex uses it', async () => {
+  const approvals = { request: vi.fn(async () => 'allow' as const), clearNode: vi.fn(), pending: () => [] }
+  const store = memoryStore([claude()])
+  const runner = createNodeRunner({ host: fakeHost(), tracker: createStatusTracker({ notify: () => {} }), store, approvals: approvals as never, ctx: ctx() })
+  await runner.startNode('c')
+  await runner.handleHook('c', { hook_event_name: 'PermissionRequest', tool_name: 'mcp__patchbay__patchbay', tool_input: { args: ['whoami'] } })
+  expect(approvals.request).toHaveBeenCalledTimes(1)
+})
+
 test('a hook from a node with no running Claude is ignored', async () => {
   const { runner, tracker, node } = setup([terminal(), claude()])
   await runner.handleHook('t', { hook_event_name: 'Stop' })
@@ -273,6 +300,36 @@ test('a resumed Claude that exits within 5 s with nonzero code surfaces resume-f
 
 describe('Codex', () => {
   const codexCtx = { codex: { file: 'C:\\bin\\codex.exe', prefixArgs: [] } }
+
+
+  test('stopped at its folder-trust question, it needs the person, and starts once past it', async () => {
+    const { runner, host, tracker } = setup([claude({ agent: 'codex', prompt: 'hi' })], codexCtx)
+    await runner.startNode('c')
+    // Drawn with cursor moves rather than spaces, as a full-screen program does.
+    host.emit('c', '\x1b[2J\x1b[1;1HFolder access\x1b[3;3HTrust\x1b[3;9Hthis\x1b[3;14Hfolder?')
+    expect(tracker.get('c')).toBe('needs-you')
+    await runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 'cx-1' })
+    expect(tracker.get('c')).toBe('idle')
+    // Later output that happens to mention trust changes nothing.
+    host.emit('c', 'Do you trust the files in this folder?')
+    expect(tracker.get('c')).toBe('idle')
+  })
+
+  test('its read-only Patchbay calls go ahead without asking; the rest still ask', async () => {
+    const approvals = { request: vi.fn(async () => 'deny' as const), clearNode: vi.fn(), pending: () => [] }
+    const store = memoryStore([claude({ agent: 'codex', prompt: 'hi' })])
+    const tracker = createStatusTracker({ notify: () => {} })
+    const runner = createNodeRunner({ host: fakeHost(), tracker, store, approvals: approvals as never, ctx: ctx(codexCtx) })
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'UserPromptSubmit' })
+    const ask = (args: string[]) => runner.handleHook('c', { hook_event_name: 'PermissionRequest', tool_name: 'mcp__patchbay__patchbay', tool_input: { args } })
+    expect(await ask(['whoami'])).toEqual({ decision: 'allow' })
+    expect(await ask(['guide'])).toEqual({ decision: 'allow' })
+    expect(tracker.get('c')).toBe('working')
+    expect(approvals.request).not.toHaveBeenCalled()
+    expect(await ask(['send', '--node', 'x', '--text', 'hi'])).toEqual({ decision: 'deny' })
+    expect(approvals.request).toHaveBeenCalledTimes(1)
+  })
 
   test('a new Codex runs codex with the hooks, and takes its session id from SessionStart', async () => {
     const { runner, host, store, tracker } = setup([claude({ agent: 'codex', prompt: 'hi' })], codexCtx)
@@ -425,7 +482,7 @@ test('a terminal starts the default shell in its folder with Patchbay env and no
 })
 
 test.each([
-  ['C:\\Program Files\\Git\\bin\\bash.exe', ['--login', '-i', '-c', 'codex "a b"']],
+  ['C:\\Program Files\\Git\\bin\\bash.exe', ['--login', '-i', '-c', 'codex "a b"\nexec bash --login -i']],
   ['powershell.exe', ['-NoExit', '-Command', 'codex "a b"']],
   ['C:\\Windows\\System32\\cmd.exe', ['/k', 'codex "a b"']],
   ['C:\\tools\\zsh.exe', ['-c', 'codex "a b"']]

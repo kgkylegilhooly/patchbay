@@ -14,13 +14,15 @@ import {
   type ClaudeLaunchContext,
   type ClaudeProgram
 } from './claudeLaunch'
-import { buildCodexLaunch, resolveCodex } from './codexLaunch'
+import { buildCodexLaunch, isLookingCall, resolveCodex } from './codexLaunch'
 import { SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
 import { findSsh, sshArgs } from './ssh'
 import { sshHostProblem } from '../../core/ssh/config'
+import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startupQuestion'
+import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
@@ -98,11 +100,17 @@ interface ClaudeRun {
   heardLive?: boolean
   stopping: boolean
   typedPrompt?: string
+  /** What it has shown before its session started, as text, to spot a question only the person can answer. */
+  startupScreen?: string
+  /** It's showing such a question now, so its status says it needs the person. */
+  askedAtStartup?: boolean
 }
 
+/** Runs the command, then leaves the shell open for more, as PowerShell's -NoExit and cmd's /k do. */
 function terminalArgs(shell: string, command: string): string[] {
   const name = basename(shell).toLowerCase().replace(/\.exe$/, '')
-  if (name === 'bash') return ['--login', '-i', '-c', command]
+  // bash -c ends with its command, so a terminal that ran `npm test` closed, with nothing to run it again in.
+  if (name === 'bash') return ['--login', '-i', '-c', `${command}\nexec bash --login -i`]
   if (name === 'powershell' || name === 'pwsh') return ['-NoExit', '-Command', command]
   if (name === 'cmd') return ['/k', command]
   return ['-c', command]
@@ -160,6 +168,19 @@ export function createNodeRunner({
     store.dispatch({ op: 'patchNode', id, patch: { sessionId: null, transcriptPath: null } })
   }
 
+  // An agent stopped at a question before its session starts, such as whether to trust the folder, fires no hook. Only
+  // its screen shows it, so the start of each launch is read until the session starts or such a question appears.
+  host.onOutput((id, data) => {
+    const run = runs.get(id)
+    if (!run || run.sessionStarted || run.askedAtStartup || run.startupScreen === undefined) return
+    if (tracker.get(id) !== 'starting') return
+    run.startupScreen = (run.startupScreen + stripAnsi(data)).slice(-STARTUP_SCREEN_CHARS)
+    if (!startupQuestion(run.startupScreen)) return
+    run.askedAtStartup = true
+    run.startupScreen = ''
+    tracker.apply(id, { type: 'startup-question' })
+  })
+
   host.onExit((id, code) => {
     started.delete(id)
     approvals?.clearNode(id)
@@ -211,7 +232,8 @@ export function createNodeRunner({
       sessionStarted: false,
       hasConversation: resumed,
       stopping: false,
-      typedPrompt
+      typedPrompt,
+      startupScreen: ''
     })
     try {
       await host.start({ ...spec, initialScrollback })
@@ -223,7 +245,7 @@ export function createNodeRunner({
     if (resumed && agentOf(node) === 'codex') {
       setTimeout(() => {
         const run = runs.get(node.id)
-        if (!run || run.sessionStarted || !host.isRunning(node.id)) return
+        if (!run || run.sessionStarted || run.askedAtStartup || !host.isRunning(node.id)) return
         run.sessionStarted = true
         tracker.apply(node.id, { type: 'hook', name: 'SessionStart' })
       }, RESUME_FAILURE_WINDOW_MS)
@@ -428,6 +450,16 @@ export function createNodeRunner({
       const name = text(payload.hook_event_name)
       if (!run || !name) return {}
       run.heardLive = true
+      // Any hook means the program got past a question it showed at startup.
+      if (run.askedAtStartup) {
+        run.askedAtStartup = false
+        tracker.apply(id, { type: 'startup-answered' })
+      }
+      if (name === 'SessionStart') run.startupScreen = undefined
+      const asking = nodeById(id)
+      if (name === 'PermissionRequest' && asking?.kind === 'claude' && agentOf(asking) === 'codex' && isLookingCall(payload.tool_name, payload.tool_input)) {
+        return { decision: 'allow' }
+      }
 
       if (name === 'SessionStart') {
         run.sessionStarted = true

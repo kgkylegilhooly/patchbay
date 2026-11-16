@@ -279,7 +279,7 @@ test('a team member can read the member it waited for', async () => {
     label: 'T',
     members: [{ name: 'a' }, { name: 'b', after: ['a'] }, { name: 'c' }]
   })) as { members: Record<string, string> }
-  await refused(verbs(r.members.b, 'read', { node: r.members.a }), /no transcript yet/)
+  await refused(verbs(r.members.b, 'read', { node: r.members.a }), /no conversation to read yet/)
   host.output.set(r.members.c, 'PRIVATE')
   await refused(verbs(r.members.b, 'read', { node: r.members.c }), /isn't linked/)
 })
@@ -545,8 +545,16 @@ test('read says so when a Claude node has no transcript, or it is gone', async (
     claudeNode('fresh', { openedBy: 'me' }),
     claudeNode('gone', { openedBy: 'me', transcriptPath: join(dir, 'gone.jsonl') })
   ])
-  await refused(verbs('me', 'read', { node: 'fresh' }), /no transcript yet/)
+  await refused(verbs('me', 'read', { node: 'fresh' }), /no conversation to read yet/)
   await refused(verbs('me', 'read', { node: 'gone' }), /no longer exists/)
+})
+
+test('read on an agent stopped at a startup question says the person has to answer it', async () => {
+  const { verbs, tracker } = setup([claudeNode('fresh', { openedBy: 'me' })])
+  tracker.apply('fresh', { type: 'launched' })
+  await refused(verbs('me', 'read', { node: 'fresh' }), /still starting/)
+  tracker.apply('fresh', { type: 'startup-question' })
+  await refused(verbs('me', 'read', { node: 'fresh' }), /waiting for the person .* trust its folder/)
 })
 
 test('read refuses a bad tail', async () => {
@@ -727,7 +735,7 @@ test('send is refused for an unlinked node, an exited node, a stopped terminal o
   tracker.apply('dead', { type: 'process-exit' })
   await refused(verbs('me', 'send', { node: 'stranger', text: 'x' }), /"stranger"/)
   await refused(verbs('me', 'send', { node: 'dead', text: 'x' }), /exited/)
-  await refused(verbs('me', 'send', { node: 'stopped', text: 'x' }), /not running/)
+  await refused(verbs('me', 'send', { node: 'stopped', text: 'x' }), /has ended/)
   await refused(verbs('me', 'send', { node: 'c', text: '' }), /text/)
   expect(host.writes).toEqual([])
 })

@@ -313,8 +313,12 @@ Every Claude and Codex window runs with the Patchbay skill, which teaches it the
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
 
-`test/acceptance/skill-real.cjs` and `team-real.cjs` run real Claude windows through these and read their transcripts.
-They spend a little quota.
+- **An agent waiting on you shows it.** An agent stopped at a question before it starts, such as Claude's or Codex's
+  question about trusting a new folder, shows needs-you, so the agent that opened it can tell you which node.
+
+`test/acceptance/skill-real.cjs` and `team-real.cjs` run real Claude windows through these and read their transcripts,
+and `real-world.cjs` gives seven of them everyday jobs on one canvas, including handing a review to Codex. They spend a
+little quota.
 
 ## Browser nodes
 
@@ -332,11 +336,12 @@ its page on the next launch.
   it did, never what it typed. Agents can't type into password, code or card fields.
 - **Take control**, on the node or in its right-click menu, refuses every agent verb on it until you press Hand back. It
   stays taken after a restart.
-- A page only runs while its project is on screen. Switching projects reloads it when you come back.
+- A page only runs while its project is on screen. Switching projects reloads it when you come back. An agent can still
+  click, type and take pictures in a browser that's scrolled out of view on the canvas.
 - The address a page moves to is saved with the canvas, including anything in it, such as a search a form puts there.
 
-`test/acceptance/browser.cjs` checks all of this on the real app against pages it serves itself on loopback, and spends
-no quota.
+`test/acceptance/browser.cjs` and `browser-offscreen.cjs` check all of this on the real app against pages they serve
+themselves on loopback, and spend no quota.
 
 ## Git panel
 

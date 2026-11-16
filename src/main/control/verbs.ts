@@ -47,6 +47,17 @@ const WAIT_MAX_S = 600
 /** An agent in one of these isn't working: it finished its turn, needs the person, or ended. */
 const SETTLED = new Set<AgentStatus>(['idle', 'needs-you', 'exited'])
 
+/** Why an agent has no conversation to read yet, and what the caller can do about it. */
+export function notStartedYet(id: string, status: AgentStatus): string {
+  const base = `Node "${id}" has no conversation to read yet`
+  if (status === 'needs-you')
+    return `${base}: it's waiting for the person to answer a question on its screen, such as whether to trust its folder. Tell the person which node, then run patchbay wait --nodes ${id}.`
+  if (status === 'queued') return `${base}: it's held until the agents it waits for (--after) finish a turn.`
+  if (status === 'starting') return `${base}: it's still starting. Run patchbay wait --nodes ${id}, then read it.`
+  if (status === 'exited') return `${base}: it exited before its session started.`
+  return `${base}.`
+}
+
 type Args = Record<string, unknown>
 
 /** What the read-only `issues` and `prs` verbs may use. It has no way to write. */
@@ -299,7 +310,8 @@ export function createVerbs({
     const node = reachable(caller, id, 'send to')
     if (node.kind === 'terminal') {
       // A terminal has no status to wait for, and may need control keys.
-      if (!host.isRunning(id)) refuse(`Node "${id}" is not running.`)
+      if (!host.isRunning(id))
+        refuse(`Terminal "${id}" has ended, so nothing would read this. Ask the person to restart it, or open a new one with patchbay open-terminal --command.`)
       sendQueue.type(id, raw)
       onMessage?.(caller, id, plainText(raw))
       return { delivered: true }
@@ -397,7 +409,7 @@ export function createVerbs({
       case 'browser':
         return refuse(`Node "${id}" is a browser node. Use patchbay browser read.`)
       case 'claude':
-        if (!node.transcriptPath) refuse(`Node "${id}" has no transcript yet.`)
+        if (!node.transcriptPath) refuse(notStartedYet(id, tracker.get(id)))
         try {
           return { text: readTranscript(node.transcriptPath, count) }
         } catch (e) {

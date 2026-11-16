@@ -30,6 +30,35 @@ export interface BrowserDriver {
 
 const URL_SAVE_MS = 400
 const STATE_PUSH_MS = 80
+/** Time for a page slid into view to draw again before it takes input or its picture is taken. */
+const REVEAL_SETTLE_MS = 250
+
+/**
+ * Run in the app window. With `on`, a browser node that's wholly out of view is moved over the top-left of the canvas,
+ * nearly transparent and letting clicks through, and true says so. React Flow places nodes with `transform`, so this
+ * uses `translate`, which adds to it without touching it. Without `on`, the node goes back.
+ */
+export function revealForInput(id: string, on: boolean): string {
+  return `(() => {
+    const node = document.querySelector('.react-flow__node[data-id="' + CSS.escape(${JSON.stringify(id)}) + '"]');
+    if (!node) return false;
+    if (!${on}) {
+      node.style.translate = node.style.opacity = node.style.pointerEvents = '';
+      return true;
+    }
+    const pane = document.querySelector('.react-flow');
+    const host = node.querySelector('.browser-host');
+    if (!pane || !host) return false;
+    const view = pane.getBoundingClientRect();
+    const box = host.getBoundingClientRect();
+    if (box.right > view.left && box.bottom > view.top && box.left < view.right && box.top < view.bottom) return false;
+    const scale = box.width / host.offsetWidth || 1;
+    node.style.translate = ((view.left - box.left) / scale) + 'px ' + ((view.top - box.top) / scale) + 'px';
+    node.style.opacity = '0.01';
+    node.style.pointerEvents = 'none';
+    return true;
+  })()`
+}
 
 function bounded<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout
@@ -37,6 +66,22 @@ function bounded<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
     timer = setTimeout(() => reject(new RpcRefusal(`The page took too long ${what}.`)), ms)
   })
   return Promise.race([work, limit]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * Does the work with the node's page in view. Chromium stops drawing a page that's out of view, and then a picture
+ * never comes and a form doesn't submit. An agent's browser often opens beyond the visible part of the canvas, so for
+ * the moment the work takes, the page is slid into view, all but invisible, and then put back.
+ */
+async function shown<T>(guest: WebContents, id: string, work: () => Promise<T>): Promise<T> {
+  const embedder = guest.hostWebContents
+  const revealed = embedder && !embedder.isDestroyed() ? await embedder.executeJavaScript(revealForInput(id, true)).catch(() => false) : false
+  try {
+    if (revealed) await new Promise((r) => setTimeout(r, REVEAL_SETTLE_MS))
+    return await work()
+  } finally {
+    if (revealed && embedder && !embedder.isDestroyed()) await embedder.executeJavaScript(revealForInput(id, false)).catch(() => {})
+  }
 }
 
 type Send = (method: string, params?: Record<string, unknown>) => Promise<unknown>
@@ -293,14 +338,16 @@ export function createBrowserDriver({
     async clickAt(id, x, y) {
       const guest = guestOf(id)
       const mouse = { x, y, button: 'left', clickCount: 1 }
-      await bounded(
-        withDebugger(guest, async (send) => {
-          await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
-          await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse })
-          await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse })
-        }),
-        TIMEOUTS.scriptMs,
-        'to take the click'
+      await shown(guest, id, () =>
+        bounded(
+          withDebugger(guest, async (send) => {
+            await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+            await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse })
+            await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse })
+          }),
+          TIMEOUTS.scriptMs,
+          'to take the click'
+        )
       )
       await settleAfter(id)
     },
@@ -308,24 +355,28 @@ export function createBrowserDriver({
     async pressEnter(id) {
       const guest = guestOf(id)
       const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }
-      await bounded(
-        withDebugger(guest, async (send) => {
-          await send('Emulation.setFocusEmulationEnabled', { enabled: true })
-          await send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', ...key })
-          await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
-        }),
-        TIMEOUTS.scriptMs,
-        'to take the key'
+      await shown(guest, id, () =>
+        bounded(
+          withDebugger(guest, async (send) => {
+            await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+            await send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', ...key })
+            await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
+          }),
+          TIMEOUTS.scriptMs,
+          'to take the key'
+        )
       )
       await settleAfter(id)
     },
 
     async screenshot(id) {
       const guest = guestOf(id)
-      const { data } = (await bounded(
-        withDebugger(guest, (send) => send('Page.captureScreenshot', { format: 'png' })),
-        TIMEOUTS.screenshotMs,
-        'to draw a picture. A window that is minimized or hidden may not draw'
+      const { data } = (await shown(guest, id, () =>
+        bounded(
+          withDebugger(guest, (send) => send('Page.captureScreenshot', { format: 'png' })),
+          TIMEOUTS.screenshotMs,
+          'to draw a picture. A window that is minimized or hidden may not draw'
+        )
       )) as { data: string }
       const png = Buffer.from(data, 'base64')
       if (png.length > LIMITS.screenshotBytes) throw new RpcRefusal(`That picture is over ${LIMITS.screenshotBytes} bytes. Make the node smaller.`)

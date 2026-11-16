@@ -68,7 +68,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT
-  wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600)
+  wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
   close         --node ID
   issues        [--state open|closed|all] [--limit N] [--number N]   (read-only)
   prs           [--state open|closed|merged|all] [--limit N]         (read-only)
@@ -81,6 +81,22 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   browser scroll     --node ID (--by PIXELS | --to top|bottom | --ref REF)
   browser screenshot --node ID
 `
+
+/** The usage lines for one verb, or for every `browser` verb, with a pointer to the full guide. */
+function usageOf(verb) {
+  const lines = USAGE.split('\n')
+  const picked = []
+  for (let i = 0; i < lines.length; i++) {
+    const words = lines[i].trim().split(/\s+/)
+    const name = words[0] === 'browser' ? `browser ${words[1]}` : words[0]
+    const match = verb === 'browser' ? words[0] === 'browser' : name === verb || (words[0] === 'browser' && words[1].split('|').includes(verb.slice(8)))
+    if (!match) continue
+    picked.push(lines[i])
+    // A verb's own detail is indented further on the lines below it.
+    while (lines[i + 1] && /^ {6,}/.test(lines[i + 1]) && !/^ {2}\S/.test(lines[i + 1])) picked.push(lines[++i])
+  }
+  return `Usage: patchbay ${verb} [--flag value]\n\n${picked.join('\n')}\n\nRun patchbay guide for how to use it, with every rule.\n`
+}
 
 function fail(message) {
   process.stderr.write(`patchbay: ${message}\n`)
@@ -108,6 +124,11 @@ function parseFlags(verb, words) {
     }
     const eq = word.indexOf('=')
     const flag = eq === -1 ? word.slice(2) : word.slice(2, eq)
+    // Agents try `patchbay <verb> --help` before using a verb, so it's an answer, not a mistake.
+    if (flag === 'help') {
+      process.stdout.write(usageOf(verb))
+      process.exit(0)
+    }
     const kind = Object.hasOwn(spec, flag) ? spec[flag] : undefined
     if (!kind) fail(`${verb} has no --${flag} flag.\n\n${USAGE}`)
     // A flag takes no value. Signed takes a whole number that may be negative.
@@ -260,6 +281,14 @@ function main() {
   const words = first === 'browser' ? rest.slice(1) : rest
   if (!verb || verb === '--help' || verb === '-h' || verb === 'help') {
     process.stdout.write(USAGE)
+    return
+  }
+  if (first === 'browser' && ['', '--help', '-h', 'help'].includes(rest[0] ?? '')) {
+    process.stdout.write(usageOf('browser'))
+    return
+  }
+  if (words[0] === '-h') {
+    process.stdout.write(usageOf(verb))
     return
   }
   // The full guide, for agents that can't load Patchbay's skill themselves, such as Codex.

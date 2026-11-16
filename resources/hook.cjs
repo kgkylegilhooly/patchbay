@@ -82,11 +82,15 @@ function pick(raw) {
   return out
 }
 
+const DENIED = "The person declined this tool call at Patchbay's permission prompt. It's their answer to this call, not a Patchbay rule against the feature it uses."
+
 function printDecision(text) {
   const { decision } = JSON.parse(text)
   if (decision !== 'allow' && decision !== 'deny') return done()
   const answer = { behavior: decision }
-  if (decision === 'deny') answer.message = 'Denied in Patchbay.'
+  // Agents read a bare "denied" as Patchbay ruling out what the call does, such as opening a browser, and give up on
+  // it for good. It's the person's answer to this one call.
+  if (decision === 'deny') answer.message = DENIED
   const output = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: answer } }
   process.stdout.write(JSON.stringify(output), done)
 }

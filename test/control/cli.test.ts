@@ -183,6 +183,24 @@ test('an unknown verb lists the verbs; --help needs no session', async () => {
   expect(help.stdout).toContain('spawn-team')
 })
 
+test('<verb> --help prints that verb\'s usage and needs no session', async () => {
+  const none = { PATCHBAY_NODE_ID: '', PATCHBAY_TOKEN: '', PATCHBAY_ENDPOINT_FILE: '' }
+  const open = await cli(['open-browser', '--help'], none)
+  expect(open.code).toBe(0)
+  expect(open.stdout).toContain('open-browser  [--url URL]')
+  expect(open.stdout).not.toContain('spawn-team')
+  const team = await cli(['spawn-team', '-h'], none)
+  expect(team.code).toBe(0)
+  expect(team.stdout).toContain('members: [{')
+  const browser = await cli(['browser', '--help'], none)
+  expect(browser.code).toBe(0)
+  expect(browser.stdout).toContain('browser click')
+  expect(browser.stdout).toContain('browser screenshot')
+  const back = await cli(['browser', 'back', '--help'], none)
+  expect(back.stdout).toContain('browser back|forward|reload')
+  expect(calls).toHaveLength(0)
+})
+
 test('outside a Patchbay session it says so and exits 1', async () => {
   const r = await cli(['list'], { PATCHBAY_NODE_ID: '', PATCHBAY_TOKEN: '', PATCHBAY_ENDPOINT_FILE: '' })
   expect(r.code).toBe(1)

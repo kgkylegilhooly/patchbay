@@ -109,8 +109,8 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,
   and the agent can start without that node's work. `--after` doesn't work on terminals.
 - Prompts are limited to 28000 characters. Put anything longer in a file and point a short prompt at it.
-- A new folder can stop a Claude node at a workspace trust question that only the person can answer. It
-  stays `starting` until then.
+- A new folder can stop an agent at a question about trusting it, which only the person can answer. Its
+  status is `needs-you` until they do, so tell them which node.
 
 ## Spawn a team
 
@@ -137,7 +137,7 @@ The reviewer is linked to the writer, so it can run `patchbay read --node <write
 along, wait for the members, then read what they did:
 
 ```sh
-patchbay wait --nodes <writer id>,<reviewer id> --timeout 300
+patchbay wait --nodes <writer id>,<reviewer id>
 patchbay read --node <reviewer id> --tail 2
 ```
 
@@ -210,7 +210,8 @@ A Claude node gets the text only when `idle`. Otherwise it waits in a queue and 
 time, and the reply says `"queued": true`. A queue doesn't survive the app restarting. Control keys are
 removed from text sent to a Claude node, and an exited one refuses.
 
-A terminal gets the text and Enter right away, because it has no status to wait for.
+A terminal gets the text and Enter right away, because it has no status to wait for. What you send is typed at its
+prompt, so send a command, such as `npm test`, never a message to a person. Then read the terminal for the result.
 
 An agent receives your message under a first line saying it's from you, with your node id, so it can reply. A
 terminal gets only your text.
@@ -219,18 +220,21 @@ terminal gets only your text.
 
 ```sh
 patchbay wait --nodes <id>,<id>
-patchbay wait --nodes <id>,<id> --any --timeout 300
+patchbay wait --nodes <id>,<id> --any --timeout 100
 ```
 
 - It returns once every agent named has finished its turn: `idle`, `needs-you` or `exited`. With `--any`, it
   returns when the first one does. The reply gives each one's `status`, and `done`.
 - It waits up to `--timeout` seconds (90 by default, at most 600) and then returns with `"timedOut": true`. Run
   it again to keep waiting. Through the MCP tool it waits up to 45 seconds at a time.
+- Claude Code stops waiting on a shell command after 2 minutes and moves it to the background, where you can't use
+  its reply. Keep `--timeout` at 100 or less, and run `wait` again as many times as it takes.
 - Send first, then wait: a message you just sent is allowed for, so an agent that hasn't started on it yet isn't
   counted as finished.
 - Anything those agents sent you while you waited comes back in the reply's `messages`, so you don't get it
   again as a new prompt later. Read it there.
-- `needs-you` means the person has to answer that agent. Tell them which node.
+- `needs-you` means the person has to answer that agent, such as a permission prompt or a question about
+  trusting its folder. Tell them which node, then wait again.
 - Finished isn't the same as right. Read the result before you build on it.
 
 ## Organize

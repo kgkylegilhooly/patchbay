@@ -9,6 +9,10 @@ export type StatusEvent =
   | { type: 'queued' }
   /** The user pressed Approve or Deny, so Claude has what it was waiting for. */
   | { type: 'approval-answered' }
+  /** Before its session started, the program showed a question only the person can answer, such as folder trust. */
+  | { type: 'startup-question' }
+  /** The program got past that question, so it's starting again. */
+  | { type: 'startup-answered' }
 
 const NEEDS_INPUT = new Set(['permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input'])
 /** These end one conversation inside a process that keeps running (as /clear does). */
@@ -52,6 +56,10 @@ export function nextStatus(cur: AgentStatus, ev: StatusEvent): AgentStatus {
       return cur === 'working' || cur === 'needs-you' ? 'unknown' : cur
     case 'approval-answered':
       return cur === 'needs-you' ? 'working' : cur
+    case 'startup-question':
+      return cur === 'starting' ? 'needs-you' : cur
+    case 'startup-answered':
+      return cur === 'needs-you' ? 'starting' : cur
     case 'hook':
       return cur === 'exited' ? cur : afterHook(cur, ev)
   }
