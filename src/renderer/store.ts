@@ -181,6 +181,14 @@ export async function connectStore(): Promise<void> {
   void bridge.getRuns().then((runs) => useStore.setState((s) => ({ runs: { ...runs, ...s.runs } })))
   bridge.onPorts((ports) => useStore.setState({ ports }))
   void bridge.getPorts().then((ports) => useStore.setState({ ports }))
+  // Main has every change still showing, those that arrived while this loaded included, so they're rebuilt from it.
+  void bridge.getAgentEdits().then(({ notes, boards }) => {
+    const noteEdits: Record<string, AgentNoteEdits> = {}
+    for (const e of notes) noteEdits[e.id] = joinNoteEdit(noteEdits[e.id], e)
+    const boardEdits: Record<string, AgentBoardEdits> = {}
+    for (const e of boards) boardEdits[e.id] = joinBoardEdit(boardEdits[e.id], e)
+    useStore.setState({ noteEdits, boardEdits })
+  })
   // Any that arrived while this loaded are newer, so they go after.
   void bridge.getMessages().then((earlier) => useStore.setState((s) => ({ messages: [...earlier, ...s.messages.filter((m) => !earlier.some((e) => e.at === m.at && e.from === m.from && e.to === m.to))].slice(-MESSAGES_KEPT) })))
   bridge.onBrowserState((id, state) =>

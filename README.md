@@ -118,6 +118,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `pastes\` | Images pasted into terminals |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
+| `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
 | `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
@@ -262,6 +263,58 @@ or pick one in its form. The moving cable shows where it goes.
 Opened, Starts after and Trigger cables go one way, so they carry an arrowhead and dots moving toward the far end.
 Linked cables give both ends the same access, so they stay still. The dots pause while the view moves and when zoomed
 far out, and stop for anyone who has asked Windows for less motion. View > Link legend explains the cables.
+
+## Notes
+
+Add one from the canvas menu or with Ctrl+Shift+N. A note is markdown, shown formatted.
+
+- **Writing.** Double-click a note, or press its pencil, to edit. The toolbar has bold, italic, a heading, lists, a
+  checklist, a quote, a link and inline code, and **Code block**, which asks for a language: JSON, JavaScript,
+  TypeScript, Python, Shell, PowerShell, HTML, CSS, SQL, YAML, Diff or plain text. Ctrl+B, Ctrl+I, Ctrl+E and Tab work as
+  you'd expect, Ctrl+Enter saves and Esc cancels.
+- **Reading.** Code blocks are colored for their language and have a Copy button, in notes and in an agent's chat view.
+  Checklist boxes can be ticked right on the note. Each note has a title and one of six colors.
+- **Agents** make notes with `patchbay sticky` and add to any note linked to them with `patchbay note --append`. They
+  can only replace the text of notes they made themselves. A note an agent changed says which one did it, with
+  **Undo** and **Keep**.
+
+## Whiteboards
+
+Add one from the canvas menu or with Ctrl+Shift+D.
+
+- **Drawing.** Pen, eraser, line, arrow, rectangle, ellipse and text, in six colors and three sizes. Shift keeps lines to
+  45 degrees and boxes and ellipses even. The board has its own undo and redo, with Ctrl+Z and Ctrl+Y while it has the
+  keyboard.
+- **Select** (V) picks shapes by clicking or dragging a box around them. Drag or use the arrow keys to move them, drag
+  the corner handle to stretch them (pictures keep their shape, and Shift keeps anything even), press Delete to remove
+  them, and click a color or size to restyle them. Double-click text to change it.
+- **Fill** gives boxes and ellipses a light tint of their color, for new ones and for any selected.
+- **Copy and paste.** Ctrl+C, Ctrl+X and Ctrl+V copy shapes through the clipboard, onto the same board or another one.
+  Ctrl+D copies them in place.
+- **Screenshots.** Select the board and press Ctrl+V, or drop an image file on it. Pictures are kept in app data, not
+  in the canvas file.
+- **Agents** linked to a board export it with `patchbay whiteboard` and look at the PNG, pictures and drawing included.
+  They can draw diagrams on it with `patchbay draw`, from boxes and the arrows between them; the board shows which agent
+  drew, with **Undo** and **Keep**. **Copy as image**, in the board's header, puts it on your clipboard.
+
+## Agents working together
+
+Every Claude and Codex window runs with the Patchbay skill, which teaches it the `patchbay` command.
+
+- **Knowing where it is.** An agent is told at the start of its session which node it is, who opened it, and what it can
+  reach, and `patchbay whoami` tells it again. Codex is pointed at `whoami` instead.
+- **Teams.** **Spawn a team** in the canvas menu, or `patchbay spawn-team`, starts a lead that splits the task, writes each member a
+  brief, waits for them with `patchbay wait`, checks their work and closes them. A team's group header shows a light per
+  agent and how many are working, idle or need you, with the team's latest message.
+- **Messages.** `patchbay send` between agents starts with a line naming the sender, so an agent can tell a lead from a
+  peer, and from you. A pulse runs down the cable as a message goes, and clicking a cable lists the latest messages
+  along it, kept across restarts.
+- **What agents may do.** They read and message only nodes they opened or that you linked to them, stay in their own
+  project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
+  `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
+
+`test/acceptance/skill-real.cjs` and `team-real.cjs` run real Claude windows through these and read their transcripts.
+They spend a little quota.
 
 ## Browser nodes
 

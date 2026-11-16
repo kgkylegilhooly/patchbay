@@ -40,7 +40,8 @@
     ],
     "win": {
       "target": "dir",
-      "signAndEditExecutable": false
+      "icon": "resources/icon.ico",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": true,

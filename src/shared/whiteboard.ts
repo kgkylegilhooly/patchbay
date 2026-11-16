@@ -48,9 +48,10 @@ export function isWhiteboardShape(v: unknown): v is WhiteboardShape {
       return Array.isArray(s.points) && s.points.length >= 2 && s.points.length % 2 === 0 && s.points.length <= LIMITS.points * 2 && s.points.every(isNum)
     case 'line':
     case 'arrow':
+      return isNum(s.x1) && isNum(s.y1) && isNum(s.x2) && isNum(s.y2) && s.fill === undefined
     case 'rect':
     case 'ellipse':
-      return isNum(s.x1) && isNum(s.y1) && isNum(s.x2) && isNum(s.y2)
+      return isNum(s.x1) && isNum(s.y1) && isNum(s.x2) && isNum(s.y2) && (s.fill === undefined || (typeof s.fill === 'string' && HEX.test(s.fill)))
     case 'text':
       return isNum(s.x) && isNum(s.y) && typeof s.text === 'string' && s.text.length > 0 && s.text.length <= LIMITS.text
     case 'image':
@@ -102,7 +103,8 @@ const SAFE_IMAGE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/
 /** One shape as SVG markup. The color has been checked, and text is escaped. */
 export function shapeSvg(s: WhiteboardShape, images?: ImageSource): string {
   const color = HEX.test(s.color) ? s.color : BOARD_COLORS[0]
-  const stroke = `stroke="${color}" stroke-width="${s.size}" stroke-linecap="round" stroke-linejoin="round" fill="none"`
+  const fill = (s.type === 'rect' || s.type === 'ellipse') && s.fill && HEX.test(s.fill) ? s.fill : 'none'
+  const stroke = `stroke="${color}" stroke-width="${s.size}" stroke-linecap="round" stroke-linejoin="round" fill="${fill}"`
   switch (s.type) {
     case 'pen':
       return `<path d="${penPath(s.points)}" ${stroke}/>`
@@ -261,6 +263,46 @@ export function moveShape(s: WhiteboardShape, dx: number, dy: number): Whiteboar
   if (s.type === 'pen') return { ...s, points: s.points.map((v, i) => r1(v + (i % 2 ? dy : dx))) }
   if (s.type === 'text' || s.type === 'image') return { ...s, x: r1(s.x + dx), y: r1(s.y + dy) }
   return { ...s, x1: r1(s.x1 + dx), y1: r1(s.y1 + dy), x2: r1(s.x2 + dx), y2: r1(s.y2 + dy) }
+}
+
+/** A light tint of a color, for the inside of a filled box or ellipse. */
+export const fillOf = (color: string): string => `${color.slice(0, 7)}33`
+
+/** The box around several shapes, as a selection shows it. */
+export function boxAround(shapes: WhiteboardShape[]): Box | null {
+  if (!shapes.length) return null
+  const boxes = shapes.map(shapeBox)
+  const x = Math.min(...boxes.map((b) => b.x))
+  const y = Math.min(...boxes.map((b) => b.y))
+  return { x, y, width: Math.max(...boxes.map((b) => b.x + b.width)) - x, height: Math.max(...boxes.map((b) => b.y + b.height)) - y }
+}
+
+/**
+ * A shape stretched from a fixed corner, as dragging a selection's handle does. Strokes keep their width, and text
+ * keeps its size and moves with the rest, since its size is what it was written in.
+ */
+export function scaleShape(s: WhiteboardShape, origin: { x: number; y: number }, sx: number, sy: number): WhiteboardShape {
+  const X = (v: number): number => r1(origin.x + (v - origin.x) * sx)
+  const Y = (v: number): number => r1(origin.y + (v - origin.y) * sy)
+  if (s.type === 'pen') return { ...s, points: s.points.map((v, i) => (i % 2 ? Y(v) : X(v))) }
+  if (s.type === 'text') return { ...s, x: X(s.x), y: Y(s.y) }
+  if (s.type === 'image') return { ...s, x: X(s.x), y: Y(s.y), width: Math.max(1, r1(s.width * sx)), height: Math.max(1, r1(s.height * sy)) }
+  return { ...s, x1: X(s.x1), y1: Y(s.y1), x2: X(s.x2), y2: Y(s.y2) }
+}
+
+/** Shapes copied from a board go on the clipboard as text after this, so they paste onto any board. */
+export const COPIED_SHAPES = 'patchbay-shapes:'
+
+/** Shapes from the clipboard, if it holds copied shapes, or null. Anything that isn't a shape a board takes is left out. */
+export function readCopiedShapes(text: string | undefined): WhiteboardShape[] | null {
+  if (!text?.startsWith(COPIED_SHAPES)) return null
+  try {
+    const list: unknown = JSON.parse(text.slice(COPIED_SHAPES.length))
+    const shapes = Array.isArray(list) ? list.filter(isWhiteboardShape).slice(0, LIMITS.shapes) : []
+    return shapes.length ? shapes : null
+  } catch {
+    return null
+  }
 }
 
 /** A plain account of a board for an agent: what's on it, and the words written on it. */

@@ -2081,6 +2081,14 @@ select {
   pointer-events: none;
 }
 
+/* The selection's corner, which stretches it. */
+.wb-handle {
+  fill: #fff;
+  stroke: #2f6fd6;
+  stroke-width: 1.5;
+  cursor: nwse-resize;
+}
+
 .wb-marquee {
   fill: rgb(47 111 214 / 0.08);
   stroke: #2f6fd6;

@@ -97,7 +97,8 @@ export interface StickyNode extends Base {
 /** A shape drawn on a whiteboard, in pixels from the top left of its drawing area. */
 export type WhiteboardShape =
   | { type: 'pen'; color: string; size: number; points: number[] }
-  | { type: 'line' | 'arrow' | 'rect' | 'ellipse'; color: string; size: number; x1: number; y1: number; x2: number; y2: number }
+  /** `fill` tints the inside of a rect or ellipse. */
+  | { type: 'line' | 'arrow' | 'rect' | 'ellipse'; color: string; size: number; x1: number; y1: number; x2: number; y2: number; fill?: string }
   | { type: 'text'; color: string; size: number; x: number; y: number; text: string }
   /** A pasted picture, saved as a file in app data and named by its content. Every shape has a color and size; a picture doesn't use them. */
   | { type: 'image'; color: string; size: number; x: number; y: number; width: number; height: number; file: string }

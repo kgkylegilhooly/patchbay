@@ -171,6 +171,46 @@ async function main() {
     const copied = await L.waitFor('the copy', async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes.length === before + 1, 3000).catch(() => false)
     c.check('Ctrl+D copies the selected shape', copied)
 
+    // Stretching, filling, and copying through the real clipboard, with the real mouse and keyboard.
+    const boardShapes = async () => (await L.doc(page)).nodes.find((n) => n.id === 'board').shapes
+    const toScreen = async (x, y) => {
+      const b = await surface.boundingBox()
+      const k = b.width / (await surface.evaluate((el) => el.offsetWidth))
+      return [b.x + x * k, b.y + y * k]
+    }
+    await page.keyboard.press('Escape')
+    const picture = (await boardShapes()).find((s) => s.type === 'image')
+    await page.mouse.click(...(await toScreen(picture.x + picture.width / 2, picture.y + picture.height / 2)))
+    await page.waitForSelector('.react-flow__node[data-id="board"] .wb-handle', { timeout: 3000 }).catch(() => {})
+    const handle = await page.$eval('.react-flow__node[data-id="board"] .wb-handle', (h) => { const r = h.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] }).catch(() => null)
+    c.check('A selected shape shows a corner handle', !!handle)
+    if (handle) {
+      await page.mouse.move(...handle)
+      await page.mouse.down()
+      for (let i = 1; i <= 8; i++) await page.mouse.move(handle[0] + i * 8, handle[1] + i * 2)
+      await page.mouse.up()
+    }
+    const stretched = await L.waitFor('the picture stretched', async () => (await boardShapes()).find((s) => s.type === 'image' && s.width > picture.width), 3000).catch(() => null)
+    c.check('Dragging the handle stretches a picture, keeping its shape', stretched && Math.abs(stretched.width / stretched.height - picture.width / picture.height) < 0.02, stretched && [picture.width, picture.height, stretched.width, stretched.height])
+
+    const rect = (await boardShapes()).find((s) => s.type === 'rect')
+    await page.mouse.click(...(await toScreen(rect.x1, (rect.y1 + rect.y2) / 2)))
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Fill"]')
+    const filledRect = await L.waitFor('the box filled', async () => (await boardShapes()).find((s) => s.type === 'rect' && s.fill), 3000).catch(() => null)
+    c.check('Fill tints a selected box with its own color', filledRect && filledRect.fill === `${filledRect.color.slice(0, 7)}33`, filledRect)
+
+    const count = (await boardShapes()).length
+    await surface.focus()
+    await page.keyboard.down('Control')
+    await page.keyboard.press('c')
+    await page.keyboard.up('Control')
+    await L.sleep(300)
+    await page.keyboard.down('Control')
+    await page.keyboard.press('v')
+    await page.keyboard.up('Control')
+    const pastedBack = await L.waitFor('the paste', async () => (await boardShapes()).length === count + 1, 3000).catch(() => false)
+    c.check('Ctrl+C and Ctrl+V copy a shape through the clipboard', pastedBack, [count, (await boardShapes()).length])
+
     c.check('No page errors in the app window', app.problems.length === 0, app.problems.slice(0, 3))
   } finally {
     await app.quit().catch(() => {})

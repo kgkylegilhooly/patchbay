@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { WhiteboardShape } from '../../src/shared/model'
-import { boardArea, describeBoard, exportBox, isWhiteboardShape, moveShape, penPath, shapeAt, shapeBox, shapesIn, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
+import { boardArea, boxAround, COPIED_SHAPES, describeBoard, exportBox, fillOf, isWhiteboardShape, moveShape, penPath, readCopiedShapes, scaleShape, shapeAt, shapeBox, shapesIn, shapeSvg, thinPoints, touches, whiteboardSvg } from '../../src/shared/whiteboard'
 
 const pen = (points: number[]): WhiteboardShape => ({ type: 'pen', color: '#1f1f22', size: 4, points })
 
@@ -111,5 +111,36 @@ describe('pictures', () => {
     expect(shapeAt([picture], 60, 40, 6)).toBe(0)
     expect(shapeBox(picture)).toEqual({ x: 10, y: 20, width: 100, height: 50 })
     expect(describeBoard([picture]).shapes).toEqual({ image: 1 })
+  })
+})
+
+describe('fills, stretching and copied shapes', () => {
+  const rect: WhiteboardShape = { type: 'rect', color: '#2f6fd6', size: 2, x1: 10, y1: 10, x2: 110, y2: 60, fill: fillOf('#2f6fd6') }
+
+  test('a box or ellipse may be filled with a color, and nothing else may', () => {
+    expect(fillOf('#2f6fd6')).toBe('#2f6fd633')
+    expect(isWhiteboardShape(rect)).toBe(true)
+    expect(shapeSvg(rect)).toContain('fill="#2f6fd633"')
+    expect(isWhiteboardShape({ ...rect, fill: 'red" onload="x' })).toBe(false)
+    expect(isWhiteboardShape({ type: 'line', color: '#000', size: 2, x1: 0, y1: 0, x2: 1, y2: 1, fill: '#00000033' })).toBe(false)
+    expect(shapeSvg({ ...rect, fill: undefined })).toContain('fill="none"')
+  })
+
+  test('stretching from a corner scales positions, keeps strokes and text size, and resizes pictures', () => {
+    const origin = { x: 10, y: 10 }
+    expect(scaleShape(rect, origin, 2, 3)).toMatchObject({ x1: 10, y1: 10, x2: 210, y2: 160, size: 2 })
+    expect(scaleShape({ type: 'text', color: '#000', size: 4, x: 20, y: 20, text: 'hi' }, origin, 2, 2)).toMatchObject({ x: 30, y: 30, size: 4 })
+    expect(scaleShape({ type: 'image', color: '#000', size: 2, x: 10, y: 10, width: 100, height: 50, file: `${'ab'.repeat(32)}.png` }, origin, 0.5, 0.5)).toMatchObject({ width: 50, height: 25 })
+    expect(scaleShape(pen([10, 10, 20, 30]), origin, 2, 2)).toMatchObject({ points: [10, 10, 30, 50] })
+    expect(boxAround([])).toBeNull()
+    expect(boxAround([rect])).toEqual(shapeBox(rect))
+  })
+
+  test('copied shapes come back from the clipboard, and nothing else does', () => {
+    const text = COPIED_SHAPES + JSON.stringify([rect, { type: 'bogus' }])
+    expect(readCopiedShapes(text)).toEqual([rect])
+    expect(readCopiedShapes('just some text')).toBeNull()
+    expect(readCopiedShapes(`${COPIED_SHAPES}{nope`)).toBeNull()
+    expect(readCopiedShapes(`${COPIED_SHAPES}[]`)).toBeNull()
   })
 })

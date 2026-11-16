@@ -32,7 +32,20 @@ function PageView({ node }: { node: BrowserNodeModel }): React.JSX.Element {
     view.setAttribute('allowpopups', '')
     view.setAttribute('src', first.current.url)
     view.className = 'browser-page'
-    view.addEventListener('did-attach', () => void bridge.browserAttached(node.id, view.getWebContentsId()))
+    // Electron can refuse the id until the page is ready, so a refusal waits for dom-ready and asks again. A page
+    // already taken off the screen has nothing to attach.
+    const attach = (): boolean => {
+      if (!view.isConnected) return true
+      try {
+        void bridge.browserAttached(node.id, view.getWebContentsId())
+        return true
+      } catch {
+        return false
+      }
+    }
+    view.addEventListener('did-attach', () => {
+      if (!attach()) view.addEventListener('dom-ready', () => void attach(), { once: true })
+    })
     host.current?.appendChild(view)
     return () => view.remove()
   }, [node.id])

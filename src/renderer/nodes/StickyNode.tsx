@@ -187,11 +187,13 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
   // An agent's changes show until the person keeps or undoes them. Once the note changes some other way, they're past undoing.
   const edits = useStore((s) => s.noteEdits[node.id])
   const agentEdits = edits && edits.after === node.text ? edits : null
-  const settle = (): void =>
+  const settle = (): void => {
+    bridge.settleAgentEdits(node.id)
     useStore.setState((s) => {
       const { [node.id]: _settled, ...rest } = s.noteEdits
       return { noteEdits: rest }
     })
+  }
   const editors = (ids: string[]): string => {
     const names = ids.map((id) => useStore.getState().doc?.nodes.find((n) => n.id === id)?.title ?? 'a closed agent')
     return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]

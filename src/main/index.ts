@@ -13,6 +13,7 @@ import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
+import { createAgentEditLog } from './agentEdits'
 import { pruneBoardImages } from './boardImages'
 import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
@@ -307,9 +308,14 @@ async function boot(): Promise<void> {
   // One line into each session, shared by `patchbay send` and triggers.
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id) })
   const messages = createMessageLog(join(dataDir, 'messages.json'))
+  const agentEdits = createAgentEditLog(join(dataDir, 'agent-edits.json'))
+  ipcMain.handle('pb:getAgentEdits', () => agentEdits.all())
+  ipcMain.on('pb:settleAgentEdits', (e, id: string) => {
+    if (e.sender === mainWindow?.webContents && typeof id === 'string') agentEdits.settle(id)
+  })
   ipcMain.handle('pb:getMessages', () => messages.all())
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => broadcast('pb:onNoteEdit', edit), onBoardEdit: (edit) => broadcast('pb:onBoardEdit', edit), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
@@ -471,6 +477,7 @@ async function boot(): Promise<void> {
       await docStore.flush().catch((e: unknown) => failures.push(e))
       await usage.flush()
       await messages.flush()
+      await agentEdits.flush()
     }
     // Saved before stopping sessions in case that hangs, and after because stopping can change the doc.
     await save()

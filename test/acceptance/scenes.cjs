@@ -293,6 +293,15 @@ const scenes = {
   },
   // Pastes a real screenshot of the sidebar onto the selected board, then circles part of it in red, as someone
   // pointing an agent at a problem would.
+  // Selects the API box, so its stretch handle shows, with the fill button on.
+  'whiteboard-edit': async (page) => {
+    await page.click('.react-flow__node[data-id="board"] [aria-label="Select and move"]')
+    const surface = await page.$('.react-flow__node[data-id="board"] .wb-surface')
+    const box = await surface.boundingBox()
+    const scale = box.width / (await surface.evaluate((el) => el.offsetWidth))
+    await page.mouse.click(box.x + 270 * scale, box.y + 150 * scale)
+    await sleep(300)
+  },
   'whiteboard-picture': async (page) => {
     const shot = await page.screenshot({ clip: { x: 14, y: 160, width: 300, height: 170 }, encoding: 'base64' })
     await page.click('.react-flow__node[data-id="board"] .wb-head .title')
@@ -374,6 +383,16 @@ const seeds = {
   },
   'note-edit': (doc) => seeds.note(doc),
   'whiteboard-select': (doc) => seeds.whiteboard(doc),
+  // The same sketch with its boxes filled, for the picture of fills and the stretch handle.
+  'whiteboard-edit': (doc) => {
+    seeds.whiteboard(doc)
+    const tints = { Browser: '#2f6fd633', API: '#2f9e5b33', Auth: '#e8862f33' }
+    const shapes = doc.nodes.find((n) => n.id === 'board').shapes
+    shapes.forEach((s, i) => {
+      const label = shapes[i + 1]
+      if (s.type === 'rect' && label?.type === 'text' && tints[label.text]) s.fill = tints[label.text]
+    })
+  },
   'whiteboard-picture': (doc) => {
     seeds.whiteboard(doc)
     Object.assign(doc.nodes.find((n) => n.id === 'board'), { title: 'Stuck agent', shapes: [] })

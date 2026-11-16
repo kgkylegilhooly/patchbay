@@ -140,6 +140,12 @@ export interface BoardEdit {
   at: number
 }
 
+/** Agents' changes still showing on notes and boards, oldest first. */
+export interface AgentEdits {
+  notes: NoteEdit[]
+  boards: BoardEdit[]
+}
+
 /** An agent's change to a note, with the text from before it, so the person can undo it. */
 export interface NoteEdit {
   id: string
@@ -269,6 +275,10 @@ export interface PatchbayBridge {
   onNoteEdit(cb: (edit: NoteEdit) => void): () => void
   /** An agent drew on a whiteboard with `patchbay draw`. */
   onBoardEdit(cb: (edit: BoardEdit) => void): () => void
+  /** Agents' changes the person hasn't kept or undone yet, kept across restarts. */
+  getAgentEdits(): Promise<AgentEdits>
+  /** The person kept or undid the agents' changes to a note or board. */
+  settleAgentEdits(id: string): void
   /** When each session last did something, since the app started. A session with no entry shows no time. */
   getActivity(): Promise<Record<string, number>>
   onActivity(cb: (id: string, at: number) => void): () => void

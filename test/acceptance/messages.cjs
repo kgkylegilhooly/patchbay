@@ -110,12 +110,22 @@ async function main() {
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'palette-note.png') })
     c.check('No page errors in the app window', app.problems.length === 0, app.problems.slice(0, 3))
 
+    // An agent changes the note again, and the notice saying so has to outlast a restart.
+    await rpc(profile, 'lead', 'note', { node: 'board', append: '- [ ] write the changelog (Lead)' })
+    await L.waitFor('the change notice', () => page.$('.react-flow__node[data-id="board"] .note-edited'), 3000).catch(() => null)
+
     // Quit and open again on the same profile: what the nodes said is still there.
     await app.quit()
     const reopened = await L.launch({ profile, exe: process.env.PB_USE_PACKAGED ? L.packagedExe : undefined })
     try {
       const kept = await reopened.page.evaluate(() => window.patchbay.getMessages())
       c.check('Messages between nodes are still there after Patchbay restarts', kept.some((m) => m.text.includes('hello-from-lead')) && kept.some((m) => m.text.includes('echo done')), kept.map((m) => m.text))
+      const again = reopened.page
+      const notice = await L.waitFor('the notice after a restart', () => again.$eval('.react-flow__node[data-id="board"] .note-edited', (f) => f.textContent), 10000).catch(() => '')
+      c.check('An agent\'s change to a note still says so after Patchbay restarts', /Changed by Lead/.test(notice), notice)
+      await again.click('.react-flow__node[data-id="board"] .note-edited-undo').catch(() => {})
+      const undone = await L.waitFor('the note put back', async () => !(await L.doc(again)).nodes.find((n) => n.id === 'board').text.includes('changelog'), 3000).catch(() => false)
+      c.check('Undo still works after the restart', undone)
     } finally {
       await reopened.quit().catch(() => {})
     }

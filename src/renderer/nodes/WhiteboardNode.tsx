@@ -1,7 +1,7 @@
 import type { NodeProps } from '@xyflow/react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { WhiteboardNode as WhiteboardModel, WhiteboardShape } from '../../shared/model'
-import { BOARD_COLORS, BOARD_SIZES, moveShape, shapeAt, shapeBox, shapesIn, shapeSvg, shapesSvg, textSize, thinPoints, touches, whiteboardSvg } from '../../shared/whiteboard'
+import { BOARD_COLORS, BOARD_SIZES, boxAround, COPIED_SHAPES, fillOf, moveShape, readCopiedShapes, scaleShape, type Box, shapeAt, shapeBox, shapesIn, shapeSvg, shapesSvg, textSize, thinPoints, touches, whiteboardSvg } from '../../shared/whiteboard'
 import type { FlowNode } from '../flowMapping'
 import { Icon, type IconName } from '../icons'
 import { bridge } from '../bridge'
@@ -30,6 +30,8 @@ const SIZE_NAMES = ['Thin', 'Medium', 'Thick']
 const ERASER = 8
 /** How near a click has to be to a shape's ink to pick it. */
 const REACH = 6
+/** How near a press has to be to the selection's corner to stretch it. */
+const HANDLE = 8
 /** Steps of drawing that Undo can take back, per board, while it's on screen. */
 const HISTORY = 100
 const ARROWS: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }
@@ -59,6 +61,10 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const [chosen, setChosen] = useState<number[]>([])
   const [moving, setMoving] = useState<{ from: { x: number; y: number }; dx: number; dy: number } | null>(null)
   const [marquee, setMarquee] = useState<Marquee | null>(null)
+  /** New boxes and ellipses get a light tint of their color. */
+  const [filled, setFilled] = useState(false)
+  /** The selection being stretched by its corner handle: its box when the drag began, and the scale so far. */
+  const [resizing, setResizing] = useState<{ box: Box; sx: number; sy: number } | null>(null)
 
   // What was committed shows straight away, until the saved board comes back with it.
   useEffect(() => {
@@ -67,7 +73,13 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   }, [node.shapes])
   const shapes = erasing ?? pending ?? node.shapes
   // Selected shapes follow the pointer while they're dragged, and are saved where they land.
-  const shown = useMemo(() => (moving ? shapes.map((s, i) => (chosen.includes(i) ? moveShape(s, moving.dx, moving.dy) : s)) : shapes), [shapes, chosen, moving])
+  const shown = useMemo(() => {
+    if (moving) return shapes.map((s, i) => (chosen.includes(i) ? moveShape(s, moving.dx, moving.dy) : s))
+    if (resizing) return shapes.map((s, i) => (chosen.includes(i) ? scaleShape(s, resizing.box, resizing.sx, resizing.sy) : s))
+    return shapes
+  }, [shapes, chosen, moving, resizing])
+  // The selection's box, with its corner handle for stretching it.
+  const chosenBox = useMemo(() => (tool === 'select' && chosen.length ? boxAround(chosen.flatMap((i) => (shown[i] ? [shown[i]] : []))) : null), [tool, chosen, shown])
   const pictures = useMemo(() => [...new Set(shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])))], [shapes])
   const images = useBoardImages(pictures)
   // Rebuilding a busy board's markup on every pointer move is what made drawing lag, so it's built only when it changes.
@@ -141,6 +153,9 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     const p = at(e)
     if (tool === 'select') {
       e.currentTarget.setPointerCapture(e.pointerId)
+      if (chosenBox && Math.abs(p.x - (chosenBox.x + chosenBox.width)) <= HANDLE && Math.abs(p.y - (chosenBox.y + chosenBox.height)) <= HANDLE) {
+        return setResizing({ box: chosenBox, sx: 1, sy: 1 })
+      }
       const hit = shapeAt(shapes, p.x, p.y, REACH)
       if (hit < 0) {
         if (!e.shiftKey) setChosen([])
@@ -161,7 +176,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
       points.current = [p.x, p.y]
       setLive({ type: 'pen', color, size, points: [p.x, p.y] })
     } else {
-      setLive({ type: tool, color, size, x1: p.x, y1: p.y, x2: p.x, y2: p.y })
+      setLive({ type: tool, color, size, x1: p.x, y1: p.y, x2: p.x, y2: p.y, ...(filled && (tool === 'rect' || tool === 'ellipse') ? { fill: fillOf(color) } : {}) })
     }
   }
 
@@ -169,7 +184,13 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     const p = at(e)
     setCursor(p)
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
-    if (moving) {
+    if (resizing) {
+      let sx = Math.max(0.05, (p.x - resizing.box.x) / resizing.box.width)
+      let sy = Math.max(0.05, (p.y - resizing.box.y) / resizing.box.height)
+      // A picture keeps its shape, as does anything stretched with Shift held.
+      if (e.shiftKey || chosen.some((i) => shapes[i]?.type === 'image')) sx = sy = Math.max(sx, sy)
+      setResizing({ ...resizing, sx, sy })
+    } else if (moving) {
       setMoving({ ...moving, dx: r1(p.x - moving.from.x), dy: r1(p.y - moving.from.y) })
     } else if (marquee) {
       setMarquee({ ...marquee, x2: p.x, y2: p.y })
@@ -206,6 +227,11 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   const onUp = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
     e.currentTarget.releasePointerCapture(e.pointerId)
+    if (resizing) {
+      setResizing(null)
+      if (resizing.sx !== 1 || resizing.sy !== 1) commit(shown)
+      return
+    }
     if (moving) {
       setMoving(null)
       if (moving.dx || moving.dy) commit(shown)
@@ -249,7 +275,14 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
       commit(shapes.filter((_, i) => !chosen.includes(i)))
       setChosen([])
     } else if (plain && chosen.length && key === 'escape') setChosen([])
-    else if (e.ctrlKey && !e.altKey && key === 'd' && chosen.length) {
+    else if (e.ctrlKey && !e.altKey && (key === 'c' || key === 'x') && chosen.length) {
+      // On the clipboard as text, so the shapes paste onto this board or any other.
+      void navigator.clipboard.writeText(COPIED_SHAPES + JSON.stringify(chosen.map((i) => shapes[i]))).catch(() => flash('Could not copy'))
+      if (key === 'x') {
+        commit(shapes.filter((_, i) => !chosen.includes(i)))
+        setChosen([])
+      }
+    } else if (e.ctrlKey && !e.altKey && key === 'd' && chosen.length) {
       // A copy, a little down and to the right, selected so it can be moved straight away.
       const copies = chosen.map((i) => moveShape(shapes[i], 16, 16))
       commit([...shapes, ...copies])
@@ -309,6 +342,19 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     const target = e.target as Element | null
     const onPaper = !!target && !!surface.current?.contains(target)
     if (!onPaper && (!selected || keyFocusOf(target) !== 'canvas')) return
+    const copies = readCopiedShapes(e.clipboardData?.getData('text/plain'))
+    if (copies) {
+      e.preventDefault()
+      // Where the pointer is, or a little off from where they were, so a paste never hides what it copied.
+      const box = boxAround(copies)!
+      const dx = cursor ? cursor.x - box.x : 16
+      const dy = cursor ? cursor.y - box.y : 16
+      const placed = copies.map((s) => moveShape(s, dx, dy))
+      commit([...shapes, ...placed])
+      setTool('select')
+      setChosen(placed.map((_, i) => shapes.length + i))
+      return
+    }
     const picture = pictureIn(e.clipboardData?.items)
     if (!picture) return
     e.preventDefault()
@@ -335,11 +381,13 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
   // What an agent drew shows who drew it until the person keeps or undoes it. Once the board changes otherwise, it's theirs.
   const drawn = useStore((s) => s.boardEdits[node.id])
   const agentDrawing = drawn && drawn.after === node.shapes.length ? drawn : null
-  const settleDrawing = (): void =>
+  const settleDrawing = (): void => {
+    bridge.settleAgentEdits(node.id)
     useStore.setState((s) => {
       const { [node.id]: _settled, ...rest } = s.boardEdits
       return { boardEdits: rest }
     })
+  }
   const drawers = (ids: string[]): string => {
     const names = ids.map((id) => useStore.getState().doc?.nodes.find((n) => n.id === id)?.title ?? 'a closed agent')
     return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
@@ -395,7 +443,8 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
               title={COLOR_NAMES[i]}
               onClick={() => {
                 setColor(c)
-                changeChosen((s) => ({ ...s, color: c }))
+                // A filled shape's tint follows its new color.
+                changeChosen((s) => ((s.type === 'rect' || s.type === 'ellipse') && s.fill ? { ...s, color: c, fill: fillOf(c) } : { ...s, color: c }))
               }}
             >
               <span style={{ background: c }} />
@@ -420,6 +469,22 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
               <span style={{ width: s + 3, height: s + 3 }} />
             </button>
           ))}
+        </span>
+        <span className="wb-group">
+          <button
+            type="button"
+            className={`wb-tool${filled ? ' wb-on' : ''}`}
+            aria-pressed={filled}
+            aria-label="Fill"
+            title="Fill boxes and ellipses with a tint of their color"
+            onClick={() => {
+              setFilled(!filled)
+              // With boxes or ellipses selected, it fills them, or takes the fill away.
+              changeChosen((s) => (s.type === 'rect' || s.type === 'ellipse' ? (filled ? { ...s, fill: undefined } : { ...s, fill: fillOf(s.color) }) : s))
+            }}
+          >
+            <Icon name="fill" size={16} />
+          </button>
         </span>
         <span className="wb-spacer" />
         <span className="wb-group">
@@ -472,6 +537,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
             return <rect key={i} className="wb-chosen" x={b.x - 3} y={b.y - 3} width={b.width + 6} height={b.height + 6} />
           })}
           {marquee && <rect className="wb-marquee" {...marqueeBox(marquee)} />}
+          {chosenBox && !moving && <rect className="wb-handle" x={chosenBox.x + chosenBox.width - 4} y={chosenBox.y + chosenBox.height - 4} width={8} height={8} />}
           {tool === 'eraser' && cursor && <circle className="wb-eraser" cx={cursor.x} cy={cursor.y} r={ERASER} />}
         </svg>
         {agentDrawing && (
