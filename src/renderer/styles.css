@@ -4163,3 +4163,12 @@ circle.wb-eraser {
 .ssh-host-on {
   border-color: var(--cable-link);
 }
+
+/* "Link copied." under a note or chat, from a link's right-click menu. */
+.link-notice {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  border-top: 1px solid var(--line);
+}

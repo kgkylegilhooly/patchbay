@@ -168,6 +168,9 @@ npm run typecheck
 ```
 
 The scripts in `test/acceptance` drive the real app and most start real Claude sessions, so they use some of your plan's quota.
+Their app windows open beside your screens without taking focus, so a run doesn't pop up over what you're doing; set
+`PB_SHOW=1` to watch one. `paths-real.cjs` prints paths and links the ways real tools do and checks each shows as a
+link and copies correctly, using no quota.
 `ui-sidebar.cjs` and `ui-windows.cjs` use a stand-in for Claude and spend none. `ui-real.cjs` makes a few small checks
 with the real one.
 
@@ -213,6 +216,12 @@ first, then labels, and the text size folds into one button.
   and clicking a session in the sidebar brings it into a pane. The pane you're typing in has a blue edge, and
   Ctrl+Shift+arrows move between panes. The **−** on a pane's bar takes it out of the view; the window keeps running on
   the canvas. Each project keeps its own layout.
+- **Links and paths** in a terminal are underlined when you point at them. Clicking a web link opens it in your browser,
+  including the hyperlinks Claude Code prints. Right-click one for **Copy link**, for a PC whose security settings stop
+  links opening from another app. Clicking or right-clicking a file path offers Open, New terminal here, Copy path and
+  Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
+  `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
+  `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
 
 ## Keys
 

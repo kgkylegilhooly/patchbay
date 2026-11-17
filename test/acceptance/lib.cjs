@@ -86,6 +86,9 @@ async function launch({ profile, exe, env: extraEnv }) {
   // These runs may start from inside another agent's session, which the app must not think it belongs to. Only what's
   // inherited is cleaned: a script's own settings, such as PATCHBAY_HOST_PROTOCOL, go on afterward.
   for (const key of Object.keys(env)) if (inheritNot(key)) delete env[key]
+  // The window opens beside the screens without taking focus, so runs don't pop up over whatever else is open.
+  // PB_SHOW=1 shows it as usual, to watch a run.
+  if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
   Object.assign(env, extraEnv)
   const file = exe ?? require('electron')
   const args = [

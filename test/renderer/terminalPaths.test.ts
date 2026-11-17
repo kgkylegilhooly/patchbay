@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { findTerminalPathMatches, findTerminalPaths } from '../../src/renderer/terminalPaths'
+import { findTerminalPathMatches, findTerminalPaths, linkKind } from '../../src/renderer/terminalPaths'
 
 test.each([
   ['see C:\\Program Files\\app\\a.ts:12', 'C:\\Program Files\\app\\a.ts'],
@@ -50,4 +50,18 @@ test.each([
 
 test.each([['type /help for help'], ['run /compact now'], ['a 1/2 cup']])('a slash command or fraction is not a path: %s', (line) => {
   expect(findTerminalPaths(line)).toEqual([])
+})
+
+test('a file:// link is a path, and web links stay out', () => {
+  expect(findTerminalPaths('see file:///C:/Code/app/src/a.ts for it')).toEqual(['file:///C:/Code/app/src/a.ts'])
+  expect(findTerminalPaths('file:///C:/my%20folder/notes%202.md.')).toEqual(['file:///C:/my%20folder/notes%202.md'])
+  expect(findTerminalPaths('https://example.com/src/a.ts')).toEqual([])
+})
+
+test('a link is a web link if it has a scheme other than file:', () => {
+  expect(linkKind('https://example.com')).toBe('web')
+  expect(linkKind('mailto:me@example.com')).toBe('web')
+  expect(linkKind('file:///C:/a.ts')).toBe('path')
+  expect(linkKind('C:\a.ts')).toBe('path')
+  expect(linkKind('src/a.ts:3:4')).toBe('path')
 })

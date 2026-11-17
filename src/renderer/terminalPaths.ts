@@ -52,7 +52,12 @@ export function findTerminalPathMatches(line: string): PathMatch[] {
     rest = mask(rest, start, Math.max(end, start + raw.length))
   }
 
-  for (const m of line.matchAll(URL)) rest = mask(rest, m.index, m.index + m[0].length)
+  // Web links are left to the web link handler. A file:// link, as Codex prints, is a path: that handler doesn't take
+  // it, so it was no link at all.
+  for (const m of line.matchAll(URL)) {
+    if (/^file:/i.test(m[0])) take(m.index, m[0])
+    else rest = mask(rest, m.index, m.index + m[0].length)
+  }
 
   for (const m of rest.matchAll(QUOTED)) {
     const inner = m[1] ?? m[2]
@@ -71,4 +76,9 @@ export function findTerminalPathMatches(line: string): PathMatch[] {
 
 export function findTerminalPaths(line: string): string[] {
   return findTerminalPathMatches(line).map((m) => m.path)
+}
+
+/** A link with a scheme, such as https: or mailto:, is a web link. A file: link, or no scheme at all, is a path. */
+export function linkKind(target: string): 'web' | 'path' {
+  return /^[a-z][a-z0-9+.-]+:/i.test(target) && !/^file:/i.test(target) ? 'web' : 'path'
 }

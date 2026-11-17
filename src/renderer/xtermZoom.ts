@@ -4,7 +4,15 @@ const EVENTS = ['mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'conte
  * Events already rewritten. Every terminal on the canvas listens on the window, so two can see the same event, such as
  * when a drag that started in one passes over another. It's corrected once, by the first.
  */
-const corrected = new WeakSet<MouseEvent>()
+const corrected = new WeakMap<MouseEvent, { x: number; y: number }>()
+
+/**
+ * Where the pointer really was on screen, for placing a menu. A rewritten event's clientX and clientY say where it
+ * would have been at 100%, so a link menu at 71% zoom opened well below the link.
+ */
+export function screenPoint(ev: MouseEvent): { x: number; y: number } {
+  return corrected.get(ev) ?? { x: ev.clientX, y: ev.clientY }
+}
 
 /**
  * xterm works out which cell the mouse is on by assuming it isn't scaled, but the canvas scales
@@ -29,7 +37,7 @@ export function installZoomCompensation(host: HTMLElement): () => void {
     if (Math.abs(scale - 1) < 0.001) return
     const clientX = rect.left + (ev.clientX - rect.left) / scale
     const clientY = rect.top + (ev.clientY - rect.top) / scale
-    corrected.add(ev)
+    corrected.set(ev, { x: ev.clientX, y: ev.clientY })
     Object.defineProperty(ev, 'clientX', { get: () => clientX, configurable: true })
     Object.defineProperty(ev, 'clientY', { get: () => clientY, configurable: true })
   }

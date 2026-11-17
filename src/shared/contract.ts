@@ -240,6 +240,8 @@ export interface PatchbayBridge {
   onAttention(cb: (ids: string[]) => void): () => void
   markSeen(id: string): void
   openDataFolder(): Promise<void>
+  /** Puts text on the clipboard through Electron, which works where the page's own clipboard is refused. */
+  writeClipboard(text: string): Promise<void>
   /** Opens the log of hangs, crashes and stalls, in the data folder's logs folder. */
   openLog(): Promise<void>
   /** Notes in the log that the window was held up for this long, and by what if known. */

@@ -9,13 +9,15 @@ import { createAttachGate } from '../attachGate'
 import { bridge, subscribeOutput } from '../bridge'
 import { ContextMenu } from '../Menu'
 import type { Point } from '../menus'
-import { pathMenu as pathMenuEntries } from '../pathMenu'
+import { linkMenu as linkMenuEntries, pathMenu as pathMenuEntries } from '../pathMenu'
+import { linkKind } from '../terminalPaths'
+import { copyText } from '../clipboard'
 import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
 import { findTerminalPathMatches } from '../terminalPaths'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
-import { installZoomCompensation } from '../xtermZoom'
+import { installZoomCompensation, screenPoint } from '../xtermZoom'
 
 const SEARCH_COLORS = {
   matchBackground: '#49c2c955',
@@ -50,6 +52,8 @@ const THEME = {
 }
 
 const NUDGE_MS = 120
+/** How long "Link copied." and "Path copied." show. */
+const COPIED_SHOWN_MS = 2500
 
 function findCount(query: string, results: { index: number; count: number } | null): string {
   if (!query || !results) return ''
@@ -77,7 +81,14 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<{ index: number; count: number } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // A confirmation that something copied only needs a moment. Problems stay until they're dismissed.
+  useEffect(() => {
+    if (!notice || !/^(Link|Path) copied\.$/.test(notice)) return
+    const timer = setTimeout(() => setNotice((n) => (n === notice ? null : n)), COPIED_SHOWN_MS)
+    return () => clearTimeout(timer)
+  }, [notice])
   const [pathMenu, setPathMenu] = useState<{ at: Point; path: string } | null>(null)
+  const [linkMenu, setLinkMenu] = useState<{ at: Point; url: string } | null>(null)
 
   const pathActions = (target: string): Parameters<typeof pathMenuEntries>[0] => {
     const report = (r: { ok: true } | { ok: false; reason: string }): void => setNotice(r.ok ? null : r.reason)
@@ -88,15 +99,26 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
           report(r)
           if (r.ok) openTerminalBeside(nodeId, r.folder)
         }),
+      // The full Windows path when the file is there, and what was printed when it isn't, so something always copies.
       copy: () =>
         void bridge.resolveTerminalPath(nodeId, target).then((r) =>
-          navigator.clipboard
-            .writeText(r.ok ? r.path : target)
-            .catch((e: unknown) => setNotice(`Couldn't copy: ${e instanceof Error ? e.message : String(e)}`))
+          copyText(r.ok ? r.path : target).then(
+            () => setNotice(r.ok ? 'Path copied.' : `Copied as printed. ${r.reason}`),
+            (e: unknown) => setNotice(`Couldn't copy: ${e instanceof Error ? e.message : String(e)}`)
+          )
         ),
       reveal: () => void bridge.revealTerminalPath(nodeId, target).then(report)
     }
   }
+
+  const linkActions = (url: string): Parameters<typeof linkMenuEntries>[0] => ({
+    open: () => void bridge.openTerminalLink(nodeId, url).then((r) => setNotice(r.ok ? null : r.reason)),
+    copy: () =>
+      void copyText(url).then(
+        () => setNotice('Link copied.'),
+        (e: unknown) => setNotice(`Couldn't copy: ${e instanceof Error ? e.message : String(e)}`)
+      )
+  })
 
   useEffect(() => {
     const host = hostRef.current
@@ -109,7 +131,19 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       cursorStyle: lookRef.current.cursorStyle,
       cursorBlink: lookRef.current.cursorBlink,
       allowProposedApi: true,
-      theme: THEME
+      theme: THEME,
+      // Hyperlinks a program prints with OSC 8, as Claude Code does. xterm's own handler asked with confirm() and then
+      // called window.open, which this window refuses, so they never opened. They go Patchbay's way instead.
+      linkHandler: {
+        allowNonHttpProtocols: true,
+        activate: (event, uri) => activateLink(event, uri),
+        hover: (_event, uri) => {
+          hovered = uri
+        },
+        leave: () => {
+          hovered = null
+        }
+      }
     })
     termRef.current = term
     const fit = new FitAddon()
@@ -118,11 +152,38 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     term.loadAddon(fit)
     term.loadAddon(search)
 
-    const openLink = async (target: string): Promise<void> => {
-      const r = await bridge.openTerminalLink(nodeId, target)
-      setNotice(r.ok ? null : r.reason)
+    // The link under the pointer, of any kind, so a right-click on it offers the link's own menu.
+    let hovered: string | null = null
+    // Where the pointer really is: the zoom fix rewrites a terminal's mouse events for xterm. See xtermZoom.ts.
+    const at = (event: MouseEvent): Point => screenPoint(event)
+    /**
+     * A left-click on a link: a web link opens, and a path, or a file:// link, offers what can be done with it. xterm
+     * calls this on any button's release, so a right-click to copy a link also opened it; only the left button counts.
+     */
+    const activateLink = (event: MouseEvent, target: string): void => {
+      if (event.button !== 0) return
+      if (linkKind(target) === 'web') void bridge.openTerminalLink(nodeId, target).then((r) => setNotice(r.ok ? null : r.reason))
+      else setPathMenu({ at: at(event), path: target })
     }
-    term.loadAddon(new WebLinksAddon((_event, uri) => void openLink(uri)))
+    const onContextMenu = (event: MouseEvent): void => {
+      const target = hovered
+      if (!target) return
+      // The link's menu instead of the window's own, which a right-click elsewhere in the terminal still opens.
+      event.preventDefault()
+      event.stopPropagation()
+      if (linkKind(target) === 'web') setLinkMenu({ at: at(event), url: target })
+      else setPathMenu({ at: at(event), path: target })
+    }
+    host.addEventListener('contextmenu', onContextMenu, true)
+    const hoverOptions = {
+      hover: (_event: MouseEvent, text: string) => {
+        hovered = text
+      },
+      leave: () => {
+        hovered = null
+      }
+    }
+    term.loadAddon(new WebLinksAddon((event, uri) => activateLink(event, uri), hoverOptions))
     const links = term.registerLinkProvider({
       provideLinks(y, callback) {
         // A path printed over ssh is on the other machine, so opening it here would open the wrong file.
@@ -132,7 +193,8 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
         const found = findTerminalPathMatches(text).map((m) => ({
           range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
           text: m.path,
-          activate: (event: MouseEvent) => setPathMenu({ at: { x: event.clientX, y: event.clientY }, path: m.path })
+          activate: (event: MouseEvent) => activateLink(event, m.path),
+          ...hoverOptions
         }))
         callback(found.length ? found : undefined)
       }
@@ -261,6 +323,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     return () => {
       clearTimeout(nudge)
       host.removeEventListener('paste', onPaste, true)
+      host.removeEventListener('contextmenu', onContextMenu, true)
       unregister()
       observer.disconnect()
       cancelAnimationFrame(frame)
@@ -361,6 +424,11 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       {pathMenu &&
         createPortal(
           <ContextMenu at={pathMenu.at} label={pathMenu.path} onClose={() => setPathMenu(null)} entries={pathMenuEntries(pathActions(pathMenu.path))} />,
+          document.body
+        )}
+      {linkMenu &&
+        createPortal(
+          <ContextMenu at={linkMenu.at} label={linkMenu.url} onClose={() => setLinkMenu(null)} entries={linkMenuEntries(linkActions(linkMenu.url))} />,
           document.body
         )}
       {notice && (

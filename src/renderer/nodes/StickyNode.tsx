@@ -10,6 +10,7 @@ import { relativeTime } from '../sidebarView'
 import { closeNodes, patchNode, useStore } from '../store'
 import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
+import { useLinkMenu } from '../useLinkMenu'
 
 /** The first is the default, the tape yellow notes have always been. */
 export const NOTE_COLORS = ['#d9c64a', '#e8806f', '#6fc08a', '#6fa8f0', '#b08cf0', '#9a9aa2']
@@ -199,6 +200,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
     return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]
   }
 
+  const links = useLinkMenu(node.id)
   const onBodyClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     const target = e.target as HTMLElement
     const code = copiedCode(target)
@@ -256,6 +258,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
             if (!(e.target as HTMLElement).closest('input, a, .code-copy')) setEditing(true)
           }}
           onClick={onBodyClick}
+          onContextMenu={links.onContextMenu}
           onKeyDown={(e) => {
             if ((e.key === 'Enter' || e.key === ' ') && (e.target as HTMLElement).classList.contains('code-copy')) {
               e.preventDefault()
@@ -281,6 +284,12 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
             <Icon name="check" size={15} />
           </button>
         </footer>
+      )}
+      {links.menu}
+      {links.notice && (
+        <p className="link-notice" role="status">
+          {links.notice}
+        </p>
       )}
     </div>
   )

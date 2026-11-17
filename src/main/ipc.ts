@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { readIfPresentSync, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessages, readTranscript, stripAnsi } from '../core/transcript/read'
@@ -334,6 +334,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.on('pb:markSeen', (_e, id: string) => notifier.markSeen(id))
   ipcMain.handle('pb:openDataFolder', async () => {
     await shell.openPath(dataDir)
+  })
+  ipcMain.handle('pb:writeClipboard', (_e, text: unknown) => {
+    if (typeof text === 'string') clipboard.writeText(text)
   })
   ipcMain.handle('pb:openLog', async () => {
     if (!s.log) return

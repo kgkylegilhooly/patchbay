@@ -83,6 +83,7 @@ const bridge: PatchbayBridge = {
   markSeen: (id) => ipcRenderer.send('pb:markSeen', id),
   openDataFolder: () => invoke('openDataFolder'),
   openLog: () => invoke('openLog'),
+  writeClipboard: (text) => invoke('writeClipboard', text),
   noteSlow: (ms, what) => ipcRenderer.send('pb:noteSlow', ms, what),
   getAppInfo: () => invoke('getAppInfo'),
   getSettings: () => invoke('getSettings'),

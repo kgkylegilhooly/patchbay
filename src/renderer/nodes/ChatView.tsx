@@ -3,6 +3,7 @@ import { agentOf, AGENT_NAMES, type ClaudeNode } from '../../shared/model'
 import { bridge } from '../bridge'
 import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { useStore } from '../store'
+import { useLinkMenu } from '../useLinkMenu'
 
 type Message = { role: 'user' | 'assistant'; text: string }
 
@@ -28,6 +29,7 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const [sent, setSent] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
+  const links = useLinkMenu(node.id)
   const pinned = useRef(true)
 
   useEffect(() => {
@@ -70,6 +72,7 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
       <div
         className="chat-list"
         ref={list}
+        onContextMenu={links.onContextMenu}
         onScroll={(e) => {
           const el = e.currentTarget
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
@@ -96,6 +99,12 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
         ))}
         {STATUS_LINE[status] && <p className="chat-status">{STATUS_LINE[status]}</p>}
       </div>
+      {links.menu}
+      {links.notice && (
+        <p className="link-notice" role="status">
+          {links.notice}
+        </p>
+      )}
       <form
         className="chat-box"
         onSubmit={(e) => {

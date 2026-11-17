@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, session, shell, Tray, type Event as ElectronEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
@@ -97,8 +97,20 @@ function ensureStartMenuShortcut(iconPath: string): void {
   if (!ok) console.error('Patchbay could not write its Start Menu shortcut, so Windows may not show its notifications.')
 }
 
+/**
+ * For automated test runs: the window opens beside the screens, out of the taskbar, and never takes focus, so test
+ * after test doesn't pop up over whatever the person is doing. It still draws and takes input from the test as usual.
+ */
+const QUIET_WINDOW = process.env.PATCHBAY_QUIET_WINDOW === '1'
+
+function quietPlace(): { x: number; y: number } {
+  const right = Math.max(...screen.getAllDisplays().map((d) => d.bounds.x + d.bounds.width))
+  return { x: right + 100, y: 0 }
+}
+
 function createWindow(onClose: (e: ElectronEvent) => void, icon: string): BrowserWindow {
   const win = new BrowserWindow({
+    ...(QUIET_WINDOW ? { show: false, skipTaskbar: true, ...quietPlace() } : {}),
     width: 1280,
     height: 800,
     backgroundColor: '#0e0e10',
@@ -117,6 +129,7 @@ function createWindow(onClose: (e: ElectronEvent) => void, icon: string): Browse
       autoplayPolicy: 'no-user-gesture-required'
     }
   })
+  if (QUIET_WINDOW) win.once('ready-to-show', () => win.showInactive())
   // Links open through openTerminalLink. Nothing else may take over the window that holds the canvas.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
@@ -158,7 +171,7 @@ function renderWhiteboard(svg: string, width: number, height: number): Promise<u
 }
 
 function focusWindow(): void {
-  if (!mainWindow) return
+  if (!mainWindow || QUIET_WINDOW) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
@@ -244,7 +257,7 @@ async function boot(): Promise<void> {
     },
     alert() {
       if (currentSettings().sound !== 'off') broadcast('pb:onChime')
-      if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame(true)
+      if (mainWindow && !QUIET_WINDOW && !mainWindow.isFocused()) mainWindow.flashFrame(true)
     },
     windowFocused: () => mainWindow?.isFocused() ?? false,
     titleOf: (id) => store.get().nodes.find((n) => n.id === id)?.title ?? 'Claude',
