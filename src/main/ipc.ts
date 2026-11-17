@@ -34,11 +34,14 @@ import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImage, saveBoardImage } from './boardImages'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
+import type { SendGuard } from './sessions/sendGuard'
 
 export interface IpcServices {
   dataDir: string
   /** Where hangs, crashes and stalls are noted. See watchdog.ts. */
   log?: Log
+  /** Follows resizes, typing and bracketed paste, for text main types into Git Bash. See sessions/sendGuard.ts. */
+  sendGuard?: SendGuard
   store: CanvasStore
   host: SessionHost
   runner: NodeRunner
@@ -97,6 +100,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   const activity = createActivityLog({ push: (id, at) => broadcast('pb:onActivity', id, at) })
 
   host.onOutput((id, data, seq) => {
+    s.sendGuard?.output(id, data)
     broadcast('pb:onOutput', id, data, seq)
     const kind = find(id)?.kind
     if (kind === 'terminal' || kind === 'run') saver.markDirty(id)
@@ -148,6 +152,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
       approvals.clearNode(id)
       exitedTerminals.delete(id)
       saver.forget(id)
+      s.sendGuard?.forget(id)
       host.forget?.(id)
       usage.forget(id)
       activity.forget(id)
@@ -185,9 +190,13 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
 
   ipcMain.on('pb:input', (_e, id: string, data: string) => {
     runner.noteInput(id, data)
+    s.sendGuard?.typed(id, data)
     host.write(id, data)
   })
-  ipcMain.on('pb:resize', (_e, id: string, cols: number, rows: number) => host.resize(id, cols, rows))
+  ipcMain.on('pb:resize', (_e, id: string, cols: number, rows: number) => {
+    s.sendGuard?.resized(id)
+    host.resize(id, cols, rows)
+  })
   ipcMain.on('pb:noteFocus', (_e, id: string | null) => notifier.setFocusedNode(id))
 
   /** A launch.json run is read again on each click, so it runs what the file says now, or says why it can't. */

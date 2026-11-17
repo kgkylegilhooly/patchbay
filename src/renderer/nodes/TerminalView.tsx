@@ -14,7 +14,7 @@ import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
 import { findTerminalPathMatches } from '../terminalPaths'
-import { guardFirstKey, isFocusReport } from '../resizeGuard'
+import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { installZoomCompensation } from '../xtermZoom'
 
 const SEARCH_COLORS = {

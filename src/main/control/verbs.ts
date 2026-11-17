@@ -830,9 +830,32 @@ export function createVerbs({
     }
   }
 
-  return async (callerId, verb, args) => {
+  /**
+   * A node named by its title rather than its id, as agents and people often do: `--node "Billing API owner"`. An id
+   * always wins. A title counts only if exactly one node in the caller's project has it, ignoring case; several are
+   * refused with their ids, since guessing could send to the wrong one.
+   */
+  const byTitle = (caller: CanvasNode, ref: string): string => {
+    if (find(ref)) return ref
+    const want = ref.trim().toLowerCase()
+    if (!want) return ref
+    const same = store.get().nodes.filter((n) => n.projectId === caller.projectId && n.title.trim().toLowerCase() === want)
+    if (same.length > 1) refuse(`Several nodes are titled "${ref}": ${same.map((n) => n.id).join(', ')}. Name one by its id.`)
+    return same[0]?.id ?? ref
+  }
+  const NODE_ARGS = ['node', 'to', 'from', 'group']
+  const NODE_LISTS = ['nodes', 'ids', 'after']
+  const withIds = (caller: CanvasNode, args: Args): Args => {
+    const out: Args = { ...args }
+    for (const key of NODE_ARGS) if (typeof out[key] === 'string') out[key] = byTitle(caller, out[key] as string)
+    for (const key of NODE_LISTS) if (Array.isArray(out[key])) out[key] = (out[key] as unknown[]).map((v) => (typeof v === 'string' ? byTitle(caller, v) : v))
+    return out
+  }
+
+  return async (callerId, verb, given) => {
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
+    const args = withIds(caller, given)
     if (BROWSER_VERBS.includes(verb)) {
       if (!browserVerb) refuse('Browser nodes are not available here.')
       return browserVerb(callerId, verb, args)

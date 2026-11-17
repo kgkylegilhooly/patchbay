@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { atShellPrompt, guardFirstKey, isFocusReport, SACRIFICE } from '../../src/renderer/resizeGuard'
+import { atShellPrompt, guardFirstKey, isFocusReport, SACRIFICE } from '../../src/shared/resizeGuard'
 
 const prompt = { bracketedPaste: true, alternateScreen: false, beforeCursor: '$ ' }
 

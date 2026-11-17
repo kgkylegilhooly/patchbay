@@ -56,13 +56,16 @@ export function createSendQueue({
   host,
   tracker,
   exists,
-  timing = DEFAULT_SEND_TIMING
+  timing = DEFAULT_SEND_TIMING,
+  prefix
 }: {
   host: Pick<SessionHost, 'write' | 'isRunning'>
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
   /** Whether the node is still on the canvas. */
   exists: (id: string) => boolean
   timing?: SendTiming
+  /** Put ahead of text typed into a terminal: see sessions/sendGuard.ts. */
+  prefix?: (id: string) => string
 }): SendQueue {
   const queues = new Map<string, SendItem[]>()
   /** Nodes just typed into, whose status can't yet show that they took it. */
@@ -79,7 +82,7 @@ export function createSendQueue({
 
   const type = (id: string, text: string): void => {
     took.delete(id)
-    host.write(id, text)
+    host.write(id, (prefix?.(id) ?? '') + text)
     setTimeout(() => {
       host.write(id, '\r')
       const retry = timing.retryEnterMs

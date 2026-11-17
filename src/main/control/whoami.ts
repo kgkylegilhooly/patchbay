@@ -67,7 +67,9 @@ const describe = (n: NodeBrief): string => {
 export function describeWhoAmI(w: WhoAmI): string {
   const lines = [
     `You are ${describe(w.self)} on the Patchbay canvas${w.self.project ? `, in project ${quoteTitle(w.self.project)}` : ''}.` +
-      ' The person can see every node, and the `patchbay` command lets you work with the others.'
+      ' The person can see every node, and the `patchbay` command lets you work with the others.' +
+      // A real agent with another canvas app's skill installed reached for that app's script to tidy this canvas.
+      ' For anything on this canvas, such as opening, grouping, arranging or messaging nodes, use `patchbay` and its skill: tools and skills for other canvas apps do not work here.'
   ]
   if (w.group) lines.push(`You're in the group ${quoteTitle(w.group.title)}${w.group.branch ? `, on the git worktree branch ${w.group.branch}` : ''}.`)
   if (w.openedBy) {

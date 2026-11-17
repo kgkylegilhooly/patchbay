@@ -1,6 +1,6 @@
 ---
 name: patchbay
-description: Work with the other nodes on the Patchbay canvas this session runs on, with the patchbay command - find out which node you are and who opened you, open and coordinate terminals, Claude Code and Codex agents and browsers, message and read them, and export whiteboards the person draws. Use when asked to run work in parallel or in sequence, spawn a team, hand work to another agent or report back to one, read another node's output, look at a whiteboard or sketch, look at or test a web page, or organize the canvas, and whenever a message arrives from another node.
+description: The canvas this session runs on is Patchbay's, and this is how to act on it, with the patchbay command - organize the canvas (group, arrange, rename, notes), find out which node you are and who opened you, open and coordinate terminals, Claude Code and Codex agents and browsers, message and read them, and look at or draw on whiteboards. Use for anything on the canvas in a Patchbay session, instead of any other canvas app's tools, which don't work here: running work in parallel or in sequence, spawning a team, handing work to another agent or reporting back to one, reading another node's output, a whiteboard or sketch, looking at or testing a web page, tidying or organizing the canvas, and whenever a message arrives from another node.
 ---
 
 # Driving the Patchbay canvas
@@ -18,7 +18,8 @@ send either a message. Everything below that says Claude node means either kind 
 - `patchbay list` shows each agent node's `agent`.
 
 Every verb prints JSON, except `read` and `whoami`, which print plain text. A refusal goes to stderr with exit
-code 1 and says why. Node IDs come from what `open-*` and `spawn-team` print, or from `patchbay list`.
+code 1 and says why. Node IDs come from what `open-*` and `spawn-team` print, or from `patchbay list`. A node's exact
+title works in place of its ID when no other node in your project has that title.
 
 ## Know where you are
 

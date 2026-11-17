@@ -7,6 +7,8 @@ import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
+import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
+import { pickDefaultShell } from './sessions/shell'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
@@ -319,7 +321,14 @@ async function boot(): Promise<void> {
   const work = workServices()
   const github = createGithubReader(store, work.git, work.gh)
   // One line into each session, shared by `patchbay send` and triggers.
-  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id) })
+  // Text main types into a Git Bash terminal after a resize gets a byte ahead of it for bash to drop. See sendGuard.ts.
+  const sendGuard = createSendGuard({
+    isGitBash: (id) => {
+      const node = store.get().nodes.find((n) => n.id === id)
+      return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(pickDefaultShell(currentSettings().shell).file)
+    }
+  })
+  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor })
   const messages = createMessageLog(join(dataDir, 'messages.json'))
   const agentEdits = createAgentEditLog(join(dataDir, 'agent-edits.json'))
   ipcMain.handle('pb:getAgentEdits', () => agentEdits.all())
@@ -432,7 +441,7 @@ async function boot(): Promise<void> {
     else await replaceHost()
   }
   ipcHooks = registerIpc({
-    dataDir, log: log ?? undefined, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
+    dataDir, log: log ?? undefined, sendGuard, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
     hostInfo: () => host.info(),
     quit: quitWith,
     stopHost,

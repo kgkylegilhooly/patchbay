@@ -72,8 +72,11 @@ function decide(approval, work) {
       return rest ? decide({ tool: 'Bash', detail: rest }, work) : 'allow'
     }
     // A heredoc piped into a command, as in patchbay draw --diagram-file - <<'EOF' ... EOF: the command and whatever
-    // follows are judged, and the body is data.
-    const piped = /^(.*?) <<-?'?EOF'? [[{][\s\S]*? EOF(?: (.*))?$/.exec(text)
+    // follows are judged, and the body is data. Collapsed, a command right after <<'EOF' would look like body, so the
+    // body must start as JSON, or as prose piped to a patchbay file flag of -, never with a shell operator.
+    const heredoc = /^(.*?) <<-?'?EOF'? ([\s\S]*?) EOF(?: (.*))?$/.exec(text)
+    const bodyOk = (head, body) => /^[[{]/.test(body) || (/^patchbay .*--(prompt|members|diagram)-file -(\s|$)/.test(head) && !/^[&;|<>()`$]/.test(body))
+    const piped = heredoc && bodyOk(heredoc[1], heredoc[2]) ? [heredoc[0], heredoc[1], heredoc[3]] : null
     if (piped) {
       const head = piped[1].trim()
       const rest = (piped[2] ?? '').trim()

@@ -810,3 +810,33 @@ test('a caller that is no longer on the canvas is refused', async () => {
   const { verbs } = setup()
   await refused(verbs('ghost', 'list', {}), /ghost/)
 })
+
+test('a node can be named by its exact title, ignoring case, when only one in the project has it', async () => {
+  const { verbs, host } = setup([terminalNode('t1', { title: 'Billing API owner', openedBy: 'me' })])
+  host.output.set('t1', 'hello from t1')
+  expect(await verbs('me', 'read', { node: 'billing api owner' })).toEqual({ text: 'hello from t1' })
+})
+
+test('a title shared by several nodes is refused with their ids, rather than guessed', async () => {
+  const { verbs } = setup([terminalNode('t1', { title: 'Server', openedBy: 'me' }), terminalNode('t2', { title: 'server', openedBy: 'me' })])
+  await refused(verbs('me', 'read', { node: 'Server' }), /Several nodes are titled "Server": t1, t2/)
+})
+
+test('an id always wins over a title, and a title in another project does not count', async () => {
+  const { verbs, host } = setup([
+    terminalNode('t1', { title: 't2', openedBy: 'me' }),
+    terminalNode('t2', { title: 'other', openedBy: 'me' }),
+    terminalNode('far', { title: 'Elsewhere', openedBy: 'me', projectId: 'p2' })
+  ])
+  host.output.set('t2', 'the real t2')
+  expect(await verbs('me', 'read', { node: 't2' })).toEqual({ text: 'the real t2' })
+  await refused(verbs('me', 'read', { node: 'Elsewhere' }), /no node "Elsewhere"/)
+})
+
+test('titles work in lists too, as for wait and arrange', async () => {
+  const { verbs, tracker } = setup([claudeNode('a1', { title: 'Writer', openedBy: 'me' })])
+  tracker.apply('a1', { type: 'launched' })
+  tracker.apply('a1', { type: 'hook', name: 'SessionStart' })
+  const r = (await verbs('me', 'wait', { nodes: ['writer'], timeout: 1 })) as { nodes: Record<string, string> }
+  expect(Object.keys(r.nodes)).toEqual(['a1'])
+})

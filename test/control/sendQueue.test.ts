@@ -54,3 +54,13 @@ test('no second Enter for a session that has ended', () => {
   vi.advanceTimersByTime(1000)
   expect(enters()).toBe(1)
 })
+
+test('text typed into a terminal goes after whatever the guard puts ahead of it, and Enter follows on its own', () => {
+  const tracker = createStatusTracker({ notify: () => {} })
+  const host = fakeHost()
+  host.running.add('t')
+  const queue = createSendQueue({ host, tracker, exists: () => true, timing: { enterDelayMs: 100, settleMs: 5000 }, prefix: (id) => (id === 't' ? '\x00' : '') })
+  queue.type('t', 'npm test')
+  vi.advanceTimersByTime(100)
+  expect(host.writes.filter(([id]) => id === 't').map(([, d]) => d)).toEqual(['\x00npm test', '\r'])
+})

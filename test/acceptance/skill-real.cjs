@@ -60,7 +60,10 @@ function decide(approval, roots) {
   if (approval.tool === 'Bash') {
     // A JSON heredoc piped into a command, as the skill teaches for patchbay draw. Patchbay shows it with its whitespace
     // collapsed: the command and whatever follows EOF are judged, and the JSON body is data.
-    const piped = /^(.*?) <<-?'?EOF'? [[{][\s\S]*? EOF(?: (.*))?$/.exec(text)
+    // Prose piped to a patchbay file flag of - counts too, as long as it can't be a command hiding after <<'EOF'.
+    const heredoc = /^(.*?) <<-?'?EOF'? ([\s\S]*?) EOF(?: (.*))?$/.exec(text)
+    const bodyOk = (head, body) => /^[[{]/.test(body) || (/^patchbay .*--(prompt|members|diagram)-file -(\s|$)/.test(head) && !/^[&;|<>()`$]/.test(body))
+    const piped = heredoc && bodyOk(heredoc[1], heredoc[2]) ? [heredoc[0], heredoc[1], heredoc[3]] : null
     if (piped) {
       const parts = [piped[1], piped[2]].map((p) => (p ?? '').trim()).filter(Boolean)
       return parts.every((p) => decide({ tool: 'Bash', detail: p }, roots) === 'allow') ? 'allow' : 'deny'
