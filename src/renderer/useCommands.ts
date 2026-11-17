@@ -11,7 +11,7 @@ import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
 import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
-import { showInFocus, toggleFocus } from './focusState'
+import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, terminalActions } from './terminalRegistry'
 
 export type NewForm = { kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'; at?: Point; groupId?: string; editId?: string } | null
@@ -142,6 +142,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         const node = doc().nodes.find((n) => n.id === id)
         if (!node) return
         bridge.markSeen(id)
+        // The focus view covers the canvas, so the window comes to a pane there instead.
+        if (useStore.getState().focus && isSessionNode(node) && inActiveProject(doc(), node)) return revealInFocus(id)
         // Going to a session means seeing it, so the board steps aside.
         useStore.setState({ maximized: null, boardOpen: false })
         if (node.projectId && node.projectId !== doc().activeProjectId) {
@@ -198,6 +200,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }),
       resetFont: (nodeId) => onWindow(nodeId, (id) => patchNode(id, { fontSize: undefined })),
       moveFocus: (direction) => {
+        if (useStore.getState().focus) return moveBetweenPanes(focusedTerminalId(), direction)
         const here = doc().nodes.filter((n) => isSessionNode(n) && inActiveProject(doc(), n))
         const rects = here.map((n) => ({ id: n.id, width: n.width, height: n.height, ...absolutePosition(doc(), n) }))
         const next = nearestInDirection(rects, currentWindow(selectedRef.current), direction)

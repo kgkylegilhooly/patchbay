@@ -199,6 +199,11 @@ first, then labels, and the text size folds into one button.
 - **Text size** is for that window only and is saved with it. Click the number to go back to the global size.
 - **Maximize** fills the canvas area without changing the saved layout. Esc or the same button restores it. While the
   terminal has the keyboard, Esc stays with the terminal, because that's how Claude is interrupted, so use F11 or the button.
+- **Focus view** (Ctrl+Shift+L, or the grid on the dock) puts windows in split panes filling the app. Split a pane
+  with the buttons on its bar and drag the dividers. An empty pane lists the windows not in the view, one click each,
+  and clicking a session in the sidebar brings it into a pane. The pane you're typing in has a blue edge, and
+  Ctrl+Shift+arrows move between panes. The **−** on a pane's bar takes it out of the view; the window keeps running on
+  the canvas. Each project keeps its own layout.
 
 ## Keys
 

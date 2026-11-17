@@ -1,6 +1,8 @@
 import { isSessionNode } from '../shared/model'
-import { addWindow, initialLayout, prune, type Pane } from './focusLayout'
+import { addWindow, initialLayout, leaves, prune, type Pane } from './focusLayout'
+import { nearestInDirection, type Direction, type NavRect } from './nodeNav'
 import { useStore } from './store'
+import { terminalActions } from './terminalRegistry'
 
 const KEY = 'patchbay.focus'
 
@@ -63,6 +65,36 @@ export function showInFocus(nodeId: string): void {
   const s = useStore.getState()
   if (!s.focus) return enterFocus([nodeId])
   setFocusLayout(addWindow(s.focus, nodeId))
+}
+
+/** Gives a window the keyboard once its card has moved into its pane, which happens on the next frames. */
+export function focusSoon(nodeId: string): void {
+  requestAnimationFrame(() => requestAnimationFrame(() => terminalActions(nodeId)?.focus()))
+}
+
+/**
+ * Going to a window while the focus view covers the canvas: it's put in a pane if it isn't in one, and takes the
+ * keyboard. Centering it on the hidden canvas would show nothing.
+ */
+export function revealInFocus(nodeId: string): void {
+  const s = useStore.getState()
+  if (!s.focus) return
+  if (!leaves(s.focus).some((l) => l.nodeId === nodeId)) setFocusLayout(addWindow(s.focus, nodeId))
+  focusSoon(nodeId)
+}
+
+/** Where each window in the view is on screen, for moving between panes with the arrow keys. */
+export function paneRects(): NavRect[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-focus-slot]')].map((el) => {
+    const r = el.getBoundingClientRect()
+    return { id: el.dataset.focusSlot as string, x: r.left, y: r.top, width: r.width, height: r.height }
+  })
+}
+
+/** Moves the keyboard to the pane that way, by where the panes are on screen rather than on the canvas. */
+export function moveBetweenPanes(fromId: string | null, direction: Direction): void {
+  const next = nearestInDirection(paneRects(), fromId, direction)
+  if (next) terminalActions(next)?.focus()
 }
 
 export function registerSlot(nodeId: string, el: HTMLElement | null): void {

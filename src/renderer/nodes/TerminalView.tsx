@@ -14,6 +14,7 @@ import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
 import { findTerminalPathMatches } from '../terminalPaths'
+import { guardFirstKey } from '../resizeGuard'
 import { installZoomCompensation } from '../xtermZoom'
 
 const SEARCH_COLORS = {
@@ -157,7 +158,16 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
 
     term.open(host)
     const removeZoomFix = installZoomCompensation(host)
-    const input = term.onData((data) => bridge.input(nodeId, data))
+    // Set by a resize and cleared by the next key, which may need a byte ahead of it. See resizeGuard.ts.
+    let resizedSinceInput = false
+    const input = term.onData((data) => {
+      const first = resizedSinceInput
+      resizedSinceInput = false
+      if (!first || useStore.getState().doc?.nodes.find((n) => n.id === nodeId)?.kind !== 'terminal') return bridge.input(nodeId, data)
+      const buffer = term.buffer.active
+      const row = buffer.getLine(buffer.cursorY + buffer.viewportY)?.translateToString(false, 0, buffer.cursorX) ?? ''
+      bridge.input(nodeId, guardFirstKey(data, true, { bracketedPaste: term.modes.bracketedPasteMode, alternateScreen: buffer.type === 'alternate', beforeCursor: row }))
+    })
     const noteFocused = (): void => {
       noteTerminalFocus(nodeId)
       bridge.noteFocus(nodeId)
@@ -208,6 +218,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
         if (term.cols === lastCols && term.rows === lastRows) return
         lastCols = term.cols
         lastRows = term.rows
+        resizedSinceInput = true
         bridge.resize(nodeId, term.cols, term.rows)
       })
     }

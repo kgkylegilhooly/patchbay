@@ -38,6 +38,27 @@ async function main() {
     const typed = await L.waitFor('the echo', async () => ((await L.snapshot(page, 'one')).match(/in-a-pane/g) ?? []).length >= 2, 8000).catch(() => false)
     c.check('A terminal in a pane takes typing as usual', !!typed)
 
+    // Leaving and opening the view resizes every terminal, and Git Bash used to drop the first key typed after that.
+    // Typing at once, several times over, nothing is lost, and the byte that guards against it never shows.
+    for (let i = 0; i < 6; i++) {
+      await page.click('.focus-view [data-focus="leave"]')
+      await L.sleep(250)
+      await page.click('.dock [data-cmd="toggle-focus"]')
+      await page.waitForSelector('[data-focus-pane="a"] .xterm-screen')
+      await L.sleep(150)
+      await page.click('[data-focus-pane="a"] .xterm-screen')
+      await page.keyboard.type(`echo first-key-${i}`)
+      await page.keyboard.press('Enter')
+      await L.sleep(500)
+    }
+    const after = await L.waitFor('the echoes', async () => {
+      const s = await L.snapshot(page, 'one')
+      return (s.match(/\r?\nfirst-key-\d/g) ?? []).length >= 6 ? s : null
+    }, 8000).catch(async () => L.snapshot(page, 'one'))
+    const ran = new Set((after.match(/(?<=[\r\n])first-key-\d(?=\r?\n)/g) ?? []))
+    c.check('The first key typed after a resize is never lost', !/command not found/.test(after) && ran.size === 6, { ran: [...ran], lost: after.match(/[^\r\n]{0,8}cho first-key-\d[^\r\n]*\r?\n[^\r\n]*/g)?.filter((l) => /not found/.test(l)) })
+    c.check('The guard byte never shows on screen', !/\^@/.test((await L.screen(page, 'one')).join('\n')))
+
     await page.click('[data-focus-pane="a"] [data-focus="split-down"]')
     await L.sleep(300)
     now = await panes(page)
@@ -63,6 +84,45 @@ async function main() {
     await L.sleep(300)
     now = await panes(page)
     c.check('Closing a pane gives its space to the others', now.length === 3 && now.some((p) => p.id === 'b' && p.shows === 'two'), now)
+
+    // Which pane has the keyboard, and moving it with Ctrl+Shift+arrows by where the panes are on screen.
+    const typingIn = () => page.evaluate(() => document.activeElement?.closest('[data-focus-pane]')?.dataset.focusPane ?? null)
+    const edge = (id) => page.$eval(`[data-focus-pane="${id}"]`, (p) => getComputedStyle(p).borderTopColor)
+    await page.click('[data-focus-pane="aa"] .xterm-screen')
+    await L.sleep(200)
+    c.check('The pane being typed in is marked out from the others', (await edge('aa')) !== (await edge('b')), { typing: await edge('aa'), other: await edge('b') })
+    await page.keyboard.down('Control')
+    await page.keyboard.down('Shift')
+    await page.keyboard.press('ArrowRight')
+    const right = await typingIn()
+    await page.keyboard.press('ArrowLeft')
+    const left = await typingIn()
+    await page.keyboard.up('Shift')
+    await page.keyboard.up('Control')
+    c.check('Ctrl+Shift+Right and Left move the keyboard between panes on screen', right === 'b' && left?.startsWith('a'), { right, left })
+
+    // An empty pane offers the windows that aren't in the view, one click each.
+    await page.click('[data-focus-pane="ab"] [data-focus="close-pane"]')
+    await L.sleep(250)
+    await page.click('[data-focus-pane="b"] [data-focus="split-down"]')
+    await L.sleep(300)
+    const offered = await page.$$eval('[data-focus-pane="bb"] [data-focus-choice]', (bs) => bs.map((b) => b.dataset.focusChoice))
+    c.check('An empty pane lists the windows not in the view', JSON.stringify(offered) === '["three"]', offered)
+    console.log('SHOT', await L.shot(page, 'focusview-empty-pane'))
+    await page.click('[data-focus-pane="bb"] [data-focus-choice="three"]')
+    await L.sleep(400)
+    now = await panes(page)
+    c.check('Choosing one shows it there and gives it the keyboard', now.find((p) => p.id === 'bb')?.shows === 'three' && (await typingIn()) === 'bb', { now, typing: await typingIn() })
+
+    // The sidebar, while the view covers the canvas, brings a window to a pane rather than centering the hidden canvas.
+    await page.click('[data-focus-pane="bb"] [data-focus="close-pane"]')
+    await L.sleep(250)
+    if (!(await page.$('.sidebar [data-session="three"]'))) await page.click('.dock [data-cmd="toggle-sidebar"]').catch(() => {})
+    await page.click('[data-session="three"]')
+    await L.sleep(400)
+    now = await panes(page)
+    c.check('Clicking a session in the sidebar puts it in a pane, ready to type in', now.some((p) => p.shows === 'three') && now.find((p) => p.shows === 'three')?.id === (await typingIn()), { now, typing: await typingIn() })
+    console.log('SHOT', await L.shot(page, 'focusview-after-sidebar'))
 
     await page.click('[data-focus="leave"]')
     await L.sleep(500)

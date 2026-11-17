@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef } from 'react'
-import { isSessionNode } from '../shared/model'
+import { isSessionNode, type SessionNode } from '../shared/model'
 import { closePane, leaves, setRatio, showIn, splitPane, type Pane, type PanePath } from './focusLayout'
-import { leaveFocus, registerSlot, setFocusLayout } from './focusState'
-import { Icon } from './icons'
+import { focusSoon, leaveFocus, registerSlot, setFocusLayout } from './focusState'
+import { Icon, KindIcon } from './icons'
 import { useStore } from './store'
 
 /** Where a window in a pane is drawn. Its card moves in here, so there's still only one view of each session. */
@@ -17,7 +17,7 @@ function Slot({ nodeId }: { nodeId: string }): React.JSX.Element {
 
 function Leaf({ root, path, nodeId }: { root: Pane; path: PanePath; nodeId: string | null }): React.JSX.Element {
   const doc = useStore((s) => s.doc)
-  const sessions = (doc?.nodes ?? []).filter((n) => isSessionNode(n) && (!n.projectId || n.projectId === doc?.activeProjectId))
+  const sessions = (doc?.nodes ?? []).filter(isSessionNode).filter((n) => !n.projectId || n.projectId === doc?.activeProjectId)
   const shown = new Set(leaves(root).map((l) => l.nodeId))
   const only = path.length === 0
   return (
@@ -43,13 +43,45 @@ function Leaf({ root, path, nodeId }: { root: Pane; path: PanePath; nodeId: stri
         <button type="button" className="icon-btn" data-focus="split-down" aria-label="Split down" title="Split down" onClick={() => setFocusLayout(splitPane(root, path, 'column'))}>
           <span className="focus-split focus-split-column" aria-hidden="true" />
         </button>
-        <button type="button" className="icon-btn" data-focus="close-pane" aria-label={only ? 'Empty this pane' : 'Close this pane'} title={only ? 'Empty this pane' : 'Close this pane'} onClick={() => setFocusLayout(closePane(root, path))}>
-          ×
+        <button
+          type="button"
+          className="icon-btn"
+          data-focus="close-pane"
+          aria-label={only ? 'Empty this pane' : 'Take this pane out of the view'}
+          title={only ? 'Empty this pane. The window keeps running on the canvas.' : 'Take this pane out of the view. Its window keeps running on the canvas.'}
+          onClick={() => setFocusLayout(closePane(root, path))}
+        >
+          <Icon name="minus" size={13} />
         </button>
       </div>
-      <div className="focus-pane-body">{nodeId ? <Slot nodeId={nodeId} /> : <p className="focus-empty">Choose a window for this pane above.</p>}</div>
+      <div className="focus-pane-body">{nodeId ? <Slot nodeId={nodeId} /> : <EmptyPane root={root} path={path} sessions={sessions.filter((n) => !shown.has(n.id))} />}</div>
     </div>
   )
+}
+
+/** An empty pane offers the windows that aren't in the view yet, one click each. */
+function EmptyPane({ root, path, sessions }: { root: Pane; path: PanePath; sessions: SessionNode[] }): React.JSX.Element {
+  if (!sessions.length) return <p className="focus-empty">Every window is already in the view. Open another from the canvas, or close this pane.</p>
+  return (
+    <div className="focus-empty">
+      <p>Show a window here:</p>
+      <ul className="focus-choices">
+        {sessions.map((n) => (
+          <li key={n.id}>
+            <button type="button" className="focus-choice" data-focus-choice={n.id} onClick={() => showAndFocus(root, path, n.id)}>
+              <KindIcon kind={n.kind} agent={n.kind === 'claude' ? n.agent : undefined} />
+              <span>{n.title}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function showAndFocus(root: Pane, path: PanePath, nodeId: string): void {
+  setFocusLayout(showIn(root, path, nodeId))
+  focusSoon(nodeId)
 }
 
 function Split({ root, path, pane }: { root: Pane; path: PanePath; pane: Extract<Pane, { type: 'split' }> }): React.JSX.Element {
@@ -98,7 +130,7 @@ function FocusViewView(): React.JSX.Element | null {
       <header className="focus-head">
         <Icon name="grid" size={14} />
         <strong>Focus view</strong>
-        <span className="focus-hint">Split a pane with the buttons on its bar, and drag the dividers.</span>
+        <span className="focus-hint">Split a pane with the buttons on its bar, drag the dividers, and move between panes with Ctrl+Shift+arrows.</span>
         <span className="focus-pane-space" />
         <button type="button" className="btn" data-focus="leave" onClick={leaveFocus}>
           Back to canvas
