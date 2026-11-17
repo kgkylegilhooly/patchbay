@@ -312,9 +312,11 @@ Every Claude and Codex window runs with the Patchbay skill, which teaches it the
 - **What agents may do.** They read and message only nodes they opened or that you linked to them, stay in their own
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
-
 - **An agent waiting on you shows it.** An agent stopped at a question before it starts, such as Claude's or Codex's
   question about trusting a new folder, shows needs-you, so the agent that opened it can tell you which node.
+- **Long briefs and diagrams** can be piped in: `--prompt-file -`, `--members-file -` and `--diagram-file -` read a
+  heredoc, so an apostrophe in a brief never breaks the command and no file is left behind. `patchbay <verb> --help`
+  shows one verb's flags.
 
 `test/acceptance/skill-real.cjs` and `team-real.cjs` run real Claude windows through these and read their transcripts,
 and `real-world.cjs` gives seven of them everyday jobs on one canvas, including handing a review to Codex. They spend a

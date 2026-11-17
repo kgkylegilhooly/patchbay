@@ -287,6 +287,12 @@ export function createVerbs({
     const node = find(id)
     if (!node || node.projectId !== caller.projectId) refuse(`--after names a node that doesn't exist: "${id}".`)
     if (node.kind !== 'claude') refuse(`Node "${id}" isn't a Claude or Codex node, so --after can't wait for it.`)
+    // Agents reach for --after to mean "report back to me". It would hold the new agent until this turn ends, while
+    // the caller waits for it.
+    if (id === caller.id)
+      refuse(
+        `--after can't name you: the new agent would be held until your turn ends, while you wait for it. Leave --after out. It's linked to you either way, so it can report back with patchbay send.`
+      )
   }
 
   // send

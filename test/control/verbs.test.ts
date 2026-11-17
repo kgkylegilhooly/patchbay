@@ -240,6 +240,14 @@ test('--after naming a terminal or an unknown node is refused', async () => {
   expect(store.get().nodes).toHaveLength(2)
 })
 
+test('--after naming the caller is refused, since the caller would wait on an agent held for its own turn', async () => {
+  const { verbs, store } = setup()
+  const before = store.get().nodes.length
+  await refused(verbs('me', 'open-agent', { prompt: 'review', after: ['me'] }), /can't name you.*report back/)
+  await refused(verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a', after: ['me'] }] }), /can't name you/)
+  expect(store.get().nodes).toHaveLength(before)
+})
+
 test('open-terminal starts a terminal with its command', async () => {
   const { verbs, node, runner, edges } = setup()
   const id = ids(await verbs('me', 'open-terminal', { command: 'codex --help' }))

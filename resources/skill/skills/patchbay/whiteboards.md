@@ -42,7 +42,9 @@ out, below anything already on the board, and grows the board to show it.
 ```
 
 ```sh
-patchbay draw --node <board id> --diagram-file sketch.json
+patchbay draw --node <board id> --diagram-file - <<'EOF'
+{ "title": "Checkout, as I understand it", "boxes": [ ... ], "arrows": [ ... ] }
+EOF
 ```
 
 - Each box needs an `id`; its `label` (up to 80 characters, `\n` for a new line) defaults to the id. Colors are
@@ -50,8 +52,9 @@ patchbay draw --node <board id> --diagram-file sketch.json
 - Up to 40 boxes and 80 arrows. Arrows go between box ids. A mistake is refused with what to fix.
 - It works on boards you opened or that are linked to you, and only ever adds. The person sees that you drew and can
   undo it, so draw to show, not to decide.
-- Write the JSON to a file with your file-writing tool and use `--diagram-file`; `--diagram '<json>'` works for short
-  ones without apostrophes.
+- Pipe the JSON in with a quoted heredoc, as above, so it's one command with no file and no escaping. A file from your
+  file-writing tool works too, as in `--diagram-file sketch.json`, and through the MCP tool it's the only way.
+  `--diagram '<json>'` works for short ones without apostrophes.
 - Then look at the result with `patchbay whiteboard --node <board id>`. To redo it, fix the JSON and draw again
   with `--replace`, which takes away your last drawing first. That only works while nobody has changed the board
   since, so it never takes away anyone else's work.

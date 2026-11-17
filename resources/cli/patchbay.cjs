@@ -54,8 +54,8 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
   open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD]
-  open-agent    [--prompt TEXT | --prompt-file FILE] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
-  spawn-team    --label L (--members JSON | --members-file FILE) [--color C]
+  open-agent    [--prompt TEXT | --prompt-file FILE|-] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
+  spawn-team    --label L (--members JSON | --members-file FILE|-) [--color C]
                   members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]
   group         --ids ID,ID --label L [--color C]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
@@ -64,7 +64,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened
   open-whiteboard [--title T] [--group ID]
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
-  draw          --node ID (--diagram JSON | --diagram-file FILE) [--replace]   draws boxes and arrows on a whiteboard
+  draw          --node ID (--diagram JSON | --diagram-file FILE|-) [--replace]   draws boxes and arrows on a whiteboard
   link          --to ID [--from ID]
   read          --node ID [--tail N]
   send          --node ID --text TEXT
@@ -112,6 +112,23 @@ function toLocalPath(value) {
 
 const camel = (flag) => flag.replace(/-(\w)/g, (_, c) => c.toUpperCase())
 
+/** File flags that take - for what's piped in, and the flag that text is passed as instead. */
+const FROM_STDIN = { promptFile: 'prompt', diagramFile: 'diagram', membersFile: 'members' }
+
+function readStdin(flag) {
+  if (process.stdin.isTTY) fail(`--${flag} - reads what's piped in, and nothing is. Pipe the text in, as with a heredoc, or name a file.`)
+  let text
+  try {
+    text = fs.readFileSync(0, 'utf8')
+  } catch (e) {
+    // Windows reports a closed or absent stdin as EOF in some shells and an error in others.
+    if (e.code !== 'EOF') fail(`Could not read what was piped in to --${flag}: ${e.message}`)
+    text = ''
+  }
+  if (!text.trim()) fail(`--${flag} - got nothing on its input. Pipe the text in, as with a heredoc, or name a file.`)
+  return text
+}
+
 function parseFlags(verb, words) {
   const spec = VERBS[verb]
   const args = {}
@@ -119,7 +136,7 @@ function parseFlags(verb, words) {
     const word = words[i]
     if (!word.startsWith('--')) {
       // Usually a quote mark inside a long text, such as the one in "don't", that ended the shell's quoting early.
-      const cut = i > 0 && /\s/.test(words[i - 1] ?? '') ? ' A quote mark inside your text may have ended it early. Put long text in a file instead, with --prompt-file or --members-file.' : ''
+      const cut = i > 0 && /\s/.test(words[i - 1] ?? '') ? ` A quote mark inside your text may have ended it early. Pipe long text in instead, as in ${verb === 'spawn-team' ? '--members-file' : verb === 'draw' ? '--diagram-file' : '--prompt-file'} - <<'EOF', or use a file.` : ''
       fail(`Unexpected "${word}". Flags look like --name value.${cut}`)
     }
     const eq = word.indexOf('=')
@@ -145,6 +162,11 @@ function parseFlags(verb, words) {
     }
     const key = camel(flag)
     if (kind === 'text') args[key] = value
+    // A file of - is what's piped in, as from a heredoc, so a long brief or a diagram needs no file and no quoting.
+    if (kind === 'path' && value === '-' && Object.hasOwn(FROM_STDIN, key)) {
+      args[FROM_STDIN[key]] = readStdin(flag)
+      continue
+    }
     if (kind === 'path') args[key] = toLocalPath(value)
     if (kind === 'list') args[key] = [...(args[key] || []), ...value.split(',').filter(Boolean)]
     if (kind === 'int') {

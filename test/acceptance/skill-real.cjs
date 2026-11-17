@@ -58,10 +58,22 @@ function lastWords(file) {
 function decide(approval, roots) {
   const text = approval.detail
   if (approval.tool === 'Bash') {
-    const bare = text.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'ARG').replace(/\s2?>\s*\/dev\/null/g, '').replace(/&&|\|\|/g, ';')
-    if (/`|\$\(|>|<|\|/.test(bare)) return 'deny'
-    const safe = (part) => /^patchbay\s/.test(part) || /^(ls|pwd|cat|dir|type|head|wc|echo)\b/.test(part)
-    return bare.split(';').every((part) => safe(part.trim())) ? 'allow' : 'deny'
+    // A JSON heredoc piped into a command, as the skill teaches for patchbay draw. Patchbay shows it with its whitespace
+    // collapsed: the command and whatever follows EOF are judged, and the JSON body is data.
+    const piped = /^(.*?) <<-?'?EOF'? [[{][\s\S]*? EOF(?: (.*))?$/.exec(text)
+    if (piped) {
+      const parts = [piped[1], piped[2]].map((p) => (p ?? '').trim()).filter(Boolean)
+      return parts.every((p) => decide({ tool: 'Bash', detail: p }, roots) === 'allow') ? 'allow' : 'deny'
+    }
+    // Pipes into read-only commands are fine, as with patchbay draw --help 2>&1 | head.
+    const bare = text
+      .replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'ARG')
+      .replace(/\s2?>\s*\/dev\/null/g, '')
+      .replace(/2>&1/g, '')
+      .replace(/&&|\|\||\|/g, ';')
+    if (/`|\$\(|>|</.test(bare)) return 'deny'
+    const safe = (part) => /^patchbay\s/.test(part) || /^(ls|pwd|cat|dir|type|head|tail|wc|echo|grep|sleep)\b/.test(part)
+    return bare.split(';').every((part) => !part.trim() || safe(part.trim())) ? 'allow' : 'deny'
   }
   if (approval.tool === 'Read') return 'allow'
   if (['Write', 'Edit', 'MultiEdit'].includes(approval.tool)) {

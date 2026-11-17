@@ -142,8 +142,20 @@ patchbay read --node <reviewer id> --tail 2
 ```
 
 Briefs are long, and an apostrophe in one (as in "don't") ends a single-quoted argument in the shell, so the
-command fails. For anything longer than a line, write the team to a file with your file-writing tool and use
-`--members-file team.json`, or give each member a `promptFile`. The same goes for `open-agent --prompt-file`.
+command fails. For anything longer than a line, pipe it in with a quoted heredoc, where nothing needs escaping. A
+file flag given `-` reads what's piped in:
+
+```sh
+patchbay spawn-team --label "Release notes" --members-file - <<'EOF'
+[{"name": "writer", "prompt": "Draft the notes. Don't commit."}]
+EOF
+patchbay open-agent --title "Tester" --prompt-file - <<'EOF'
+Goal: add tests for the parser's quoting rules.
+EOF
+```
+
+A file you write with your file-writing tool works too: `--members-file team.json`, or a `promptFile` per member.
+Through the MCP tool, which can't pipe anything, use a file.
 
 ## Lead a team
 

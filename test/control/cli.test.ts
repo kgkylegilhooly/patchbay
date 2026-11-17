@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
@@ -67,6 +67,37 @@ function run(file: string, args: string[], envOver: Record<string, string> = {},
 
 const cli = (args: string[], envOver?: Record<string, string>, cwd?: string) =>
   run(process.execPath, [CLI, ...args], envOver, cwd)
+
+/** The CLI with text piped to it, as from a heredoc. */
+function cliPiped(args: string[], input: string): Promise<Run> {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, [CLI, ...args], { env: env(), cwd: dir, windowsHide: true })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d) => (stdout += d))
+    child.stderr.on('data', (d) => (stderr += d))
+    child.on('close', (code) => done({ code: code ?? -1, stdout, stderr }))
+    child.stdin.end(input)
+  })
+}
+
+test('a file flag of - reads what is piped in, so a brief or diagram needs no file and no quoting', async () => {
+  const brief = "Don't change the parser's tests.\nReport back when done."
+  expect((await cliPiped(['open-agent', '--prompt-file', '-', '--title', 'T'], brief)).code).toBe(0)
+  expect(calls[0].args).toEqual({ prompt: brief, title: 'T' })
+  const diagram = `{"boxes":[{"id":"a","label":"Can't log in"}]}`
+  expect((await cliPiped(['draw', '--node', 'b', '--diagram-file', '-'], diagram)).code).toBe(0)
+  expect(calls[1].args).toEqual({ node: 'b', diagram })
+  expect((await cliPiped(['spawn-team', '--label', 'L', '--members-file', '-'], `[{"name":"a","prompt":"It's small"}]`)).code).toBe(0)
+  expect(calls[2].args.members).toEqual([{ name: 'a', prompt: "It's small" }])
+})
+
+test('a file flag of - with nothing piped in says so', async () => {
+  const r = await cliPiped(['draw', '--node', 'b', '--diagram-file', '-'], '')
+  expect(r.code).toBe(1)
+  expect(r.stderr).toContain('got nothing on its input')
+  expect(calls).toHaveLength(0)
+})
 
 test('the CLI passes args with spaces, prints refusals to stderr and exits 1', async () => {
   const text = 'hello "big" world $HOME %PATH% --not-a-flag'

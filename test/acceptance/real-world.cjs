@@ -61,13 +61,23 @@ function decide(approval, work) {
     // Pipes between safe commands are fine, as with `patchbay list | grep id`, and so is writing a file in the work
     // folder with a heredoc, as for a diagram's JSON. Patchbay shows a command with its whitespace collapsed, so a
     // heredoc arrives on one line: cat > f <<'EOF' body EOF rest. Its body is data; whatever follows is judged as usual.
-    const into = /^(?:cd ("[^"]+"|\S+) && )?cat > ("[^"]+"|\S+) <<-?'?EOF'? [\s\S]*? EOF(?: (.*))?$/.exec(text)
+    // Collapsed, a command after <<'EOF' on its first line would look like body, so only a JSON body is taken as data.
+    const into = /^(?:cd ("[^"]+"|\S+) && )?cat > ("[^"]+"|\S+) <<-?'?EOF'? [[{][\s\S]*? EOF(?: (.*))?$/.exec(text)
     if (into) {
       const dir = into[1] ? into[1].replace(/"/g, '') : work
       const target = path.resolve(dir, into[2].replace(/"/g, '')).toLowerCase()
       // Inside the work folder, or a Claude session's own scratch folder.
       if (!target.startsWith(work.toLowerCase() + path.sep) && !/[\\/]temp[\\/]claude[\\/]/.test(target)) return 'deny'
       const rest = (into[3] ?? '').trim()
+      return rest ? decide({ tool: 'Bash', detail: rest }, work) : 'allow'
+    }
+    // A heredoc piped into a command, as in patchbay draw --diagram-file - <<'EOF' ... EOF: the command and whatever
+    // follows are judged, and the body is data.
+    const piped = /^(.*?) <<-?'?EOF'? [[{][\s\S]*? EOF(?: (.*))?$/.exec(text)
+    if (piped) {
+      const head = piped[1].trim()
+      const rest = (piped[2] ?? '').trim()
+      if (decide({ tool: 'Bash', detail: head }, work) !== 'allow') return 'deny'
       return rest ? decide({ tool: 'Bash', detail: rest }, work) : 'allow'
     }
     const bare = text

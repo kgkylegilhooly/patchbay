@@ -47,11 +47,13 @@ const MCP_WAIT_S = 45
 function runCli(given) {
   const args = given[0] === 'wait' && !given.includes('--timeout') ? [...given, '--timeout', String(MCP_WAIT_S)] : given
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { env: process.env, timeout: CALL_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (e, stdout, stderr) => {
+    const child = execFile(process.execPath, [CLI, ...args], { env: process.env, timeout: CALL_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (e, stdout, stderr) => {
       const failed = !!e
       const text = failed ? (String(stderr).trim() || (e && e.message) || 'patchbay failed.') : String(stdout)
       resolve({ content: [{ type: 'text', text }], isError: failed })
     })
+    // Nothing is piped in through a tool call, so a file of - finds its input empty at once rather than waiting.
+    child.stdin?.end()
   })
 }
 
