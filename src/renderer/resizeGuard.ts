@@ -27,3 +27,12 @@ export function atShellPrompt(s: PromptState): boolean {
 export function guardFirstKey(data: string, resizedSinceInput: boolean, prompt: PromptState): string {
   return resizedSinceInput && atShellPrompt(prompt) ? SACRIFICE + data : data
 }
+
+/**
+ * Focus in or out, as the terminal reports them once something turns focus reporting on (Windows' console layer
+ * does). Moving between panes sends them, and taking one for the first key after a resize left the real first key
+ * unguarded, so it was lost after all.
+ */
+export function isFocusReport(data: string): boolean {
+  return /^(?:\x1b\[[IO])+$/.test(data)
+}

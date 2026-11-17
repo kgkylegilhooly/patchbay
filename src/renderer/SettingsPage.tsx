@@ -427,6 +427,11 @@ export function SettingsPage({
                 </button>
               </div>
             </Row>
+            <Row title="Log" help="When the window stopped responding or crashed, and how it recovered. Useful to share if Patchbay misbehaves.">
+              <button type="button" className="btn" data-cmd="open-log" onClick={() => void bridge.openLog()}>
+                Open log
+              </button>
+            </Row>
             <Row title="Settings file" help="The Claude and terminal settings as text, for editing by hand.">
               <button type="button" className="btn" data-cmd="edit-settings" onClick={() => void bridge.openSettingsFile()}>
                 Open file

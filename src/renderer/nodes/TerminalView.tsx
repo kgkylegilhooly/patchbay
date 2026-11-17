@@ -14,7 +14,7 @@ import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
 import { findTerminalPathMatches } from '../terminalPaths'
-import { guardFirstKey } from '../resizeGuard'
+import { guardFirstKey, isFocusReport } from '../resizeGuard'
 import { installZoomCompensation } from '../xtermZoom'
 
 const SEARCH_COLORS = {
@@ -161,6 +161,8 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     // Set by a resize and cleared by the next key, which may need a byte ahead of it. See resizeGuard.ts.
     let resizedSinceInput = false
     const input = term.onData((data) => {
+      // Focus in and out, which the terminal reports once a program asks: not a key, so the guard keeps waiting.
+      if (isFocusReport(data)) return bridge.input(nodeId, data)
       const first = resizedSinceInput
       resizedSinceInput = false
       if (!first || useStore.getState().doc?.nodes.find((n) => n.id === nodeId)?.kind !== 'terminal') return bridge.input(nodeId, data)

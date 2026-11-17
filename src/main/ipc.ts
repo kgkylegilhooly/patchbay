@@ -33,9 +33,12 @@ import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImage, saveBoardImage } from './boardImages'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
+import type { Log } from './watchdog'
 
 export interface IpcServices {
   dataDir: string
+  /** Where hangs, crashes and stalls are noted. See watchdog.ts. */
+  log?: Log
   store: CanvasStore
   host: SessionHost
   runner: NodeRunner
@@ -322,6 +325,17 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.on('pb:markSeen', (_e, id: string) => notifier.markSeen(id))
   ipcMain.handle('pb:openDataFolder', async () => {
     await shell.openPath(dataDir)
+  })
+  ipcMain.handle('pb:openLog', async () => {
+    if (!s.log) return
+    await s.log.flush()
+    // The log is made by the first line written, which is at startup, so it's there to open.
+    await shell.openPath(s.log.file)
+  })
+  // The window noting a task that held it up for seconds: the person saw it freeze, so it's worth a line.
+  ipcMain.on('pb:noteSlow', (_e, ms: unknown, what: unknown) => {
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return
+    s.log?.write(`The window was busy for ${(ms / 1000).toFixed(1)} s${typeof what === 'string' && what ? ` (${what.slice(0, 120)})` : ''}.`)
   })
   ipcMain.handle('pb:getAppInfo', () => ({ version: app.getVersion(), dataDir }))
   ipcMain.handle('pb:getSettings',() => parseSettings(readIfPresentSync(settingsFile)))

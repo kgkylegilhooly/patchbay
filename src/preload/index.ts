@@ -82,6 +82,8 @@ const bridge: PatchbayBridge = {
   onAttention: (cb) => listen('onAttention', cb),
   markSeen: (id) => ipcRenderer.send('pb:markSeen', id),
   openDataFolder: () => invoke('openDataFolder'),
+  openLog: () => invoke('openLog'),
+  noteSlow: (ms, what) => ipcRenderer.send('pb:noteSlow', ms, what),
   getAppInfo: () => invoke('getAppInfo'),
   getSettings: () => invoke('getSettings'),
   saveSettings: (settings) => invoke('saveSettings', settings),
@@ -119,3 +121,7 @@ const bridge: PatchbayBridge = {
 
 contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
+
+// The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
+// and main can offer to reload it. See src/main/watchdog.ts.
+ipcRenderer.on('pb:ping', (_e, n: number) => ipcRenderer.send('pb:pong', n))

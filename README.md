@@ -126,7 +126,16 @@ Everything is in `%APPDATA%\Patchbay`:
 | `control\endpoint.json`, `secret` | How sessions reach the app. Keep `secret` private. The endpoint file only exists while the app is open |
 | `control\host-secret`, `host.json`, `host.log` | How the app reaches the session host, and what the host last did. Keep `host-secret` private |
 | `control\missed\` | Hook events from while the app was closed, until it reconnects |
+| `logs\patchbay.log` | When the window froze, stopped responding or crashed, how it recovered, and memory now and then. Up to 1 MB, with the one before kept as `patchbay.1.log`. Settings > Open log opens it |
 | `settings.json` | Optional, and you create it |
+
+### If the window freezes or crashes
+
+Your terminals and agents run in a background process, not in the window, so the window can be reloaded without
+losing anything. If it stops responding for 10 seconds, Patchbay offers **Reload window** and goes on waiting if you'd
+rather; the question goes away by itself if the window recovers. If the window crashes, it reloads by itself, and asks
+you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
+in the log above, which is the thing to share if Patchbay misbehaves.
 
 `settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
 

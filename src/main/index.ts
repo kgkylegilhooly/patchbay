@@ -6,6 +6,7 @@ import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
+import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
@@ -65,6 +66,8 @@ const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60_000
 import { createUsagePoller, fetchEndpoint, sourceConfig, type ReadResult, type SourceConfig } from './usage/usageSource'
 
 let mainWindow: BrowserWindow | null = null
+/** Set up first thing in boot. */
+let log: Log | null = null
 /** Held here because Electron removes a tray icon that's been collected. */
 let tray: Tray | null = null
 
@@ -117,7 +120,9 @@ function createWindow(onClose: (e: ElectronEvent) => void, icon: string): Browse
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.on('close', onClose)
   win.on('focus', () => win.flashFrame(false))
+  const watch = log ? watchWindow(win, { dialog, log, app, ipcMain }) : null
   win.on('closed', () => {
+    watch?.dispose()
     mainWindow = null
   })
   const devUrl = process.env.ELECTRON_RENDERER_URL
@@ -171,6 +176,14 @@ async function boot(): Promise<void> {
   const dataDir = app.getPath('userData')
   const resourceDir = app.isPackaged ? join(process.resourcesPath, 'resources') : join(app.getAppPath(), 'resources')
   const settingsFile = join(dataDir, 'settings.json')
+  // What went wrong, and when, for a hang or crash that leaves nothing else behind. See watchdog.ts.
+  log = createLog(join(dataDir, 'logs'))
+  log.write(`Patchbay ${app.getVersion()} started (Electron ${process.versions.electron}, pid ${process.pid}).`)
+  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`))
+  logMemoryNowAndThen(app, log)
+  app.on('child-process-gone', (_e, details) => {
+    if (details.reason !== 'clean-exit') log?.write(`A ${details.type} process ended (${details.reason}, exit code ${details.exitCode}).`)
+  })
   const currentSettings = () => parseSettings(readIfPresent(settingsFile))
   setEnvNotPassed(() => currentSettings().envNotPassed)
   ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
@@ -419,7 +432,7 @@ async function boot(): Promise<void> {
     else await replaceHost()
   }
   ipcHooks = registerIpc({
-    dataDir, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
+    dataDir, log: log ?? undefined, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
     hostInfo: () => host.info(),
     quit: quitWith,
     stopHost,

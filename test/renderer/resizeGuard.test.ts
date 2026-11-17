@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { atShellPrompt, guardFirstKey, SACRIFICE } from '../../src/renderer/resizeGuard'
+import { atShellPrompt, guardFirstKey, isFocusReport, SACRIFICE } from '../../src/renderer/resizeGuard'
 
 const prompt = { bracketedPaste: true, alternateScreen: false, beforeCursor: '$ ' }
 
@@ -18,4 +18,10 @@ test('nothing is added without a resize, or anywhere but an empty bash prompt', 
   for (const before of ['PS C:\Code> ', 'C:\Code>', '>>> ', '> ']) expect(guardFirstKey('x', true, { ...prompt, beforeCursor: before })).toBe('x')
   // Partway through typing a command.
   expect(atShellPrompt({ ...prompt, beforeCursor: '$ git sta' })).toBe(false)
+})
+
+test('focus reports are told apart from keys, so they never take the guard meant for the first key', () => {
+  expect(isFocusReport('\x1b[I')).toBe(true)
+  expect(isFocusReport('\x1b[O\x1b[I')).toBe(true)
+  for (const key of ['e', '\x1b', '\x1b[A', '\x1b[Ie', '\r']) expect(isFocusReport(key)).toBe(false)
 })

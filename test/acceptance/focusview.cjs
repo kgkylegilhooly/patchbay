@@ -35,8 +35,9 @@ async function main() {
     await page.click('[data-focus-pane="a"] .xterm-screen')
     await page.keyboard.type('echo in-a-pane')
     await page.keyboard.press('Enter')
-    const typed = await L.waitFor('the echo', async () => ((await L.snapshot(page, 'one')).match(/in-a-pane/g) ?? []).length >= 2, 8000).catch(() => false)
-    c.check('A terminal in a pane takes typing as usual', !!typed)
+    // The command's output, alone on its line. The echoed command itself can come back with redraws inside it.
+    const typed = await L.waitFor('the echo', async () => /[\r\n]in-a-pane\r?\n/.test(await L.snapshot(page, 'one')), 8000).catch(() => false)
+    c.check('A terminal in a pane takes typing as usual', !!typed, typed ? undefined : JSON.stringify((await L.snapshot(page, 'one')).slice(-300)))
 
     // Leaving and opening the view resizes every terminal, and Git Bash used to drop the first key typed after that.
     // Typing at once, several times over, nothing is lost, and the byte that guards against it never shows.
