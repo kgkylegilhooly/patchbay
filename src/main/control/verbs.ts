@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import { lastLines, readTranscript, stripAnsi } from '../../core/transcript/read'
+import { lastLines, readTranscriptAsync, stripAnsi } from '../../core/transcript/read'
 import { BLANK, checkUrl, TIMEOUTS } from '../../shared/browserPolicy'
 import type { BrowserDriver } from '../browser/driver'
 import type { BoardEdit, CanvasStore, NoteEdit, SessionHost } from '../../shared/contract'
@@ -416,12 +416,14 @@ export function createVerbs({
         return refuse(`Node "${id}" is a browser node. Use patchbay browser read.`)
       case 'claude':
         if (!node.transcriptPath) refuse(notStartedYet(id, tracker.get(id)))
-        try {
-          return { text: readTranscript(node.transcriptPath, count) }
-        } catch (e) {
-          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
-          return refuse(`The transcript for node "${id}" no longer exists.`)
-        }
+        // Without blocking: a long conversation's transcript is tens of megabytes.
+        return readTranscriptAsync(node.transcriptPath, count).then(
+          (text) => ({ text }),
+          (e: unknown) => {
+            if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
+            return refuse(`The transcript for node "${id}" no longer exists.`)
+          }
+        )
     }
   }
 

@@ -100,6 +100,8 @@ async function launch({ profile, exe, env: extraEnv }) {
     '--disable-backgrounding-occluded-windows',
     '--disable-renderer-backgrounding'
   ]
+  // PB_MAIN_INSPECT=<port> opens the main process to a debugger there, for profiling it.
+  if (process.env.PB_MAIN_INSPECT) args.push(`--inspect=${process.env.PB_MAIN_INSPECT}`)
   if (!exe) args.push(root)
   const child = spawn(file, args, { cwd: root, env, stdio: 'ignore' })
   const exited = new Promise((r) => child.on('exit', (code) => r(code ?? -1)))

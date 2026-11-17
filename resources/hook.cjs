@@ -35,7 +35,8 @@ function journal(fields) {
   const target = path.join(dir, `${encodeURIComponent(nodeId)}.jsonl`)
   fs.mkdirSync(dir, { recursive: true })
   if ((fs.statSync(target, { throwIfNoEntry: false })?.size ?? 0) > MAX_JOURNAL_BYTES) fs.renameSync(target, `${target}.old`)
-  fs.appendFileSync(target, `${JSON.stringify(kept)}\n`)
+  // The time lets the app tell whether a tool call that ended later, which only touches a file, came after this.
+  fs.appendFileSync(target, `${JSON.stringify({ ...kept, at: Date.now() })}\n`)
 }
 
 function giveUp() {

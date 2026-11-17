@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createAttachGate } from '../attachGate'
+import { createOutputPacer } from '../outputPacer'
 import { bridge, subscribeOutput } from '../bridge'
 import { ContextMenu } from '../Menu'
 import type { Point } from '../menus'
@@ -267,7 +268,10 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     )
 
     // Each session is attached once: subscribe, then replay the snapshot through the gate.
-    const gate = createAttachGate((data) => term.write(data))
+    // A window that isn't being typed in draws its output a few times a second rather than on every scrap of it.
+    const pacer = createOutputPacer((data) => term.write(data), () => term.textarea === document.activeElement)
+    term.textarea?.addEventListener('focus', pacer.flush)
+    const gate = createAttachGate((data) => pacer.write(data))
     const unsubscribe = subscribeOutput(nodeId, gate.chunk)
     void bridge.attach(nodeId).then(gate.snapshot)
 
@@ -328,6 +332,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       observer.disconnect()
       cancelAnimationFrame(frame)
       unsubscribe()
+      pacer.dispose()
       input.dispose()
       searchResults.dispose()
       copied.dispose()

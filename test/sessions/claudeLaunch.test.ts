@@ -119,10 +119,11 @@ test('paths are written the way Claude Code matches them on Windows', () => {
 test('the settings file names every hook, with the script quoted and in forward slashes', () => {
   const launch = buildClaudeLaunch(node(), ctx())
   const { hooks } = JSON.parse(readFileSync(after(launch.args, '--settings'), 'utf8'))
+  // No PreToolUse: it ran before every tool call and nothing needed it, so it was only cost.
+  expect(hooks.PreToolUse).toBeUndefined()
   for (const event of [
     'SessionStart',
     'UserPromptSubmit',
-    'PreToolUse',
     'PostToolUse',
     'PostToolUseFailure',
     'Stop',

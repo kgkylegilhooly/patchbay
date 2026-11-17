@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { open, readFile, type FileHandle } from 'node:fs/promises'
 
 /** Slash commands and their output, which Claude records as user messages though nobody wrote them. */
 const LOCAL_COMMAND = /^\s*<(command-|local-command-)/
@@ -47,6 +48,89 @@ export function readMessages(path: string, tail?: number): TranscriptMessage[] {
     .map(parseLine)
     .filter((m): m is Message => m !== null)
   return tail === undefined ? messages : messages.slice(-tail)
+}
+
+/** How much of the end of a transcript is read first. Grown until it holds enough messages. */
+const TAIL_CHUNK_BYTES = 256 * 1024
+
+/** The messages in the complete lines of a stretch of the file. */
+function parseText(text: string): Message[] {
+  return text
+    .split('\n')
+    .filter((l) => l.trim())
+    .map(parseLine)
+    .filter((m): m is Message => m !== null)
+}
+
+interface TailCache {
+  /** Bytes read, up to the end of the last complete line. */
+  offset: number
+  mtimeMs: number
+  messages: Message[]
+  /** Holds every message in the file, so a short conversation is never read whole again. */
+  whole: boolean
+}
+/** Kept per file, so a conversation read again every few seconds costs only what was added since. */
+const tails = new Map<string, TailCache>()
+const TAIL_CACHE_FILES = 64
+
+async function readRange(handle: FileHandle, start: number, end: number): Promise<Buffer> {
+  const buffer = Buffer.alloc(end - start)
+  let at = 0
+  while (at < buffer.length) {
+    const { bytesRead } = await handle.read(buffer, at, buffer.length - at, start + at)
+    if (bytesRead === 0) break
+    at += bytesRead
+  }
+  return buffer.subarray(0, at)
+}
+
+/**
+ * The last `tail` messages, without blocking. Agents' transcripts run to tens of megabytes, and reading one whole on
+ * every refresh held up everything else in the app. This reads from the end only as far back as it takes, and after
+ * that only what was added. Throws if the file can't be read.
+ */
+export async function readMessagesTail(path: string, tail: number): Promise<TranscriptMessage[]> {
+  const handle = await open(path, 'r')
+  try {
+    const { size, mtimeMs } = await handle.stat()
+    const cached = tails.get(path)
+    // Transcripts only grow. One that's shorter than what was read has been replaced, so it's read afresh.
+    if (cached && cached.offset <= size && (cached.whole || cached.messages.length >= tail)) {
+      if (cached.offset === size) return cached.messages.slice(-tail)
+      // Only what was added, up to its last complete line. A line still being written is read next time.
+      const added = await readRange(handle, cached.offset, size)
+      const end = added.lastIndexOf(0x0a) + 1
+      const all = [...cached.messages, ...parseText(added.subarray(0, end).toString('utf8'))]
+      tails.set(path, { offset: cached.offset + end, mtimeMs, messages: all.slice(-tail * 2), whole: cached.whole && all.length <= tail * 2 })
+      return all.slice(-tail)
+    }
+    let chunk = TAIL_CHUNK_BYTES
+    for (;;) {
+      const start = Math.max(0, size - chunk)
+      const bytes = await readRange(handle, start, size)
+      const end = bytes.lastIndexOf(0x0a) + 1
+      // Read from partway in, the first line is only the end of one.
+      const first = start === 0 ? 0 : bytes.indexOf(0x0a) + 1
+      const messages = first > 0 || start === 0 ? parseText(bytes.subarray(first, end).toString('utf8')) : []
+      if (messages.length >= tail || start === 0) {
+        if (tails.size >= TAIL_CACHE_FILES) tails.delete(tails.keys().next().value as string)
+        tails.set(path, { offset: start + end, mtimeMs, messages: messages.slice(-tail * 2), whole: start === 0 && messages.length <= tail * 2 })
+        return messages.slice(-tail)
+      }
+      chunk *= 4
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}]\n${m.text}\n`).join('\n')
+
+/** The last `tail` messages as plain text, or every message without one, read without blocking. Throws if the file can't be read. */
+export async function readTranscriptAsync(path: string, tail?: number): Promise<string> {
+  if (tail !== undefined) return asText(await readMessagesTail(path, tail))
+  return asText(parseText(await readFile(path, 'utf8')))
 }
 
 /** The conversation as plain text. `tail` keeps the last N messages. Throws if the file can't be read. */

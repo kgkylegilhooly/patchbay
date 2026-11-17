@@ -30,7 +30,7 @@ async function main() {
     check("A project's own status line still draws inside Patchbay", true)
     await lib.sleep(1500)
     const line = (await lib.screen(page, 'plain')).join('\n')
-    check("The owner's own status line draws, in the same place as before", /~\/.*\|.*Haiku/.test(line))
+    check("The owner's own status line draws, in the same place as before", /~\/.*\|.*Haiku/.test(line), line.split('\n').slice(-6).join(' / '))
     if (shots) await page.screenshot({ path: path.join(shots, 'statusline.png') })
     if (await page.$('.usage-pill')) {
       const pill = await page.$eval('.usage-pill', (p) => p.textContent)

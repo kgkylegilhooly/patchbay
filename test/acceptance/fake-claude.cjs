@@ -27,23 +27,29 @@ const settings = JSON.parse(fs.readFileSync(after('--settings'), 'utf8'))
 const prompt = args.includes('--') ? args[args.indexOf('--') + 1] : ''
 const sessionId = args.includes('--session-id') ? after('--session-id') : after('--resume')
 
-const quoted = (command) => command.match(/"([^"]+)"/)[1]
 
 // Longer than a node is wide, with the part that matters at the far end.
 const LONG_COMMAND = `for f in ${['api', 'auth', 'billing', 'canvas', 'sessions', 'settings', 'updates'].map((d) => `src/${d}/**/*.test.ts`).join(' ')}; do npx vitest run "$f" --reporter=dot || break; done && git add -A && git commit -m "Fix the login redirect" && git push --force origin main`
 
-function runScript(script, argv, payload) {
+const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
+
+/** Runs a configured command as Claude Code does on Windows: through Git Bash, with the event on stdin. */
+function runCommand(command, payload) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [script, ...argv], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
+    const child = fs.existsSync(GIT_BASH)
+      ? spawn(GIT_BASH, ['-c', command], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
+      : spawn(command, { shell: true, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
     child.on('exit', resolve)
     child.on('error', resolve)
+    child.stdin.on('error', () => {})
     child.stdin.end(JSON.stringify(payload))
   })
 }
 
 const hook = (name, extra = {}) => {
-  const entry = settings.hooks[name][0].hooks[0]
-  return runScript(quoted(entry.command), [name], { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra })
+  const entry = settings.hooks[name]?.[0]?.hooks?.[0]
+  if (!entry) return Promise.resolve()
+  return runCommand(entry.command, { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra })
 }
 
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
@@ -58,7 +64,7 @@ async function main() {
   await hook('SessionStart', { source: 'startup', ...(chat ? { transcript_path: transcript } : {}) })
   const context = /context=(\d+)/.exec(prompt)
   if (context && settings.statusLine) {
-    await runScript(quoted(settings.statusLine.command), [], { session_id: sessionId, context_window: { used_percentage: Number(context[1]) } })
+    await runCommand(settings.statusLine.command, { session_id: sessionId, context_window: { used_percentage: Number(context[1]) } })
   }
   if (/\bneeds\b/.test(prompt)) {
     await hook('UserPromptSubmit')

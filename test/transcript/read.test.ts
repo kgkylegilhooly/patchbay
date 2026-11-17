@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
-import { lastLines, readTranscript, stripAnsi } from '../../src/core/transcript/read'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { lastLines, readMessages, readMessagesTail, readTranscript, readTranscriptAsync, stripAnsi } from '../../src/core/transcript/read'
 
 let dir: string
 
@@ -113,4 +113,50 @@ test('readMessages gives the same conversation as structured messages, for the c
     { role: 'assistant', text: 'hi **there**' }
   ])
   expect(readMessages(file, 1)).toEqual([{ role: 'assistant', text: 'hi **there**' }])
+})
+
+describe('reading only the end of a long transcript', () => {
+  const filler = assistant([{ type: 'tool_use', name: 'Read', input: { text: 'x'.repeat(20_000) } }])
+  const said = (i: number) => (i % 2 ? assistant([text(`reply ${i}`)]) : user(`ask ${i}`))
+
+  test('gives the same last messages as reading it all, from a file far bigger than what it reads first', async () => {
+    const lines: object[] = []
+    for (let i = 0; i < 400; i++) lines.push(filler, said(i))
+    const file = fixture(lines)
+    const whole = readMessages(file, 30)
+    expect(await readMessagesTail(file, 30)).toEqual(whole)
+    expect(whole.at(-1)?.text).toBe('reply 399')
+  })
+
+  test('a conversation with fewer messages than asked for comes back whole, however big its tool output', async () => {
+    const file = fixture([user('first'), filler, filler, filler, assistant([text('only reply')])])
+    expect(await readMessagesTail(file, 200)).toEqual([
+      { role: 'user', text: 'first' },
+      { role: 'assistant', text: 'only reply' }
+    ])
+  })
+
+  test('reads what was added since last time, and leaves a line still being written for next time', async () => {
+    const file = fixture([user('one'), assistant([text('two')])])
+    await readMessagesTail(file, 10)
+    appendFileSync(file, `${JSON.stringify(user('three'))}\n${JSON.stringify(assistant([text('fo')])).slice(0, 30)}`)
+    expect((await readMessagesTail(file, 10)).map((m) => m.text)).toEqual(['one', 'two', 'three'])
+    appendFileSync(file, `${JSON.stringify(assistant([text('four')])).slice(30)}\n`.replace(/^/, ''))
+    // The half line written before is completed by what follows it.
+    const after = await readMessagesTail(file, 10)
+    expect(after.map((m) => m.text)).toEqual(readMessages(file, 10).map((m) => m.text))
+  })
+
+  test('a transcript replaced by a shorter one is read afresh', async () => {
+    const file = fixture([user('old one'), assistant([text('old two')]), user('old three')])
+    await readMessagesTail(file, 10)
+    fixture([user('new')])
+    expect((await readMessagesTail(file, 10)).map((m) => m.text)).toEqual(['new'])
+  })
+
+  test('readTranscriptAsync matches readTranscript, with and without a tail', async () => {
+    const file = fixture([user('a'), assistant([text('b')]), user('c')])
+    expect(await readTranscriptAsync(file, 2)).toBe(readTranscript(file, 2))
+    expect(await readTranscriptAsync(file)).toBe(readTranscript(file))
+  })
 })

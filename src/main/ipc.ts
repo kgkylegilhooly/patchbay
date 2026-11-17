@@ -5,7 +5,7 @@ import { isAbsolute, join, relative } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { readIfPresentSync, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
-import { readMessages, readTranscript, stripAnsi } from '../core/transcript/read'
+import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
 import { isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
@@ -35,6 +35,7 @@ import { readBoardImage, saveBoardImage } from './boardImages'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
+import type { SignalWatcher } from './sessions/signals'
 
 export interface IpcServices {
   dataDir: string
@@ -42,6 +43,8 @@ export interface IpcServices {
   log?: Log
   /** Follows resizes, typing and bracketed paste, for text main types into Git Bash. See sessions/sendGuard.ts. */
   sendGuard?: SendGuard
+  /** Hooks and status lines that arrive as files. See sessions/signals.ts. */
+  signals?: SignalWatcher
   store: CanvasStore
   host: SessionHost
   runner: NodeRunner
@@ -83,6 +86,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
 
 const isSession = isSessionNode
 const TITLE_MESSAGES = 12
+const USAGE_PUSH_MS = 500
 /** How much of a conversation the chat view shows. Older messages are in the transcript, and the terminal. */
 const CONVERSATION_MESSAGES = 200
 
@@ -153,6 +157,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
       exitedTerminals.delete(id)
       saver.forget(id)
       s.sendGuard?.forget(id)
+      s.signals?.forget(id)
       host.forget?.(id)
       usage.forget(id)
       activity.forget(id)
@@ -325,7 +330,15 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:browserCancelPick', (_e, nodeId: string) => s.browser.cancelPick(nodeId).catch(() => {}))
   ipcMain.handle('pb:getBrowserStates', () => s.browser.states())
   ipcMain.handle('pb:getUsage', () => usage.state())
-  usage.onChange(() => broadcast('pb:onUsage', usage.state()))
+  // Every agent's status line reports as it works, many times a second across a busy canvas, and each report redraws
+  // whatever shows usage. The window gets the latest at most this often.
+  let usageTimer: ReturnType<typeof setTimeout> | null = null
+  usage.onChange(() => {
+    usageTimer ??= setTimeout(() => {
+      usageTimer = null
+      broadcast('pb:onUsage', usage.state())
+    }, USAGE_PUSH_MS)
+  })
   ipcMain.handle('pb:testUsageSource', async () => (await usagePoller.refreshNow()) ?? { ok: false, problem: 'Choose an endpoint or page first.' })
   ipcMain.handle('pb:hasUsageSecret', () => usageSecret.has())
   ipcMain.handle('pb:setUsageSecret', (_e, header: string) => usageSecret.save(header, parseSettings(readIfPresentSync(settingsFile)).usageUrl ?? ''))
@@ -426,12 +439,12 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     if (id) await runner.startNode(id)
   })
   // The chat view of an agent window. Read again as the conversation grows, so only the newest part is sent.
-  ipcMain.handle('pb:readConversation', (_e, nodeId: string) => {
+  ipcMain.handle('pb:readConversation', async (_e, nodeId: string) => {
     const node = find(nodeId)
     if (node?.kind !== 'claude') return { ok: false, reason: 'Only an agent window has a conversation.' }
     if (!node.transcriptPath) return { ok: true, messages: [] }
     try {
-      return { ok: true, messages: readMessages(node.transcriptPath, CONVERSATION_MESSAGES) }
+      return { ok: true, messages: await readMessagesTail(node.transcriptPath, CONVERSATION_MESSAGES) }
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, messages: [] }
       return { ok: false, reason: `The conversation couldn't be read: ${(e as Error).message}` }
@@ -442,11 +455,11 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:getActivity', () => activity.all())
 
   /** A Claude node's own conversation reads far better than its full-screen output, when there is one yet. */
-  const titleMaterial = (node: TerminalNode | ClaudeNode): string => {
+  const titleMaterial = async (node: TerminalNode | ClaudeNode): Promise<string> => {
     const raw = stripAnsi(host.snapshot(node.id).data)
     if (node.kind !== 'claude' || !node.transcriptPath) return raw
     try {
-      return readTranscript(node.transcriptPath, TITLE_MESSAGES) || raw
+      return (await readTranscriptAsync(node.transcriptPath, TITLE_MESSAGES)) || raw
     } catch {
       return raw
     }
@@ -457,7 +470,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     // An empty folder of its own, so the run picks up no project's settings or CLAUDE.md.
     const neutral = join(dataDir, 'naming')
     mkdirSync(neutral, { recursive: true })
-    return nameFromOutput(titleMaterial(node), (stdin) => {
+    return nameFromOutput(await titleMaterial(node), (stdin) => {
       const settings = parseSettings(readIfPresentSync(settingsFile))
       const program = customLaunch({ terminal: settings.claudeTerminal, command: settings.claudeCommand }, TITLE_ARGS)
       return runToEnd(program, stdin, { cwd: neutral, env: cleanEnv(process.env, {}) })

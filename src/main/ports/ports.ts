@@ -87,6 +87,7 @@ export function createPortWatcher({
   let current: Record<string, PortInfo[]> = {}
   let processes: ProcessMap = new Map()
   let knownIds = ''
+  let lastListening = new Set<number>()
   let members = new Map<number, string>()
   let ticking: Promise<void> | null = null
   const listeners: Array<() => void> = []
@@ -100,18 +101,23 @@ export function createPortWatcher({
     } catch {
       return
     }
-    // Listing every process is the slow part, and its answer only matters when something new appears.
-    const ids = JSON.stringify([[...new Set(found.map((l) => l.pid))].sort(), [...rootMap.keys()].sort()])
-    if (ids !== knownIds) {
+    // Listing every process is the slow part, and its answer only matters when something new appears: a new session, or
+    // a program newly listening. One that stops listening needs nothing, and busy agents' tests and servers come and go.
+    const listening = new Set(found.map((l) => l.pid))
+    const rootIds = JSON.stringify([...rootMap.keys()].sort())
+    const appeared = [...listening].some((pid) => !lastListening.has(pid))
+    if (rootIds !== knownIds || appeared) {
       try {
         processes = parseProcesses(await runProcessList())
         const found = await Promise.all([...rootMap].map(async ([pid, nodeId]) => ({ nodeId, pids: await consoleMembers(pid).catch(() => []) })))
         members = new Map(found.flatMap(({ nodeId, pids }) => pids.map((pid): [number, string] => [pid, nodeId])))
-        knownIds = ids
+        knownIds = rootIds
       } catch {
+        // Tried again next time, as the new program is still new.
         return
       }
     }
+    lastListening = listening
     const next = matchPorts(found, processes, new Map([...members, ...rootMap]))
     if (JSON.stringify(next) === JSON.stringify(current)) return
     current = next

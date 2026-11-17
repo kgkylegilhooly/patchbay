@@ -55,6 +55,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
   takeMissedHooks?: (id: string) => MissedHook[]
+  /** When a session last signalled a tool call ending through a file. See signals.ts. */
+  latestSignal?: (id: string) => number | undefined
 }
 
 function taskkill(pid: number): Promise<void> {
@@ -351,6 +353,11 @@ export function createNodeRunner({
     const run = runs.get(id)
     const events = ctx.takeMissedHooks?.(id) ?? []
     if (!run || run.heardLive || events.length === 0) return
+    // A tool call that ended after the last journalled event, such as one a person allowed in the terminal, means the
+    // agent got going again. The journal doesn't have it, since those only touch a file.
+    const lastJournalled = Math.max(0, ...events.map((e) => (typeof e.at === 'number' ? e.at : 0)))
+    const signalled = ctx.latestSignal?.(id)
+    if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
     const missed = foldMissedHooks(events)
     tracker.seed(id, missed.status, missed.turns)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation

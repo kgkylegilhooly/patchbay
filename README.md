@@ -174,6 +174,13 @@ link and copies correctly, using no quota.
 `ui-sidebar.cjs` and `ui-windows.cjs` use a stand-in for Claude and spend none. `ui-real.cjs` makes a few small checks
 with the real one.
 
+`perf.cjs` puts many windows to work at once while someone types in another, and measures how long keys take to show,
+the longest the window goes without drawing, and the CPU of each process and of the whole PC. With
+`PB_PERF_KIND=claude` the windows are agents doing what Claude does as it works: redrawing, its status line, hooks
+around each tool call and a growing transcript. `PB_PERF_SLOW=4` runs the window four times slower, as on a modest
+laptop. `perf-bursts.cjs` times the moments every window has a lot to do at once: all of them reprinting their whole
+conversation, being resized, and being rebuilt when you come back to a project. Both use no quota.
+
 `test/acceptance/host.cjs` checks that sessions outlive the app. It uses no quota unless you add `--real-claude`, and
 `--packaged` runs it against the packaged build. `test/acceptance/quitloop.cjs` repeats quitting and counts how often
 Electron's exit hangs and has to be ended by force. `triggers.cjs`, `runconfig.cjs` and `links.cjs` check triggers,

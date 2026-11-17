@@ -14,7 +14,7 @@ import type { AgentStatus, CanvasDoc, CanvasNode, ClaudeNode } from '../../src/s
 const claudeNode = (extra: Partial<ClaudeNode> = {}): ClaudeNode =>
   ({ id: 'c', kind: 'claude', title: 'c', x: 0, y: 0, width: 1, height: 1, parentId: null, cwd: 'C:\\', sessionId: 'old-session', transcriptPath: null, after: [], ...extra }) as ClaudeNode
 
-function setup(nodes: CanvasNode[], missed: MissedHook[] = []) {
+function setup(nodes: CanvasNode[], missed: MissedHook[] = [], latestSignal?: number) {
   let doc = { version: 2, projects: [], activeProjectId: '', nodes, edges: [], closed: [], viewport: { x: 0, y: 0, zoom: 1 } } as unknown as CanvasDoc
   const store: CanvasStore = {
     get: () => doc,
@@ -62,7 +62,8 @@ function setup(nodes: CanvasNode[], missed: MissedHook[] = []) {
       cliDir: 'x',
       endpointFile: 'x',
       claude: { file: 'claude.exe', prefixArgs: [] },
-      takeMissedHooks: () => journal.splice(0)
+      takeMissedHooks: () => journal.splice(0),
+      latestSignal: () => latestSignal
     }
   })
   return { store, tracker, runner, notify, changes, exit: (id: string, code: number) => exits.forEach((cb) => cb(id, code)), started, journal, node: () => doc.nodes.find((n) => n.id === 'c') as ClaudeNode, failStart: (e: Error) => void (failure = e), holdStart: () => {
@@ -119,6 +120,27 @@ describe('catching up on hooks from while the app was closed', () => {
     expect(tracker.get('c')).toBe('idle')
     expect(tracker.turnsCompleted('c')).toBe(1)
     expect(notify).not.toHaveBeenCalled()
+  })
+
+  test('a tool call that ended after the journal, as one allowed in the terminal does, reads as working again', () => {
+    const { tracker, runner } = setup([claudeNode()], [ev('UserPromptSubmit', { at: 1000 }), ev('PermissionRequest', { at: 2000 })], 3000)
+    runner.adoptNode('c')
+    runner.catchUpHooks('c')
+    expect(tracker.get('c')).toBe('working')
+  })
+
+  test("one that ended before the journal's last event changes nothing", () => {
+    const { tracker, runner } = setup([claudeNode()], [ev('UserPromptSubmit', { at: 1000 }), ev('Stop', { at: 2000 })], 1500)
+    runner.adoptNode('c')
+    runner.catchUpHooks('c')
+    expect(tracker.get('c')).toBe('idle')
+  })
+
+  test('a journal from before events had times is read as it always was', () => {
+    const { tracker, runner } = setup([claudeNode()], [ev('PermissionRequest')], 3000)
+    runner.adoptNode('c')
+    runner.catchUpHooks('c')
+    expect(tracker.get('c')).toBe('needs-you')
   })
 
   test('a permission request reads as needing you, with no button that could not answer it', () => {

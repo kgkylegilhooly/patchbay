@@ -34,7 +34,7 @@ const missed = (node = 'node/1') => takeMissedHooks(join(dir, 'missed'), node)
 test('with no endpoint file, a hook journals its event and exits 0 with nothing printed', () => {
   const r = hook({ hook_event_name: 'Stop', session_id: 's' })
   expect(r).toMatchObject({ code: 0, out: '' })
-  expect(missed()).toEqual([{ hook_event_name: 'Stop', session_id: 's' }])
+  expect(missed()).toEqual([{ at: expect.any(Number), hook_event_name: 'Stop', session_id: 's' }])
 })
 
 test('after a crash, the file naming a dead app is not waited on', () => {

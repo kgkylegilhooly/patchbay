@@ -7,6 +7,7 @@ import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
+import { signalFile, SIGNAL_EVENTS, STATUS_SIGNAL } from './signals'
 
 export interface ClaudeProgram {
   file: string
@@ -25,6 +26,11 @@ export interface ClaudeLaunchContext extends SessionEnvContext {
   hookScript: string
   /** Reports usage, then draws the owner's own status line. */
   statusLineScript?: string
+  /**
+   * Where the busiest hooks and the status line leave their news as files, written by bash built-ins rather than by
+   * starting Node. Set only where Claude Code runs its commands through Git Bash. See signals.ts.
+   */
+  signalDir?: string
   /** Where to find the owner's own settings. Defaults to their home folder, and is only ever read. */
   home?: string
   pluginDir: string
@@ -47,10 +53,13 @@ export interface ClaudeLaunch extends SessionSpec {
 const HOOK_TIMEOUT_S = 5
 /** A held permission request needs longer than the approvals hold of 540 s. */
 const HELD_HOOK_TIMEOUT_S = 600
-const HOOK_EVENTS = [
+/**
+ * No PreToolUse: it ran before every tool call, and nothing needs it. Every status it could set, PostToolUse sets as
+ * the call ends, and a permission prompt answered in the terminal still comes back to working with PostToolUse.
+ */
+export const HOOK_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
-  'PreToolUse',
   'PostToolUse',
   'PostToolUseFailure',
   'Stop',
@@ -238,8 +247,32 @@ export function findUserStatusLine(cwd: string, home: string): UserStatusLine | 
   return null
 }
 
+/** A path as one bash word, in forward slashes, which Git Bash takes as they are. */
+export function bashWord(path: string): string {
+  return `'${path.replace(/\\/g, '/').replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * The command for one hook event. With a folder to signal through, the busiest ones only touch a file there: a bash
+ * built-in, so nothing else starts. They leave their input unread, as Claude Code allows any hook to.
+ */
+export function hookCommand(event: string, nodeId: string, ctx: ClaudeLaunchContext): string {
+  if (ctx.signalDir && (SIGNAL_EVENTS as readonly string[]).includes(event)) return `: > ${bashWord(signalFile(ctx.signalDir, nodeId, event))}`
+  return `node "${ctx.hookScript.replace(/\\/g, '/')}" ${event}`
+}
+
+/**
+ * The status line. With a folder to signal through, bash saves its input there for Patchbay to read, then runs the
+ * owner's own status line on the same input, as Claude would have: none of Patchbay's Node, and no second bash.
+ */
+export function statusLineCommand(nodeId: string, ctx: ClaudeLaunchContext, own: UserStatusLine | null): string | null {
+  if (!ctx.statusLineScript) return null
+  if (!ctx.signalDir) return `node "${ctx.statusLineScript.replace(/\\/g, '/')}"`
+  const save = `IFS= read -r -d '' j; printf '%s' "$j" > ${bashWord(signalFile(ctx.signalDir, nodeId, STATUS_SIGNAL))}`
+  return own ? `${save}; eval "$PATCHBAY_STATUSLINE_FORWARD" <<< "$j"` : save
+}
+
 function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStatusLine | null): string {
-  const script = ctx.hookScript.replace(/\\/g, '/')
   const hooks = Object.fromEntries(
     HOOK_EVENTS.map((event) => [
       event,
@@ -248,7 +281,7 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
           hooks: [
             {
               type: 'command',
-              command: `node "${script}" ${event}`,
+              command: hookCommand(event, node.id, ctx),
               timeout: event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : HOOK_TIMEOUT_S
             }
           ]
@@ -258,9 +291,8 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
   )
   mkdirSync(ctx.sessionDir, { recursive: true })
   const file = join(ctx.sessionDir, `${encodeURIComponent(node.id)}.settings.json`)
-  const statusLine = ctx.statusLineScript
-    ? { statusLine: { type: 'command', command: `node "${ctx.statusLineScript.replace(/\\/g, '/')}"`, ...(own?.padding === undefined ? {} : { padding: own.padding }) } }
-    : {}
+  const command = statusLineCommand(node.id, ctx, own)
+  const statusLine = command ? { statusLine: { type: 'command', command, ...(own?.padding === undefined ? {} : { padding: own.padding }) } } : {}
   const dataDir = dirname(ctx.sessionDir)
   const permissions = { allow: patchbayPermissions([ctx.pluginDir, join(dataDir, 'whiteboards'), join(dataDir, 'browser-shots')]) }
   writeFileSync(file, JSON.stringify({ hooks, ...statusLine, permissions }, null, 2))

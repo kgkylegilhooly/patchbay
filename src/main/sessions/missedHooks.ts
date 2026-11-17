@@ -15,6 +15,8 @@ export interface MissedHook {
   source?: unknown
   session_id?: unknown
   transcript_path?: unknown
+  /** When hook.cjs wrote it down. Older journals don't say. */
+  at?: unknown
 }
 
 export interface MissedSummary {

@@ -213,3 +213,31 @@ test('consoles are only read when the listening process ids change', async () =>
   await watcher.tick()
   expect(consoleMembers).toHaveBeenCalledTimes(2)
 })
+
+test('a server stopping does not list every process again, and a new one does', async () => {
+  const line = (pid: number, port: number) => `  TCP    0.0.0.0:${port}   0.0.0.0:0   LISTENING   ${pid}\n`
+  let text = line(12, 5173) + line(13, 5174)
+  const { watcher, runProcessList } = setup({ runNetstat: async () => text })
+  await watcher.tick()
+  text = line(12, 5173)
+  await watcher.tick()
+  expect(runProcessList).toHaveBeenCalledTimes(1)
+  // The one that stopped, back again, may be another program that was given the same id.
+  text = line(12, 5173) + line(13, 5174)
+  await watcher.tick()
+  expect(runProcessList).toHaveBeenCalledTimes(2)
+})
+
+test('a failed process list is tried again on the next tick', async () => {
+  let fail = true
+  const runProcessList = vi.fn(async () => {
+    if (fail) throw new Error('busy')
+    return JSON.stringify([...processes].map(([ProcessId, p]) => ({ ProcessId, ParentProcessId: p.parent, Name: p.name })))
+  })
+  const { watcher } = setup({ runProcessList })
+  await watcher.tick()
+  fail = false
+  await watcher.tick()
+  expect(runProcessList).toHaveBeenCalledTimes(2)
+  expect(watcher.current()).toEqual({ 'session-a': [{ port: 5173, name: 'node' }] })
+})

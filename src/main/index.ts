@@ -8,7 +8,9 @@ import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
-import { pickDefaultShell } from './sessions/shell'
+import { claudeRunsBash, pickDefaultShell } from './sessions/shell'
+import { watchSignals, type SignalWatcher } from './sessions/signals'
+import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
@@ -297,6 +299,9 @@ async function boot(): Promise<void> {
   const secret = loadOrCreateSecret(join(dataDir, 'secret'))
   const endpointFile = join(controlDir, 'endpoint.json')
   const journalDir = missedHooksDir(controlDir)
+  // Hooks that fire many times a turn, and the status line, leave a file here instead of starting Node. See signals.ts.
+  const signalDir = claudeRunsBash() ? join(dataDir, 'sessions', 'signals') : undefined
+  let signals: SignalWatcher | null = null
   const runner = createNodeRunner({
     host,
     tracker,
@@ -306,6 +311,8 @@ async function boot(): Promise<void> {
       sessionDir: join(dataDir, 'sessions'),
       hookScript: join(resourceDir, 'hook.cjs'),
       statusLineScript: join(resourceDir, 'statusline.cjs'),
+      signalDir,
+      latestSignal: (id) => signals?.latestHook(id),
       pluginDir: join(resourceDir, 'skill'),
       cliDir: join(resourceDir, 'cli'),
       endpointFile,
@@ -315,6 +322,15 @@ async function boot(): Promise<void> {
     }
   })
   const usage = createUsageService({ dataDir })
+  if (signalDir) {
+    signals = watchSignals({
+      dir: signalDir,
+      onHook: (id, name) => void runner.handleHook(id, { hook_event_name: name }).catch((e: unknown) => log?.write(`A signalled ${name} failed: ${String(e)}`)),
+      onStatus: (id, text) => usage.report(id, parseUsageReport(JSON.parse(text))),
+      log: (message) => log?.write(message)
+    })
+    app.on('will-quit', () => signals?.close())
+  }
   const usageSecret = createUsageSecret({ file: join(dataDir, 'usage-secret.bin'), crypto: safeStorage })
   const readUsage = async (cfg: SourceConfig): Promise<ReadResult> => {
     if (cfg.source === 'page') return readPage(cfg)
@@ -377,6 +393,7 @@ async function boot(): Promise<void> {
     secret,
     endpointFile,
     onHook: async (id, payload, signal) => {
+      signals?.heardHook(id)
       const answer = await runner.handleHook(id, payload, signal)
       if (payload.hook_event_name !== 'SessionStart') return answer
       // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
@@ -454,7 +471,7 @@ async function boot(): Promise<void> {
     else await replaceHost()
   }
   ipcHooks = registerIpc({
-    dataDir, log: log ?? undefined, sendGuard, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
+    dataDir, log: log ?? undefined, signals: signals ?? undefined, sendGuard, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention: () => getAttention(), usage, usageSecret, usagePoller, ports: portWatcher, browser,
     hostInfo: () => host.info(),
     quit: quitWith,
     stopHost,
