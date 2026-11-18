@@ -15,8 +15,8 @@ let dir: string
 let watcher: SignalWatcher | null = null
 
 beforeEach(() => {
-  // An apostrophe and spaces, as a Windows user name can have, so the quoting is tested where it matters.
-  dir = mkdtempSync(join(tmpdir(), "patchbay o'brien signals "))
+  // An apostrophe, spaces and letters beyond ASCII, as Windows user names can have, so the quoting is tested where it matters.
+  dir = mkdtempSync(join(tmpdir(), "patchbay o'brien Jürgen 日本 signals "))
 })
 
 afterEach(() => {
