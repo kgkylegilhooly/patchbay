@@ -55,22 +55,29 @@ function cpuByProgram() {
 
 /** CPU seconds used so far by each of this run's processes, by role. */
 function cpuTimes(profile) {
-  const ps = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${profile.replace(/'/g, "''")}*' } | ForEach-Object { '{0}|{1}|{2}|{3}' -f $_.KernelModeTime, $_.UserModeTime, $_.Name, $_.CommandLine }`
+  return processStats(profile).cpu
+}
+
+/** CPU seconds and private memory (MB) of each of this run's processes, by role. */
+function processStats(profile) {
+  const ps = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${profile.replace(/'/g, "''")}*' } | ForEach-Object { '{0}|{1}|{2}|{3}|{4}' -f $_.KernelModeTime, $_.UserModeTime, $_.PrivatePageCount, $_.Name, $_.CommandLine }`
   let text = ''
   try {
     text = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 30000 })
   } catch {
-    return {}
+    return { cpu: {}, memory: {} }
   }
-  const roles = {}
+  const cpu = {}
+  const memory = {}
   for (const line of text.split(/\r?\n/).filter(Boolean)) {
-    const [kernel, user, name, cmd] = line.split('|')
+    const [kernel, user, priv, name, cmd] = line.split('|')
     // Agents' own programs name the profile too, in their settings path, so only Patchbay's own executable counts here.
     const ours = /^(electron|patchbay)\.exe$/i.test(name)
     const role = !ours ? 'agents' : (/--type=([\w-]+)/.exec(cmd)?.[1] ?? (/hostLauncher|sessionHost|hostProcess/i.test(cmd) ? 'host' : 'main'))
-    roles[role] = (roles[role] ?? 0) + (Number(kernel) + Number(user)) / 1e7
+    cpu[role] = (cpu[role] ?? 0) + (Number(kernel) + Number(user)) / 1e7
+    memory[role] = Math.round((memory[role] ?? 0) + Number(priv) / 1024 / 1024)
   }
-  return roles
+  return { cpu, memory }
 }
 
 const percentOfCore = (before, after, seconds) =>
@@ -322,6 +329,7 @@ async function main() {
     console.log('LOAD', N, AGENTS ? 'agents' : 'terminals', HEAVY ? '(heavy)' : '', CHAT ? '(chat)' : '', 'for', Math.round(seconds), 's')
     console.log('CPU % of one core', JSON.stringify(cpu))
     console.log('PC busy % of all cores', JSON.stringify(pc))
+    console.log('MEMORY MB by process', JSON.stringify(processStats(profile).memory))
     console.log('WINDOW busy % of the time', JSON.stringify(busy))
     console.log('FRAMES', JSON.stringify(frames))
     console.log('KEYS ms', JSON.stringify(keyStats))
