@@ -257,7 +257,8 @@ export function createNodeRunner({
       startupScreen: ''
     })
     try {
-      await host.start({ ...spec, initialScrollback })
+      // Agents yield to the window and to terminals when the PC is short of CPU. See SessionSpec.background.
+      await host.start({ ...spec, initialScrollback, background: true })
     } catch (e) {
       runs.delete(node.id)
       throw e

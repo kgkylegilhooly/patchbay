@@ -53,6 +53,12 @@ export interface SessionSpec {
   initialScrollback?: string
   /** The host keeps this session's saved scrollback current while no app is connected. */
   saveScrollback?: boolean
+  /**
+   * Runs below normal priority, as do the programs it starts, since Windows hands that on. Busy agents on a PC with few
+   * cores took the CPU the window and terminals needed, and a key took over a second to show. With spare CPU, nothing
+   * changes: they still get all of it.
+   */
+  background?: boolean
 }
 
 /**

@@ -174,3 +174,25 @@ test('args for cmd.exe reach it verbatim, because cmd.exe has its own quoting', 
   h.start(spec({ args: ['/d', '/s', '/c', '"echo ^"a b^""'] }))
   await vi.waitFor(() => expect(h.snapshot('n').data).toContain('"a b"'), { timeout: 15000 })
 }, 30000)
+
+test('a background session runs below normal priority, and so does what it starts', async () => {
+  const { getPriority, constants } = await import('node:os')
+  const out = join(mkdtempSync(join(tmpdir(), 'pb-priority-')), 'child.txt')
+  const h = host() as SessionHost & { start(s: SessionSpec): void }
+  // The session starts a child of its own, which records its own priority, as an agent's tools would.
+  const script = `const {spawnSync}=require('child_process');const r=spawnSync(process.execPath,['-e','console.log(require("os").getPriority())'],{encoding:'utf8'});require('fs').writeFileSync(${JSON.stringify(out)},r.stdout.trim());setInterval(()=>{},1000)`
+  h.start(spec({ file: process.execPath, args: ['-e', `setTimeout(()=>{${script}},300)`], background: true }))
+  const pid = h.pid('n') as number
+  expect(getPriority(pid)).toBe(constants.priority.PRIORITY_BELOW_NORMAL)
+  const { readFileSync, existsSync } = await import('node:fs')
+  for (let i = 0; i < 100 && !existsSync(out); i++) await new Promise((r) => setTimeout(r, 50))
+  expect(Number(readFileSync(out, 'utf8'))).toBe(constants.priority.PRIORITY_BELOW_NORMAL)
+})
+
+test('any other session keeps normal priority', () => {
+  const h = host() as SessionHost & { start(s: SessionSpec): void }
+  h.start(spec({ file: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }))
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getPriority, constants } = require('node:os') as typeof import('node:os')
+  expect(getPriority(h.pid('n') as number)).toBe(constants.priority.PRIORITY_NORMAL)
+})

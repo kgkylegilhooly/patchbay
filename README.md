@@ -203,7 +203,12 @@ around each tool call and a growing transcript. `PB_PERF_SLOW=4` runs the window
 laptop. `perf-bursts.cjs` times the moments every window has a lot to do at once: all of them reprinting their whole
 conversation, being resized, and being rebuilt when you come back to a project. `perf-hidden.cjs` checks a minimized
 window does next to nothing while busy windows keep printing, then catches up at once, and `perf-reopen.cjs` times
-reopening a canvas of twenty terminals with full histories. None of these use quota. `perf.cjs` can also trace every
+reopening a canvas of twenty terminals with full histories. `perf-tabs.cjs` spreads busy agents across project tabs.
+None of these use quota. `real-tabs.cjs` does the same with real Claude windows on small coding tasks, reporting CPU
+by program, and spends a little.
+
+`lowend.cjs` runs any of them as if on a modest PC: the check and everything it starts share only the first few CPU
+cores, for example `node test/acceptance/lowend.cjs 2 test/acceptance/perf-tabs.cjs`. `perf.cjs` can also trace every
 process's threads (`PB_PERF_TRACE=<file>`) and draw at 4K scale (`PB_PERF_HIDPI=1`).
 
 `test/acceptance/host.cjs` checks that sessions outlive the app. It uses no quota unless you add `--real-claude`, and
@@ -355,6 +360,9 @@ Add one from the canvas menu or with Ctrl+Shift+D.
 ## Agents working together
 
 Every Claude and Codex window runs with the Patchbay skill, which teaches it the `patchbay` command.
+
+Agents run below normal priority, and so does everything they start. When the PC is short of CPU, the window and your
+terminals go first, so typing stays quick however many agents are busy; with CPU to spare, agents run at full speed.
 
 - **Knowing where it is.** An agent is told at the start of its session which node it is, who opened it, and what it can
   reach, and `patchbay whoami` tells it again. Codex is pointed at `whoami` instead.

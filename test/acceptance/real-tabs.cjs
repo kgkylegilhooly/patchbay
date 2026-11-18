@@ -153,14 +153,43 @@ async function main() {
     const t0 = Date.now()
     const samples = []
     let done = false
+    const keys = []
+    let n = 0
+    let priorities = null
     while (!done && Date.now() - t0 < 8 * 60_000) {
       const st = await L.statuses(page)
       done = ids.every((id) => st[id] === 'idle') && Date.now() - t0 > 20000
       const k = Date.now()
       await page.evaluate(() => window.patchbay.getApprovals())
       samples.push(Date.now() - k)
-      await L.sleep(2000)
+      // A key typed in the terminal on screen, timed until it shows.
+      const token = `k${n++}x`
+      const shown = page.evaluate(
+        (i, tok) =>
+          new Promise((resolve) => {
+            const t = performance.now()
+            const check = () => {
+              if ((document.querySelector(`.react-flow__node[data-id="${i}"] .xterm-rows`)?.textContent ?? '').includes(tok)) resolve(Math.round(performance.now() - t))
+              else if (performance.now() - t > 10000) resolve(10000)
+              else requestAnimationFrame(check)
+            }
+            check()
+          }),
+        tabs[0].term,
+        token
+      )
+      await page.keyboard.type(token)
+      keys.push(await shown)
+      if (n % 5 === 0) await page.keyboard.down('Control').then(() => page.keyboard.press('u')).then(() => page.keyboard.up('Control'))
+      if (!priorities) {
+        const out = execFileSync('powershell', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'claude.exe' -and $_.CommandLine -like '*patchbay-accept-*' } | ForEach-Object { $_.Priority }"], { encoding: 'utf8', windowsHide: true })
+        priorities = [...new Set(out.split(/\r?\n/).filter(Boolean).map(Number))]
+      }
+      await L.sleep(1500)
     }
+    const sortedKeys = [...keys].sort((a, b) => a - b)
+    console.log('KEYS ms', JSON.stringify({ p50: sortedKeys[Math.floor(sortedKeys.length / 2)], worst: sortedKeys.at(-1), samples: keys.length }))
+    console.log("CLAUDE's priority", JSON.stringify(priorities), '(6 is below normal, 8 normal)')
     const seconds = (Date.now() - t0) / 1000
     counters.kill()
     await L.sleep(1500)

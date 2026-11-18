@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs'
+import { constants, setPriority } from 'node:os'
 import { basename } from 'node:path'
 import * as pty from 'node-pty'
 import type { SessionHost, SessionSpec } from '../../shared/contract'
@@ -32,6 +33,18 @@ interface Session {
   exitWaiters: Array<() => void>
   exitCode: number | null
   exitedAt: number | null
+}
+
+/**
+ * Below normal, which Windows hands on to whatever the program starts from then on: an agent's tools, tests and builds
+ * all yield to the window and to terminals when CPU is short, and run at full speed when it isn't.
+ */
+function lowerPriority(pid: number): void {
+  try {
+    setPriority(pid, constants.priority.PRIORITY_BELOW_NORMAL)
+  } catch {
+    // It may already have ended, or Windows refused. It runs at normal priority, as it always used to.
+  }
 }
 
 function isDirectory(path: string): boolean {
@@ -137,6 +150,7 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
         exitedAt: null
       }
       sessions.set(id, session)
+      if (spec.background) lowerPriority(proc.pid)
       proc.onData((data) => receive(id, session, data))
       proc.onExit(({ exitCode }) => finish(id, session, exitCode))
     },

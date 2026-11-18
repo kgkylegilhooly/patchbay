@@ -102,6 +102,17 @@ async function main() {
     await L.sleep(1500)
     await L.fitView(page)
     await L.sleep(1500)
+    // Agents run below normal priority, 6 where normal is 8, and so does what they start. Terminals stay normal.
+    const priorities = execFileSync('powershell', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*claude-load.cjs*' } | ForEach-Object { $_.Priority }"], { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map(Number)
+    console.log('AGENT PRIORITIES', JSON.stringify([...new Set(priorities)]))
+    if (priorities.some((p) => p >= 8)) {
+      console.log(execFileSync('powershell', ['-NoProfile', '-Command', "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*claude-load.cjs*' } | ForEach-Object { '{0} parent {1} {2} prio {3} | {4}' -f $_.ProcessId, $_.ParentProcessId, $_.Name, $_.Priority, $_.CommandLine.Substring(0, [Math]::Min(150, $_.CommandLine.Length)) }"], { encoding: 'utf8', windowsHide: true }))
+    }
+    c.check('Agents run below normal priority', priorities.length > 0 && priorities.every((p) => p < 8), [...new Set(priorities)])
+
     // Which sessions' output reaches the window while one tab shows: only that tab's should.
     const reaching = await page.evaluate(
       () =>
