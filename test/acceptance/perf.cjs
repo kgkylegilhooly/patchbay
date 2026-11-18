@@ -186,7 +186,7 @@ function summarizeProfile(profile) {
 async function main() {
   const cwd = L.workDir('perf')
   const profile = L.newProfile({ notifications: 'off', sound: 'off', ...(AGENTS ? { claudeCommand: `node "${LOAD}"` } : {}) })
-  const app = await L.launch({ profile, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined })
+  const app = await L.launch({ profile, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined, env: process.env.PB_HOST_INSPECT ? { NODE_OPTIONS: '--inspect=0' } : {} })
   const { page } = app
   const cdp = await page.createCDPSession()
   await cdp.send('Performance.enable')
@@ -255,6 +255,14 @@ async function main() {
       await traceSession.send('Tracing.start', { traceConfig: { includedCategories: ['toplevel', 'toplevel.flow', 'ipc', 'mojom', 'v8', 'electron', 'node', 'base', 'disabled-by-default-devtools.timeline'] }, transferMode: 'ReportEvents' })
     }
     const mainProfile = process.env.PB_MAIN_INSPECT ? profileMain(process.env.PB_MAIN_INSPECT, Math.min(15, SECONDS - 2)) : null
+    // PB_HOST_INSPECT=1: every process was started with a debugger on a port of its own, so the host's is found by its pid.
+    let hostProfile = null
+    if (process.env.PB_HOST_INSPECT) {
+      const pid = L.hostPid(profile)
+      const line = execFileSync('netstat', ['-ano'], { encoding: 'utf8' }).split(/\r?\n/).find((l) => /LISTENING/.test(l) && l.trim().endsWith(` ${pid}`) && /127\.0\.0\.1:\d+/.test(l))
+      const port = line && /127\.0\.0\.1:(\d+)/.exec(line)[1]
+      hostProfile = port ? profileMain(port, Math.min(15, SECONDS - 2)) : Promise.resolve([`no debugger port found for host ${pid}`])
+    }
     const keys = []
     const mains = []
     let k = 0
@@ -304,6 +312,7 @@ async function main() {
       fs.writeFileSync(process.env.PB_PERF_TRACE, top.join('\n'))
       console.log('TRACE top tasks (ms over the run):\n' + top.slice(0, 30).join('\n'))
     }
+    if (hostProfile) console.log('TOP self time in the session host:\n' + (await hostProfile).slice(0, 30).join('\n'))
     if (mainProfile) console.log('TOP self time in the main process:\n' + (await mainProfile).slice(0, 30).join('\n'))
     const share = (a, b) => Math.round(((b - a) / seconds) * 100)
     const busy = { task: share(busy0.task, busy1.task), script: share(busy0.script, busy1.script), layout: share(busy0.layout, busy1.layout), style: share(busy0.style, busy1.style) }
