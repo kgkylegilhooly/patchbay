@@ -43,6 +43,8 @@ const bridge: PatchbayBridge = {
   input: (id, data) => ipcRenderer.send('pb:input', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('pb:resize', id, cols, rows),
   onOutput: (cb) => listen('onOutput', cb),
+  watchOutput: (ids) => ipcRenderer.send('pb:watchOutput', ids),
+  devCopy: process.argv.includes('--patchbay-dev-copy'),
   startNode: (id) => invoke('startNode', id),
   restartNode: (id) => invoke('restartNode', id),
   armTrigger: (id, shownSpec) => invoke('armTrigger', id, shownSpec),

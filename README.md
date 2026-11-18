@@ -65,6 +65,21 @@ replaced. Before `npm run package`, installing over an installed copy, or `npm i
 Your canvas, notes, whiteboards and settings live in `%APPDATA%\Patchbay`, apart from the program, so building,
 installing and uninstalling leave them alone. See [Where data lives](#where-data-lives).
 
+### Working on Patchbay from inside Patchbay
+
+You can use an installed Patchbay, with Claude or Codex windows open on this repository, to change Patchbay itself.
+What they run doesn't reach the copy you're using:
+
+- `npm run dev` runs a copy from source with a **dev** label beside its name. It keeps its own canvas, settings and
+  sessions in `%APPDATA%\Patchbay-dev`, with its own background host, so it opens alongside the installed copy and
+  never sees or ends its sessions.
+- The checks in `test/acceptance` each use a throwaway profile, and their windows open off to the side of your screens.
+- `npm run build`, `npm run package` and `npm run dist` only write inside the repository.
+
+To move to a new build: run `npm run dist`, then choose **File > Stop all sessions and quit** in the installed copy,
+which lets Windows replace its files, and run `release\Patchbay-Setup-0.1.0.exe`. Open it again and your agents come
+back, carrying on their conversations.
+
 ## Sessions keep running
 
 Terminals, Claude nodes and run commands live in a background program, the session host, not in the app. They keep

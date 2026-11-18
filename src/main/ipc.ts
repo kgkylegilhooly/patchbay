@@ -103,9 +103,28 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
 
   const activity = createActivityLog({ push: (id, at) => broadcast('pb:onActivity', id, at) })
 
+  /**
+   * The sessions each window shows, by its webContents. Busy agents in another project's tab sent every byte to the
+   * window only for it to be thrown away. A window that hasn't said yet gets everything.
+   */
+  const watching = new Map<number, Set<string>>()
+  ipcMain.on('pb:watchOutput', (e, ids: unknown) => {
+    if (!Array.isArray(ids)) return
+    const contents = e.sender
+    if (!watching.has(contents.id)) contents.once('destroyed', () => watching.delete(contents.id))
+    watching.set(contents.id, new Set(ids.filter((x): x is string => typeof x === 'string')))
+  })
+  const sendOutput = (id: string, data: string, seq: number): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue
+      const shown = watching.get(win.webContents.id)
+      if (!shown || shown.has(id)) win.webContents.send('pb:onOutput', id, data, seq)
+    }
+  }
+
   host.onOutput((id, data, seq) => {
     s.sendGuard?.output(id, data)
-    broadcast('pb:onOutput', id, data, seq)
+    sendOutput(id, data, seq)
     const kind = find(id)?.kind
     if (kind === 'terminal' || kind === 'run') saver.markDirty(id)
     // An idle Claude still redraws, as when its window is resized, and that isn't it doing anything.

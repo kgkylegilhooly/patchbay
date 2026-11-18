@@ -79,6 +79,12 @@ let tray: Tray | null = null
 /** How often the tray catches up. Sessions start and stop in several places, and this is cheap. */
 const TRAY_REFRESH_MS = 1500
 const APP_ID = 'local.patchbay.app'
+/**
+ * Run from source with `npm run dev`, as when Patchbay is used to work on itself. It keeps its own data, session host
+ * and single-instance lock, so it never meets an installed copy that's running: with the same ones it only brought that
+ * copy forward and quit, and could have shared its sessions. Its title says so. Tests pass --user-data-dir and aren't this.
+ */
+const DEV_COPY = !app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')
 const PORT_CHECK_MS = 5000
 /** A hook that read the old endpoint just before this launch's was written can still land in a journal. */
 const LATE_JOURNAL_CHECK_MS = 3000
@@ -117,7 +123,7 @@ function createWindow(onClose: (e: ElectronEvent) => void, icon: string): Browse
     width: 1280,
     height: 800,
     backgroundColor: '#0e0e10',
-    title: 'Patchbay',
+    title: DEV_COPY ? 'Patchbay (dev)' : 'Patchbay',
     icon,
     // The app draws its own title bar and menus. Windows keeps its buttons at the right end.
     titleBarStyle: 'hidden',
@@ -129,12 +135,15 @@ function createWindow(onClose: (e: ElectronEvent) => void, icon: string): Browse
       // For browser nodes only. Every <webview> is locked down as it attaches: see browser/guard.ts.
       webviewTag: true,
       // The chime has to play with no click first, including while the window is hidden.
-      autoplayPolicy: 'no-user-gesture-required'
+      autoplayPolicy: 'no-user-gesture-required',
+      ...(DEV_COPY ? { additionalArguments: ['--patchbay-dev-copy'] } : {})
     }
   })
   if (QUIET_WINDOW) win.once('ready-to-show', () => win.showInactive())
   // Links open through openTerminalLink. Nothing else may take over the window that holds the canvas.
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // The page's own title would otherwise replace the one that says this is a dev copy.
+  if (DEV_COPY) win.on('page-title-updated', (e) => e.preventDefault())
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.on('close', onClose)
   win.on('focus', () => win.flashFrame(false))
@@ -743,9 +752,9 @@ async function boot(): Promise<void> {
 app.setName('Patchbay')
 // --user-data-dir must keep working, so tests and screenshots never touch real data.
 if (!app.commandLine.hasSwitch('user-data-dir')) {
-  app.setPath('userData', join(app.getPath('appData'), 'Patchbay'))
+  app.setPath('userData', join(app.getPath('appData'), DEV_COPY ? 'Patchbay-dev' : 'Patchbay'))
 }
-app.setAppUserModelId(APP_ID)
+app.setAppUserModelId(DEV_COPY ? `${APP_ID}.dev` : APP_ID)
 
 function exitingFile(): string {
   return join(app.getPath('userData'), 'exiting.json')

@@ -21,10 +21,17 @@ export function subscribeOutput(id: string, cb: OutputCb): () => void {
     })
   }
   let set = outputListeners.get(id)
-  if (!set) outputListeners.set(id, (set = new Set()))
+  if (!set) {
+    outputListeners.set(id, (set = new Set()))
+    // Before the caller attaches, so main is sending this session's output by the time its snapshot is taken.
+    bridge.watchOutput([...outputListeners.keys()])
+  }
   set.add(cb)
   return () => {
     set.delete(cb)
-    if (set.size === 0) outputListeners.delete(id)
+    if (set.size === 0) {
+      outputListeners.delete(id)
+      bridge.watchOutput([...outputListeners.keys()])
+    }
   }
 }

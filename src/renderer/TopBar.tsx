@@ -39,7 +39,15 @@ function TopBarView({ commands, state }: { commands: Commands; state: () => Menu
 
   return (
     <header className="bar">
-      <span className="wordmark">Patchbay</span>
+      <span className="wordmark">
+        Patchbay
+        {/* A copy run from source, with its own canvas, so it's never mistaken for the installed one. */}
+        {window.patchbay.devCopy && (
+          <span className="wordmark-dev" title="Run from source, with its own canvas, settings and sessions, apart from the installed Patchbay">
+            dev
+          </span>
+        )}
+      </span>
       <nav className="menubar" ref={ref} aria-label="Application menu">
         {NAMES.map((name) => (
           <div className="menubar-slot" key={name}>

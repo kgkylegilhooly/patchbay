@@ -183,6 +183,13 @@ export interface PatchbayBridge {
   input(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
   onOutput(cb: (id: string, data: string, seq: number) => void): () => void
+  /**
+   * The sessions whose output this window shows. Others' output isn't sent to it, as for windows in another project's
+   * tab. Until a window says, it gets every session's. Sent before attaching, so nothing in between is missed.
+   */
+  watchOutput(ids: string[]): void
+  /** Run from source, with data of its own, apart from an installed copy. */
+  devCopy: boolean
   /** A launch.json run that can't run as its file now says gives back the reason, and nothing starts. */
   startNode(id: string): Promise<void | Refusal>
   restartNode(id: string): Promise<void | Refusal>
