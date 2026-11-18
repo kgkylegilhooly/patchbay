@@ -41,12 +41,26 @@ export type Backend = (request: EngineRequest) => Promise<unknown>
 export function workerBackend(script: string, indexFile: string, log: (line: string) => void): Backend {
   let worker: Worker | null = null
   let fallback: Backend | null = null
+  /** A worker has answered once, so the script loads here, and a later failure is worth a new worker. */
+  let worked = false
   let next = 1
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  const pending = new Map<number, { request: EngineRequest; resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  const runHere = (why: string): Backend => {
+    log(`The search worker couldn't start, so search runs in the main process: ${why}`)
+    const engine = createSearchEngine({ indexFile })
+    return (r) => engine.handle(r)
+  }
   const fail = (e: Error): void => {
-    for (const p of pending.values()) p.reject(e)
-    pending.clear()
     worker = null
+    const waiting = [...pending.values()]
+    pending.clear()
+    // Never answered at all, as when its script can't be loaded: what was asked is answered here instead.
+    if (!worked) {
+      fallback ??= runHere(e.message)
+      for (const p of waiting) fallback(p.request).then(p.resolve, p.reject)
+      return
+    }
+    for (const p of waiting) p.reject(e)
   }
   const start = (): Worker | null => {
     if (worker) return worker
@@ -54,6 +68,7 @@ export function workerBackend(script: string, indexFile: string, log: (line: str
       const w = new Worker(script, { workerData: { indexFile } })
       w.unref()
       w.on('message', (m: { id: number; ok: boolean; value?: unknown; error?: string }) => {
+        worked = true
         const p = pending.get(m.id)
         pending.delete(m.id)
         if (m.ok) p?.resolve(m.value)
@@ -61,7 +76,7 @@ export function workerBackend(script: string, indexFile: string, log: (line: str
       })
       w.on('error', (e) => {
         log(`The search worker failed: ${e.message}`)
-        fail(e)
+        if (worker === w) fail(e)
       })
       w.on('exit', (code) => {
         if (worker === w) fail(new Error(`The search worker stopped (code ${code}).`))
@@ -69,9 +84,7 @@ export function workerBackend(script: string, indexFile: string, log: (line: str
       worker = w
       return w
     } catch (e) {
-      log(`The search worker couldn't start, so search runs in the main process: ${(e as Error).message}`)
-      const engine = createSearchEngine({ indexFile })
-      fallback = (r) => engine.handle(r)
+      fallback = runHere((e as Error).message)
       return null
     }
   }
@@ -81,7 +94,7 @@ export function workerBackend(script: string, indexFile: string, log: (line: str
     if (!w) return fallback!(request)
     const id = next++
     return new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject })
+      pending.set(id, { request, resolve, reject })
       w.postMessage({ id, request })
     })
   }
@@ -133,7 +146,13 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
 
   return {
     start() {
-      unsubscribe = d.store.subscribe(syncSoon)
+      // Panning changes the doc too. Only what search reads is worth a sync.
+      let seen = d.store.get()
+      unsubscribe = d.store.subscribe((doc) => {
+        if (doc.nodes === seen.nodes && doc.closed === seen.closed && doc.projects === seen.projects) return
+        seen = doc
+        syncSoon()
+      })
       everyTimer = setInterval(() => void d.backend({ type: 'sync', input: input() }).catch(() => {}), SYNC_EVERY_MS)
       everyTimer.unref?.()
       syncSoon()

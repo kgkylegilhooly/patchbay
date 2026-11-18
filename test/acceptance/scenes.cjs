@@ -349,7 +349,8 @@ const scenes = {
     await drag([20, 100], [430, 240])
     await drag([40, 150], [40, 270])
     await sleep(300)
-  }
+  },
+  ...require('./searchScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -420,7 +421,8 @@ const seeds = {
     doc.nodes.push({ id: 'board', kind: 'whiteboard', title: 'Login flow sketch', x: 660, y: 660, width: 700, height: 460, parentId: null, projectId: 'p1', shapes })
     doc.viewport = { x: -360, y: -680, zoom: 1.1 }
     doc.projects[0].viewport = doc.viewport
-  }
+  },
+  ...require('./searchScenes.cjs').seeds
 }
 
 const launchJsonExample = `{

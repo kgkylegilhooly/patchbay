@@ -1,6 +1,7 @@
 import type { IconName } from './iconPaths'
 import type { Bindable } from './keys'
 import type { Commands, MenuState } from './menus'
+import { toggleSearch } from './searchUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -68,6 +69,7 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-minimap', section: 'View', label: 'Minimap', icon: 'map', keywords: ['overview'], run: (c) => c.togglePref('minimap') },
   { id: 'toggle-legend', section: 'View', label: 'Link legend', icon: 'link', keywords: ['key', 'cables'], run: (c) => c.togglePref('legend') },
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
+  { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'recent', section: 'View', label: 'Recent conversations', icon: 'recent', keywords: ['closed', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
 
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },

@@ -177,4 +177,12 @@ describe('worker backend', () => {
     await expect(backend({ type: 'flush' })).rejects.toThrow('stopped')
     expect(await backend({ type: 'stats' })).toBe('stats')
   })
+
+  it('runs search in this process when the worker script never loads', async () => {
+    const logged: string[] = []
+    const backend = workerBackend(join(dir, 'no-such-worker.js'), join(dir, 'index.json'), (l) => logged.push(l))
+    expect(await backend({ type: 'stats' })).toMatchObject({ conversations: 0, syncedAt: null })
+    expect(await backend({ type: 'sync', input: { sources: [], projects: {} } })).toMatchObject({ conversations: 0 })
+    expect(logged.some((l) => l.includes('runs in the main process'))).toBe(true)
+  })
 })
