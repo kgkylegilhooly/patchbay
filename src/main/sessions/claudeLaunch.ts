@@ -269,8 +269,22 @@ export function statusLineCommand(nodeId: string, ctx: ClaudeLaunchContext, own:
   if (!ctx.statusLineScript) return null
   if (!ctx.signalDir) return `node "${ctx.statusLineScript.replace(/\\/g, '/')}"`
   const save = `IFS= read -r -d '' j; printf '%s' "$j" > ${bashWord(statusFile(ctx.signalDir, nodeId))}`
-  return own ? `${save}; eval "$PATCHBAY_STATUSLINE_FORWARD" <<< "$j"` : save
+  if (!own) return save
+  // Claude reruns a status line up to three times a second while it works, and an owner's line is often a Node script,
+  // whose start costs more than the rest of this together. What it last printed is shown again for up to a second, from
+  // a file whose first line is when it ran, in microseconds. Everything here but the owner's own command is built in.
+  const cache = bashWord(`${statusFile(ctx.signalDir, nodeId)}.line`)
+  return [
+    save,
+    // Some locales write the time with a comma.
+    'n=${EPOCHREALTIME/[.,]/}; t=; o=',
+    `{ IFS= read -r t && IFS= read -r -d '' o; } 2>/dev/null < ${cache}`,
+    `if [[ $t =~ ^[0-9]+$ ]] && (( n - t < ${OWN_LINE_REUSE_US} )); then printf '%s' "$o"; else o=$(eval "$PATCHBAY_STATUSLINE_FORWARD" <<< "$j"); printf '%s\\n%s' "$n" "$o" > ${cache}; printf '%s' "$o"; fi`
+  ].join('; ')
 }
+
+/** How long an owner's status line is shown again rather than run again. */
+const OWN_LINE_REUSE_US = 1_000_000
 
 function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStatusLine | null): string {
   const hooks = Object.fromEntries(

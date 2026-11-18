@@ -52,9 +52,9 @@ const ctx = (over: Partial<ClaudeLaunchContext> = {}): ClaudeLaunchContext => ({
 })
 
 /** Runs a command the way Claude Code does on Windows. */
-const asClaude = (command: string, input: string, env: NodeJS.ProcessEnv = {}): { stdout: string; status: number | null } => {
+const asClaude = (command: string, input: string, env: NodeJS.ProcessEnv = {}): { stdout: string; stderr: string; status: number | null } => {
   const r = spawnSync(GIT_BASH, ['-c', command], { input, encoding: 'utf8', env: { ...process.env, ...env }, windowsHide: true })
-  return { stdout: r.stdout, status: r.status }
+  return { stdout: r.stdout, stderr: r.stderr, status: r.status }
 }
 
 test('a node id can be told back from its file name, whatever it holds', () => {
@@ -119,7 +119,27 @@ test.runIf(hasBash)("in real Git Bash, the owner's own status line gets the same
   const input = JSON.stringify({ session_id: 'abc' })
   const r = asClaude(statusLineCommand('n1', ctx(), { command: own }) ?? '', input, { PATCHBAY_STATUSLINE_FORWARD: own })
   expect(r.stdout).toBe('OWN abc')
+  expect(r.stderr).toBe('')
   expect(readFileSync(statusFile(join(dir, 'signals'), 'n1'), 'utf8')).toBe(input)
+})
+
+test.runIf(hasBash)("an owner's status line run again within a second shows what it printed, without running again", async () => {
+  mkdirSync(join(dir, 'signals', 'status'), { recursive: true })
+  const script = join(dir, 'counting line.cjs')
+  const runs = join(dir, 'runs.txt')
+  // Prints which run it is, over two lines, so a status line of more than one line is shown whole.
+  writeFileSync(script, `const fs=require('fs');const n=(fs.existsSync(${JSON.stringify(runs)})?fs.readFileSync(${JSON.stringify(runs)},'utf8').length:0)+1;fs.appendFileSync(${JSON.stringify(runs)},'x');let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write('run '+n+' for '+JSON.parse(s).session_id+'\\nsecond line'))`)
+  const own = `node "${script.replace(/\\/g, '/')}"`
+  const command = statusLineCommand('n1', ctx(), { command: own }) ?? ''
+  const first = asClaude(command, JSON.stringify({ session_id: 'a' }), { PATCHBAY_STATUSLINE_FORWARD: own })
+  const again = asClaude(command, JSON.stringify({ session_id: 'b' }), { PATCHBAY_STATUSLINE_FORWARD: own })
+  expect(first.stdout).toBe('run 1 for a\nsecond line')
+  expect(again.stdout).toBe('run 1 for a\nsecond line')
+  // Patchbay still gets the newest input every time.
+  expect(readFileSync(statusFile(join(dir, 'signals'), 'n1'), 'utf8')).toBe(JSON.stringify({ session_id: 'b' }))
+  await sleep(1100)
+  const later = asClaude(command, JSON.stringify({ session_id: 'c' }), { PATCHBAY_STATUSLINE_FORWARD: own })
+  expect(later.stdout).toBe('run 2 for c\nsecond line')
 })
 
 test('a touched file is handed on as that hook, once', async () => {
