@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
@@ -46,7 +46,7 @@ import { createApprovals } from './sessions/approvals'
 import { createBackgroundHost } from './sessions/backgroundHost'
 import { createSessionHost } from './sessions/host'
 import { pipeNameFor } from './sessions/hostProtocol'
-import { guardExit, lastHostLogLine, spawnSessionHost } from './sessions/hostSpawn'
+import { guardExit, hostRuntime, lastHostLogLine, pruneHostRuntimes, spawnSessionHost } from './sessions/hostSpawn'
 import { missedHooksDir, takeMissedHooks } from './sessions/missedHooks'
 import { createNodeRunner } from './sessions/nodeRunner'
 import { createStatusTracker } from './sessions/statusTracker'
@@ -285,12 +285,20 @@ async function boot(): Promise<void> {
   })
 
   const controlDir = join(dataDir, 'control')
+  // Not roaming: a copy of the program for this PC only. See hostRuntime.
+  const hostRuntimeDir = process.env.PATCHBAY_HOST_RUNTIME_DIR || join(process.env.LOCALAPPDATA ?? app.getPath('userData'), 'Patchbay', 'host-runtime')
+  let runtimeInUse = ''
   const host = createBackgroundHost({
     pipe: pipeNameFor(dataDir),
     secret: loadOrCreateSecret(join(controlDir, 'host-secret')),
     // Only acceptance runs set this, to act out an update between two launches.
     protocol: Number(process.env.PATCHBAY_HOST_PROTOCOL) || undefined,
-    spawnHost: () => spawnSessionHost({ mainDir: __dirname, dataDir, version: app.getVersion() }),
+    spawnHost: async () => {
+      // A packaged build runs its host from a copy of itself, so a new version can be installed under running sessions.
+      const runtime = app.isPackaged ? await hostRuntime({ installDir: dirname(process.execPath), baseDir: hostRuntimeDir, version: app.getVersion(), mainDir: __dirname }) : null
+      if (runtime) runtimeInUse = dirname(runtime.exe)
+      spawnSessionHost({ mainDir: runtime?.mainDir ?? __dirname, dataDir, version: app.getVersion(), exe: runtime?.exe })
+    },
     createLocal: () => createSessionHost(),
     explainFailure: () => lastHostLogLine(controlDir)
   })
@@ -386,6 +394,8 @@ async function boot(): Promise<void> {
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
   const hostAtBoot = await host.connect()
+  // Copies of older builds that no host runs from any more. Once things have settled, so it costs start-up nothing.
+  if (app.isPackaged) setTimeout(() => void pruneHostRuntimes(hostRuntimeDir, runtimeInUse), 60_000).unref()
   const adoptLive = (): string[] => {
     const plan = planReconnect(store.get(), host.sessions())
     for (const id of plan.strays) {

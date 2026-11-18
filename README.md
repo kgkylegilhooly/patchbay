@@ -58,9 +58,14 @@ The app and installer aren't signed, so Windows SmartScreen may warn the first t
 
 ### Before you build over a copy you're using
 
-A running Patchbay, and its background session host, keep the program's files open, so Windows won't let them be
-replaced. Before `npm run package`, installing over an installed copy, or `npm install`, choose
-**File > Stop all sessions and quit** in that copy.
+A running Patchbay keeps the program's files open, so Windows won't let them be replaced. Before installing over an
+installed copy, choose **File > Quit** in it: its sessions carry on, because the background session host runs from a
+copy of the program of its own, in `%LOCALAPPDATA%\Patchbay\host-runtime`, which an install doesn't touch. Open the new
+version and it reconnects to them as they are. Copies no host runs from are removed by themselves.
+
+Sessions keep the host they started with, so a change to the host itself reaches them only after **File > Stop all
+sessions and quit** once. A build run from `release\win-unpacked` works the same way. Before `npm install`, which
+replaces node-pty in the repository, stop any copy run from source.
 
 Your canvas, notes, whiteboards and settings live in `%APPDATA%\Patchbay`, apart from the program, so building,
 installing and uninstalling leave them alone. See [Where data lives](#where-data-lives).
@@ -76,9 +81,9 @@ What they run doesn't reach the copy you're using:
 - The checks in `test/acceptance` each use a throwaway profile, and their windows open off to the side of your screens.
 - `npm run build`, `npm run package` and `npm run dist` only write inside the repository.
 
-To move to a new build: run `npm run dist`, then choose **File > Stop all sessions and quit** in the installed copy,
-which lets Windows replace its files, and run `release\Patchbay-Setup-0.1.0.exe`. Open it again and your agents come
-back, carrying on their conversations.
+To move to a new build without stopping the agents doing the work: run `npm run dist`, choose **File > Quit** in the
+installed copy, run `release\Patchbay-Setup-0.1.0.exe`, and open Patchbay again. Every session, agents included, has
+kept running throughout, and the new version picks them up where they are.
 
 ## Sessions keep running
 
@@ -210,6 +215,9 @@ by program, and spends a little.
 `lowend.cjs` runs any of them as if on a modest PC: the check and everything it starts share only the first few CPU
 cores, for example `node test/acceptance/lowend.cjs 2 test/acceptance/perf-tabs.cjs`. `perf.cjs` can also trace every
 process's threads (`PB_PERF_TRACE=<file>`) and draw at 4K scale (`PB_PERF_HIDPI=1`).
+
+`update-live.cjs` replaces a packaged build's whole install folder while a session runs, as an installer does, and checks
+the new version picks the session up still running; run it after `npm run package`.
 
 `test/acceptance/host.cjs` checks that sessions outlive the app. It uses no quota unless you add `--real-claude`, and
 `--packaged` runs it against the packaged build. `test/acceptance/quitloop.cjs` repeats quitting and counts how often

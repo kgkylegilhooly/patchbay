@@ -8,7 +8,8 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        external: ['node-pty'],
+        // original-fs is Electron's own fs without its app.asar handling, so it's there at run time, not to bundle.
+        external: ['node-pty', 'original-fs'],
         // The session host runs as its own process, under Electron's Node, and must never import electron.
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),

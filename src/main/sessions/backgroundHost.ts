@@ -61,7 +61,7 @@ export interface BackgroundHostOptions {
   pipe: string
   secret: string
   /** Throws if it can't even try. */
-  spawnHost(): void
+  spawnHost(): void | Promise<void>
   /** Sessions in the app itself, for when no host can run. */
   createLocal(): PtyHost
   /** Whatever the host left to explain why it didn't start. */
@@ -207,7 +207,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
 
   const establish = async (): Promise<void> => {
     setMode('starting')
-    const deadline = Date.now() + startTimeout
+    let deadline = Date.now() + startTimeout
     let spawned = false
     for (;;) {
       const result: ConnectResult = await connectToHost({ pipe: opts.pipe, secret: opts.secret, protocol })
@@ -230,7 +230,9 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       if (!spawned) {
         spawned = true
         try {
-          opts.spawnHost()
+          await opts.spawnHost()
+          // Starting it can mean copying the program first, on a slow disk for a while: the wait counts from now.
+          deadline = Date.now() + startTimeout
         } catch (e) {
           useLocal(inProcessWhy(String(e)))
           return
