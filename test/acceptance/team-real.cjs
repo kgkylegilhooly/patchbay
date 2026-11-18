@@ -35,7 +35,9 @@ function toolCalls(file) {
       for (const part of e.message?.content ?? []) {
         if (part?.type !== 'tool_use' || seen.has(part.id)) continue
         seen.add(part.id)
-        calls.push({ tool: part.name, command: part.input?.command ?? part.input?.file_path ?? '' })
+        // Agents often move into the work folder first. What they then run is the command that counts.
+        const command = String(part.input?.command ?? part.input?.file_path ?? '').replace(/^cd\s+("[^"]*"|'[^']*'|\S+)\s*&&\s*/, '')
+        calls.push({ tool: part.name, command })
       }
     } catch {}
   }
@@ -46,9 +48,18 @@ function decide(approval, work) {
   const text = approval.detail
   if (approval.tool === 'Bash') {
     // Quoted text is an argument, such as a brief, so it's set aside before the shell's own syntax is checked.
-    const bare = text.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'ARG').replace(/\s2?>\s*\/dev\/null/g, '').replace(/&&|\|\|/g, ';')
+    // A heredoc's body is input too, as when a team's JSON is fed to `patchbay spawn-team --members-file -`, the way the
+    // skill teaches. It's only allowed into a patchbay command.
+    // Approvals show the command with its whitespace collapsed, so the body runs to the terminator word on one line.
+    const heredoc = /(patchbay\s[^;&|<]*?)<<-?\s*['"]?(\w+)['"]?\s[\s\S]*?\s\2(?=\s|$)/g
+    const bare = text
+      .replace(heredoc, '$1 ARG\n')
+      .replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'ARG')
+      .replace(/\s2?>\s*\/dev\/null/g, '')
+      .replace(/&&|\|\||\n/g, ';')
     if (/`|\$\(|>|<|\|/.test(bare)) return 'deny'
-    const safe = (part) => /^patchbay\s/.test(part) || /^(ls|pwd|cat|dir|type|head|wc|echo)\b/.test(part)
+    // Moving into the work folder first is what a careful person would let pass: what follows is still checked.
+    const safe = (part) => !part || /^patchbay\s/.test(part) || /^(ls|pwd|cat|dir|type|head|wc|echo)\b/.test(part) || /^cd ARG$/.test(part)
     return bare.split(';').every((part) => safe(part.trim())) ? 'allow' : 'deny'
   }
   if (['Write', 'Edit', 'MultiEdit'].includes(approval.tool)) {
