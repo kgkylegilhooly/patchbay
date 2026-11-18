@@ -102,6 +102,8 @@ async function launch({ profile, exe, env: extraEnv }) {
   ]
   // PB_MAIN_INSPECT=<port> opens the main process to a debugger there, for profiling it.
   if (process.env.PB_MAIN_INSPECT) args.push(`--inspect=${process.env.PB_MAIN_INSPECT}`)
+  // PB_REAL_BACKGROUND=1 keeps Chromium's own handling of a hidden window, to measure what hiding it really costs.
+  if (process.env.PB_REAL_BACKGROUND) args.splice(2, args.length - 2, ...args.slice(2).filter((a) => !/occlusion|backgrounding|Occlusion/i.test(a)))
   if (!exe) args.push(root)
   const child = spawn(file, args, { cwd: root, env, stdio: 'ignore' })
   const exited = new Promise((r) => child.on('exit', (code) => r(code ?? -1)))

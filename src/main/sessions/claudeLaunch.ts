@@ -7,7 +7,7 @@ import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
-import { signalFile, SIGNAL_EVENTS, STATUS_SIGNAL } from './signals'
+import { signalFile, SIGNAL_EVENTS, statusFile } from './signals'
 
 export interface ClaudeProgram {
   file: string
@@ -268,7 +268,7 @@ export function hookCommand(event: string, nodeId: string, ctx: ClaudeLaunchCont
 export function statusLineCommand(nodeId: string, ctx: ClaudeLaunchContext, own: UserStatusLine | null): string | null {
   if (!ctx.statusLineScript) return null
   if (!ctx.signalDir) return `node "${ctx.statusLineScript.replace(/\\/g, '/')}"`
-  const save = `IFS= read -r -d '' j; printf '%s' "$j" > ${bashWord(signalFile(ctx.signalDir, nodeId, STATUS_SIGNAL))}`
+  const save = `IFS= read -r -d '' j; printf '%s' "$j" > ${bashWord(statusFile(ctx.signalDir, nodeId))}`
   return own ? `${save}; eval "$PATCHBAY_STATUSLINE_FORWARD" <<< "$j"` : save
 }
 

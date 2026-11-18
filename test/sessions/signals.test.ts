@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { bashWord, buildClaudeLaunch, hookCommand, statusLineCommand, type ClaudeLaunchContext } from '../../src/main/sessions/claudeLaunch'
 import { claudeRunsBash } from '../../src/main/sessions/shell'
-import { parseSignalName, signalFile, watchSignals, type SignalWatcher } from '../../src/main/sessions/signals'
+import { parseSignalName, signalFile, statusFile, watchSignals, type SignalWatcher } from '../../src/main/sessions/signals'
 import type { ClaudeNode } from '../../src/shared/model'
 
 const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
@@ -96,30 +96,30 @@ test('Claude runs bash for its commands where its own setting or the usual insta
 })
 
 test.runIf(hasBash)('in real Git Bash, a tool hook touches its file, and nothing else starts', () => {
-  mkdirSync(join(dir, 'signals'))
+  mkdirSync(join(dir, 'signals', 'status'), { recursive: true })
   const r = asClaude(hookCommand('PostToolUse', 'n1', ctx()), JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'x'.repeat(200_000) }))
   expect(r.status).toBe(0)
   expect(existsSync(signalFile(join(dir, 'signals'), 'n1', 'PostToolUse'))).toBe(true)
 })
 
 test.runIf(hasBash)('in real Git Bash, the status line saves its input whole and prints nothing of its own', () => {
-  mkdirSync(join(dir, 'signals'))
+  mkdirSync(join(dir, 'signals', 'status'), { recursive: true })
   const input = JSON.stringify({ session_id: 's', cost: { total_cost_usd: 1.5 }, text: 'quotes " \' and $dollars `ticks` \\ and ünïcode' })
   const r = asClaude(statusLineCommand('n1', ctx(), null) ?? '', input)
   expect(r.status).toBe(0)
   expect(r.stdout).toBe('')
-  expect(readFileSync(signalFile(join(dir, 'signals'), 'n1', 'status'), 'utf8')).toBe(input)
+  expect(readFileSync(statusFile(join(dir, 'signals'), 'n1'), 'utf8')).toBe(input)
 })
 
 test.runIf(hasBash)("in real Git Bash, the owner's own status line gets the same input and is what's shown", () => {
-  mkdirSync(join(dir, 'signals'))
+  mkdirSync(join(dir, 'signals', 'status'), { recursive: true })
   const script = join(dir, 'own line.cjs')
   writeFileSync(script, "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write('OWN '+JSON.parse(s).session_id))")
   const own = `node "${script.replace(/\\/g, '/')}"`
   const input = JSON.stringify({ session_id: 'abc' })
   const r = asClaude(statusLineCommand('n1', ctx(), { command: own }) ?? '', input, { PATCHBAY_STATUSLINE_FORWARD: own })
   expect(r.stdout).toBe('OWN abc')
-  expect(readFileSync(signalFile(join(dir, 'signals'), 'n1', 'status'), 'utf8')).toBe(input)
+  expect(readFileSync(statusFile(join(dir, 'signals'), 'n1'), 'utf8')).toBe(input)
 })
 
 test('a touched file is handed on as that hook, once', async () => {
@@ -162,8 +162,8 @@ test('what was already there at launch is noted but not acted on', async () => {
 
 test('a status line is read once its write is whole, and a half-written one is read again', async () => {
   const seen: string[] = []
-  watcher = watchSignals({ dir, onHook: () => {}, onStatus: (id, text) => seen.push(`${id} ${text}`), pollMs: 100 })
-  const file = signalFile(dir, 'n1', 'status')
+  watcher = watchSignals({ dir, onHook: () => {}, onStatus: (id, text) => seen.push(`${id} ${text}`), pollMs: 100, statusEveryMs: 100 })
+  const file = statusFile(dir, 'n1')
   writeFileSync(file, '{"session_id":')
   await sleep(400)
   expect(seen).toEqual([])
@@ -174,8 +174,28 @@ test('a status line is read once its write is whole, and a half-written one is r
 
 test('forget removes a closed node\'s files', async () => {
   watcher = watchSignals({ dir, onHook: () => {}, onStatus: () => {}, pollMs: 100 })
-  for (const kind of ['PostToolUse', 'status']) writeFileSync(signalFile(dir, 'gone', kind), '{}')
+  writeFileSync(signalFile(dir, 'gone', 'PostToolUse'), '')
+  writeFileSync(statusFile(dir, 'gone'), '{}')
   watcher.forget('gone')
   expect(existsSync(signalFile(dir, 'gone', 'PostToolUse'))).toBe(false)
-  expect(existsSync(signalFile(dir, 'gone', 'status'))).toBe(false)
+  expect(existsSync(statusFile(dir, 'gone'))).toBe(false)
+})
+
+test('a status line written many times a second is read at most once a second, and an unchanged one not at all', async () => {
+  const seen: string[] = []
+  watcher = watchSignals({ dir, onHook: () => {}, onStatus: (_id, text) => seen.push(text), pollMs: 60_000 })
+  const file = statusFile(dir, 'n1')
+  for (let i = 0; i < 12; i++) {
+    writeFileSync(file, JSON.stringify({ n: i }))
+    await sleep(100)
+  }
+  await sleep(1300)
+  // Twelve writes over 1.2 s: one read for the first burst and one a second after, never twelve.
+  expect(seen.length).toBeGreaterThanOrEqual(1)
+  expect(seen.length).toBeLessThanOrEqual(3)
+  expect(seen.at(-1)).toBe(JSON.stringify({ n: 11 }))
+  const count = seen.length
+  writeFileSync(file, JSON.stringify({ n: 11 }))
+  await sleep(1300)
+  expect(seen.length).toBe(count)
 })

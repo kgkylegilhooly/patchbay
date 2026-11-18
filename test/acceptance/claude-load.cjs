@@ -102,7 +102,7 @@ async function behaveLikeClaude() {
   void (async () => {
     while (Date.now() < end) {
       const t = Date.now()
-      if (settings.statusLine?.command) {
+      if (settings.statusLine?.command && !process.env.PB_LOAD_NO_STATUSLINE) {
         await runCommand(settings.statusLine.command, { session_id: sessionId, transcript_path: transcript, cost: { total_cost_usd: tokens / 1e5 }, context_window: { used_percentage: Math.min(99, Math.round(tokens / 2000)) } })
         statusLines++
       }

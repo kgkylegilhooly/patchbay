@@ -6,17 +6,27 @@ import { basename, join } from 'node:path'
  * Claude Code starts a program for every hook and every status line update, through Git Bash. A busy agent does that
  * several times a second, and starting Node each time kept whole CPU cores busy with ten agents working. The frequent
  * ones are written as bash built-ins that only touch or write a file here instead (see claudeLaunch.ts), so no Node
- * starts, and this watches the folder and hands each on as though it had come through the control server.
+ * starts, and this hands each on as though it had come through the control server.
+ *
+ * Tool calls touch a file in the watched folder, so their news arrives at once. Status lines write far more often, and
+ * watching a folder written forty times a second cost the app a twelfth of a core in change events alone, so they go
+ * in a folder of their own that's looked at once a second: usage numbers don't need to be fresher than that.
  */
 
 /** Hook events that arrive as a touched file. They carry nothing but their name. */
 export const SIGNAL_EVENTS = ['PostToolUse', 'PostToolUseFailure'] as const
 /** The status line's input, written whole. */
 export const STATUS_SIGNAL = 'status'
+const STATUS_DIR = 'status'
 
 /** Never two files for one node and kind, and a node id can't reach outside the folder. */
 export function signalFile(dir: string, nodeId: string, kind: string): string {
   return join(dir, `${encodeURIComponent(nodeId)}.${kind}`)
+}
+
+/** Where a node's status line writes its input. */
+export function statusFile(dir: string, nodeId: string): string {
+  return signalFile(join(dir, STATUS_DIR), nodeId, STATUS_SIGNAL)
 }
 
 export function parseSignalName(name: string): { nodeId: string; kind: string } | null {
@@ -44,40 +54,18 @@ export interface SignalWatcher {
   close(): void
 }
 
-/** Catches anything the folder watch misses. Only stats a few small files. */
+/** Catches any tool call the folder watch misses. Only stats a few small files. */
 const POLL_MS = 2000
-/** A status file is read once it has been quiet this long, so a write in progress isn't read half done. */
-const STATUS_SETTLE_MS = 150
+/** How often status lines are looked at. */
+const STATUS_EVERY_MS = 1000
 
-export function watchSignals(opts: {
-  dir: string
-  onHook(nodeId: string, name: string): void
-  onStatus(nodeId: string, text: string): void
-  pollMs?: number
-  log?(message: string): void
-}): SignalWatcher {
-  const { dir } = opts
-  mkdirSync(dir, { recursive: true })
-  /** The modified time already handled, by file name. */
-  const seen = new Map<string, number>()
-  /** When each node's last hook arrived by the control server. */
-  const heard = new Map<string, number>()
-  const latest = new Map<string, number>()
-  const checking = new Set<string>()
-  const again = new Set<string>()
-  const statusTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  let closed = false
-  let watcher: FSWatcher | null = null
-
-  // What's here already happened before this launch, so it's noted, not acted on. catchUp handles that.
+/** Each file's modified time, from a folder as it is now. Files that vanish meanwhile are left out. */
+function timesIn(dir: string): Map<string, number> {
+  const times = new Map<string, number>()
   try {
     for (const name of readdirSync(dir)) {
-      const parsed = parseSignalName(name)
-      if (!parsed) continue
       try {
-        const at = statSync(join(dir, name)).mtimeMs
-        seen.set(name, at)
-        if (parsed.kind !== STATUS_SIGNAL) latest.set(parsed.nodeId, Math.max(latest.get(parsed.nodeId) ?? 0, at))
+        times.set(name, statSync(join(dir, name)).mtimeMs)
       } catch {
         // Removed in the meantime.
       }
@@ -85,35 +73,40 @@ export function watchSignals(opts: {
   } catch {
     // An unreadable folder only means nothing was here.
   }
+  return times
+}
 
-  const readStatus = (name: string, nodeId: string): void => {
-    clearTimeout(statusTimers.get(name))
-    statusTimers.set(
-      name,
-      setTimeout(() => {
-        statusTimers.delete(name)
-        if (closed) return
-        readFile(join(dir, name), 'utf8').then(
-          (text) => {
-            if (closed) return
-            try {
-              JSON.parse(text)
-            } catch {
-              // Read while being written. It's read again once the write that's still going lands.
-              seen.delete(name)
-              return
-            }
-            opts.onStatus(nodeId, text)
-          },
-          () => {}
-        )
-      }, STATUS_SETTLE_MS)
-    )
+export function watchSignals(opts: {
+  dir: string
+  onHook(nodeId: string, name: string): void
+  onStatus(nodeId: string, text: string): void
+  pollMs?: number
+  statusEveryMs?: number
+  log?(message: string): void
+}): SignalWatcher {
+  const { dir } = opts
+  const statusDir = join(dir, STATUS_DIR)
+  mkdirSync(statusDir, { recursive: true })
+  /** When each node's last hook arrived by the control server. */
+  const heard = new Map<string, number>()
+  const latest = new Map<string, number>()
+  const checking = new Set<string>()
+  const again = new Set<string>()
+  let closed = false
+  let watcher: FSWatcher | null = null
+
+  // What's here already happened before this launch, so it's noted, not acted on. catchUp handles that.
+  const seen = timesIn(dir)
+  for (const [name, at] of seen) {
+    const parsed = parseSignalName(name)
+    if (parsed && parsed.kind !== STATUS_SIGNAL) latest.set(parsed.nodeId, Math.max(latest.get(parsed.nodeId) ?? 0, at))
   }
+  const statusSeen = timesIn(statusDir)
+  const statusText = new Map<string, string>()
 
   const check = async (name: string): Promise<void> => {
     const parsed = parseSignalName(name)
-    if (!parsed || closed) return
+    if (!parsed || parsed.kind === STATUS_SIGNAL || closed) return
     // One look at a time per file; a change during it is looked at again afterward.
     if (checking.has(name)) {
       again.add(name)
@@ -129,7 +122,6 @@ export function watchSignals(opts: {
       }
       if (closed || at <= (seen.get(name) ?? -1)) return
       seen.set(name, at)
-      if (parsed.kind === STATUS_SIGNAL) return readStatus(name, parsed.nodeId)
       latest.set(parsed.nodeId, Math.max(latest.get(parsed.nodeId) ?? 0, at))
       if (at <= (heard.get(parsed.nodeId) ?? -1)) return
       opts.onHook(parsed.nodeId, parsed.kind)
@@ -159,7 +151,7 @@ export function watchSignals(opts: {
 
   const poll = setInterval(() => {
     if (!watcher) {
-      mkdirSync(dir, { recursive: true })
+      mkdirSync(statusDir, { recursive: true })
       startWatching()
     }
     readdir(dir).then(
@@ -171,6 +163,40 @@ export function watchSignals(opts: {
   }, opts.pollMs ?? POLL_MS)
   poll.unref?.()
 
+  /** Reads each status file that changed since it was last read. A half-written one is read again next time. */
+  let lookingAtStatus = false
+  const lookAtStatus = async (): Promise<void> => {
+    if (lookingAtStatus || closed) return
+    lookingAtStatus = true
+    try {
+      const names = await readdir(statusDir).catch(() => [] as string[])
+      await Promise.all(
+        names.map(async (name) => {
+          const parsed = parseSignalName(name)
+          if (parsed?.kind !== STATUS_SIGNAL) return
+          const file = join(statusDir, name)
+          try {
+            const at = (await stat(file)).mtimeMs
+            if (at <= (statusSeen.get(name) ?? -1)) return
+            const text = await readFile(file, 'utf8')
+            JSON.parse(text)
+            statusSeen.set(name, at)
+            // Claude reruns the status line on every message, mostly with nothing new to say.
+            if (text === statusText.get(name)) return
+            statusText.set(name, text)
+            if (!closed) opts.onStatus(parsed.nodeId, text)
+          } catch {
+            // Gone, or read while being written: looked at again next time.
+          }
+        })
+      )
+    } finally {
+      lookingAtStatus = false
+    }
+  }
+  const statusPoll = setInterval(() => void lookAtStatus(), opts.statusEveryMs ?? STATUS_EVERY_MS)
+  statusPoll.unref?.()
+
   return {
     latestHook: (nodeId) => latest.get(nodeId),
     heardHook(nodeId, at = Date.now()) {
@@ -179,9 +205,11 @@ export function watchSignals(opts: {
     forget(nodeId) {
       heard.delete(nodeId)
       latest.delete(nodeId)
-      for (const kind of [...SIGNAL_EVENTS, STATUS_SIGNAL]) {
-        const file = signalFile(dir, nodeId, kind)
+      const files = [...SIGNAL_EVENTS.map((kind) => signalFile(dir, nodeId, kind)), statusFile(dir, nodeId)]
+      for (const file of files) {
         seen.delete(basename(file))
+        statusSeen.delete(basename(file))
+        statusText.delete(basename(file))
         try {
           rmSync(file, { force: true })
         } catch {
@@ -192,7 +220,7 @@ export function watchSignals(opts: {
     close() {
       closed = true
       clearInterval(poll)
-      for (const timer of statusTimers.values()) clearTimeout(timer)
+      clearInterval(statusPoll)
       watcher?.close()
       watcher = null
     }

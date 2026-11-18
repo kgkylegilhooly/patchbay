@@ -192,6 +192,8 @@ async function main() {
   await cdp.send('Performance.enable')
   // PB_PERF_SLOW=4 runs the window's CPU four times slower, as on a modest laptop.
   if (process.env.PB_PERF_SLOW) await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.PB_PERF_SLOW) })
+  // PB_PERF_HIDPI=1 draws a 2560x1440 window at twice the pixels, as a 4K screen scaled to 200% does.
+  if (process.env.PB_PERF_HIDPI) await cdp.send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: 2, mobile: false })
   const ids = Array.from({ length: N }, (_, i) => `busy${i}`)
   try {
     const cols = Math.ceil(Math.sqrt(N + 1))
@@ -242,6 +244,13 @@ async function main() {
       await cdp.send('Profiler.setSamplingInterval', { interval: 500 })
       await cdp.send('Profiler.start')
     }
+    // PB_PERF_TRACE=<file.json>: a Chromium trace of every process's threads, summed by thread and task.
+    const traceSession = process.env.PB_PERF_TRACE ? await app.browser.target().createCDPSession() : null
+    const traceEvents = []
+    if (traceSession) {
+      traceSession.on('Tracing.dataCollected', (e) => traceEvents.push(...e.value))
+      await traceSession.send('Tracing.start', { traceConfig: { includedCategories: ['toplevel', 'toplevel.flow', 'ipc', 'mojom', 'v8', 'electron', 'node', 'base', 'disabled-by-default-devtools.timeline'] }, transferMode: 'ReportEvents' })
+    }
     const mainProfile = process.env.PB_MAIN_INSPECT ? profileMain(process.env.PB_MAIN_INSPECT, Math.min(15, SECONDS - 2)) : null
     const keys = []
     const mains = []
@@ -274,6 +283,23 @@ async function main() {
       const top = summarizeProfile(prof)
       fs.writeFileSync(process.env.PB_PERF_PROFILE, JSON.stringify(top, null, 2))
       console.log('TOP self time in the window:\n' + top.slice(0, 25).join('\n'))
+    }
+    if (traceSession) {
+      const done = new Promise((r) => traceSession.once('Tracing.tracingComplete', r))
+      await traceSession.send('Tracing.end')
+      await done
+      const names = new Map()
+      for (const e of traceEvents) if (e.ph === 'M' && (e.name === 'thread_name' || e.name === 'process_name')) names.set(e.name === 'thread_name' ? `${e.pid}:${e.tid}` : `${e.pid}`, e.args.name)
+      const sums = new Map()
+      for (const e of traceEvents) {
+        if (e.ph !== 'X' || !e.dur) continue
+        const where = e.args?.src_func ? ` (${e.args.src_file?.split(/[\\/]/).pop()}:${e.args.src_func})` : ''
+        const key = `${names.get(`${e.pid}`) ?? e.pid} / ${names.get(`${e.pid}:${e.tid}`) ?? e.tid} / ${e.name}${where}`
+        sums.set(key, (sums.get(key) ?? 0) + e.dur / 1000)
+      }
+      const top = [...sums].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, ms]) => `${String(Math.round(ms)).padStart(7)} ms  ${k}`)
+      fs.writeFileSync(process.env.PB_PERF_TRACE, top.join('\n'))
+      console.log('TRACE top tasks (ms over the run):\n' + top.slice(0, 30).join('\n'))
     }
     if (mainProfile) console.log('TOP self time in the main process:\n' + (await mainProfile).slice(0, 30).join('\n'))
     const share = (a, b) => Math.round(((b - a) / seconds) * 100)
