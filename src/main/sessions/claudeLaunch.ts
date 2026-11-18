@@ -141,9 +141,20 @@ function programWords(line: string): string[] {
 
 type Find = (name: string) => string | null
 
+/**
+ * Recent answers from where.exe. Asking takes the main process a moment each time, and reopening ten agents with a
+ * custom command asked ten times in a row. A program that's moved or gone since is asked about again.
+ */
+const whereAnswers = new Map<string, { path: string | null; at: number }>()
+const LOCATED_KEPT_MS = 5 * 60_000
+
 function locate(name: string): string | null {
   if (/[\\/]/.test(name)) return existsSync(name) ? name : null
-  return whereIs(name)
+  const known = whereAnswers.get(name.toLowerCase())
+  if (known && Date.now() - known.at < LOCATED_KEPT_MS && known.path && existsSync(known.path)) return known.path
+  const path = whereIs(name)
+  whereAnswers.set(name.toLowerCase(), { path, at: Date.now() })
+  return path
 }
 
 /** Every argument stays one literal argument: nothing in a prompt can run as a shell command. */

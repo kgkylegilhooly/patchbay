@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 export interface RunOptions {
   cwd?: string
@@ -20,10 +20,19 @@ export interface RunResult {
   missing: boolean
 }
 
-/** Windows ends a process without its children, so a stuck helper such as a credential prompt would live on. */
+/**
+ * Windows ends a process without its children, so a stuck helper such as a credential prompt would live on. taskkill
+ * runs alongside, never waited on: this runs in the app's main process, which waiting for it would freeze, and a git
+ * fetch stuck behind a firewall is exactly when it's needed. The program's own close still settles the run.
+ */
 function endTree(pid: number | undefined, child: { kill(signal?: NodeJS.Signals): boolean }): void {
   if (process.platform === 'win32' && pid) {
-    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', timeout: 10000, windowsHide: true })
+    try {
+      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+      killer.on('error', () => child.kill('SIGKILL'))
+    } catch {
+      child.kill('SIGKILL')
+    }
   } else {
     child.kill('SIGKILL')
   }
