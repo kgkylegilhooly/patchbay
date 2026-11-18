@@ -5,7 +5,7 @@ import { describe, afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { reduce } from '../../src/core/canvas/reduce'
 import { tokenFor } from '../../src/main/control/server'
 import { createSessionHost, SessionStartError } from '../../src/main/sessions/host'
-import { createNodeRunner, type NodeRunnerContext } from '../../src/main/sessions/nodeRunner'
+import { consolesFull, CONSOLES_FULL, createNodeRunner, type NodeRunnerContext } from '../../src/main/sessions/nodeRunner'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import type { CanvasStore, NodeError, SessionHost, SessionSpec } from '../../src/shared/contract'
 import type { CanvasDoc, CanvasNode, ClaudeNode, TerminalNode } from '../../src/shared/model'
@@ -38,6 +38,8 @@ interface FakeHost extends SessionHost {
   failNext(e: Error): void
   /** Output from a session, as the program would print it. */
   emit(id: string, data: string): void
+  /** What a snapshot of any session holds. */
+  screen: { data: string }
 }
 
 /** Records what would run. A test decides when a session exits and with what code. */
@@ -47,6 +49,7 @@ function fakeHost(): FakeHost {
   const outputs: Array<(id: string, data: string, seq: number) => void> = []
   const specs: SessionSpec[] = []
   let failure: Error | null = null
+  const screen = { data: 'SCROLLBACK' }
   const exit = (id: string, code: number): void => {
     if (!running.delete(id)) return
     for (const cb of exits) cb(id, code)
@@ -76,7 +79,8 @@ function fakeHost(): FakeHost {
       exit(id, -1)
     },
     isRunning: (id) => running.has(id),
-    snapshot: () => ({ data: 'SCROLLBACK', seq: 1 }),
+    screen,
+    snapshot: () => ({ data: screen.data, seq: 1 }),
     onOutput(cb) {
       outputs.push(cb)
     },
@@ -634,4 +638,31 @@ test('a terminal opened or restarted by hand still runs its command', async () =
   const { runner, host } = setup([terminal({ command: 'npm test' })], { shell: 'cmd.exe' })
   await runner.startNode('t')
   expect(JSON.stringify(host.specs[0].args)).toContain('npm test')
+})
+
+describe("Git Bash's limit on consoles", () => {
+  const dump =
+    '      0 [main] bash 52684 C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe: *** fatal error - console device allocation failure - too many consoles in use, max consoles is 32\r\n    375 [main] bash 52684 cygwin_exception::open_stackdumpfile: Dumping stack trace to bash.exe.stackdump\r\n'
+
+  test('a terminal that dies of it says why, and what to do', async () => {
+    const { runner, host } = setup([terminal()])
+    await runner.startNode('t')
+    host.screen.data = `\x1b]0;C:\\Program Files\\Git\\bin\\bash.exe\x07${dump}`
+    host.exit('t', 1)
+    expect(runner.errors().t).toEqual({ code: 'spawn-failed', message: CONSOLES_FULL })
+    // Restarting clears it.
+    host.screen.data = ''
+    await runner.startNode('t')
+    expect(runner.errors().t).toBeUndefined()
+  })
+
+  test('a terminal that ends any other way, or one that only mentions it long ago, gets no such message', async () => {
+    const { runner, host } = setup([terminal()])
+    await runner.startNode('t')
+    host.screen.data = 'exit\r\n'
+    host.exit('t', 1)
+    expect(runner.errors().t).toBeUndefined()
+    expect(consolesFull(dump + 'x'.repeat(5000))).toBe(false)
+    expect(consolesFull(dump)).toBe(true)
+  })
 })

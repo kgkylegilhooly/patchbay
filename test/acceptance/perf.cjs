@@ -202,7 +202,10 @@ async function main() {
     await L.waitFor('the shell', async () => (await L.snapshot(page, 'typing')).includes('$'), 60000)
     if (!AGENTS) {
       for (const [i, id] of ids.entries()) await L.openNode(page, L.terminal(id, cwd, ...place(i)))
-      await L.waitFor('the shells', async () => (await Promise.all(ids.map((id) => L.snapshot(page, id)))).every((s) => s.includes('$')), 60000)
+      await L.waitFor('the shells', async () => {
+        const waiting = (await Promise.all(ids.map((id) => L.snapshot(page, id)))).flatMap((s, i) => (s.includes('$') ? [] : [ids[i]]))
+        return waiting.length ? Promise.reject(new Error(`no prompt yet in ${waiting.join(', ')}`)) : true
+      }, 60000)
     }
     await L.fitView(page)
     await L.sleep(2000)

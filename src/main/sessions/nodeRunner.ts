@@ -134,6 +134,17 @@ export function runArgs(shell: string, command: string): string[] {
 
 const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
+/**
+ * Git Bash's runtime allows 32 consoles in use at once across the whole PC: every Git Bash terminal, every agent while
+ * its shell tool runs a command, and Git Bash windows outside Patchbay. The next one fails with this, in its output.
+ */
+export const CONSOLES_FULL =
+  "Git Bash couldn't start: it allows only 32 consoles open at once across this PC, and other terminals, agents' commands or Git Bash windows are using them all. Close some, then press Restart."
+
+export function consolesFull(output: string): boolean {
+  return /too many consoles in use, max consoles is \d+/.test(output.slice(-4000))
+}
+
 export function createNodeRunner({
   host,
   tracker,
@@ -191,6 +202,8 @@ export function createNodeRunner({
   host.onExit((id, code) => {
     started.delete(id)
     approvals?.clearNode(id)
+    // Git Bash can only have so many consoles open across the whole PC, and one more ends at once with a stack dump.
+    if (code !== 0 && consolesFull(host.snapshot(id).data)) setError(id, { code: 'spawn-failed', message: CONSOLES_FULL })
     if (runResults.get(id)?.running) {
       setRun(id, { running: false, exitCode: code, stoppedByYou: stoppingRuns.delete(id), at: Date.now() })
     }

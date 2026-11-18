@@ -137,6 +137,13 @@ rather; the question goes away by itself if the window recovers. If the window c
 you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
 in the log above, which is the thing to share if Patchbay misbehaves.
 
+### Git Bash's limit of 32 consoles
+
+Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent
+holds one while its shell tool runs a command, and so do Git Bash windows outside Patchbay. Past that, a new Git Bash
+ends at once, and the window says so; agents' shell commands fail the same way. Close some terminals, or give some of
+them another shell in `settings.json` (below), and press Restart.
+
 `settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
 
 ```json
