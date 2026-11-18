@@ -4,6 +4,8 @@ import { writeAtomic } from '../../core/persist/atomicFile'
 import type { AgentAccount, BudgetState, CodexUsage, NodeUsage, PlanUsage, UsageReport, UsageState, UsageWindow } from '../../shared/usage'
 
 const SAVE_DELAY_MS = 2000
+/** How stale "updated" may get while the limits stay the same. */
+const PLAN_FRESH_MS = 60_000
 
 export interface UsageService {
   report(nodeId: string, report: UsageReport): void
@@ -91,7 +93,11 @@ export function createUsageService({ dataDir, now = Date.now }: { dataDir: strin
       const before = JSON.stringify([nodes.get(nodeId), plan])
       if (Object.keys(own).length) nodes.set(nodeId, { ...nodes.get(nodeId), ...own })
       if (fiveHour || sevenDay) {
-        plan = { ...plan, ...(fiveHour ? { fiveHour } : {}), ...(sevenDay ? { sevenDay } : {}), at: now() }
+        const next = { ...plan, ...(fiveHour ? { fiveHour } : {}), ...(sevenDay ? { sevenDay } : {}) }
+        // Every status line carries the limits, mostly unchanged. Only new numbers, or a minute passing, count as a
+        // change: stamping each one rewrote usage.json every two seconds while agents worked.
+        const same = plan && JSON.stringify([next.fiveHour, next.sevenDay]) === JSON.stringify([plan.fiveHour, plan.sevenDay])
+        if (!same || now() - (plan?.at ?? 0) >= PLAN_FRESH_MS) plan = { ...next, at: now() }
       }
       if (JSON.stringify([nodes.get(nodeId), plan]) !== before) changed()
     },

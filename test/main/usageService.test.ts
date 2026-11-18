@@ -96,11 +96,24 @@ test('listeners hear a change, and not a report that changed nothing', () => {
   expect(changed).toHaveBeenCalledTimes(1)
 })
 
-test('a limit report with the same numbers refreshes their age', () => {
+test('a limit report with the same numbers refreshes their age once a minute, without telling anyone in between', () => {
   const s = service()
+  let told = 0
+  s.onChange(() => told++)
   s.report('a', { fiveHour: window(10) })
+  const first = time
+  told = 0
   time += 5000
   s.report('a', { fiveHour: window(10) })
+  expect(s.state().plan?.at).toBe(first)
+  expect(told).toBe(0)
+  time += 60_000
+  s.report('a', { fiveHour: window(10) })
+  expect(s.state().plan?.at).toBe(time)
+  expect(told).toBe(1)
+  // New numbers count at once.
+  time += 1000
+  s.report('a', { fiveHour: window(11) })
   expect(s.state().plan?.at).toBe(time)
 })
 

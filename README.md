@@ -179,7 +179,10 @@ the longest the window goes without drawing, and the CPU of each process and of 
 `PB_PERF_KIND=claude` the windows are agents doing what Claude does as it works: redrawing, its status line, hooks
 around each tool call and a growing transcript. `PB_PERF_SLOW=4` runs the window four times slower, as on a modest
 laptop. `perf-bursts.cjs` times the moments every window has a lot to do at once: all of them reprinting their whole
-conversation, being resized, and being rebuilt when you come back to a project. Both use no quota.
+conversation, being resized, and being rebuilt when you come back to a project. `perf-hidden.cjs` checks a minimized
+window does next to nothing while busy windows keep printing, then catches up at once, and `perf-reopen.cjs` times
+reopening a canvas of twenty terminals with full histories. None of these use quota. `perf.cjs` can also trace every
+process's threads (`PB_PERF_TRACE=<file>`) and draw at 4K scale (`PB_PERF_HIDPI=1`).
 
 `test/acceptance/host.cjs` checks that sessions outlive the app. It uses no quota unless you add `--real-claude`, and
 `--packaged` runs it against the packaged build. `test/acceptance/quitloop.cjs` repeats quitting and counts how often

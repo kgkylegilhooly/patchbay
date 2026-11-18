@@ -239,7 +239,9 @@ export interface ScrollbackSaver {
 export function createScrollbackSaver({
   snapshot,
   write,
-  intervalMs = 2000
+  // The saved copy is only for when the app and its session host both stop at once, as in a restart of the PC, and
+  // quitting saves it all anyway. Every 2 s, ten busy terminals rewrote 5 MB a second, each write scanned by antivirus.
+  intervalMs = 15_000
 }: {
   snapshot: (id: string) => string
   write: (id: string, data: string) => Promise<void>

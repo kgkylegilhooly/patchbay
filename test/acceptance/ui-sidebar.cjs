@@ -27,7 +27,9 @@ async function main() {
       const here = await U.rowIds(page, '[data-project-section="p2"]')
       c.check('Sessions in the other project are listed', here.includes('w-term') && here.includes('w-idle'), here)
       c.check('A group section stays inside its project', await page.$eval('[data-project-section="p1"]', (s) => [...s.querySelectorAll('.sidebar-group')].some((g) => g.textContent.includes('Backend'))))
-      c.check('Rows have a project badge and a context pill', await page.$eval('[data-project-section="p1"] [data-session="needs"]', (r) => !!r.querySelector('.project-badge') && /71%/.test(r.querySelector('.session-context')?.textContent ?? '')))
+      // Usage is read from status lines once a second, so the pill can follow the status by a moment.
+      const pill = await L.waitFor('the context pill', () => page.$eval('[data-project-section="p1"] [data-session="needs"]', (r) => !!r.querySelector('.project-badge') && /71%/.test(r.querySelector('.session-context')?.textContent ?? '')), 5000).catch(() => false)
+      c.check('Rows have a project badge and a context pill', pill)
       await page.click('[data-session="w-term"]')
       await L.waitFor('the other project to show', async () => (await U.active(page)) === 'p2', 5000, 50)
       await L.sleep(500)
