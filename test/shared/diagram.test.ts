@@ -90,3 +90,12 @@ test('a request and its response between the same boxes keep the boxes in order,
   const label = (t: string) => shapes.find((s) => s.type === 'text' && s.text === t) as { y: number }
   expect(Math.abs(label('1. Request').y - label('6. Response').y)).toBeGreaterThan(15)
 })
+
+test('a label is held to lines of a readable width, so a few short lines pass where one long run of text would not', () => {
+  // What an agent drew for real, refused by the old 80-character total though each line is short.
+  const label = '2. Server issues token\nhashed, single-use, 30 min expiry\nsame reply for any email'
+  expect(label.length).toBeGreaterThan(80)
+  expect(readDiagram({ boxes: [{ id: 'issue', label }] }).boxes[0].label).toBe(label)
+  expect(() => readDiagram({ boxes: [{ id: 'long', label: 'x'.repeat(61) }] })).toThrow(/A line in the label of box "long" is over 60 characters\. Use \\n to break it/)
+  expect(() => readDiagram({ boxes: [{ id: 'tall', label: Array(7).fill('row').join('\n') }] })).toThrow(/more than 6 lines/)
+})

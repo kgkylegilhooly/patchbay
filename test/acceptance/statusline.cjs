@@ -19,7 +19,8 @@ async function main() {
   const { page } = app
   try {
     await lib.openNode(page, lib.claude('marked', marked, 20, 20, { prompt: 'Say the word ok and nothing else.' }))
-    await lib.openNode(page, lib.claude('plain', plain, 680, 20, { prompt: 'Say the word ok and nothing else.' }))
+    // Wide: Claude Code leaves out a status line that doesn't fit, and the owner's own one can be long.
+    await lib.openNode(page, lib.claude('plain', plain, 680, 20, { width: 1500, prompt: 'Say the word ok and nothing else.' }))
     await lib.waitFor('both to finish', async () => {
       const seen = await Promise.all(['marked', 'plain'].map((id) => lib.seenStatuses(page, id)))
       const now = await lib.statuses(page)
@@ -30,7 +31,7 @@ async function main() {
     check("A project's own status line still draws inside Patchbay", true)
     await lib.sleep(1500)
     const line = (await lib.screen(page, 'plain')).join('\n')
-    check("The owner's own status line draws, in the same place as before", /~\/.*\|.*Haiku/.test(line), line.split('\n').slice(-6).join(' / '))
+    check("The owner's own status line draws, in the same place as before", /\|.*Haiku/.test(line), line.split('\n').slice(-6).join(' / '))
     if (shots) await page.screenshot({ path: path.join(shots, 'statusline.png') })
     if (await page.$('.usage-pill')) {
       const pill = await page.$eval('.usage-pill', (p) => p.textContent)

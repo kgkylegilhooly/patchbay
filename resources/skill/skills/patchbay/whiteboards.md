@@ -47,7 +47,7 @@ patchbay draw --node <board id> --diagram-file - <<'EOF'
 EOF
 ```
 
-- Each box needs an `id`; its `label` (up to 80 characters, `\n` for a new line) defaults to the id. Colors are
+- Each box needs an `id`; its `label` (up to 6 lines of 60 characters, `\n` for a new line) defaults to the id. Colors are
   black, red, orange, green, blue and purple. `direction` is `right` (the default) or `down`.
 - Up to 40 boxes and 80 arrows. Arrows go between box ids. A mistake is refused with what to fix.
 - It works on boards you opened or that are linked to you, and only ever adds. The person sees that you drew and can

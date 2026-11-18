@@ -57,6 +57,11 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   takeMissedHooks?: (id: string) => MissedHook[]
   /** When a session last signalled a tool call ending through a file. See signals.ts. */
   latestSignal?: (id: string) => number | undefined
+  /**
+   * Waits until a Codex session can safely start. Two Codex processes setting up its database at once can crash the
+   * one that's starting, and Patchbay runs Codex itself in the background to read its limits.
+   */
+  beforeCodexStart?: () => Promise<void>
 }
 
 function taskkill(pid: number): Promise<void> {
@@ -216,6 +221,7 @@ export function createNodeRunner({
     const token = tokenFor(ctx.secret, node.id)
     let launch: ClaudeLaunch
     if (agentOf(node) === 'codex') {
+      await ctx.beforeCodexStart?.()
       const codex = now.codexCommand?.trim() ? undefined : (ctx.codex ?? (ctx.locateCodex ?? resolveCodex)())
       launch = buildCodexLaunch(node, { ...now, codex, token })
     } else {

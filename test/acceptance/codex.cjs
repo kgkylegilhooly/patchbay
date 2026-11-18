@@ -78,7 +78,25 @@ async function main() {
       return /Called patchbay|patchbay\.patchbay/.test(s) && (await L.statusOf(page, 'cx')) === 'idle' ? s : null
     }, 150000, 1500).catch((e) => e.message)
     console.log('ASKED', JSON.stringify(asked))
-    c.check('Patchbay shows the tool call as needing you, with approval buttons', asked?.status === 'needs-you', asked)
+    // `patchbay list` only looks, so Patchbay lets it through without asking, as it does for Claude.
+    c.check('A patchbay call that only looks goes through without asking', asked === null, asked)
+
+    // One that changes the canvas still comes to the person, in Patchbay's approval buttons.
+    await L.submit(page, 'cx', 'Call the patchbay tool with args ["sticky", "--text", "codex was here"] and reply with only the word done.')
+    asked = null
+    await L.waitFor('Codex to add the note', async () => {
+      await answerSetup('cx')
+      const pending = await L.approvals(page, 'cx')
+      if (pending.length) {
+        asked ??= { status: await L.statusOf(page, 'cx'), tool: pending[0].tool, summary: pending[0].summary }
+        await page.evaluate((r) => window.patchbay.answerApproval(r, 'allow'), pending[0].requestId)
+      }
+      const doc = await L.doc(page)
+      return doc.nodes.some((n) => n.kind === 'sticky' && n.text === 'codex was here') && (await L.statusOf(page, 'cx')) === 'idle'
+    }, 150000, 1500).catch((e) => e.message)
+    console.log('ASKED for the note', JSON.stringify(asked))
+    c.check('A patchbay call that changes the canvas shows as needing you, with approval buttons', asked?.status === 'needs-you', asked)
+    c.check('Allowed, it goes through and Codex carries on', (await L.doc(page)).nodes.some((n) => n.kind === 'sticky' && n.text === 'codex was here'))
     const reply = typeof answered === 'string' ? answered : ''
     c.check('Codex reaches Patchbay through the patchbay tool and reads its own id', /\bcx\b/.test(reply.split('patchbay.patchbay').pop() ?? ''), reply.slice(-600) || answered)
     console.log('SCREEN after patchbay:\n' + (await text('cx')).split('\n').filter((l) => l.trim()).slice(-14).join('\n'))

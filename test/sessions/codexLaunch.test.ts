@@ -32,6 +32,8 @@ const ctx = (over: Partial<CodexLaunchContext> = {}): CodexLaunchContext => ({
 test('every hook is a -c override whose command never changes between nodes, so Codex asks to trust it only once', () => {
   const args = codexHookArgs('C:\\Program Files\\Patchbay\\resources\\hook.cjs')
   expect(args).toHaveLength(CODEX_HOOK_EVENTS.length * 2)
+  // Nothing needs a hook before each tool call, and it started Node every time.
+  expect(args.some((a) => a.startsWith('hooks.PreToolUse='))).toBe(false)
   expect(args[1]).toBe('hooks.SessionStart=[{hooks=[{type="command",command="node \\"C:/Program Files/Patchbay/resources/hook.cjs\\" SessionStart"}]}]')
   const a = buildCodexLaunch(node({ id: 'a' }), ctx()).args.filter((x) => x.startsWith('hooks.'))
   const b = buildCodexLaunch(node({ id: 'b' }), ctx()).args.filter((x) => x.startsWith('hooks.'))

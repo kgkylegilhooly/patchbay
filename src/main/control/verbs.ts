@@ -251,7 +251,13 @@ export function createVerbs({
 
   const reachable = (caller: string, id: string, action: string): CanvasNode => {
     const node = existing(id)
-    if (!accessOf(caller, node)) refuse(`Can't ${action} node "${id}": it isn't linked to you and you didn't open it.`)
+    // Agents told only no kept trying, one node after another. What they can do instead stops that.
+    if (!accessOf(caller, node)) {
+      refuse(
+        `Can't ${action} node "${id}": it isn't linked to you and you didn't open it. \`patchbay list\` still shows its title, kind and folder. ` +
+          'To see what it shows, ask the person to draw a cable between it and you.'
+      )
+    }
     return node
   }
 

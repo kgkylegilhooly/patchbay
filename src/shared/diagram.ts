@@ -16,7 +16,11 @@ export interface DiagramSpec {
 const COLORS = { black: BOARD_COLORS[0], red: BOARD_COLORS[1], orange: BOARD_COLORS[2], green: BOARD_COLORS[3], blue: BOARD_COLORS[4], purple: BOARD_COLORS[5] }
 type ColorName = keyof typeof COLORS
 
-export const DIAGRAM_LIMITS = { boxes: 40, arrows: 80, label: 80, title: 120 }
+/**
+ * A box's label is held to lines of a readable width rather than to a total length, which refused three short lines that
+ * read well and so pushed agents toward one long line.
+ */
+export const DIAGRAM_LIMITS = { boxes: 40, arrows: 80, label: 80, labelLine: 60, labelLines: 6, title: 120 }
 const INK = 2
 const LETTER = textSize(INK) * 0.56
 const LINE = textSize(INK) * 1.25
@@ -47,7 +51,9 @@ export function readDiagram(raw: unknown): DiagramSpec {
     if (ids.has(box.id as string)) fail(`Two boxes have the id "${box.id}".`)
     ids.add(box.id as string)
     const label = typeof box.label === 'string' && box.label.trim() ? box.label : (box.id as string)
-    if (label.length > DIAGRAM_LIMITS.label) fail(`The label of box "${box.id}" is over ${DIAGRAM_LIMITS.label} characters.`)
+    const lines = label.split('\n')
+    if (lines.length > DIAGRAM_LIMITS.labelLines) fail(`The label of box "${box.id}" has more than ${DIAGRAM_LIMITS.labelLines} lines.`)
+    if (lines.some((l) => l.length > DIAGRAM_LIMITS.labelLine)) fail(`A line in the label of box "${box.id}" is over ${DIAGRAM_LIMITS.labelLine} characters. Use \\n to break it into shorter lines.`)
     if (box.color !== undefined && !(typeof box.color === 'string' && box.color in COLORS)) fail(`Box "${box.id}" has an unknown color. Use one of: ${Object.keys(COLORS).join(', ')}.`)
     return { id: box.id as string, label, ...(box.color ? { color: box.color as ColorName } : {}) }
   })

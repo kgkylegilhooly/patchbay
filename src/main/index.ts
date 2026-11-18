@@ -55,6 +55,7 @@ import { readPage } from './usage/pageSource'
 import { createUsageSecret } from './usage/usageSecret'
 import { createUsageService } from './usage/usageService'
 import { readClaudeAccount, readCodexUsage } from './usage/agentAccounts'
+import { createCodexGate } from './usage/codexGate'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
 import { autoUpdater } from 'electron-updater'
@@ -173,8 +174,10 @@ function renderWhiteboard(svg: string, width: number, height: number): Promise<u
 }
 
 function focusWindow(): void {
-  if (!mainWindow || QUIET_WINDOW) return
+  if (!mainWindow) return
   if (mainWindow.isMinimized()) mainWindow.restore()
+  // A test run's window comes back as it first appeared: shown, off to the side, without taking focus.
+  if (QUIET_WINDOW) return void mainWindow.showInactive()
   mainWindow.show()
   mainWindow.focus()
 }
@@ -302,6 +305,8 @@ async function boot(): Promise<void> {
   // Hooks that fire many times a turn, and the status line, leave a file here instead of starting Node. See signals.ts.
   const signalDir = claudeRunsBash() ? join(dataDir, 'sessions', 'signals') : undefined
   let signals: SignalWatcher | null = null
+  // Keeps Patchbay's own run of Codex, which reads its limits, apart from a Codex session starting. See codexGate.ts.
+  const codexGate = createCodexGate()
   const runner = createNodeRunner({
     host,
     tracker,
@@ -313,6 +318,7 @@ async function boot(): Promise<void> {
       statusLineScript: join(resourceDir, 'statusline.cjs'),
       signalDir,
       latestSignal: (id) => signals?.latestHook(id),
+      beforeCodexStart: () => codexGate.sessionStarting(),
       pluginDir: join(resourceDir, 'skill'),
       cliDir: join(resourceDir, 'cli'),
       endpointFile,
@@ -506,7 +512,10 @@ async function boot(): Promise<void> {
       return // Codex isn't installed, so it has no section.
     }
     try {
-      usage.setCodex(await readCodexUsage(codex))
+      const read = await codexGate.read(() => readCodexUsage(codex))
+      if (read) usage.setCodex(read)
+      // A Codex session has just started, so this waits until it has settled rather than risk crashing it.
+      else setTimeout(() => void refreshAgents(), codexGate.waitMs() + 1000).unref()
     } catch (e) {
       usage.setCodex({ problem: `Codex didn't say its limits: ${(e as Error).message}`, at: Date.now() })
     }

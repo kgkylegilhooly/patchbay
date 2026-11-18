@@ -840,3 +840,13 @@ test('titles work in lists too, as for wait and arrange', async () => {
   const r = (await verbs('me', 'wait', { nodes: ['writer'], timeout: 1 })) as { nodes: Record<string, string> }
   expect(Object.keys(r.nodes)).toEqual(['a1'])
 })
+
+test('reading a node that is not yours says what can be done instead, so an agent does not keep trying others', async () => {
+  const store = memoryStore([claudeNode('me'), terminalNode('web', { title: 'Web server' })])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }) })
+  await refused(verbs('me', 'read', { node: 'web' }), /isn't linked to you.*patchbay list.*title, kind and folder.*cable/s)
+  // And list does show it, as promised.
+  expect(JSON.stringify(await verbs('me', 'list', {}))).toContain('Web server')
+})

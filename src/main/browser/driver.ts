@@ -208,7 +208,9 @@ export function createBrowserDriver({
     })
   }
 
-  const settled = (id: string): Promise<boolean> => {
+  const settled = (id: string): Promise<boolean> => settledWithin(id, TIMEOUTS.navigateMs)
+
+  const settledWithin = (id: string, ms: number): Promise<boolean> => {
     const guest = guestOf(id)
     return new Promise((resolve) => {
       const finish = (loaded: boolean): void => {
@@ -217,7 +219,7 @@ export function createBrowserDriver({
         resolve(loaded)
       }
       const stop = (): void => finish(true)
-      const timer = setTimeout(() => finish(false), TIMEOUTS.navigateMs)
+      const timer = setTimeout(() => finish(false), Math.max(0, ms))
       guest.once('did-stop-loading', stop)
       if (!guest.isLoading()) finish(true)
     })
@@ -301,10 +303,17 @@ export function createBrowserDriver({
     async navigate(id, url) {
       const guest = guestOf(id)
       change(id, { notice: null })
+      const started = Date.now()
+      let timedOut = false
       await bounded(load(guest, url), TIMEOUTS.navigateMs, 'to load').catch((e) => {
         if (!(e instanceof RpcRefusal) || !e.message.startsWith('The page took')) throw e
+        timedOut = true
       })
-      return !guest.isDestroyed() && !guest.isLoading()
+      if (guest.isDestroyed()) return false
+      // The document can be in while the page is still loading what it needs. Answering then said "loaded": false,
+      // and an agent went on to use the page before it was ready. It waits for the rest, within the same limit.
+      if (timedOut || !guest.isLoading()) return !guest.isLoading()
+      return settledWithin(id, TIMEOUTS.navigateMs - (Date.now() - started))
     },
 
     async step(id, step) {

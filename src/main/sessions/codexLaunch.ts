@@ -16,8 +16,10 @@ export interface CodexLaunchContext extends SessionEnvContext {
 /**
  * The events Codex reports. Each one's command never changes between launches, because Codex asks the person to trust
  * a hook once and remembers it by its exact command. The node travels in the environment instead.
+ *
+ * No PreToolUse, as for Claude: it started Node before every tool call, and PostToolUse sets everything it did.
  */
-export const CODEX_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Stop']
+export const CODEX_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop']
 
 let located: string | null = null
 
