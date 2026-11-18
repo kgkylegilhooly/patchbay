@@ -43,7 +43,7 @@ export function planRestore(doc: CanvasDoc): RestorePlan {
   const plan: RestorePlan = { claude: [], terminals: [], held: [] }
   for (const node of doc.nodes) {
     if (node.kind === 'terminal') plan.terminals.push(node.id)
-    else if (node.kind === 'claude') (node.after.length > 0 ? plan.held : plan.claude).push(node.id)
+    else if (node.kind === 'claude') (node.after.length > 0 || node.setupWait ? plan.held : plan.claude).push(node.id)
   }
   return plan
 }

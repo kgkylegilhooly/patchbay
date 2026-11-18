@@ -108,6 +108,16 @@ const seedApproval = async (page) => {
   await sleep(600)
 }
 
+/** Makes the project's folder a git repository with one commit, as a worktree needs. */
+const gitRepoProject = async (page) => {
+  const folder = await page.evaluate(async () => (await window.patchbay.getDoc()).projects[0].folder)
+  const { execFileSync } = require('node:child_process')
+  const git = (...args) => execFileSync('git', ['-C', folder, '-c', 'user.name=Scene', '-c', 'user.email=scene@example.invalid', ...args], { stdio: 'ignore', windowsHide: true })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-q', '-m', 'Scene')
+}
+
 /** Each one prepares what the picture shows, once the seeded canvas is up. Selectors that only exist after a change are guarded. */
 const scenes = {
   canvas: async () => {},
@@ -212,6 +222,34 @@ const scenes = {
     await page.keyboard.press('r')
     await page.keyboard.up('Control')
     await sleep(200)
+  },
+  // The recipe picker's preview, from the canvas menu, in a project folder that's a git repository.
+  recipes: async (page) => {
+    await gitRepoProject(page)
+    await rightClickCanvas(page)
+    await sleep(200)
+    if (!(await page.$('.menu-panel [data-cmd="new-from-recipe"]'))) return
+    await page.click('.menu-panel [data-cmd="new-from-recipe"]')
+    await page.waitForSelector('[data-recipe="Implement and review"]', { timeout: 5000 })
+    await page.type('.recipe-params textarea', 'Add dark mode to the settings page')
+    await sleep(300)
+  },
+  // A recipe started with a setup step that fails, so its agents stay queued and say why. Nothing real starts.
+  'recipes-failed': async (page) => {
+    await gitRepoProject(page)
+    if (!(await page.evaluate(() => !!window.patchbayRecipes))) return
+    await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      // Only the recipe's nodes, so the picture can show them at a readable size.
+      await window.patchbay.dispatch({ op: 'removeNodes', ids: doc.nodes.filter((n) => n.projectId === doc.activeProjectId).map((n) => n.id), at: Date.now() })
+      const folder = doc.projects[0].folder
+      // A git command that always fails, so the picture shows a failed setup without installing anything.
+      const params = { task: 'Add dark mode', branch: 'dark-mode', repo: folder, cwd: folder, worktree: true, runs: { setup: ['git', 'rev-parse', '--verify', 'no-such-branch'] } }
+      await window.patchbayRecipes.start({ projectId: doc.activeProjectId, ref: 'built-in:Implement and review', params, at: { x: 0, y: 0 } })
+    })
+    await page.waitForSelector('[data-setup-hold="failed"]', { timeout: 20000 })
+    await sleep(800)
+    await fitAll(page)
   },
   team: async (page) => {
     await rightClickCanvas(page)

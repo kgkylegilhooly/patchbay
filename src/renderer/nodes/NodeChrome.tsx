@@ -11,6 +11,7 @@ import { contextLabel } from '../usageView'
 import { runDot, runFailed, runLabel } from './runView'
 import { StatusBadge, StatusDot } from './StatusBadge'
 import { WindowTools } from './WindowTools'
+import { SetupHold } from './SetupHold'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -278,6 +279,7 @@ export function NodeChrome({
       )}
       <Approval nodeId={node.id} />
       {status === 'queued' && node.kind === 'claude' && node.after.length > 0 && <Held node={node} />}
+      <SetupHold node={node} />
       <div className="unit-body">{children}</div>
     </div>
   )

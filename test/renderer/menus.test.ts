@@ -140,7 +140,7 @@ describe('icons and shared ids', () => {
   test('New trigger is in the canvas menu, with an icon, and in the File menu and the palette', () => {
     const newTriggerForm = vi.fn()
     const c = { ...commands, newTriggerForm } as Commands
-    expect(canvasExtensions(c, at).map((i) => [i.id, i.icon])).toEqual([['new-trigger', 'trigger']])
+    expect(canvasExtensions(c, at).map((i) => [i.id, i.icon])).toEqual([['new-trigger', 'trigger'], ['new-from-recipe', 'team']])
     find(canvasMenu(c, state, at), 'new-trigger')?.run()
     expect(newTriggerForm).toHaveBeenCalledWith(at)
     expect(find(fileMenu(commands, state), 'new-trigger')).toBeDefined()
