@@ -199,3 +199,11 @@ test('a status line written many times a second is read at most once a second, a
   await sleep(1300)
   expect(seen.length).toBe(count)
 })
+
+test('a session from the build before, writing its status line beside the tool signals, is still read', async () => {
+  const seen: string[] = []
+  watcher = watchSignals({ dir, onHook: () => {}, onStatus: (id, text) => seen.push(`${id} ${text}`), pollMs: 60_000, statusEveryMs: 100 })
+  writeFileSync(signalFile(dir, 'old', 'status'), '{"session_id":"legacy"}')
+  await until(() => seen.length > 0)
+  expect(seen).toEqual(['old {"session_id":"legacy"}'])
+})

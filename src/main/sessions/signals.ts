@@ -101,7 +101,10 @@ export function watchSignals(opts: {
     const parsed = parseSignalName(name)
     if (parsed && parsed.kind !== STATUS_SIGNAL) latest.set(parsed.nodeId, Math.max(latest.get(parsed.nodeId) ?? 0, at))
   }
-  const statusSeen = timesIn(statusDir)
+  /** By full path, as status lines are read from two folders. See lookAtStatus. */
+  const statusSeen = new Map<string, number>()
+  for (const [name, at] of timesIn(statusDir)) statusSeen.set(join(statusDir, name), at)
+  for (const [name, at] of seen) if (parseSignalName(name)?.kind === STATUS_SIGNAL) statusSeen.set(join(dir, name), at)
   const statusText = new Map<string, string>()
 
   const check = async (name: string): Promise<void> => {
@@ -169,21 +172,25 @@ export function watchSignals(opts: {
     if (lookingAtStatus || closed) return
     lookingAtStatus = true
     try {
-      const names = await readdir(statusDir).catch(() => [] as string[])
+      // Sessions started by the build before this one write their status line beside the tool signals. They're read
+      // there too, until they restart.
+      const names = [
+        ...(await readdir(statusDir).catch(() => [] as string[])).map((name) => ({ name, file: join(statusDir, name) })),
+        ...(await readdir(dir).catch(() => [] as string[])).map((name) => ({ name, file: join(dir, name) }))
+      ]
       await Promise.all(
-        names.map(async (name) => {
+        names.map(async ({ name, file }) => {
           const parsed = parseSignalName(name)
           if (parsed?.kind !== STATUS_SIGNAL) return
-          const file = join(statusDir, name)
           try {
             const at = (await stat(file)).mtimeMs
-            if (at <= (statusSeen.get(name) ?? -1)) return
+            if (at <= (statusSeen.get(file) ?? -1)) return
             const text = await readFile(file, 'utf8')
             JSON.parse(text)
-            statusSeen.set(name, at)
+            statusSeen.set(file, at)
             // Claude reruns the status line on every message, mostly with nothing new to say.
-            if (text === statusText.get(name)) return
-            statusText.set(name, text)
+            if (text === statusText.get(file)) return
+            statusText.set(file, text)
             if (!closed) opts.onStatus(parsed.nodeId, text)
           } catch {
             // Gone, or read while being written: looked at again next time.
@@ -205,11 +212,11 @@ export function watchSignals(opts: {
     forget(nodeId) {
       heard.delete(nodeId)
       latest.delete(nodeId)
-      const files = [...SIGNAL_EVENTS.map((kind) => signalFile(dir, nodeId, kind)), statusFile(dir, nodeId)]
+      const files = [...SIGNAL_EVENTS.map((kind) => signalFile(dir, nodeId, kind)), statusFile(dir, nodeId), signalFile(dir, nodeId, STATUS_SIGNAL)]
       for (const file of files) {
         seen.delete(basename(file))
-        statusSeen.delete(basename(file))
-        statusText.delete(basename(file))
+        statusSeen.delete(file)
+        statusText.delete(file)
         try {
           rmSync(file, { force: true })
         } catch {
