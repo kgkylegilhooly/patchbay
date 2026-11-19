@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Task, TaskRecords, TaskState, TaskVerification, TaskView } from '../../shared/task'
 import { bridge } from '../bridge'
 import { useStore } from '../store'
+import { openReviewInbox } from '../reviewInboxUi'
 import './tasks.css'
 
 /**
@@ -98,5 +99,5 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
 
 export function TaskOutcomes({ records }: { records?: TaskRecords }): React.JSX.Element | null {
   if (!records?.tasks.length) return null
-  return <section className="task-outcomes" aria-label="Task outcomes"><h3>Task outcomes <span>{records.tasks.length}</span></h3><div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div></section>
+  return <section className="task-outcomes" aria-label="Task outcomes"><h3>Task outcomes <span>{records.tasks.length}</span> <button className="git-mini" data-cmd="review-inbox" onClick={() => openReviewInbox()}>Review inbox</button></h3><div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div></section>
 }

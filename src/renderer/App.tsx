@@ -48,6 +48,7 @@ import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
+import { ReviewInboxLayer } from './ReviewInbox'
 import { RecipeLayer } from './RecipeLayer'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -497,6 +498,7 @@ function Canvas(): React.JSX.Element | null {
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}
+        <ReviewInboxLayer />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>
