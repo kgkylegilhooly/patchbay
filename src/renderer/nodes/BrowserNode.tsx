@@ -251,7 +251,7 @@ function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Element {
         <details><summary>Observed actions ({a.actions.length})</summary><ol>{a.actions.map((s, i) => <li key={i}>{new Date(s.at).toLocaleTimeString()} · {s.action} · {s.state}<br /><small>{s.url} · page {s.pageId}</small></li>)}</ol></details>
         <details><summary>Observed diagnostics ({a.diagnostics.length})</summary>
           <p>Since recording began. Console text, request headers and bodies are omitted for privacy. Empty logs are not proof of success.</p>
-          {a.diagnostics.map((d, i) => <p key={i}>{new Date(d.at).toLocaleTimeString()} · {d.kind} · {d.message} {d.status ?? ''}<br />{d.method} {d.url}<br /><small>Page {d.pageId} · {d.pageUrl} · attempt {d.attemptId}</small></p>)}
+          {a.diagnostics.map((d, i) => <p key={i}>{new Date(d.at).toLocaleTimeString()} · {d.kind} · {d.message} {d.status ?? d.failure ?? ''}<br />{d.method} {d.url}<br /><small>Page {d.pageId} · {d.pageUrl} · attempt {d.attemptId}</small></p>)}
         </details>
         </>}
       </details>)}

@@ -17,10 +17,15 @@ export class EvidenceNetwork {
     }
     this.requests.set(d.id, { ...origin, pageUrl: evidenceUrl(d.resourceType === 'mainFrame' ? d.url : origin.pageUrl), url: evidenceUrl(d.url), method: /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/.test(d.method) ? d.method : 'OTHER' })
   }
-  end(d: { id: number; statusCode?: number }, failed: boolean): void {
+  end(d: { id: number; statusCode?: number; error?: string }, failed: boolean): void {
     const origin = this.requests.get(d.id)
     this.requests.delete(d.id)
     if (!origin || (!failed && (d.statusCode ?? 0) < 400)) return
-    this.record({ ...origin, at: Date.now(), kind: 'network', message: failed ? 'Request failed' : 'HTTP failure', status: d.statusCode })
+    this.record({ ...origin, at: Date.now(), kind: 'network', message: failed ? 'Request failed' : 'HTTP failure', status: d.statusCode, ...(failed ? { failure: failureName(d.error) } : {}) })
   }
+}
+
+/** Chromium names a failure from a fixed list, such as net::ERR_CONNECTION_REFUSED. Anything else isn't kept. */
+export function failureName(error: string | undefined): string {
+  return error && /^net::ERR_[A-Z0-9_]{1,60}$/.test(error) ? error : 'other'
 }

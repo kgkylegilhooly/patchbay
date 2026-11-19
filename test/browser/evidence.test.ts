@@ -175,3 +175,27 @@ test('offscreen and takeover after a wait never start an attempt or take a scree
   expect(evidence.start).not.toHaveBeenCalled()
   expect(evidence.capture).not.toHaveBeenCalled()
 })
+
+test("a failed request keeps Chromium's fixed failure name and nothing else from the error", () => {
+  const s = new BrowserEvidenceStore(temp())
+  const n = new EvidenceNetwork(() => ({ nodeId: 'b', pageId: 'p', pageUrl: 'https://site.test/', attemptId: null }), d => s.diagnostic(d), () => {})
+  n.start({ id: 1, webContentsId: 7, method: 'GET', url: 'https://down.test/api' })
+  n.end({ id: 1, error: 'net::ERR_CONNECTION_REFUSED' }, true)
+  n.start({ id: 2, webContentsId: 7, method: 'GET', url: 'https://down.test/api' })
+  n.end({ id: 2, error: 'net::ERR_FAILED token=SECRET' }, true)
+  const [refused, odd] = s.diagnostics('b', 'network')
+  expect(refused).toMatchObject({ message: 'Request failed', failure: 'net::ERR_CONNECTION_REFUSED' })
+  expect(odd.failure).toBe('other')
+  expect(JSON.stringify(s.diagnostics('b', 'network'))).not.toContain('SECRET')
+})
+
+test('Take control during a recording ends the attempt as incomplete, keeps what was observed, and refuses the next verb', async () => {
+  const { run, node, s } = verbs()
+  await run('agent', 'browser-verify', { node: 'b', phase: 'start' })
+  await run('agent', 'browser-type', { node: 'b', ref: 'e3', text: 'x' })
+  node.held = true
+  await expect(run('agent', 'browser-verify', { node: 'b', phase: 'finish', outcome: 'passed' })).rejects.toThrow(/taken control/)
+  const [attempt] = s.list('b')
+  expect(attempt).toMatchObject({ state: 'incomplete', assertion: 'unknown', gaps: ['Takeover'] })
+  expect(attempt.actions).toContainEqual(expect.objectContaining({ action: 'type into e3', state: 'completed' }))
+})

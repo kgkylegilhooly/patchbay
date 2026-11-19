@@ -46,7 +46,8 @@ Viewports are `desktop` (1280×800) and `mobile` (390×844) CSS pixels; mobile d
 touch or user agent. Select the viewport before starting. Revision means the observed containing
 checkout, including dirty state; the page's actual served revision is unknown.
 
-Console errors and failed requests have page, attempt and time identifiers. Console messages are
+Console errors and failed requests have page, attempt and time identifiers. A failed request shows its
+HTTP status, or Chromium's error name such as net::ERR_CONNECTION_REFUSED. Console messages are
 omitted because they may contain secrets. No cookies, headers, request bodies or typed values are
 stored. URL credentials, query strings and fragments are removed. Form fields and embedded frames
 are hidden in pictures; visible page content remains private evidence. Never enter secrets.

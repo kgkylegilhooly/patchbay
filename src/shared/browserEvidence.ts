@@ -16,6 +16,8 @@ export interface BrowserDiagnostic {
   message: string
   url?: string
   status?: number
+  /** A request that got no response: Chromium's fixed name for why, such as net::ERR_CONNECTION_REFUSED, or other. */
+  failure?: string
   method?: string
   line?: number
 }
