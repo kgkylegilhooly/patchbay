@@ -24,11 +24,12 @@ const cwd = process.cwd()
 const runNode = (id: string): RunNode => ({ id, kind: 'run', title: 'npm test', x: 0, y: 0, width: 300, height: 200, parentId: null, cwd, command: 'npm test' })
 const ok = (code: number | null, out = ''): ProgramResult => ({ code, stdout: out, stderr: '', truncated: false, timedOut: false, missing: false })
 
-function setup(schedule: TriggerSchedule, over: Partial<TriggerNode> = {}, extra: CanvasNode[] = []) {
+function setup(schedule: TriggerSchedule, over: Partial<TriggerNode> = {}, extra: CanvasNode[] = [], prepare?: (host: ReturnType<typeof fakeHost>) => void) {
   const store = memoryStore([claudeNode('a', { title: 'Builder' }), claudeNode('c', { title: 'Reviewer' }), terminalNode('t'), runNode('r'), triggerNode('tr', { schedule, targetId: 'c', ...over }), ...extra])
   const tracker = createStatusTracker({ notify: () => {} })
   const host = fakeHost()
   for (const id of ['a', 'c', 't']) host.running.add(id)
+  prepare?.(host)
   const queue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), timing: { enterDelayMs: 0, settleMs: 10 } })
   const runListeners: Array<(id: string, run: RunResult) => void> = []
   const checks: Array<{ argv: string[]; cwd: string; done: (r: ProgramResult) => void }> = []
@@ -290,8 +291,55 @@ describe('file events', () => {
     s.service.start()
     s.arm()
     s.watches[0].change('src/x;rm -rf ~$(evil)`id`|"q".ts')
+    s.watches[0].change('--force.ts')
     s.later(SEC)
-    expect(s.typed()).toEqual(['t:npx eslint src/x_rm -rf ___evil__id__q.ts'])
+    // One argument each, separated by spaces, and a name can't read as an option.
+    expect(s.typed()).toEqual(['t:npx eslint src/x_rm -rf ___evil__id__q.ts ./--force.ts'])
+  })
+
+  test('a file trigger typing into a terminal: what that command writes doesn\'t fire it again', () => {
+    const outputs: Array<(id: string, data: string, seq: number) => void> = []
+    const s = setup({ type: 'files', folder: cwd, glob: '**/*', quietMs: 5 * SEC }, { prompt: 'npm run build', targetId: 't', limits: { gapMs: 5 * SEC, perHour: 60 } }, [], (host) => {
+      host.onOutput = (cb) => void outputs.push(cb)
+    })
+    const print = () => outputs.forEach((cb) => cb('t', 'building…', 1))
+    s.service.start()
+    s.arm()
+    s.watches[0].change('src/a.ts')
+    s.later(5 * SEC)
+    expect(s.typed()).toEqual(['t:npm run build'])
+    // The build prints for a minute and writes dist/ as it goes.
+    for (let i = 0; i < 12; i++) {
+      s.later(5 * SEC - 1)
+      print()
+      s.watches[0].change(`dist/out${i}.js`)
+    }
+    s.later(5 * SEC)
+    expect(s.typed()).toHaveLength(1)
+    expect(s.trig().runs[0]).toMatchObject({ outcome: 'skipped', detail: /typed into its terminal was still running/ })
+    // Once it has been quiet past the quiet time, a real edit fires it again.
+    s.later(10 * SEC)
+    s.watches[0].change('src/b.ts')
+    s.later(5 * SEC)
+    expect(s.typed()).toEqual(['t:npm run build', 't:npm run build'])
+  })
+
+  test('a terminal that never stops printing can\'t silence it for more than ten minutes', () => {
+    const outputs: Array<(id: string, data: string, seq: number) => void> = []
+    const s = setup({ type: 'files', folder: cwd, glob: 'src/**', quietMs: SEC }, { prompt: 'npm run dev', targetId: 't', limits: { gapMs: 5 * SEC, perHour: 60 } }, [], (host) => {
+      host.onOutput = (cb) => void outputs.push(cb)
+    })
+    s.service.start()
+    s.arm()
+    s.watches[0].change('src/a.ts')
+    s.later(SEC)
+    for (let i = 0; i < 11 * 60; i++) {
+      s.later(SEC)
+      outputs.forEach((cb) => cb('t', 'hmr update', 1))
+    }
+    s.watches[0].change('src/b.ts')
+    s.later(SEC)
+    expect(s.typed()).toHaveLength(2)
   })
 
   test('changes are gathered until quiet, matched, and listed', () => {
@@ -311,7 +359,8 @@ describe('file events', () => {
     s.later(3 * SEC)
     expect(s.typed()).toEqual([])
     s.later(2 * SEC)
-    expect(s.typed()).toEqual([`c:${paste('Changed: src/a.ts, src/b.ts')}`])
+    // Marked as names for an agent, so a file name reads as data, not as part of the prompt.
+    expect(s.typed()).toEqual(['c:' + paste('Changed: `src/a.ts`, `src/b.ts`')])
   })
 
   test('disarming stops watching; a watch that fails is recorded and disarms', () => {

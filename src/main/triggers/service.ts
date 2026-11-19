@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { armRefusal, canonicalSpec, isArmed, isTriggerTarget } from '../../core/trigger/arming'
-import { describeEventHappened, describeSeconds, eventVars, expandPrompt, isEventSchedule, limitsOf, outputTail, terminalSafe, type TriggerEvent } from '../../core/trigger/events'
+import { describeEventHappened, describeSeconds, eventVars, expandPrompt, isEventSchedule, limitsOf, outputTail, type TriggerEvent } from '../../core/trigger/events'
 import { nextRun, slotsUpTo } from '../../core/trigger/schedule'
 import type { RunResult as ProgramResult } from '../../core/git/run'
 import type { CanvasStore, RunResult, SessionHost } from '../../shared/contract'
@@ -18,6 +18,10 @@ export const RUN_LIMIT = 20
 const HOUR_MS = 3_600_000
 /** A prompt that hasn't started a turn by then isn't going to. */
 export const OWN_TURN_START_MS = 60_000
+/** After typing into a terminal, changes count as its own for at least this long, and while it keeps printing. */
+export const TERMINAL_RUN_MIN_MS = 30_000
+/** ...but no longer than this, so a terminal that never stops printing, such as a dev server, can't silence it. */
+export const TERMINAL_RUN_MAX_MS = 10 * 60_000
 
 export type TriggerResult = { ok: true; run: TriggerRun } | { ok: false; reason: string }
 
@@ -42,9 +46,16 @@ const when = (at: number): string => new Date(at).toLocaleString()
 /** A turn the trigger's own prompt started, in a session the trigger also watches. What happens in it doesn't fire it. */
 interface OwnTurn {
   targetId: string
+  /**
+   * When the prompt was delivered: typed, which for a busy Claude target is when the queue let it go, not when it
+   * fired. A turn whose `working` arrives more than OWN_TURN_START_MS later (a badly delayed hook) is no longer
+   * treated as its own, so its file changes can fire the trigger once; the limits still hold it.
+   */
   from: number
   started: boolean
   endedAt: number | null
+  /** A terminal has no turns: what it runs counts as the trigger's own while it keeps printing, plus a quiet time. */
+  terminal?: { quietMs: number; lastOutput: number }
 }
 
 /**
@@ -68,7 +79,8 @@ export function createTriggerService({
 }: {
   store: CanvasStore
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
-  host: Pick<SessionHost, 'isRunning'>
+  /** `onOutput` tells when a terminal it typed into has gone quiet. */
+  host: Pick<SessionHost, 'isRunning'> & Partial<Pick<SessionHost, 'onOutput'>>
   queue: SendQueue
   /** Run nodes ending. */
   runs?: { onRun(cb: (id: string, run: RunResult) => void): void }
@@ -141,10 +153,19 @@ export function createTriggerService({
     (node.schedule.type === 'agent' && node.schedule.nodeId === targetId) || node.schedule.type === 'files'
 
   /** When a trigger's own turn ended. One that never began is given up on after a while, so it can't silence a trigger. */
-  const ownTurnEnd = (own: OwnTurn): number => own.endedAt ?? (own.started ? Infinity : own.from + OWN_TURN_START_MS)
+  const ownTurnEnd = (own: OwnTurn): number => {
+    if (own.terminal) {
+      const { quietMs, lastOutput } = own.terminal
+      return Math.min(own.from + TERMINAL_RUN_MAX_MS, Math.max(own.from + Math.max(2 * quietMs, TERMINAL_RUN_MIN_MS), lastOutput + quietMs))
+    }
+    return own.endedAt ?? (own.started ? Infinity : own.from + OWN_TURN_START_MS)
+  }
 
-  const delivered = (node: TriggerNode, targetId: string): void => {
-    if (loops(node, targetId)) ownTurns.set(node.id, { targetId, from: now(), started: false, endedAt: null })
+  const delivered = (node: TriggerNode, targetId: string, terminal = false): void => {
+    if (!loops(node, targetId)) return
+    const t = now()
+    const quietMs = node.schedule.type === 'files' ? node.schedule.quietMs : 0
+    ownTurns.set(node.id, { targetId, from: t, started: terminal, endedAt: null, ...(terminal && { terminal: { quietMs, lastOutput: t } }) })
   }
 
   const fire = (node: TriggerNode, source: TriggerRun['source'], at: number, event: TriggerEvent | null = null, check?: TriggerRun['preflight']): TriggerRun => {
@@ -161,12 +182,11 @@ export function createTriggerService({
       }
       // Placeholders are filled only for event kinds, so a schedule's prompt goes exactly as written, as it always did.
       // Into a terminal, a value would reach a shell, so it keeps only characters a shell does nothing with.
-      const vars = eventVars(event, at)
-      const values = target.kind === 'terminal' ? Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, terminalSafe(v)])) : vars
-      const text = plainText(isEventSchedule(node.schedule) ? expandPrompt(node.prompt, values) : node.prompt)
+      const text = plainText(isEventSchedule(node.schedule) ? expandPrompt(node.prompt, eventVars(event, at, target.kind)) : node.prompt)
       if (target.kind === 'terminal') {
         try {
           queue.type(target.id, text)
+          delivered(node, target.id, true)
           return run('delivered', `Typed into "${target.title}".`)
         } catch (e) {
           return run('failed', `Couldn't type into "${target.title}": ${(e as Error).message}`)
@@ -245,6 +265,7 @@ export function createTriggerService({
 
   const OWN_TURN = 'That turn was started by this trigger\'s own prompt, so it doesn\'t fire it again.'
   const OWN_FILES = 'Those changes were made during the turn this trigger\'s own prompt started, so they don\'t fire it again.'
+  const OWN_TERMINAL = "Those changes came while what this trigger typed into its terminal was still running, so they don't fire it again."
 
   const agentEvent = (prev: AgentStatus | undefined, status: AgentStatus): 'turn' | 'needs-you' | 'exit' | null => {
     if (status === 'idle' && (prev === 'working' || prev === 'needs-you')) return 'turn'
@@ -290,7 +311,7 @@ export function createTriggerService({
     const own = ownTurns.get(id)
     const end = own ? ownTurnEnd(own) : 0
     if (own && end < now()) ownTurns.delete(id)
-    if (own && b.lastAt >= own.from && b.firstAt <= end) return skip(id, 'event', OWN_FILES, event)
+    if (own && b.lastAt >= own.from && b.firstAt <= end) return skip(id, 'event', own.terminal ? OWN_TERMINAL : OWN_FILES, event)
     onEvent(node, event, now())
   }
 
@@ -397,6 +418,11 @@ export function createTriggerService({
       }
     }
     onStatus(targetId, status)
+  })
+  host.onOutput?.((id) => {
+    if (!ownTurns.size) return
+    const t = now()
+    for (const own of ownTurns.values()) if (own.terminal && own.targetId === id && t <= ownTurnEnd(own)) own.terminal.lastOutput = t
   })
   runEvents?.onRun((id, r) => {
     // Only an end it reached by itself. One you stopped isn't "finished", and one noted at start-up came before this.

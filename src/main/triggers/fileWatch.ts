@@ -1,5 +1,5 @@
 import { watch } from 'node:fs'
-import { ignoredPath, matchesGlob, MAX_FILES_LISTED } from '../../core/trigger/events'
+import { globMatcher, ignoredPath, MAX_FILES_LISTED } from '../../core/trigger/events'
 
 export interface FolderWatcher {
   close(): void
@@ -36,6 +36,7 @@ const MAX_TRACKED = 1000
  * of twenty files or a build's burst of writes fires once.
  */
 export function createFileBatcher({ glob, quietMs, now, onBatch }: { glob: string; quietMs: number; now: () => number; onBatch: (b: FileBatch) => void }) {
+  const matches = globMatcher(glob)
   let changed = new Set<string>()
   let firstAt = 0
   let lastAt = 0
@@ -53,7 +54,7 @@ export function createFileBatcher({ glob, quietMs, now, onBatch }: { glob: strin
   return {
     change(rel: string): void {
       const path = rel.replace(/\\/g, '/')
-      if (ignoredPath(path) || !matchesGlob(path, glob)) return
+      if (ignoredPath(path) || !matches(path)) return
       const t = now()
       if (!changed.size) firstAt = t
       lastAt = t

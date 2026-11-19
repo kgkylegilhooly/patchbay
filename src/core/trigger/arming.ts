@@ -1,5 +1,5 @@
 import type { CanvasDoc, CanvasNode, ClaudeNode, TerminalNode, TriggerNode, TriggerSchedule } from '../../shared/model'
-import { eventRefusal, isEventSchedule, limitsOf } from './events'
+import { eventRefusal, isEventSchedule, limitsOf, loopRefusal } from './events'
 import { nextRun, scheduleError } from './schedule'
 
 /** A prompt is typed into a session, so it has to fit in one sensibly. */
@@ -64,7 +64,10 @@ export function armRefusal(node: TriggerNode, doc: Pick<CanvasDoc, 'nodes'> & Pa
   if (target.projectId !== node.projectId) return 'What it sends to is in another project.'
   const event = eventRefusal(node, { nodes: doc.nodes, projects: doc.projects ?? [] })
   if (event) return event
-  if (isEventSchedule(node.schedule)) return null
+  if (isEventSchedule(node.schedule)) {
+    const armed = doc.nodes.filter((n): n is TriggerNode => n.kind === 'trigger' && n.id !== node.id && isArmed(n))
+    return loopRefusal(node, armed, doc.nodes)
+  }
   if (nextRun(node.schedule, now, now) === null) return node.schedule.type === 'once' ? 'That time has passed. Choose a later one.' : 'That schedule has no more runs.'
   return null
 }

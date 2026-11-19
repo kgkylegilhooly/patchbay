@@ -161,6 +161,11 @@ export function TriggerForm({
             </option>
           ))}
         </select>
+        {draft.type === 'files' && targets.find((t) => t.id === targetId)?.kind === 'terminal' && (
+          <span className="pop-note" data-trigger="terminal-loop">
+            Changes made while the terminal is still printing what it typed (plus the quiet time, up to 10 minutes) don't fire it again. To be sure, match only your sources, such as src/**, not build output.
+          </span>
+        )}
       </label>
       <div className="field">
         <span className="field-label">Only if this succeeds (optional)</span>

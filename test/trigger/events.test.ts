@@ -101,7 +101,7 @@ describe('placeholders', () => {
   test('event values', () => {
     const files = Array.from({ length: 22 }, (_, i) => `f${i}.ts`)
     const v = eventVars({ type: 'files', folder: root, files: files.slice(0, 20), total: 22 }, 0)
-    expect(v.files).toMatch(/^f0\.ts, f1\.ts.*f19\.ts and 2 more$/)
+    expect(v.files).toMatch(/^`f0.ts`, `f1.ts`.*`f19.ts` and 2 more$/)
     expect(eventVars({ type: 'run', nodeTitle: 'npm test', exitCode: 1 }, 0)).toMatchObject({ node: 'npm test', exitCode: '1', event: '"npm test" failed with exit code 1' })
     expect(eventVars(null, 0).event).toBe('run by hand')
   })
@@ -228,5 +228,49 @@ describe('what goes out', () => {
     const { outputTail } = await import('../../src/core/trigger/events')
     expect(outputTail('\x1b[2m> node --version\x1b[0m\r\nv22.19.0\x07\n')).toBe('> node --version\nv22.19.0')
     expect(outputTail('x'.repeat(1000))).toHaveLength(401)
+  })
+})
+
+describe('placeholder values by target', () => {
+  test('for a terminal: one argument each, no options, no shell characters; for an agent: names marked as data', async () => {
+    const { eventVars } = await import('../../src/core/trigger/events')
+    const e = { type: 'files' as const, folder: root, files: ['-rf x', 'a`b.ts'], total: 3 }
+    expect(eventVars(e, 0, 'terminal').files).toBe('./-rf x a_b.ts')
+    expect(eventVars(e, 0, 'claude').files).toBe("`-rf x`, `a'b.ts` and 1 more")
+    expect(eventVars({ type: 'run', nodeTitle: 'say "hi"; ls', exitCode: -1 }, 0, 'terminal')).toMatchObject({ node: 'say hi_ ls', exitCode: '-1' })
+  })
+})
+
+describe('loops between triggers', () => {
+  const nodes = [claudeNode('A', { title: 'Builder', projectId: 'p', cwd: root }), claudeNode('B', { title: 'Reviewer', projectId: 'p', cwd: root }), terminalNode('T', { projectId: 'p', cwd: root })]
+  const agentTrig = (id: string, watch: string, to: string, armed = true): TriggerNode => {
+    const n = triggerNode(id, { title: id, projectId: 'p', schedule: { type: 'agent', nodeId: watch, on: 'turn' }, targetId: to })
+    return armed ? { ...n, armedSpec: canonicalSpec(n) } : n
+  }
+  const d = (...t: TriggerNode[]) => ({ ...doc([...nodes, ...t]) })
+
+  test('A\'s turn fires B and B\'s turn fires A: arming the second is refused, naming both', () => {
+    const one = agentTrig('one', 'A', 'B')
+    const two = agentTrig('two', 'B', 'A', false)
+    expect(armRefusal(two, d(one, two), 0)).toBe('Arming it would make a loop: "two" sends to "Builder", then "one" sends to "Reviewer", which sets it off again. Disarm one of them, or change what it watches or sends to.')
+    // A disarmed partner is no loop.
+    expect(armRefusal(two, d({ ...one, armedSpec: null }, two), 0)).toBeNull()
+  })
+
+  test('longer chains count; a trigger sending to what it watches is not a loop (its own turn never fires it)', () => {
+    const c = [agentTrig('ab', 'A', 'B'), agentTrig('bt', 'B', 'T')]
+    expect(armRefusal(agentTrig('self', 'A', 'A', false), d(...c), 0)).toBeNull()
+    // A terminal has no turns, so nothing watches it as an agent: no chain back from T.
+    expect(armRefusal(agentTrig('ta', 'B', 'A', false), d(agentTrig('ab', 'A', 'B')), 0)).toMatch(/loop/)
+  })
+
+  test('a file trigger counts every session working in that folder as able to set it off', () => {
+    const files = triggerNode('files', { title: 'files', projectId: 'p', schedule: { type: 'files', folder: inRoot('src'), glob: '*.ts', quietMs: 5000 }, targetId: 'B' })
+    const back = agentTrig('back', 'B', 'A')
+    expect(armRefusal(files, d(back, files), 0)).toMatch(/"files" sends to "Reviewer", then "back" sends to "Builder"/)
+    // Elsewhere, no loop.
+    const elsewhere = { ...files, schedule: { type: 'files' as const, folder: inRoot('src'), glob: '*.ts', quietMs: 5000 } }
+    const away = [claudeNode('A', { title: 'Builder', projectId: 'p', cwd: process.platform === 'win32' ? 'D:\other' : '/other' }), nodes[1], nodes[2]]
+    expect(armRefusal(elsewhere, { nodes: [...away, back, elsewhere], projects: doc([]).projects }, 0)).toBeNull()
   })
 })

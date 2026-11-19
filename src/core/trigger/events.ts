@@ -1,4 +1,4 @@
-import type { CanvasDoc, TriggerEventSource, TriggerLimits, TriggerNode, TriggerPreflight, TriggerSchedule } from '../../shared/model'
+import type { CanvasDoc, CanvasNode, TriggerEventSource, TriggerLimits, TriggerNode, TriggerPreflight, TriggerSchedule } from '../../shared/model'
 
 /**
  * Triggers that fire when something happens on this PC rather than at a time. Everything here is pure, so the form, the
@@ -62,7 +62,7 @@ export function placeholderProblem(prompt: string, s: TriggerSchedule): string |
 
 /**
  * Fills placeholders in one pass: a value is never read again, so a file named `{{node}}` stays as it is. `\{{` becomes
- * `{{`. A name with no value becomes empty.
+ * `{{`. A name with no value is left as written; arming refuses names the kind doesn't have.
  */
 export function expandPrompt(prompt: string, vars: Record<string, string>): string {
   return prompt.replace(PLACEHOLDER, (whole, name: string | undefined) => (name === undefined ? '{{' : Object.hasOwn(vars, name) ? vars[name] : whole))
@@ -97,13 +97,21 @@ export function terminalSafe(value: string): string {
 }
 
 /** Values for an event's placeholders. Fired by hand there's no event, so they say so or are empty. */
-export function eventVars(e: TriggerEvent | null, at: number): Record<string, string> {
-  const base = { time: new Date(at).toLocaleString(), event: e ? describeEventHappened(e) : 'run by hand' }
+export function eventVars(e: TriggerEvent | null, at: number, to: 'claude' | 'terminal' = 'claude'): Record<string, string> {
+  const terminal = to === 'terminal'
+  const safe = (v: string): string => (terminal ? terminalSafe(v) : v)
+  const base = { time: safe(new Date(at).toLocaleString()), event: safe(e ? describeEventHappened(e) : 'run by hand') }
   if (!e) return { ...base, node: '', exitCode: '', files: '', folder: '' }
-  if (e.type === 'agent') return { ...base, node: e.nodeTitle }
-  if (e.type === 'run') return { ...base, node: e.nodeTitle, exitCode: String(e.exitCode) }
+  if (e.type === 'agent') return { ...base, node: safe(e.nodeTitle) }
+  if (e.type === 'run') return { ...base, node: safe(e.nodeTitle), exitCode: String(e.exitCode) }
   const more = e.total - e.files.length
-  return { ...base, folder: e.folder, files: e.files.join(', ') + (more > 0 ? ` and ${more} more` : '') }
+  // A file name is text anyone could have chosen. For a shell: one argument each, and none can read as an option.
+  // For an agent: each marked as a name, so it reads as data rather than as part of the prompt.
+  const names = terminal
+    ? e.files.map(terminalSafe).map((f) => (f.startsWith('-') ? `./${f}` : f))
+    : e.files.map((f) => '`' + f.replace(/`/g, "'") + '`')
+  const files = names.join(terminal ? ' ' : ', ') + (more > 0 && !terminal ? ` and ${more} more` : '')
+  return { ...base, folder: safe(e.folder), files }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -189,11 +197,19 @@ export function globToRegExp(glob: string): RegExp | null {
 }
 
 /** A glob with no `/` matches a file's name at any depth; one with `/` matches its path from the watched folder. */
-export function matchesGlob(rel: string, glob: string): boolean {
+/** A matcher built once, for a watcher that tests every changed path against the same glob. */
+export function globMatcher(glob: string): (rel: string) => boolean {
   const re = globToRegExp(glob)
-  if (!re) return false
-  const path = slashes(rel).replace(/^\.\//, '')
-  return re.test(slashes(glob).includes('/') ? path : (path.split('/').pop() ?? path))
+  if (!re) return () => false
+  const byPath = slashes(glob).includes('/')
+  return (rel) => {
+    const path = slashes(rel).replace(/^\.\//, '')
+    return re.test(byPath ? path : (path.split('/').pop() ?? path))
+  }
+}
+
+export function matchesGlob(rel: string, glob: string): boolean {
+  return globMatcher(glob)(rel)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -301,4 +317,60 @@ export function describeEvent(s: TriggerEventSource, name: (id: string) => strin
 
 export function describeLimits(l: TriggerLimits): string {
   return `At most once every ${describeSeconds(l.gapMs)}, and ${plural(l.perHour, 'time')} an hour`
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Loops between triggers
+
+/**
+ * The nodes whose work could set off a trigger's event: the node it watches, or, for files, any session working in or
+ * above that folder. Its own target is left out: what happens in the turn its own prompt started never fires it.
+ */
+export function eventCausers(node: TriggerNode, nodes: CanvasNode[]): string[] {
+  const s = node.schedule
+  const own = (id: string): boolean => id === node.targetId
+  if (s.type === 'agent' || s.type === 'run') return own(s.nodeId) ? [] : [s.nodeId]
+  if (s.type !== 'files') return []
+  return nodes
+    .filter((n) => (n.kind === 'claude' || n.kind === 'terminal') && n.projectId === node.projectId && !own(n.id) && !!n.cwd && (isInside(n.cwd, s.folder) || isInside(s.folder, n.cwd)))
+    .map((n) => n.id)
+}
+
+/**
+ * The triggers that would keep setting each other off if this one were armed beside the armed ones, in firing order
+ * starting with this one, or null. Trigger 1 watches A and sends to B, trigger 2 watches B and sends to A: each fires
+ * on the other's turn, and no limit ever stops the pair for good.
+ */
+export function triggerCycle(node: TriggerNode, armed: TriggerNode[], nodes: CanvasNode[]): TriggerNode[] | null {
+  if (!isEventSchedule(node.schedule) || !node.targetId) return null
+  const all = [node, ...armed.filter((t) => t.id !== node.id && isEventSchedule(t.schedule) && t.targetId)]
+  const causers = new Map(all.map((t) => [t.id, new Set(eventCausers(t, nodes))]))
+  const prev = new Map<string, TriggerNode>()
+  const seen = new Set([node.id])
+  const queue = [node]
+  while (queue.length) {
+    const t = queue.shift()!
+    for (const u of all) {
+      if (!causers.get(u.id)!.has(t.targetId!)) continue
+      if (u.id === node.id) {
+        const path = [t]
+        while (path[0].id !== node.id) path.unshift(prev.get(path[0].id)!)
+        return path
+      }
+      if (seen.has(u.id)) continue
+      seen.add(u.id)
+      prev.set(u.id, t)
+      queue.push(u)
+    }
+  }
+  return null
+}
+
+/** Why arming would close a loop between triggers, naming each one, or null. */
+export function loopRefusal(node: TriggerNode, armed: TriggerNode[], nodes: CanvasNode[]): string | null {
+  const cycle = triggerCycle(node, armed, nodes)
+  if (!cycle) return null
+  const title = (id: string | null): string => nodes.find((n) => n.id === id)?.title ?? 'a node that is gone'
+  const steps = cycle.map((t) => `"${t.title}" sends to "${title(t.targetId)}"`).join(', then ')
+  return `Arming it would make a loop: ${steps}, which sets it off again. Disarm one of them, or change what it watches or sends to.`
 }

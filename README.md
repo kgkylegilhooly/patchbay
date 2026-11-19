@@ -406,13 +406,17 @@ count. Deleting the node it watches disarms it.
 
 - **Placeholders:** the prompt can use `{{node}}`, `{{event}}`, `{{exitCode}}`, `{{files}}`, `{{folder}}` and
   `{{time}}`, as the kind has them. The form lists them, and arming refuses any the kind doesn't have. `\{{` writes a
-  literal `{{`. Values go in as they are, in one pass. Typed into a terminal, a value keeps only letters, digits,
-  spaces and `. _ / \ : , @ + = -`, so a file name can't run anything in the shell. A schedule trigger sends its prompt
-  exactly as written.
+  literal `{{`. Values go in in one pass. Typed into a terminal, a value keeps only letters, digits, spaces and
+  `. _ / \ : , @ + = -`, so a file name can't run anything in the shell; `{{files}}` gives one argument per file, and
+  a name starting with `-` gets `./` in front. Sent to Claude, each file name is in backticks, marked as a name. A
+  schedule trigger sends its prompt exactly as written.
 - **Limits:** at most once every 30 seconds and 10 times an hour by default; both are in the form. A firing that's held
   back is recorded as Skipped with the reason, and the same skip in a row is shown once with a count.
 - **No loops:** when a trigger sends to the agent it watches, or a file trigger sends to a Claude window, what happens
-  during the turn its own prompt started doesn't fire it again. Chains between triggers are held by the limits.
+  during the turn its own prompt started doesn't fire it again. A file trigger that types into a terminal ignores
+  changes while that terminal keeps printing, plus the quiet time (at least 30 seconds, at most 10 minutes). Arming is
+  refused if it would close a loop with armed triggers, such as one sending A's turns to B and another sending B's
+  turns to A; the refusal names each trigger. A file trigger counts every session working in its folder.
 - **Only if this succeeds:** any trigger can run a command first, such as `npm test`, in a folder inside the project.
   It runs without a shell, so no quotes, pipes or `&&`; name a script instead. It fires only if the command exits 0.
   The exit code and the end of the output go in the run history. A check that runs longer than 2 minutes is ended
