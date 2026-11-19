@@ -50,7 +50,8 @@ describe('H1: a damaged task record never costs the canvas', () => {
   })
 
   test("a newer build's attempt kind is kept aside, and survives this build's writes", async () => {
-    const browser = { id: 'b1', taskId: 't1', kind: 'browser', url: 'http://localhost', screenshot: 'x.png' }
+    // 'browser' is known now (see taskLink.ts), so a kind no build has yet stands in for a newer one.
+    const browser = { id: 'b1', taskId: 't1', kind: 'design-review', url: 'http://localhost', screenshot: 'x.png' }
     const doc = base()
     const loaded = migrate({ ...doc, projects: [{ ...doc.projects[0], tasks: { tasks: [task({ projectId: doc.projects[0].id })], attempts: [browser] } }] })
     expect(loaded.projects[0].tasks!.other).toEqual([browser])

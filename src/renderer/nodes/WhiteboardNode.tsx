@@ -11,6 +11,7 @@ import { relativeTime } from '../sidebarView'
 import { closeNodes, patchNode, useStore } from '../store'
 import { svgToPng } from '../whiteboardImage'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 type Tool = 'select' | 'pen' | 'eraser' | 'line' | 'arrow' | 'rect' | 'ellipse' | 'text'
 
@@ -43,6 +44,7 @@ const marqueeBox = (m: Marquee) => ({ x: Math.min(m.x1, m.x2), y: Math.min(m.y1,
 
 export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as WhiteboardModel
+  const headerZoom = useHeaderZoom(node.id)
   const [tool, setTool] = useState<Tool>('pen')
   const [color, setColor] = useState(BOARD_COLORS[0])
   const [size, setSize] = useState(BOARD_SIZES[1])
@@ -398,7 +400,7 @@ export const WhiteboardNode = memo(function WhiteboardNode({ data, selected }: N
     <div className={`wb${selected ? ' wb-selected' : ''}`}>
       <Resizer node={node} min={{ w: 460, h: 300 }} />
       <Jacks />
-      <header className="wb-head pb-drag">
+      <header className="wb-head pb-drag" onDoubleClick={headerZoom}>
         <Icon name="whiteboard" size={16} />
         <EditableTitle node={node} />
         <span className="wb-spacer" />
