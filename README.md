@@ -149,6 +149,8 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
 | `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\` holds a snapshot's index copy for the moment it takes |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
+| `review-inbox.json` | Review inbox comments, review marks (the newest 20 per task) and chosen base branches. A file that can't be read is moved aside, and one with damaged records copied aside, as `review-inbox.json.bad-*` |
+| `review-objects\` | Snapshots of working trees the review inbox compares with, one git object store per repository |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
@@ -173,9 +175,18 @@ in the log above, which is the thing to share if Patchbay misbehaves.
 Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent
 holds one while its shell tool runs a command, and so do Git Bash windows outside Patchbay. Past that, a new Git Bash
 ends at once, and the window says so; agents' shell commands fail the same way. Close some terminals, or give some of
-them another shell in `settings.json` (below), and press Restart.
+them another terminal profile (below), and press Restart.
 
-`settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
+**Terminal profiles** set what a new terminal starts: a program, its arguments (one per line, passed as they are), an
+optional startup command typed once at its first prompt, and an optional folder. Set them under Settings > Terminals.
+Git Bash, Windows PowerShell, Command Prompt, PowerShell 7 and WSL appear when installed; duplicate one to change it.
+New terminal opens the default; the others are in the Add menu, the canvas menu, the palette, the New terminal form and
+`patchbay open-terminal --profile NAME`. A terminal keeps its profile across restarts. If that profile is deleted, it
+starts the default and says so. For example: `cmd.exe` with the two arguments `/k` and `C:\...\vcvars64.bat`, or Git
+Bash with the startup command `cd ~/proj && nvm use`.
+
+`settings.json` can set the shell run commands use (with no profiles saved yet, new terminals use it too) and the
+permission mode for Claude nodes:
 
 ```json
 { "shell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "permissionMode": "default" }
@@ -187,6 +198,18 @@ only in folders you trust. Leave it out to keep Codex's own default. It's also u
 
 ```json
 { "codexApproval": "never" }
+```
+
+Settings > Agents has a switch for each agent, Claude Code and Codex, for when one's usage has run out or you don't want
+it used. One stays on. With an agent off, nothing new of it starts: it leaves the menus, the dock and the palette,
+restarting or resuming one of its windows is refused, a trigger aimed at one records a failed run, and `patchbay
+open-agent` and `spawn-team` refuse it. Windows already running keep running. If the default agent is off, the other
+stands in. A recipe that needs it says so, and starts only if you choose to use the other agent instead. Try another
+approach offers only agents that are on, and won't start an attempt left on one that's off. In
+`settings.json` it's `agentsOff`, the agents turned off:
+
+```json
+{ "agentsOff": "codex" }
 ```
 
 `envNotPassed` lists name prefixes of environment variables that sessions don't inherit, separated by spaces or
@@ -283,6 +306,11 @@ first, then labels, and the text size folds into one button.
   Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
+- **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
+  with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
+  reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
+  the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
 
 ## Files each agent edited
 
@@ -540,6 +568,32 @@ offers the project's folder, its worktree groups and its sessions' folders, with
 - **History** draws the newest 300 commits of every branch, with merges as lanes.
 - Each git call has a time limit and an output limit, and none goes through a shell. The panel refreshes when it opens,
   after its own actions, and when the window comes back into focus, at most every 2 seconds.
+
+## Review inbox
+
+**View > Review inbox…**, the palette, or **Review inbox** on the board's task outcomes. It lists tasks an agent has
+submitted with `patchbay task submit`, ready or not yet ready, newest first.
+
+- Each task shows its brief, its checkout (folder, branch, HEAD), the **agent's report** (written by the agent, not
+  checked), and the **command runs Patchbay recorded** for its declared checks: passed, failed, not run or stale, with
+  the reason. **CI is unavailable**: Patchbay doesn't read CI yet, and that is never shown as a pass.
+- When other agents work in the same checkout, or several are assigned, it says the changes are the checkout's, not any
+  one agent's.
+- **Branch vs base** lists what's committed since the merge-base with the base branch you choose (`main` by default),
+  and separately what's only local: uncommitted and untracked files. The header names the base commit and the
+  merge-base. **Since last review** compares with a snapshot recorded when you pressed **Mark reviewed** or **Request
+  fixes**, never with a time.
+- **+** on a diff line adds a comment. Comments are saved, with the file, side, revision and the code around the line.
+  When the code moves, the comment follows and says where from; when the line changes or goes, it's marked outdated.
+  You resolve comments yourself; an agent's reply doesn't.
+- **Request fixes** sends every unresolved comment to an agent assigned to the task, through the same queue as
+  `patchbay send`: a busy agent gets it when it's idle. **Accept** is the board's own acceptance, only for you.
+- What's recorded as reviewed is what you were looking at, not the files at the moment you click. If they changed after
+  you loaded them, it says so, and those changes show under **Since last review**.
+- Snapshots go to Patchbay's own store (`review-objects\`), never into the repository: no objects, commits, refs or
+  index changes there.
+- With unresolved comments, or fixes requested after the latest submission, **Accept** asks first.
+- Browser checks an agent recorded show beside the command runs, as the agent's claim.
 
 ## Board
 

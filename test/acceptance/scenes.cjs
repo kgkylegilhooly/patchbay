@@ -364,6 +364,19 @@ const scenes = {
     await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
     await sleep(400)
   },
+  // Codex chosen as the default, then turned off: Claude Code stands in, and its switch can't be turned off.
+  'settings-agents-off': async (page) => {
+    await page.keyboard.down('Control')
+    await page.keyboard.press(',')
+    await page.keyboard.up('Control')
+    await page.waitForSelector('[data-section="claude"]')
+    await page.click('[data-section="claude"]')
+    await page.waitForSelector('#agent-codex')
+    await page.select('#defaultAgent', 'codex')
+    await page.click('#agent-codex')
+    await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
+    await sleep(400)
+  },
   'project-menu': async (page) => {
     const tab = await page.$('.project-tab')
     await tab.click({ button: 'right' })
@@ -447,7 +460,9 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
+  ...require('./terminalProfileScenes.cjs').scenes,
   ...require('./compareScenes.cjs').scenes,
+  ...require('./subagentScenes.cjs').scenes,
   ...require('./filesScenes.cjs').scenes
 }
 
@@ -523,6 +538,7 @@ const seeds = {
   },
   ...require('./searchScenes.cjs').seeds,
   ...require('./compareScenes.cjs').seeds,
+  ...require('./subagentScenes.cjs').seeds,
   ...require('./filesScenes.cjs').seeds
 }
 
@@ -557,3 +573,5 @@ function prepare(name, cwdRoot) {
 }
 
 module.exports = { prepare, scenes, canvas, rightClickCanvas, seedLinks, showLegend }
+Object.assign(scenes, require('./placementScenes.cjs').scenes)
+Object.assign(seeds, require('./placementScenes.cjs').seeds)

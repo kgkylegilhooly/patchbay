@@ -46,10 +46,13 @@ import { WhiteboardNode } from './nodes/WhiteboardNode'
 import { TerminalNode } from './nodes/TerminalNode'
 import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
+import { useViewAreaReport } from './viewArea'
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
+import { ReviewInboxLayer } from './ReviewInbox'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { SubagentLayer } from './subagents/SubagentLayer'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -121,6 +124,7 @@ function Canvas(): React.JSX.Element | null {
   selectedRef.current = selected
 
   const [prefs, setPrefs] = useState(loadPrefs)
+  useViewAreaReport(prefs.sidebar)
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const setPref = useCallback((key: TogglePref) => {
@@ -180,7 +184,7 @@ function Canvas(): React.JSX.Element | null {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const openSettings = useCallback(() => setSettingsOpen(true), [])
   const [projectFormOpen, setProjectFormOpen] = useState(false)
-  const { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder } = useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref, toggleRecent, openSettings, openPalette: togglePalette, setProjectFormOpen })
+  const { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder } = useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref, toggleRecent, openSettings, openPalette: togglePalette, setProjectFormOpen })
 
   // A trigger's own Edit and Arm buttons.
   const triggerAsk = useStore((s) => s.triggerAsk)
@@ -402,6 +406,7 @@ function Canvas(): React.JSX.Element | null {
           attributionPosition="top-right"
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
+          <SubagentLayer />
           {prefs.minimap && (
             <MiniMap<FlowNode>
               pannable
@@ -474,6 +479,7 @@ function Canvas(): React.JSX.Element | null {
             kind={form.kind}
             initialFolder={editedRun(doc, form.editId)?.cwd ?? defaultFolder(form.groupId)}
             initialCommand={editedRun(doc, form.editId)?.command}
+            folderFor={form.kind === 'terminal' ? (profile) => terminalFolder(form.groupId, profile) : undefined}
             editing={!!form.editId}
             onCancel={() => setForm(null)}
             onOpen={(fields) => {
@@ -501,6 +507,7 @@ function Canvas(): React.JSX.Element | null {
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}
+        <ReviewInboxLayer />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

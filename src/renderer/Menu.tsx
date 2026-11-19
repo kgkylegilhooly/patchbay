@@ -4,6 +4,8 @@ import { Icon } from './icons'
 import { currentKey } from './keys'
 import { clampToViewport, type MenuEntry, type MenuItem, type Point } from './menus'
 import { useStore } from './store'
+import { useAgentChoice } from './agentChoice'
+import { commandAllowed } from '../shared/agents'
 
 /**
  * A menu panel. Pressing on it never moves focus, so a terminal keeps the keyboard and Edit > Copy
@@ -25,6 +27,9 @@ export function MenuPanel({
   style?: React.CSSProperties
   panelRef?: React.Ref<HTMLDivElement>
 }): React.JSX.Element {
+  // Settings > Agents: an agent turned off isn't offered, in any menu.
+  const agents = useAgentChoice()
+  entries = entries.filter((e) => e === 'separator' || commandAllowed(e.id, agents))
   const usable = entries.filter((e): e is MenuItem => e !== 'separator' && !e.disabled)
   const overrides = useStore((s) => s.keyOverrides)
   const shortcutOf = (item: MenuItem): string | null => {

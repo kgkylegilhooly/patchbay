@@ -132,6 +132,12 @@ describe('the team lead prompt', () => {
     expect(prompt).toContain('patchbay close')
   })
 
+  test('asks for briefs in files, separate worktrees when files are shared, and reviews by another agent', () => {
+    expect(prompt).toContain('--prompt-file')
+    expect(prompt).toMatch(/worktree/)
+    expect(prompt).toMatch(/reviewed by an agent that did not write it/)
+  })
+
   test('fits the limit on prompts', () => {
     expect(teamLeadPrompt('x'.repeat(100)).length).toBeLessThan(28000)
   })
