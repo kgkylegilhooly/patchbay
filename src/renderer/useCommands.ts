@@ -5,6 +5,7 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
+import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfilesUi'
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
 import type { Rect } from '../core/canvas/place'
 import { visibleArea } from './viewArea'
@@ -49,6 +50,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
   defaultFolder: (groupId?: string) => string
+  /** Where a new terminal of this profile (the default, with none) opens: see terminalFolderFor. */
+  terminalFolder: (groupId?: string, profileId?: string) => string
   fitAll: () => void
 } {
   const flow = useReactFlow<FlowNode, FlowEdge>()
@@ -79,6 +82,10 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       const vp = flow.getViewport()
       return area && vp.zoom > 0 ? { x: (area.x - vp.x) / vp.zoom, y: (area.y - vp.y) / vp.zoom, width: area.width / vp.zoom, height: area.height / vp.zoom } : null
     }
+
+    /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
+    const terminalFolder = (groupId?: string, profileId?: string): string =>
+      terminalFolderFor({ worktree: groupFor(groupId)?.worktree?.path, profileCwd: profileFolder(profileId), fallback: defaultFolder(groupId) })
 
     /**
      * Where a new node goes: at the given screen point, else beside the one selected node if it's on screen, else in
@@ -163,7 +170,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }
         center(id)
       },
-      newTerminal: (at, groupId) => open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: defaultFolder(groupId) })),
+      newTerminal: (at, groupId, profileId) =>
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) })),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),
@@ -246,7 +254,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string }): void => {
       lastFolder.current = fields.cwd || lastFolder.current
       if (form.editId) {
         // Applies from the next run. Whatever's running now keeps running.
@@ -272,7 +280,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       open(
         form.kind === 'claude' || form.kind === 'codex'
           ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
-          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text })
+          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) })
       )
     }
 
@@ -310,6 +318,6 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       else dispatch({ op: 'addNode', node: newTrigger(place(form.at), crypto.randomUUID(), fields) })
     }
 
-    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, fitAll }
+    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder, fitAll }
   }, [flow, prefsRef, selectedRef, setForm, setNodes, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen])
 }

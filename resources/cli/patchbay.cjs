@@ -16,7 +16,7 @@ const VERBS = {
   'task state': { task: 'text', state: 'text' },
   whoami: {},
   list: {},
-  'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', after: 'list' },
+  'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', profile: 'text', after: 'list' },
   'open-agent': {
     prompt: 'text',
     'prompt-file': 'path',
@@ -73,7 +73,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   guide         prints how to use Patchbay, with every rule
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
-  open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD]
+  open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD] [--profile NAME|ID]
   open-agent    [--prompt TEXT | --prompt-file FILE|-] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
   spawn-team    --label L (--members JSON | --members-file FILE|-) [--color C]
                   members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]

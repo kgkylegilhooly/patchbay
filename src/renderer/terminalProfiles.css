@@ -1,0 +1,200 @@
+/* Terminal profiles: Settings > Terminals, and the New terminal form's picker. */
+
+.tp {
+  padding: 14px 18px 16px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.tp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 16px;
+}
+
+.tp-head > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.tp-head .set-saved {
+  align-self: center;
+}
+
+.tp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tp-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  background: var(--well);
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 8px;
+}
+
+.tp-item-default {
+  border-color: rgb(47 123 246 / 0.55);
+}
+
+.tp-item-editing {
+  display: block;
+  padding: 0;
+  border-color: var(--line);
+}
+
+.tp-main {
+  display: flex;
+  flex: 1 1 300px;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tp-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tp-badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.tp-badge-default {
+  color: #cfe0ff;
+  background: rgb(47 123 246 / 0.25);
+  border-color: rgb(47 123 246 / 0.6);
+}
+
+.tp-launch {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--ink-dim);
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.tp-launch code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.tp-cwd {
+  font-size: 12px;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.tp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tp-form {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 10px 14px;
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.tp-item-editing .tp-form {
+  margin: 0;
+  border: none;
+}
+
+.tp-field {
+  display: contents;
+}
+
+.tp-field > span:first-child,
+.tp-preview-label {
+  padding-top: 7px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.tp-field input,
+.tp-field textarea {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--ground);
+}
+
+.tp-field input {
+  height: 32px;
+}
+
+.tp-field textarea {
+  resize: vertical;
+}
+
+.tp-preview {
+  display: contents;
+}
+
+.tp-preview .tp-launch {
+  padding: 7px 10px;
+  background: var(--ground);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+.tp-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tp-problem {
+  margin-right: auto;
+  font-size: 12px;
+  color: #ffd79a;
+}
+
+/* The New terminal form's picker. */
+.field select[name='profile'] {
+  height: 32px;
+}
+
+.field .tp-launch {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+@media (max-width: 560px) {
+  .tp-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tp-field > span:first-child,
+  .tp-preview-label {
+    padding-top: 0;
+  }
+}

@@ -8,6 +8,7 @@ import type { Overrides } from './keys'
 import type { UpdateState } from '../shared/contract'
 import { cleanTerminalLook, FONT_SIZE, SCROLLBACK, type Prefs, type TerminalLook, type TogglePref } from './prefs'
 import { ShortcutSettings } from './ShortcutSettings'
+import { TerminalProfilesSection } from './TerminalProfilesSection'
 import type { UsageMode } from './usageView'
 import { AGENT_KINDS, agentChoice, defaultAgentNote, withAgent } from '../shared/agents'
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
@@ -373,7 +374,8 @@ export function SettingsPage({
 
         {section === 'terminals' && draft && (
           <div className="set-group">
-            <Row wide title="Shell" htmlFor="shell" help="The program new terminal windows run. Leave it empty for Git Bash, or PowerShell if Git Bash isn't installed.">
+            <TerminalProfilesSection />
+            <Row wide title="Shell for run commands" htmlFor="shell" help="The program run command windows use. Leave it empty for Git Bash, or PowerShell if Git Bash isn't installed. New terminals use the profiles above.">
               <ProgramInput name="shell" value={draft.shell ?? ''} placeholder="Automatic" onChange={(v) => set('shell', v)} />
             </Row>
             <Row title="Font size" help="Applies to every terminal and agent window, straight away.">

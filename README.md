@@ -174,9 +174,18 @@ in the log above, which is the thing to share if Patchbay misbehaves.
 Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent
 holds one while its shell tool runs a command, and so do Git Bash windows outside Patchbay. Past that, a new Git Bash
 ends at once, and the window says so; agents' shell commands fail the same way. Close some terminals, or give some of
-them another shell in `settings.json` (below), and press Restart.
+them another terminal profile (below), and press Restart.
 
-`settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
+**Terminal profiles** set what a new terminal starts: a program, its arguments (one per line, passed as they are), an
+optional startup command typed once at its first prompt, and an optional folder. Set them under Settings > Terminals.
+Git Bash, Windows PowerShell, Command Prompt, PowerShell 7 and WSL appear when installed; duplicate one to change it.
+New terminal opens the default; the others are in the Add menu, the canvas menu, the palette, the New terminal form and
+`patchbay open-terminal --profile NAME`. A terminal keeps its profile across restarts. If that profile is deleted, it
+starts the default and says so. For example: `cmd.exe` with the two arguments `/k` and `C:\...\vcvars64.bat`, or Git
+Bash with the startup command `cd ~/proj && nvm use`.
+
+`settings.json` can set the shell run commands use (with no profiles saved yet, new terminals use it too) and the
+permission mode for Claude nodes:
 
 ```json
 { "shell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "permissionMode": "default" }
@@ -296,6 +305,11 @@ first, then labels, and the text size folds into one button.
   Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
+- **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
+  with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
+  reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
+  the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
 
 ## Keys
 
