@@ -192,11 +192,43 @@ Ask me: the same way, if a rule is unclear. Ask once, and say what you would do 
 Keep briefs small enough that each turn ends often. A member only reads your messages between turns, so a
 correction sent mid-turn lands after it has finished the wrong thing. Send changes of plan early.
 
+Write each brief to a file with your file-writing tool and pass `--prompt-file` (or `promptFile`). Quoting a long brief
+on the command line breaks easily. Rules every member shares, such as what nobody may run or touch, go in one file
+that each brief points to.
+
+### Messages during a team
+
+- Keep a message to a member short: a few lines. Put anything longer in a file and send its path.
+- Members aren't linked to each other, so one can't send to another. Have them report to you, and pass on what the
+  other needs, such as a review to its author.
+- A message can arrive late, after the member has already done what it asks, and so can a member's report to you.
+  Before acting on one, check the state: `git log` on its branch, or `patchbay read`.
+- A member that stops on its plan's usage limit shows `unknown`, and messages queued for it wait. Tell the person
+  which nodes to answer with "continue" once the limit resets. Its work stays on disk.
+- When every node of one agent kind exits or won't start, check that agent's own command first, such as
+  `where codex` and `codex --version`, before treating it as a Patchbay problem. Tell the person what you find.
+
+### Reviews
+
+A second agent reviewing a member's work catches what the author missed, more so when it's the other provider. Give
+the reviewer a read-only brief: the spec, the branch or files, what to look for, and a file to write its findings to.
+It reports to you and you pass the findings to the author. Once a branch is merged, `main...branch` is empty, so
+name the commit it started from instead.
+
 ### Commits
 
 Members in a group bound to a git worktree share one branch, so commits at the same time collide. Pick one rule
 and put it in every brief: either only you, the lead, commit (the usual choice), or each member commits only the
 files it owns, one at a time. Nobody pushes unless the person asked for that in their own words.
+
+When members working at the same time would edit the same files, give each its own worktree and branch instead:
+`git worktree add -b <branch> .claude/worktrees/<name>`, then `--cwd` there. Each commits only on its own branch, and
+you merge them one by one, checking tests after each. Inside the project folder, a worktree still finds the
+project's `node_modules`. Tell members to put new code in new files and keep edits to shared files small, so merges
+stay easy. Say in the brief which paths git ignores or excludes, so nobody force-adds them.
+
+A member that stops partway, such as at a usage limit, leaves its changes uncommitted. Before handing its work to
+another member, commit it on its branch as work in progress, so nothing is lost.
 
 ### Finish the team
 
@@ -223,7 +255,13 @@ patchbay send --node <id> --text "Also cover the empty-file case."
 
 A Claude node gets the text only when `idle`. Otherwise it waits in a queue and goes out one message at a
 time, and the reply says `"queued": true`. A queue doesn't survive the app restarting. Control keys are
-removed from text sent to a Claude node, and an exited one refuses.
+removed from text sent to a Claude node, and an exited one refuses. A message also waits while the person is typing
+at that agent's prompt, so it never lands in the middle of what they're writing.
+
+After typing a message, Patchbay checks the agent's transcript for it. `"confirmed": true` means it arrived whole.
+`"garbled": true` means only part of it arrived: send it again. A `problem` without `garbled` means it couldn't be
+checked, so read the node before sending it again. A message that had to wait is checked when it goes out, and you
+hear about a problem as a notice from Patchbay.
 
 A terminal gets the text and Enter right away, because it has no status to wait for. What you send is typed at its
 prompt, so send a command, such as `npm test`, never a message to a person. Then read the terminal for the result.
@@ -249,7 +287,9 @@ patchbay wait --nodes <id>,<id> --any --timeout 100
 - Anything those agents sent you while you waited comes back in the reply's `messages`, so you don't get it
   again as a new prompt later. Read it there.
 - `needs-you` means the person has to answer that agent, such as a permission prompt or a question about
-  trusting its folder. Tell them which node, then wait again.
+  trusting its folder. Tell them which node, then wait again. With `--any`, a node already at `needs-you` makes
+  every wait return at once, so leave it out of `--nodes` until the person has answered it.
+- For a long wait in Claude Code, you can also end your turn: a member's report arrives as your next prompt.
 - Finished isn't the same as right. Read the result before you build on it.
 
 ## Organize
