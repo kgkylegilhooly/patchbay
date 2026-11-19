@@ -8,6 +8,12 @@ const REQUEST_TIMEOUT_MS = 30000
 
 // How each flag is read: text, list (commas or repeats), int, or path (resolved against this folder).
 const VERBS = {
+  'task create': { brief: 'text', criteria: 'repeat', sessions: 'list', cwd: 'path', checks: 'text', 'depends-on': 'list' },
+  'task list': { readiness: 'flag' },
+  'task show': { task: 'text' },
+  'task submit': { task: 'text', summary: 'text' },
+  'task verify': { task: 'text', check: 'text' },
+  'task state': { task: 'text', state: 'text' },
   whoami: {},
   list: {},
   'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', after: 'list' },
@@ -57,6 +63,13 @@ const VERBS = {
 
 const USAGE = `Usage: patchbay <verb> [--flag value]
 
+  task create   --brief TEXT --criteria TEXT [--criteria TEXT ...] [--sessions ID,ID] [--cwd DIR] [--checks JSON] [--depends-on ID,ID]
+  task list     [--readiness]   with --readiness, each task's attempts and whether it's ready now
+  task show     --task ID
+  task submit   --task ID --summary TEXT
+  task verify   --task ID --check NAME   runs a check declared at create, in cmd, outside your sandbox; task show reads its result
+  task state    --task ID --state planned|running|blocked|cancelled
+
   guide         prints how to use Patchbay, with every rule
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
@@ -100,8 +113,8 @@ function usageOf(verb) {
   const picked = []
   for (let i = 0; i < lines.length; i++) {
     const words = lines[i].trim().split(/\s+/)
-    const name = words[0] === 'browser' ? `browser ${words[1]}` : words[0]
-    const match = verb === 'browser' ? words[0] === 'browser' : name === verb || (words[0] === 'browser' && words[1].split('|').includes(verb.slice(8)))
+    const name = words[0] === 'browser' || words[0] === 'task' ? `${words[0]} ${words[1]}` : words[0]
+    const match = verb === 'browser' || verb === 'task' ? words[0] === verb : name === verb || (words[0] === 'browser' && words[1].split('|').includes(verb.slice(8)))
     if (!match) continue
     picked.push(lines[i])
     // A verb's own detail is indented further on the lines below it.
@@ -181,6 +194,8 @@ function parseFlags(verb, words) {
     }
     if (kind === 'path') args[key] = toLocalPath(value)
     if (kind === 'list') args[key] = [...(args[key] || []), ...value.split(',').filter(Boolean)]
+    // Each use is one whole item, commas and all, as an acceptance criterion such as "Handles 1,000 rows".
+    if (kind === 'repeat') args[key] = [...(args[key] || []), value]
     if (kind === 'int') {
       if (!/^\d+$/.test(value)) fail(`--${flag} needs a whole number, not "${value}".`)
       args[key] = Number(value)
@@ -311,14 +326,14 @@ function finish(verb, status, text) {
 function main() {
   const [first, ...rest] = process.argv.slice(2)
   // `browser read` is one verb of two words. On the wire it's browser-read.
-  const verb = first === 'browser' ? `browser ${rest[0] ?? ''}` : first
-  const words = first === 'browser' ? rest.slice(1) : rest
+  const verb = first === 'browser' || first === 'task' ? `${first} ${rest[0] ?? ''}` : first
+  const words = first === 'browser' || first === 'task' ? rest.slice(1) : rest
   if (!verb || verb === '--help' || verb === '-h' || verb === 'help') {
     process.stdout.write(USAGE)
     return
   }
-  if (first === 'browser' && ['', '--help', '-h', 'help'].includes(rest[0] ?? '')) {
-    process.stdout.write(usageOf('browser'))
+  if ((first === 'browser' || first === 'task') && ['', '--help', '-h', 'help'].includes(rest[0] ?? '')) {
+    process.stdout.write(usageOf(first))
     return
   }
   if (words[0] === '-h') {

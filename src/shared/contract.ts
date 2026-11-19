@@ -164,6 +164,8 @@ export interface NoteEdit {
 }
 
 export interface PatchbayBridge {
+  taskShow(projectId: string, taskId: string): Promise<import('./task').TaskView>
+  taskAccept(projectId: string, taskId: string, submissionId: string): Promise<import('./task').Task>
   /** Tells main which page belongs to which node, once the canvas has drawn it. */
   browserAttached(nodeId: string, contentsId: number): Promise<void>
   browserNavigate(nodeId: string, address: string): Promise<{ ok: true; url: string } | { ok: false; reason: string }>

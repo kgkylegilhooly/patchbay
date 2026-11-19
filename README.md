@@ -1,5 +1,12 @@
 # Patchbay
 
+Tasks keep explicit outcomes separate from agent activity. Use `patchbay task create`,
+`list`, `show`, `submit` and `verify` to record work and real command checks. The board
+shows task outcomes and lets you accept a submitted result after its required checks
+pass at the current revision. Session cards show their associated tasks. See the
+[task command guide](resources/skill/skills/patchbay/tasks.md). Existing `--after`
+connections still wait for a completed agent turn.
+
 A Windows canvas of live terminals, Claude Code and Codex agents, notes and whiteboards. For one person, on one PC.
 
 ## Build and run

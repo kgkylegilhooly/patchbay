@@ -17,6 +17,7 @@ const TOOL = {
   description: [
     'Drives the Patchbay canvas this session is on: open Claude Code and Codex agents and terminals, spawn mixed teams,',
     'read another node\'s conversation or output, send it a message, use browser nodes, and organize the canvas.',
+    'Use ["task", "create|list|show|submit|verify|state", ...flags] for durable outcomes. Verification runs a command; acceptance is only in the human UI.',
     'Pass the words you would type after `patchbay`, one per item, for example ["open-agent", "--agent", "claude",',
     '"--prompt", "Review the parser"] or ["read", "--node", "<id>", "--tail", "5"].',
     'Call it with ["guide"] before the first use: it explains every verb and its rules.',

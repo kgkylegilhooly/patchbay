@@ -2,6 +2,7 @@ import { existsSync, renameSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sanitizeBoard } from '../../shared/board'
+import { recoverTasks, sanitizeTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
 import { isWhiteboardShape, LIMITS } from '../../shared/whiteboard'
 import {
@@ -247,7 +248,21 @@ export function migrate(input: unknown): CanvasDoc {
     throw new Error('Save file has an invalid closed list')
   }
   if (!isViewport(raw.viewport)) throw new Error('Save file has an invalid viewport')
-  return rehomeOrphans(showOpenProject(checkBoards(raw as unknown as CanvasDoc)))
+  const doc = rehomeOrphans(showOpenProject(checkBoards(raw as unknown as CanvasDoc)))
+  // Task data never costs the canvas: a damaged record is dropped on its own, and the rest of the project loads.
+  return { ...doc, projects: doc.projects.map(withTasksChecked) }
+}
+
+function withTasksChecked(p: CanvasDoc['projects'][number]): CanvasDoc['projects'][number] {
+  if (p.tasks === undefined) return p
+  const clean = sanitizeTasks(p.tasks)
+  if (!clean) {
+    console.warn(`Patchbay dropped unreadable task data in project ${p.id} while loading.`)
+    const { tasks: _dropped, ...rest } = p
+    return rest
+  }
+  if (clean.dropped) console.warn(`Patchbay dropped ${clean.dropped} damaged task record(s) in project ${p.id} while loading.`)
+  return { ...p, tasks: recoverTasks(clean.records) }
 }
 
 function parseDoc(text: string): CanvasDoc | null {

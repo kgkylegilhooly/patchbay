@@ -23,6 +23,8 @@ title works in place of its ID when no other node in your project has that title
 
 ## Know where you are
 
+For durable task outcomes, recorded command checks and human review, read [tasks.md](tasks.md).
+
 ```sh
 patchbay whoami
 ```

@@ -21,6 +21,7 @@ import { registerRecipeIpc } from './recipes/ipc'
 import { createRecipeService } from './recipes/service'
 import { createSetupGate } from './recipes/setupGate'
 import { withRecipeVerbs } from './recipes/verbs'
+import { createTaskService } from './tasks/service'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
@@ -394,8 +395,19 @@ async function boot(): Promise<void> {
     if (e.sender === mainWindow?.webContents && typeof id === 'string') agentEdits.settle(id)
   })
   ipcMain.handle('pb:getMessages', () => messages.all())
+  const tasks = createTaskService(store, dataDir, () => docStore.flush())
+  // Output of attempts no project records any more. Once the canvas has settled, so it costs start-up nothing.
+  setTimeout(() => tasks.pruneOutput(), 60_000).unref()
+  ipcMain.handle('pb:taskShow', (e, projectId: string, taskId: string) => {
+    if (e.sender !== mainWindow?.webContents || e.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Tasks are available only in the application UI')
+    return tasks.show(projectId, taskId)
+  })
+  ipcMain.handle('pb:taskAccept', (e, projectId: string, taskId: string, submissionId: string) => {
+    if (e.sender !== mainWindow?.webContents || e.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Only the application UI can accept tasks')
+    return tasks.accept(projectId, taskId, submissionId)
+  })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -572,6 +584,8 @@ async function boot(): Promise<void> {
       await messages.flush()
       await agentEdits.flush()
       await search.stop()
+      // A verification left running would outlive the record it reports to. On next launch its attempt reads interrupted.
+      tasks.stopAll()
     }
     // Saved before stopping sessions in case that hangs, and after because stopping can change the doc.
     await save()
