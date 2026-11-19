@@ -63,6 +63,13 @@ async function openSearch(page, query) {
 
 const scenes = {
   search: async (page) => openSearch(page, 'unicode'),
+  // Opens a closed Codex conversation at the message that matched, read from the index.
+  'search-source': async (page) => {
+    await openSearch(page, 'emoji included')
+    await page.click('.search-hit-main')
+    await page.waitForSelector('.source-focus', { timeout: 15000 })
+    await sleep(400)
+  },
   handoff: async (page) => {
     await openSearch(page, 'surrogate')
     await page.click('.search-continue')
@@ -86,4 +93,4 @@ const scenes = {
   }
 }
 
-module.exports = { scenes, seeds: { search: seedSearch, handoff: seedSearch, 'handoff-start': seedSearch } }
+module.exports = { scenes, seeds: { search: seedSearch, 'search-source': seedSearch, handoff: seedSearch, 'handoff-start': seedSearch } }

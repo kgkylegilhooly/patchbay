@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useReactFlow } from '@xyflow/react'
-import type { IndexStats, SearchHit, SearchKind } from '../core/search/types'
+import type { IndexStats, SearchHit, SearchKind, SourceWindow } from '../core/search/types'
 import { bridge } from './bridge'
 import { ClaudeIcon, CodexIcon, Icon } from './icons'
 import { closeSearch, markedParts, openHandoff, RANGES, rangeStart, searchBridge, useSearchUi, type DateRange } from './searchUi'
@@ -15,6 +15,7 @@ const KINDS: Array<{ id: SearchKind | 'all'; label: string }> = [
   { id: 'message', label: 'Messages' }
 ]
 const TYPING_MS = 180
+const RETRY_MS = 2000
 
 /** What the drawer remembers between openings, so going to a result and back keeps the search. */
 const kept = { text: '', projectId: '', range: 'any' as DateRange, kind: 'all' as SearchKind | 'all' }
@@ -30,37 +31,49 @@ function statsLine(s: IndexStats): string {
   return `Indexed ${parts.join(', ')}${s.syncedAt ? `, updated ${TIME.format(s.syncedAt)}` : ''}.`
 }
 
+/** How many messages either side of the match the viewer shows first, and adds with each Show earlier or later. */
+const SPAN = 15
+
 interface Viewing {
-  title: string
   hit: SearchHit
-  text: string | null
+  window: SourceWindow | null
   problem: string | null
 }
 
-/** The transcript or text a result came from, scrolled to the first match. */
-function SourceViewer({ viewing, terms, onClose }: { viewing: Viewing; terms: string[]; onClose: () => void }): React.JSX.Element {
-  const mark = useRef<HTMLElement>(null)
-  const text = viewing.text
-  const at = useMemo(() => {
-    if (!text) return -1
-    const low = text.toLowerCase()
-    const hits = terms.map((t) => low.indexOf(t)).filter((i) => i !== -1)
-    return hits.length ? Math.min(...hits) : -1
-  }, [text, terms])
-  const length = at === -1 ? 0 : (terms.find((t) => text!.toLowerCase().startsWith(t, at))?.length ?? 0)
-  useEffect(() => mark.current?.scrollIntoView({ block: 'center' }), [at])
-  const closedId = viewing.hit.ref.type === 'closed' ? viewing.hit.ref.closedId : null
+const SPEAKER: Record<string, string> = { user: 'Asked', assistant: 'Agent' }
+
+/** Text with every term marked, for the message a result came from. */
+function Marked({ text, terms }: { text: string; terms: string[] }): React.JSX.Element {
+  const low = text.toLowerCase()
+  const marks: Array<[number, number]> = []
+  for (const t of terms) for (let at = low.indexOf(t); at !== -1; at = low.indexOf(t, at + t.length)) marks.push([at, at + t.length])
+  marks.sort((x, y) => x[0] - y[0])
+  return <>{markedParts(text, marks.filter((m, i) => i === 0 || m[0] >= marks[i - 1][1])).map((p, i) => (p.mark ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}</>
+}
+
+/**
+ * Where a result came from, read from the search index rather than the transcript, so even a huge conversation opens
+ * at once without holding up the app. It shows the message that matched, with some on either side, and more on asking.
+ */
+function SourceViewer({ viewing, terms, onMore, onClose }: { viewing: Viewing; terms: string[]; onMore: (before: number, after: number) => void; onClose: () => void }): React.JSX.Element {
+  const focused = useRef<HTMLLIElement>(null)
+  const w = viewing.window
+  const hit = viewing.hit
+  useEffect(() => focused.current?.scrollIntoView({ block: 'center' }), [w?.focus, hit])
+  const closedId = hit.ref.type === 'closed' ? hit.ref.closedId : null
+  const before = w ? w.focus - w.start : 0
+  const after = w ? w.start + w.entries.length - 1 - w.focus : 0
   return (
-    <div className="viewer search-viewer" role="dialog" aria-label={`Source of ${viewing.title}`}>
+    <div className="viewer search-viewer" role="dialog" aria-label={`Source of ${hit.title}`}>
       <header className="drawer-head">
-        <h2>{viewing.title}</h2>
+        <h2>{hit.title}</h2>
         <div className="search-viewer-actions">
           {closedId && (
             <>
               <button className="btn" onClick={() => void bridge.reopenClosed(closedId).then(onClose)}>
                 Reopen
               </button>
-              <button className="btn" onClick={() => openHandoff({ type: 'closed', closedId }, viewing.title)}>
+              <button className="btn" onClick={() => openHandoff({ type: 'closed', closedId }, hit.title)}>
                 Continue with another agent…
               </button>
             </>
@@ -72,20 +85,40 @@ function SourceViewer({ viewing, terms, onClose }: { viewing: Viewing; terms: st
       </header>
       {viewing.problem ? (
         <p className="drawer-empty">{viewing.problem}</p>
+      ) : !w ? (
+        <p className="drawer-empty">Loading…</p>
+      ) : w.entries.length === 0 ? (
+        <p className="drawer-empty">This conversation has no readable messages.</p>
       ) : (
-        <pre className="viewer-text" tabIndex={0}>
-          {text === null ? (
-            'Loading…'
-          ) : at === -1 ? (
-            text
-          ) : (
-            <>
-              {text.slice(0, at)}
-              <mark ref={mark}>{text.slice(at, at + length)}</mark>
-              {text.slice(at + length)}
-            </>
+        <div className="source-body" tabIndex={0}>
+          {w.start > 0 && (
+            <button className="btn source-more" onClick={() => onMore(before + SPAN, after)}>
+              Show earlier ({w.start} more)
+            </button>
           )}
-        </pre>
+          <ol className="source-list">
+            {w.entries.map((e, i) => {
+              const at = w.start + i
+              const focus = at === w.focus && hit.entry !== -1
+              return (
+                <li key={at} ref={focus ? focused : undefined} className={`source-entry${focus ? ' source-focus' : ''}`}>
+                  {(e.role || e.at) && (
+                    <div className="source-meta">
+                      {e.role && <span>{SPEAKER[e.role]}</span>}
+                      {e.at ? <time dateTime={new Date(e.at).toISOString()}>{TIME.format(e.at)}</time> : null}
+                    </div>
+                  )}
+                  <div className="source-text">{focus ? <Marked text={e.text} terms={terms} /> : e.text}</div>
+                </li>
+              )
+            })}
+          </ol>
+          {w.start + w.entries.length < w.total && (
+            <button className="btn source-more" onClick={() => onMore(before, after + SPAN)}>
+              Show later ({w.total - w.start - w.entries.length} more)
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -107,6 +140,8 @@ export function SearchPanel(): React.JSX.Element {
   const [rebuilding, setRebuilding] = useState(false)
   const [viewing, setViewing] = useState<Viewing | null>(null)
   const asked = useRef(0)
+  // While the index is still being built, the same search is asked again now and then, so results fill in.
+  const [tick, setTick] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   Object.assign(kept, { text, projectId, range, kind })
 
@@ -138,10 +173,15 @@ export function SearchPanel(): React.JSX.Element {
           setHits(r.result.hits)
           setMore(r.result.more)
           setStats(r.result.stats)
+          if (r.result.stats.syncing) again = setTimeout(() => setTick((t) => t + 1), RETRY_MS)
         })
     }, TYPING_MS)
-    return () => clearTimeout(timer)
-  }, [text, projectId, range, kind])
+    let again: ReturnType<typeof setTimeout> | undefined
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(again)
+    }
+  }, [text, projectId, range, kind, tick])
 
   // Projects the index knows by name, deleted ones included, so their conversations can still be picked out.
   const projectChoices = useMemo(() => {
@@ -173,12 +213,15 @@ export function SearchPanel(): React.JSX.Element {
     const ref = hit.ref
     if (ref.type === 'node' && showNode(ref.nodeId)) return
     if (ref.type === 'message' && (showNode(ref.to) || showNode(ref.from))) return
-    if (ref.type === 'closed') {
-      setViewing({ title: hit.title, hit, text: null, problem: null })
-      void bridge.readClosedTranscript(ref.closedId).then((r) => setViewing((v) => (v?.hit === hit ? { ...v, text: r.ok ? r.text : null, problem: r.ok ? null : r.reason } : v)))
-      return
-    }
-    setViewing({ title: hit.title, hit, text: hit.snippet, problem: ref.type === 'node' ? 'This is no longer on the canvas.' : null })
+    showSource(hit, SPAN, SPAN)
+  }
+
+  /** Reads part of a result's source from the index, around the message that matched. */
+  const showSource = (hit: SearchHit, before: number, after: number): void => {
+    setViewing((v) => (v?.hit === hit ? v : { hit, window: null, problem: null }))
+    void searchBridge()
+      .readSource(hit.key, Math.max(0, hit.entry), before, after)
+      .then((r) => setViewing((v) => (v?.hit === hit ? { hit, window: r.ok ? r.window : null, problem: r.ok ? null : r.reason } : v)))
   }
 
   const rebuild = async (): Promise<void> => {
@@ -282,6 +325,7 @@ export function SearchPanel(): React.JSX.Element {
         <footer className="search-foot">
           <span>
             {stats ? statsLine(stats) : 'Indexing…'}
+            {stats?.syncing ? ' Still indexing, so results may be incomplete.' : ''}
             {stats?.missing ? ` ${stats.missing} transcript${stats.missing === 1 ? ' is' : 's are'} missing from disk.` : ''}
           </span>
           <button className="btn" disabled={rebuilding} onClick={() => void rebuild()} title="Reads every source again. Transcripts are only read, never changed.">
@@ -289,7 +333,7 @@ export function SearchPanel(): React.JSX.Element {
           </button>
         </footer>
       </aside>
-      {viewing && <SourceViewer viewing={viewing} terms={terms} onClose={() => setViewing(null)} />}
+      {viewing && <SourceViewer viewing={viewing} terms={terms} onMore={(before, after) => showSource(viewing.hit, before, after)} onClose={() => setViewing(null)} />}
     </>
   )
 }

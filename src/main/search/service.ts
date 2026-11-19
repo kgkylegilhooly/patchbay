@@ -9,7 +9,7 @@ import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus, CanvasNode, ClaudeNode } from '../../shared/model'
 import type { SearchBridge, StartHandoff } from '../../shared/searchBridge'
 import { spotNear } from '../control/verbs'
-import { createSearchEngine, type EngineRequest } from './engine'
+import type { EngineRequest } from './engine'
 
 /** Plain documents for search from elsewhere in Patchbay, such as task results. Called on every sync, so keep it cheap. */
 export type SearchSourceProvider = () => SourceSpec[]
@@ -35,69 +35,56 @@ export function registerHandoffEvidence(provider: HandoffEvidenceProvider): () =
 export type Backend = (request: EngineRequest) => Promise<unknown>
 
 /**
- * The engine in a worker thread, started on first use and again after it fails. If a worker can't start at all, the
- * engine runs here instead: slower to answer, since it shares the main thread, but search still works.
+ * The engine in a worker thread, started on first use and again after it fails. It never runs on the main thread: if
+ * the worker can't start, search says it's unavailable and why, and the next request tries a new worker.
  */
 export function workerBackend(script: string, indexFile: string, log: (line: string) => void): Backend {
   let worker: Worker | null = null
-  let fallback: Backend | null = null
-  /** A worker has answered once, so the script loads here, and a later failure is worth a new worker. */
+  /** A worker has answered once, so its script loads, and a failure after that is a crash rather than a missing file. */
   let worked = false
   let next = 1
-  const pending = new Map<number, { request: EngineRequest; resolve: (v: unknown) => void; reject: (e: Error) => void }>()
-  const runHere = (why: string): Backend => {
-    log(`The search worker couldn't start, so search runs in the main process: ${why}`)
-    const engine = createSearchEngine({ indexFile })
-    return (r) => engine.handle(r)
-  }
+  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   const fail = (e: Error): void => {
     worker = null
-    const waiting = [...pending.values()]
+    const why = worked ? e : new Error(`the search worker couldn't start (${e.message})`)
+    for (const p of pending.values()) p.reject(why)
     pending.clear()
-    // Never answered at all, as when its script can't be loaded: what was asked is answered here instead.
-    if (!worked) {
-      fallback ??= runHere(e.message)
-      for (const p of waiting) fallback(p.request).then(p.resolve, p.reject)
-      return
-    }
-    for (const p of waiting) p.reject(e)
   }
-  const start = (): Worker | null => {
+  const start = (): Worker => {
     if (worker) return worker
-    try {
-      const w = new Worker(script, { workerData: { indexFile } })
-      w.unref()
-      w.on('message', (m: { id: number; ok: boolean; value?: unknown; error?: string }) => {
-        worked = true
-        const p = pending.get(m.id)
-        pending.delete(m.id)
-        if (m.ok) p?.resolve(m.value)
-        else p?.reject(new Error(m.error ?? 'Search failed.'))
-      })
-      w.on('error', (e) => {
-        log(`The search worker failed: ${e.message}`)
-        if (worker === w) fail(e)
-      })
-      w.on('exit', (code) => {
-        if (worker === w) fail(new Error(`The search worker stopped (code ${code}).`))
-      })
-      worker = w
-      return w
-    } catch (e) {
-      fallback = runHere((e as Error).message)
-      return null
-    }
+    const w = new Worker(script, { workerData: { indexFile } })
+    w.unref()
+    w.on('message', (m: { id: number; ok: boolean; value?: unknown; error?: string }) => {
+      worked = true
+      const p = pending.get(m.id)
+      pending.delete(m.id)
+      if (m.ok) p?.resolve(m.value)
+      else p?.reject(new Error(m.error ?? 'Search failed.'))
+    })
+    w.on('error', (e) => {
+      log(`The search worker failed: ${e.message}`)
+      if (worker === w) fail(e)
+    })
+    w.on('exit', (code) => {
+      if (worker === w) fail(new Error(`the search worker stopped (code ${code})`))
+    })
+    worker = w
+    return w
   }
-  return (request) => {
-    if (fallback) return fallback(request)
-    const w = start()
-    if (!w) return fallback!(request)
-    const id = next++
-    return new Promise((resolve, reject) => {
-      pending.set(id, { request, resolve, reject })
+  return (request) =>
+    new Promise((resolve, reject) => {
+      let w: Worker
+      try {
+        w = start()
+      } catch (e) {
+        log(`The search worker couldn't start: ${(e as Error).message}`)
+        reject(new Error(`the search worker couldn't start (${(e as Error).message})`))
+        return
+      }
+      const id = next++
+      pending.set(id, { resolve, reject })
       w.postMessage({ id, request })
     })
-  }
 }
 
 export interface SearchServiceDeps {
@@ -178,6 +165,14 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
         return failure(e)
       }
     },
+    async readSource(key, around, before = 15, after = 15) {
+      try {
+        const window = await d.backend({ type: 'source', key: String(key), around: Number(around), before: Number(before), after: Number(after) })
+        return window ? { ok: true, window: window as never } : { ok: false, reason: "This isn't in the search index any more. Search again to find it." }
+      } catch (e) {
+        return failure(e)
+      }
+    },
     async rebuild() {
       try {
         return { ok: true, stats: (await d.backend({ type: 'rebuild', input: input() })) as never }
@@ -191,7 +186,7 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
       let from: { title: string; agent: ClaudeNode['agent']; cwd: string; projectId?: string; transcriptPath: string | null; busy: boolean } | null = null
       if (source?.type === 'node') {
         const node = find(source.nodeId)
-        if (node?.kind === 'claude') from = { title: node.title, agent: node.agent, cwd: node.cwd, projectId: node.projectId, transcriptPath: node.transcriptPath, busy: d.status(node.id) === 'working' }
+        if (node?.kind === 'claude') from = { title: node.title, agent: node.agent, cwd: node.cwd, projectId: node.projectId, transcriptPath: node.transcriptPath, busy: d.status(node.id) === 'working' || d.status(node.id) === 'needs-you' }
       } else if (source?.type === 'closed') {
         const c = doc.closed.find((e) => e.id === source.closedId)
         if (c) from = { title: c.title, agent: c.agent, cwd: c.cwd, projectId: c.projectId, transcriptPath: c.transcriptPath, busy: false }

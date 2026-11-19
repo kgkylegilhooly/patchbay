@@ -61,8 +61,11 @@ function isSaved(v: unknown): v is SavedIndex {
 }
 
 export interface SearchIndex {
-  /** Brings the index up to date with the sources: reads what transcripts added, drops what's gone. Says whether anything changed. */
-  sync(input: SyncInput): Promise<boolean>
+  /**
+   * Brings the index up to date with the sources: reads what transcripts added, drops what's gone. Says whether anything
+   * changed, and how many sources were dropped.
+   */
+  sync(input: SyncInput): Promise<{ changed: boolean; removed: number }>
   search(query: SearchQuery): SearchResult
   stats(): IndexStats
   doc(key: string): IndexedDoc | undefined
@@ -165,16 +168,18 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
           docs.set(spec.key, { key: spec.key, kind: spec.kind, title: spec.title, ref: spec.ref, at: spec.at, entries: [{ text, at: spec.at }], ...(spec.projectId ? { projectId: spec.projectId } : {}) })
           changed = true
         }
+        let removed = 0
         for (const key of [...docs.keys()]) {
           if (!seen.has(key)) {
             docs.delete(key)
+            removed++
             changed = true
           }
         }
         current = new Set(Object.keys(input.projects))
         missing = gone
         syncedAt = Date.now()
-        return changed
+        return { changed, removed }
       } finally {
         syncing = false
       }
@@ -191,13 +196,17 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
         if (query.projectId !== undefined && doc.projectId !== query.projectId) continue
         if (kinds && !kinds.has(doc.kind)) continue
         let best: SearchEntry | null = null
+        let bestIndex = -1
         let matches = 0
-        for (const entry of doc.entries) {
+        for (const [i, entry] of doc.entries.entries()) {
           if (!inRange(entry.at ?? doc.at)) continue
           const text = lowered(entry)
           if (!terms.every((t) => text.includes(t))) continue
           matches++
-          if (!best || (entry.at ?? 0) >= (best.at ?? 0)) best = entry
+          if (!best || (entry.at ?? 0) >= (best.at ?? 0)) {
+            best = entry
+            bestIndex = i
+          }
         }
         // A conversation found by its title, when no one message has every word.
         if (!best && inRange(doc.at) && terms.every((t) => doc.title.toLowerCase().includes(t))) best = { text: doc.title, at: doc.at }
@@ -213,6 +222,7 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
           snippet,
           marks,
           matches,
+          entry: bestIndex,
           ...(doc.projectId ? { projectId: doc.projectId } : {}),
           ...(name !== undefined ? { projectName: name } : {}),
           ...(doc.projectId && syncedAt !== null && !current.has(doc.projectId) ? { projectGone: true } : {}),

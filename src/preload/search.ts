@@ -10,6 +10,7 @@ const call =
 const searchBridge: SearchBridge = {
   search: call('search'),
   stats: call('stats'),
+  readSource: call('readSource'),
   rebuild: call('rebuild'),
   prepareHandoff: call('prepareHandoff'),
   startHandoff: call('startHandoff')

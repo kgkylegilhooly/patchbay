@@ -79,7 +79,7 @@ describe('search index', () => {
     expect(index.doc(conversationKey(path))!.entries.map((e) => e.text)).toEqual(['Plan the migration', 'The migration needs a backfill step.'])
 
     // Nothing new: nothing changes, and nothing is read twice.
-    expect(await index.sync(input)).toBe(false)
+    expect((await index.sync(input)).changed).toBe(false)
     expect(index.doc(conversationKey(path))!.entries).toHaveLength(2)
   })
 

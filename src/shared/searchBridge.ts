@@ -1,4 +1,4 @@
-import type { HandoffDraft, HandoffSource, IndexStats, SearchQuery, SearchResult } from '../core/search/types'
+import type { HandoffDraft, HandoffSource, IndexStats, SearchQuery, SearchResult, SourceWindow } from '../core/search/types'
 import type { AgentKind } from './model'
 
 export type SearchRefusal = { ok: false; reason: string }
@@ -22,6 +22,11 @@ export interface StartHandoff {
 export interface SearchBridge {
   search(query: SearchQuery): Promise<{ ok: true; result: SearchResult } | SearchRefusal>
   stats(): Promise<{ ok: true; stats: IndexStats } | SearchRefusal>
+  /**
+   * A result's source, from the index: the message at `around` (a hit's `entry`) and up to `before` and `after`
+   * messages either side. Answered by the search worker, so a large transcript is never read on the main thread.
+   */
+  readSource(key: string, around: number, before?: number, after?: number): Promise<{ ok: true; window: SourceWindow } | SearchRefusal>
   /** Forgets the index and reads every source again. Sources are only read. */
   rebuild(): Promise<{ ok: true; stats: IndexStats } | SearchRefusal>
   prepareHandoff(source: HandoffSource): Promise<{ ok: true; draft: HandoffDraft } | SearchRefusal>

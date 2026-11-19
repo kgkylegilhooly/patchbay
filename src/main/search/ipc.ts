@@ -17,6 +17,14 @@ export function gitChangesWith(git: GitService) {
 }
 
 /**
+ * The worker's script. Node can't start a worker from inside app.asar, so an installed build unpacks it, with the
+ * chunks it loads (see asarUnpack in package.json), and it's loaded from app.asar.unpacked.
+ */
+export function workerScript(mainDir: string): string {
+  return join(mainDir, 'searchWorker.js').replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2')
+}
+
+/**
  * Starts search and serves `pb:search:*` (see src/preload/search.ts). Only the window calls these; the control server
  * has no route to them, so agents get no search of their own.
  */
@@ -36,9 +44,9 @@ export function registerSearchIpc(s: {
     status: s.status,
     gitChanges: gitChangesWith(s.git),
     startNode: s.startNode,
-    backend: workerBackend(join(s.mainDir, 'searchWorker.js'), join(s.dataDir, 'search', 'index.json'), (line) => (s.log ?? console.error)(line))
+    backend: workerBackend(workerScript(s.mainDir), join(s.dataDir, 'search', 'index.json'), (line) => (s.log ?? console.error)(line))
   })
-  const methods: (keyof SearchBridge)[] = ['search', 'stats', 'rebuild', 'prepareHandoff', 'startHandoff']
+  const methods: (keyof SearchBridge)[] = ['search', 'stats', 'readSource', 'rebuild', 'prepareHandoff', 'startHandoff']
   for (const name of methods) {
     ipcMain.handle(`pb:search:${name}`, (_e, ...args: unknown[]) => (service[name] as (...a: unknown[]) => unknown)(...args))
   }

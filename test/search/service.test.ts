@@ -178,11 +178,12 @@ describe('worker backend', () => {
     expect(await backend({ type: 'stats' })).toBe('stats')
   })
 
-  it('runs search in this process when the worker script never loads', async () => {
+  it("says search is unavailable when the worker script never loads, and never runs it on the main thread", async () => {
     const logged: string[] = []
     const backend = workerBackend(join(dir, 'no-such-worker.js'), join(dir, 'index.json'), (l) => logged.push(l))
-    expect(await backend({ type: 'stats' })).toMatchObject({ conversations: 0, syncedAt: null })
-    expect(await backend({ type: 'sync', input: { sources: [], projects: {} } })).toMatchObject({ conversations: 0 })
-    expect(logged.some((l) => l.includes('runs in the main process'))).toBe(true)
+    await expect(backend({ type: 'stats' })).rejects.toThrow("the search worker couldn't start")
+    expect(logged.some((l) => l.includes('The search worker failed'))).toBe(true)
+    // The next request tries a new worker rather than giving up for good.
+    await expect(backend({ type: 'stats' })).rejects.toThrow("couldn't start")
   })
 })

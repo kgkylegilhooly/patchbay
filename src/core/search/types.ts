@@ -106,6 +106,21 @@ export interface SearchHit {
   marks: Array<[number, number]>
   /** Entries in this source that match. */
   matches: number
+  /** Which of the source's entries matched best, for opening it there. -1 when only the title matched. */
+  entry: number
+}
+
+/** Part of a source's indexed messages, around one of them, for reading it without loading the whole transcript. */
+export interface SourceWindow {
+  title: string
+  kind: SearchKind
+  /** The index of the first entry here, in the whole source. */
+  start: number
+  entries: SearchEntry[]
+  /** How many entries the source has in all. */
+  total: number
+  /** The entry asked for, as an index in the whole source. */
+  focus: number
 }
 
 export interface IndexStats {

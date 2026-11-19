@@ -140,7 +140,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
-| `searchindex.json` | The search index. Only a copy of what it read, so it's safe to delete: it's built again |
+| `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
 | `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
 | `sessions\` | The hook settings passed to each Claude node |
@@ -283,9 +283,10 @@ with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when 
 **Search** (Ctrl+Shift+S, or Search conversations and notes in the palette) finds words in every agent conversation
 Patchbay knows, in every project, closed conversations included, in notes, and in the messages agents sent each other.
 Filter by project, by date and by kind. Each result says its project. Click it to go to the window or note, or to read a
-closed conversation, with Reopen. Every word has to be in one message; put a phrase in quotes to keep it together.
+closed conversation at the message that matched, with Reopen. Every word has to be in one message; put a phrase in quotes to keep it together.
 
-- The index is built in the background and kept up to date as transcripts grow. It reads only what was added, and
+- The index is built in a background thread and kept up to date as transcripts grow. Searching never waits for it:
+  while it's still reading, results say they may be incomplete and fill in. It reads only what was added, and
   waits for a line still being written. **Rebuild index** reads everything again. Transcripts are only ever read.
 - It holds what Patchbay still knows: open windows, the closed history, notes and the last 300 messages. A deleted
   project's closed conversations stay findable under its old name. A transcript deleted from disk drops out.
