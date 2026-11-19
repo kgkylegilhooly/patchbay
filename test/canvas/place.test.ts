@@ -229,3 +229,74 @@ describe('placeInProject and viewRect', () => {
     expect(placeInProject(doc, 'p1', STICKY)).toEqual({ x: 480, y: 280 })
   })
 })
+
+describe('placeInGroup next to other nodes (review H1)', () => {
+  const GROUP = { width: 668, height: 508 }
+  const groupAt = (id: string, x: number, y: number, extra: Partial<CanvasNode> = {}) =>
+    node(id, { x, y, ...GROUP }, { kind: 'group', worktree: null, ...extra } as Partial<CanvasNode>)
+  const member = (id: string, parentId: string) => node(id, { x: GROUP_PAD, y: GROUP_TOP, parentId })
+  /** The group's box once the reducer has fitted it to a new member here. */
+  const grown = (g: CanvasNode, spot: { x: number; y: number }, size: { width: number; height: number }): Rect => ({
+    x: g.x,
+    y: g.y,
+    width: Math.max(g.width, spot.x + size.width + GROUP_PAD),
+    height: Math.max(g.height, spot.y + size.height + GROUP_PAD)
+  })
+  const TERMINAL = { width: 560, height: 340 }
+
+  test("compare's two attempt groups: a terminal opened into the left one goes below, so the group doesn't grow over the right one", () => {
+    const doc = docOf([groupAt('a', 0, 0), member('ma', 'a'), groupAt('b', GROUP.width + PLACE_GAP, 0), member('mb', 'b')])
+    const spot = placeInGroup(doc, 'a', TERMINAL)
+    expect(spot).toEqual({ x: GROUP_PAD, y: GROUP_TOP + 420 + PLACE_GAP })
+    expect(covers(grown(doc.nodes[0], spot, TERMINAL), doc.nodes[2])).toBe(false)
+  })
+
+  test('with a node directly below the group, it grows to the right instead', () => {
+    const doc = docOf([groupAt('g', 0, 0), member('m', 'g'), node('below', { x: 0, y: GROUP.height + PLACE_GAP })])
+    const spot = placeInGroup(doc, 'g', TERMINAL)
+    expect(spot).toEqual({ x: GROUP_PAD + 620 + PLACE_GAP, y: GROUP_TOP })
+    expect(covers(grown(doc.nodes[0], spot, TERMINAL), doc.nodes[2])).toBe(false)
+  })
+
+  test('boxed in on the right and below, it still goes in the grid, as the only place left', () => {
+    const doc = docOf([groupAt('g', 0, 0), member('m', 'g'), node('r', { x: GROUP.width + PLACE_GAP, y: 0, width: 3000, height: 3000 }), node('b', { x: 0, y: GROUP.height + PLACE_GAP, width: 600 })])
+    expect(placeInGroup(doc, 'g', TERMINAL)).toEqual({ x: GROUP_PAD + 620 + PLACE_GAP, y: GROUP_TOP })
+  })
+
+  test("another project's node beside the group doesn't count", () => {
+    const doc = docOf([groupAt('g', 0, 0), member('m', 'g'), node('other', { x: GROUP.width + PLACE_GAP, y: 0 }, { projectId: 'p2' })])
+    expect(placeInGroup(doc, 'g', TERMINAL)).toEqual({ x: GROUP_PAD + 620 + PLACE_GAP, y: GROUP_TOP })
+  })
+
+  test('a group inside a group keeps clear of its own siblings', () => {
+    const doc = docOf([
+      node('outer', { x: 0, y: 0, width: 2000, height: 1200 }, { kind: 'group', worktree: null } as Partial<CanvasNode>),
+      groupAt('inner', GROUP_PAD, GROUP_TOP, { parentId: 'outer' }),
+      member('m', 'inner'),
+      node('sib', { x: GROUP_PAD + GROUP.width + PLACE_GAP, y: GROUP_TOP, parentId: 'outer' })
+    ])
+    expect(placeInGroup(doc, 'inner', TERMINAL)).toEqual({ x: GROUP_PAD, y: GROUP_TOP + 420 + PLACE_GAP })
+  })
+})
+
+describe('the visible area the page reports (review M1)', () => {
+  test('a reported area is used as it is, so an open sidebar is left out', () => {
+    const doc = docOf([], { viewport: { x: 0, y: 0, zoom: 0.5 } })
+    // A 1400x900 canvas with the sidebar open: the page reports x 330 onward.
+    expect(viewRect(doc, 'p1', { x: 330, y: 24, width: 1046, height: 792 })).toEqual({ x: 660, y: 48, width: 2092, height: 1584 })
+  })
+
+  test('next to a lead at the left edge, a spot under the sidebar loses to one in the visible area', () => {
+    // The lead starts where the sidebar ends. Right and below are taken; left would be under the sidebar.
+    const doc = docOf([node('lead', { x: 330, y: 24 }), node('r', { x: 990, y: 24 }), node('b', { x: 330, y: 484 })])
+    const view = viewRect(doc, 'p1', { x: 330, y: 24, width: 1600, height: 1000 })!
+    const spot = placeNear(doc, { beside: absoluteRect(doc, doc.nodes[0]), size: STICKY, projectId: 'p1', view })
+    expect(spot.x).toBeGreaterThanOrEqual(330)
+  })
+})
+
+test('a node saved before projects existed is in the way in every project (review L4)', () => {
+  const doc = docOf([node('lead', { x: 0, y: 0 }, { projectId: 'p2' }), node('legacy', { x: 660, y: 0 }, { projectId: undefined })])
+  const spot = placeNear(doc, { beside: absoluteRect(doc, doc.nodes[0]), size: STICKY, projectId: 'p2' })
+  expect(covers({ ...spot, ...STICKY }, doc.nodes[1])).toBe(false)
+})

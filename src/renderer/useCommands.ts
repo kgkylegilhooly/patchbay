@@ -7,6 +7,7 @@ import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
 import type { Rect } from '../core/canvas/place'
+import { visibleArea } from './viewArea'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
@@ -74,11 +75,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
 
     /** The canvas on screen, in canvas coordinates, less what the sidebar and dock cover. */
     const visible = (): Rect | null => {
-      const bounds = document.querySelector('.react-flow')?.getBoundingClientRect()
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null
-      const a = flow.screenToFlowPosition({ x: bounds.left + (prefsRef.current.sidebar ? 330 : 24), y: bounds.top + 24 })
-      const b = flow.screenToFlowPosition({ x: bounds.right - 24, y: bounds.bottom - 84 })
-      return b.x > a.x && b.y > a.y ? { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y } : null
+      const area = visibleArea(prefsRef.current.sidebar)
+      const vp = flow.getViewport()
+      return area && vp.zoom > 0 ? { x: (area.x - vp.x) / vp.zoom, y: (area.y - vp.y) / vp.zoom, width: area.width / vp.zoom, height: area.height / vp.zoom } : null
     }
 
     /**

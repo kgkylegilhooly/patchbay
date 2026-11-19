@@ -46,6 +46,7 @@ import { WhiteboardNode } from './nodes/WhiteboardNode'
 import { TerminalNode } from './nodes/TerminalNode'
 import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
+import { useViewAreaReport } from './viewArea'
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { ReviewInboxLayer } from './ReviewInbox'
@@ -122,6 +123,7 @@ function Canvas(): React.JSX.Element | null {
   selectedRef.current = selected
 
   const [prefs, setPrefs] = useState(loadPrefs)
+  useViewAreaReport(prefs.sidebar)
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const setPref = useCallback((key: TogglePref) => {

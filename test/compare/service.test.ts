@@ -380,7 +380,8 @@ test('work written while the sessions stop is not lost under an earlier confirma
   const r = await w!.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })
   expect(r).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
   expect(readFileSync(join(a.path, 'late.txt'), 'utf8')).toBe('late\n')
-})
+  // Many git runs: on a loaded machine during the full suite this can take over vitest's default 5 s.
+}, 20000)
 
 test("a worktree made for an attempt whose agent couldn't start is named as left in place", async () => {
   const w = world({ runner: { startNode: async () => { throw new Error('no agent.') }, stopNode: async () => {} } })

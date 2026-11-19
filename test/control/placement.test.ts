@@ -102,3 +102,16 @@ test("a node in another project doesn't push a new one away", async () => {
   const note = node(id(await verbs('lead', 'sticky', { text: 'x' })))
   expect(note).toMatchObject({ x: 660, y: 0, projectId: 'p1' })
 })
+
+test("an attempt's agent opening a terminal into its group grows it away from the group beside it", async () => {
+  const { verbs, node } = setup([
+    groupNode('a', { x: 0, y: 0, width: 668, height: 508 }),
+    claudeNode('ma', { cwd: dir, x: 24, y: 64, width: 620, height: 420, parentId: 'a' }),
+    groupNode('b', { x: 708, y: 0, width: 668, height: 508 }),
+    claudeNode('mb', { cwd: dir, x: 24, y: 64, width: 620, height: 420, parentId: 'b' })
+  ])
+  const t = node(id(await verbs('ma', 'open-terminal', { group: 'a' })))
+  expect(t).toMatchObject({ parentId: 'a', x: 24, y: 64 + 420 + 40 })
+  expect(covers(node('a'), node('b'))).toBe(false)
+  expect(node('b')).toMatchObject({ x: 708, y: 0 })
+})

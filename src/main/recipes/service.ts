@@ -8,7 +8,7 @@ import type { AfterGate } from '../control/after'
 import type { NodeRunner } from '../sessions/nodeRunner'
 import { findRecipe, listRecipes, REPO_RECIPES, saveRecipeFile } from './files'
 import type { SetupGate } from './setupGate'
-import { placeInProject, projectOf as nodeProject } from '../../core/canvas/place'
+import { placeInProject, placeNear, projectOf as nodeProject } from '../../core/canvas/place'
 import { spotNear } from '../control/verbs'
 import { viewSize } from '../viewSize'
 import { agentsNow } from '../agentsAllowed'
@@ -164,7 +164,8 @@ export function createRecipeService(d: RecipeServiceDeps) {
 
     const project = projectOf(req.projectId)!
     const doc = d.store.get()
-    const at = req.at ?? spot(doc, project.id, plan.frame, req.openedBy)
+    // A spot asked for is kept when it's free, and otherwise moved just far enough to be clear.
+    const at = req.at ? placeNear(doc, { at: req.at, size: plan.frame, projectId: project.id }) : spot(doc, project.id, plan.frame, req.openedBy)
     const own = { projectId: project.id, ...(req.openedBy ? { openedBy: req.openedBy } : {}) }
     d.store.dispatch({ op: 'addNode', node: { ...plan.frame, ...own, x: Math.round(at.x), y: Math.round(at.y), worktree } })
     counted()

@@ -54,19 +54,24 @@ export function projectOf(doc: Pick<CanvasDoc, 'activeProjectId'>, node: { proje
 }
 
 /**
- * The part of a project's canvas a window of this size shows, in canvas coordinates, less the edges the sidebar and
- * dock may cover. Null when the size isn't known.
+ * The part of a project's canvas the person sees, in canvas coordinates. `screen` is either the visible area the page
+ * reported (in the canvas element's pixels, the sidebar and dock already left out), or only the window's size, in
+ * which case the usual edges are taken off and the sidebar is assumed closed. Null when neither is known.
  */
-export function viewRect(doc: Pick<CanvasDoc, 'activeProjectId' | 'viewport' | 'projects'>, projectId: string, screen: Size | null | undefined): Rect | null {
+export function viewRect(doc: Pick<CanvasDoc, 'activeProjectId' | 'viewport' | 'projects'>, projectId: string, screen: Size | Rect | null | undefined): Rect | null {
   if (!screen || !(screen.width > 0) || !(screen.height > 0)) return null
   const vp: Viewport | undefined = projectId === doc.activeProjectId ? doc.viewport : doc.projects.find((p) => p.id === projectId)?.viewport
   if (!vp || !(vp.zoom > 0)) return null
-  return {
-    x: (VIEW_INSET.left - vp.x) / vp.zoom,
-    y: (VIEW_INSET.top - vp.y) / vp.zoom,
-    width: Math.max(0, screen.width - VIEW_INSET.left - VIEW_INSET.right) / vp.zoom,
-    height: Math.max(0, screen.height - VIEW_INSET.top - VIEW_INSET.bottom) / vp.zoom
-  }
+  const area: Rect =
+    'x' in screen
+      ? screen
+      : {
+          x: VIEW_INSET.left,
+          y: VIEW_INSET.top,
+          width: Math.max(0, screen.width - VIEW_INSET.left - VIEW_INSET.right),
+          height: Math.max(0, screen.height - VIEW_INSET.top - VIEW_INSET.bottom)
+        }
+  return { x: (area.x - vp.x) / vp.zoom, y: (area.y - vp.y) / vp.zoom, width: area.width / vp.zoom, height: area.height / vp.zoom }
 }
 
 function overlaps(a: Rect, b: Rect): boolean {
@@ -102,11 +107,19 @@ export type PlaceRequest = {
     }
 )
 
+/**
+ * The boxes a new node with this parent must keep clear of: its siblings in the project. A node saved before projects
+ * existed has no projectId and is drawn in every project, so it's in the way in every project.
+ */
+function siblings(doc: Pick<CanvasDoc, 'nodes'>, parentId: string | null, projectId: string, ignore?: ReadonlySet<string>): Rect[] {
+  return doc.nodes
+    .filter((n) => (n.parentId ?? null) === parentId && (!n.projectId || n.projectId === projectId) && !ignore?.has(n.id))
+    .map((n) => ({ x: n.x, y: n.y, width: n.width, height: n.height }))
+}
+
 /** The top-level boxes of one project, which a new top-level node must keep clear of. */
 export function obstacles(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'>, projectId: string, ignore?: ReadonlySet<string>): Rect[] {
-  return doc.nodes
-    .filter((n) => !n.parentId && projectOf(doc, n) === projectId && !ignore?.has(n.id))
-    .map((n) => ({ x: n.x, y: n.y, width: n.width, height: n.height }))
+  return siblings(doc, null, projectId, ignore)
 }
 
 /**
@@ -187,8 +200,13 @@ function side(c: Rect, anchor: Rect): number {
  * Where a new member goes inside a group, relative to the group: the first free cell reading across rows, left to
  * right, as wide as the group already is or GROUP_COLUMNS members, whichever is wider. The group grows to fit it
  * (the reducer does that), and nothing already inside moves.
+ *
+ * A cell whose growth would bring the group within the gap of a neighbour outside it is passed over, so a group
+ * beside another (as compare's two attempts are) grows away from it. In order: a free cell in the usual width whose
+ * growth is clear; then a free cell at any width whose growth is clear; only when the group is boxed in on every
+ * side, the first free cell regardless.
  */
-export function placeInGroup(doc: Pick<CanvasDoc, 'nodes'>, groupId: string, size: Size, gap = PLACE_GAP): Point {
+export function placeInGroup(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'>, groupId: string, size: Size, gap = PLACE_GAP): Point {
   const group = doc.nodes.find((n) => n.id === groupId)
   const kids: Rect[] = doc.nodes.filter((n) => n.parentId === groupId).map((n) => ({ x: n.x, y: n.y, width: n.width, height: n.height }))
   if (!group || kids.length === 0) return { x: GROUP_PAD, y: GROUP_TOP }
@@ -198,12 +216,30 @@ export function placeInGroup(doc: Pick<CanvasDoc, 'nodes'>, groupId: string, siz
   const ys = new Set<number>([GROUP_TOP, ...kids.map((k) => bottom(k) + gap), ...kids.map((k) => k.y)])
   const clear = (c: Rect): boolean =>
     kids.every((k) => c.x >= right(k) + gap || k.x >= right(c) + gap || c.y >= bottom(k) + gap || k.y >= bottom(c) + gap)
-  const spots = [...ys]
-    .filter((y) => y >= GROUP_TOP)
-    .sort((a, b) => a - b)
-    .flatMap((y) => [...xs].filter((x) => x >= GROUP_PAD && x + size.width <= limit).sort((a, b) => a - b).map((x) => ({ x, y, ...size })))
-  // Below everything at the left edge is always free.
-  const found = spots.find(clear) ?? { x: GROUP_PAD, y: Math.max(...kids.map(bottom)) + gap }
+
+  // The group's neighbours, in the same coordinates as the group itself (its parent's).
+  const neighbours = siblings(doc, group.parentId ?? null, projectOf(doc, group), new Set([group.id]))
+  const widen = (r: Rect): Rect => ({ x: r.x - gap, y: r.y - gap, width: r.width + 2 * gap, height: r.height + 2 * gap })
+  /** Whether what the group would grow by, to hold this cell, stays the gap away from every neighbour. */
+  const roomToGrow = (c: Rect): boolean => {
+    const width = Math.max(group.width, right(c) + GROUP_PAD)
+    const height = Math.max(group.height, bottom(c) + GROUP_PAD)
+    const added: Rect[] = []
+    if (width > group.width) added.push({ x: group.x + group.width, y: group.y, width: width - group.width, height })
+    if (height > group.height) added.push({ x: group.x, y: group.y + group.height, width, height: height - group.height })
+    return added.every((a) => neighbours.every((n) => !overlaps(widen(a), n)))
+  }
+
+  const cells = (maxRight: number): Rect[] =>
+    [...ys]
+      .filter((y) => y >= GROUP_TOP)
+      .sort((a, b) => a - b)
+      .flatMap((y) => [...xs].filter((x) => x >= GROUP_PAD && x + size.width <= maxRight).sort((a, b) => a - b).map((x) => ({ x, y, ...size })))
+  const usual = cells(limit)
+  const found =
+    usual.find((c) => clear(c) && roomToGrow(c)) ??
+    cells(Infinity).find((c) => clear(c) && roomToGrow(c)) ??
+    usual.find(clear) ?? { x: GROUP_PAD, y: Math.max(...kids.map(bottom)) + gap }
   return { x: Math.round(found.x), y: Math.round(found.y) }
 }
 
@@ -211,7 +247,7 @@ export function placeInGroup(doc: Pick<CanvasDoc, 'nodes'>, groupId: string, siz
  * For a node nothing on the canvas opened: the middle of the view when it's known, otherwise just inside the view's
  * top-left corner, and the nearest free spot to that.
  */
-export function placeInProject(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId' | 'viewport' | 'projects'>, projectId: string, size: Size, screen?: Size | null): Point {
+export function placeInProject(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId' | 'viewport' | 'projects'>, projectId: string, size: Size, screen?: Size | Rect | null): Point {
   const view = viewRect(doc, projectId, screen)
   if (view) return placeNear(doc, { at: { x: view.x + (view.width - size.width) / 2, y: view.y + (view.height - size.height) / 2 }, size, projectId, view })
   const vp = projectId === doc.activeProjectId ? doc.viewport : doc.projects.find((p) => p.id === projectId)?.viewport
