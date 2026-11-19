@@ -274,6 +274,11 @@ and spends a little quota.
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
+- **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
+  waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
+  `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
+- **Next needing you** (Ctrl+Shift+J, or the palette) goes to the agent that has waited longest at Need attention,
+  in any project, and opens its peek. Press it again for the next. With "Also unread" ticked, Unread sessions follow.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
 - **Recently closed** reopens a closed Claude conversation, the same as Recent conversations.

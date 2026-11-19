@@ -3,6 +3,7 @@ import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
+import { exposeNeedsYou } from './needsYou'
 import { exposeReview } from './review'
 import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
@@ -137,6 +138,7 @@ contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
 exposeSearch()
 exposeRecipes()
+exposeNeedsYou()
 exposeReview()
 exposeTerminalProfiles()
 exposeCompare()

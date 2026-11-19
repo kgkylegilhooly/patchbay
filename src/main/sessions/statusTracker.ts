@@ -9,18 +9,31 @@ export interface StatusTracker {
   /** Sets what's known about a session this launch didn't see happen. Nobody is notified about the past. */
   seed(id: string, status: AgentStatus, turns?: number): void
   turnsCompleted(id: string): number
+  /**
+   * When the status last changed. `exact` is false for one seeded from a session this launch didn't watch, which may
+   * have been that way for longer.
+   */
+  since(id: string): StatusSince | undefined
   onChange(cb: (id: string, status: AgentStatus) => void): void
+}
+
+export interface StatusSince {
+  at: number
+  exact: boolean
 }
 
 /** Statuses a turn is in progress in, so reaching idle from one means that turn finished. */
 const IN_TURN = new Set<AgentStatus>(['working', 'needs-you', 'unknown'])
 
 export function createStatusTracker({
-  notify
+  notify,
+  now = Date.now
 }: {
   notify: (id: string, status: AgentStatus) => void
+  now?: () => number
 }): StatusTracker {
   const statuses = new Map<string, AgentStatus>()
+  const changedAt = new Map<string, StatusSince>()
   const turns = new Map<string, number>()
   const listeners: Array<(id: string, status: AgentStatus) => void> = []
 
@@ -28,12 +41,14 @@ export function createStatusTracker({
     get: (id) => statuses.get(id) ?? 'unknown',
     all: () => Object.fromEntries(statuses),
     turnsCompleted: (id) => turns.get(id) ?? 0,
+    since: (id) => changedAt.get(id),
     onChange(cb) {
       listeners.push(cb)
     },
     seed(id, status, turnsDone = 0) {
       const cur = statuses.get(id)
       statuses.set(id, status)
+      if (status !== cur) changedAt.set(id, { at: now(), exact: false })
       if (turnsDone) turns.set(id, (turns.get(id) ?? 0) + turnsDone)
       if (status !== cur || turnsDone) for (const cb of listeners) cb(id, status)
     },
@@ -42,6 +57,7 @@ export function createStatusTracker({
       const next = nextStatus(cur ?? 'unknown', ev)
       if (next === cur) return
       statuses.set(id, next)
+      changedAt.set(id, { at: now(), exact: true })
       const finishedTurn = next === 'idle' && cur !== undefined && IN_TURN.has(cur)
       if (finishedTurn) turns.set(id, (turns.get(id) ?? 0) + 1)
       for (const cb of listeners) cb(id, next)

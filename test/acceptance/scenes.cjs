@@ -462,7 +462,8 @@ const scenes = {
   ...require('./searchScenes.cjs').scenes,
   ...require('./terminalProfileScenes.cjs').scenes,
   ...require('./compareScenes.cjs').scenes,
-  ...require('./subagentScenes.cjs').scenes
+  ...require('./subagentScenes.cjs').scenes,
+  ...require('./needsYouScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -537,7 +538,8 @@ const seeds = {
   },
   ...require('./searchScenes.cjs').seeds,
   ...require('./compareScenes.cjs').seeds,
-  ...require('./subagentScenes.cjs').seeds
+  ...require('./subagentScenes.cjs').seeds,
+  ...require('./needsYouScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
