@@ -573,3 +573,5 @@ function prepare(name, cwdRoot) {
 module.exports = { prepare, scenes, canvas, rightClickCanvas, seedLinks, showLegend }
 Object.assign(scenes, require('./placementScenes.cjs').scenes)
 Object.assign(seeds, require('./placementScenes.cjs').seeds)
+Object.assign(scenes, require('./fileShelfScenes.cjs').scenes)
+Object.assign(seeds, require('./fileShelfScenes.cjs').seeds)

@@ -138,7 +138,13 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode
+/** A file on the canvas, like an icon on a desktop. It points at the file and never copies it. See shared/fileShelf.ts. */
+export interface FileNode extends Base {
+  kind: 'file'
+  path: string
+}
+
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | FileNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {

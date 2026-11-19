@@ -117,6 +117,9 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
 - `--after` holds an agent until every listed Claude node finishes a turn. If one exits without finishing,
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,
   and the agent can start without that node's work. `--after` doesn't work on terminals.
+- `patchbay pin-file --path <file>` puts a file's icon on the canvas for the person: a report, a screenshot, a build
+  output. It points at the file and copies nothing. The path must be a full path on a drive, to a file that's there;
+  network shares are refused.
 - Prompts are limited to 28000 characters. Put anything longer in a file and point a short prompt at it.
 - A new folder can stop an agent at a question about trusting it, which only the person can answer. Its
   status is `needs-you` until they do, so tell them which node.
@@ -252,6 +255,7 @@ A Claude node gives its conversation, and `--tail` counts messages. It leaves ou
 A terminal or a run node gives its recent output with colors removed, and `--tail` counts lines. A full-screen
 program's output will look jumbled. A sticky note gives its text, and a trigger gives the prompt it sends. A
 whiteboard gives the words written on it and points you at `patchbay whiteboard`, which shows you the drawing.
+A file icon gives its path and whether the file is there; read the file with your own tools.
 
 ## Send a message
 

@@ -143,6 +143,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `canvas.json`, `canvas.json.bak` | The canvas and its backup. A damaged file is kept as `canvas.corrupt-*.json` |
 | `scrollback\` | Each terminal's saved output |
 | `pastes\` | Images pasted into terminals |
+| `file-shelf.json` | Each project's Files shelf: the paths of files shared in it, the newest 2,000. Paths only, never copies |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
@@ -429,6 +430,24 @@ Add one from the canvas menu or with Ctrl+Shift+D.
 - **Agents** linked to a board export it with `patchbay whiteboard` and look at the PNG, pictures and drawing included.
   They can draw diagrams on it with `patchbay draw`, from boxes and the arrows between them; the board shows which agent
   drew, with **Undo** and **Keep**. **Copy as image**, in the board's header, puts it on your clipboard.
+
+## Files on the canvas, and the Files shelf
+
+- **File icons.** Drag files from File Explorer onto the canvas: each becomes an icon, like one on a desktop, that
+  points at the file and never copies it. **Pin to canvas** in a terminal's path menu, or on the shelf, does the same.
+  Double-click opens a file with its default app. A program or script (`.exe`, `.cmd`, `.bat`, `.ps1`, `.lnk` and the
+  like) is only shown in File Explorer. Right-click for Reveal in File Explorer, Copy path, Send path to agent and
+  Remove from canvas.
+- **Use a file again.** Drag its icon onto a terminal or agent window to type its path there, quoted for that shell.
+  Dropping files from File Explorer straight onto a window does the same. **Send path to agent** sends it as a message.
+  An agent linked to an icon by a cable can `patchbay read` it, which gives the path, not the contents.
+- **Missing files** show dimmed and marked Missing, never as an error. They're looked at again when shown and when
+  Patchbay gets focus.
+- **Files shelf.** View > Files shelf…, the palette, or **Files** in the title bar. Every file shared in the project,
+  newest first, with where it came from: pictures pasted into windows, files dropped onto the canvas or a window, file
+  icons, and browser evidence pictures. Search by name or folder, and filter by type. Each has Open, Reveal, Copy path,
+  Pin to canvas, Send path to agent and Forget. Forgetting leaves the file alone.
+- **Network paths** (`\\server\share`) work for files you drop yourself. An agent can't pin one.
 
 ## Agents working together
 

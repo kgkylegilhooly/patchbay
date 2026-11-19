@@ -32,7 +32,8 @@ const KIND_NAMES: Record<CanvasNode['kind'], string> = {
   whiteboard: 'whiteboard',
   group: 'group',
   browser: 'browser',
-  trigger: 'trigger'
+  trigger: 'trigger',
+  file: 'file'
 }
 
 function brief(n: CanvasNode, status: (id: string) => AgentStatus | undefined): NodeBrief {

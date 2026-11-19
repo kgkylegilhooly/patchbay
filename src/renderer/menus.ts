@@ -7,6 +7,7 @@ import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
 import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
+import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
 
 export interface Point {
   x: number
@@ -230,6 +231,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-focus', label: 'Focus view', icon: 'grid', checked: !!s.focus, run: () => c.toggleFocus() },
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
+    { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
     { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
@@ -298,6 +300,7 @@ export function nodeMenu(
     run: () => c.closeNode(node.id)
   })
   if (node.kind === 'sticky') return [close('Delete note')]
+  if (node.kind === 'file') return fileNodeMenu(node, close('Remove from canvas'))
   if (node.kind === 'whiteboard') return [close('Delete whiteboard')]
   if (node.kind === 'trigger') {
     const armed = isArmed(node)

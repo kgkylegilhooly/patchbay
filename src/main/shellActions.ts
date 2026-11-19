@@ -76,7 +76,7 @@ export function localPaths(cwd: string, target: string, home: string): Local {
   return { ok: true, paths: [...new Set(paths)] }
 }
 
-function isRunnable(path: string): boolean {
+export function isRunnable(path: string): boolean {
   // Windows ignores trailing dots and spaces, and anything after a colon names a stream of the file.
   const name = basename(path).split(':')[0].replace(/[. ]+$/, '')
   const dot = name.lastIndexOf('.')

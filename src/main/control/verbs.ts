@@ -19,6 +19,8 @@ import type { AfterGate } from './after'
 import { isArmed } from '../../core/trigger/arming'
 import { describeSchedule } from '../../core/trigger/schedule'
 import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
+import { checkPin, readFileNode } from './fileVerbs'
+import { FILE_NODE_SIZE } from '../../shared/fileShelf'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
@@ -207,8 +209,11 @@ export function createVerbs({
   agents = () => ({ enabled: [...AGENT_KINDS], default: defaultAgent() }),
   terminalProfiles,
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
-  log
+  log,
+  onFilePinned
 }: {
+  /** An agent put a file on the canvas, for the Files shelf. */
+  onFilePinned?: (projectId: string, path: string, by: string) => void
   tasks?: TaskService
   waitTiming?: WaitTiming
   /** How long send waits to see its message in the target's transcript. */
@@ -478,6 +483,8 @@ export function createVerbs({
         return refuse(`Node "${id}" is a group, which has nothing to read.`)
       case 'browser':
         return refuse(`Node "${id}" is a browser node. Use patchbay browser read.`)
+      case 'file':
+        return { text: readFileNode(node) }
       case 'claude':
         if (!node.transcriptPath) refuse(notStartedYet(id, tracker.get(id)))
         // Without blocking: a long conversation's transcript is tens of megabytes.
@@ -699,6 +706,18 @@ export function createVerbs({
     return { id, chars: next.length }
   }
 
+  /** A file icon for the person, linked to the agent like any node it opens. It points at the file; nothing is copied. */
+  const pinFile = (caller: CanvasNode, args: Args): unknown => {
+    const pin = checkPin(optional(args, 'path'))
+    if (!pin.ok) refuse(pin.reason)
+    const group = groupFor(caller, args)
+    const node: CanvasNode = { ...placement(caller, group, FILE_NODE_SIZE), id: randomUUID(), kind: 'file', title: optional(args, 'title') || pin.title || 'File', path: pin.path }
+    store.dispatch({ op: 'addNode', node })
+    connect(caller.id, node.id)
+    if (caller.projectId) onFilePinned?.(caller.projectId, pin.path, caller.title)
+    return { id: node.id, path: pin.path }
+  }
+
   const openWhiteboard = (caller: CanvasNode, args: Args): unknown => {
     const group = groupFor(caller, args)
     const node: WhiteboardNode = { ...placement(caller, group, SIZES.whiteboard), id: randomUUID(), kind: 'whiteboard', title: optional(args, 'title') || 'Whiteboard', shapes: [] }
@@ -891,6 +910,7 @@ export function createVerbs({
         ...(n.kind === 'group' && n.worktree ? { branch: n.worktree.branch, cwd: n.worktree.path } : {}),
         ...(n.kind === 'browser' ? { url: n.url, held: !!n.held } : {}),
         ...(n.kind === 'whiteboard' ? { shapes: n.shapes.length } : {}),
+        ...(n.kind === 'file' ? { path: n.path } : {}),
         // An agent can see what triggers there are. Only the person can arm one, and the prompt stays with read access.
         ...(n.kind === 'trigger'
           ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
@@ -963,6 +983,8 @@ export function createVerbs({
         return wait(callerId, args)
       case 'open-whiteboard':
         return openWhiteboard(caller, args)
+      case 'pin-file':
+        return pinFile(caller, args)
       case 'whiteboard':
         return whiteboard(callerId, args)
       case 'draw':

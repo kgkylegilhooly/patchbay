@@ -77,6 +77,7 @@ import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
 import { resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
 import { resolveCodex } from './sessions/codexLaunch'
+import { noteFromNode, registerFileShelfIpc } from './fileShelf/ipc'
 
 /** How often Codex's limits and the accounts are asked for again. */
 const AGENT_USAGE_EVERY_MS = 5 * 60_000
@@ -385,7 +386,9 @@ async function boot(): Promise<void> {
     setBudget: (b) => usage.setBudget(b)
   })
   const gate = createAfterGate({ store, tracker, runner })
-  const browser = createBrowserDriver({ dataDir, store, push: (id, state) => broadcast('pb:onBrowserState', id, state) })
+  // The Files shelf: references to the files shared in each project. See src/main/fileShelf.
+  const fileShelf = registerFileShelfIpc({ dataDir, store, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, windows: () => (mainWindow ? [mainWindow.webContents] : []), log: (line) => log?.write(line) })
+  const browser = createBrowserDriver({ dataDir, store, push: (id, state) => broadcast('pb:onBrowserState', id, state), onShot: (id, path) => noteFromNode(fileShelf, store, id, path, 'evidence') })
   browser.install()
   const work = workServices()
   const github = createGithubReader(store, work.git, work.gh)
@@ -417,7 +420,7 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), log: (line) => log?.write(line), onFilePinned: (projectId, path, by) => fileShelf.note(projectId, { path, source: 'agent', at: Date.now(), nodeTitle: by }) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -600,6 +603,7 @@ async function boot(): Promise<void> {
       await messages.flush()
       await agentEdits.flush()
       await search.stop()
+      await fileShelf.flush()
       // A verification left running would outlive the record it reports to. On next launch its attempt reads interrupted.
       tasks.stopAll()
     }

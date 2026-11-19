@@ -4,6 +4,7 @@ import type { Commands, MenuState } from './menus'
 import { toggleSearch } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
+import { toggleFileShelf } from './fileShelfUi'
 import { offerCommand } from './agentChoice'
 import { openComparisons, openTryApproach } from './compareUi'
 
@@ -79,6 +80,7 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
+  { id: 'file-shelf', section: 'View', label: 'Files shelf…', icon: 'file', keywords: ['files', 'shared', 'pasted', 'images', 'screenshots', 'attachments', 'documents', 'pin'], run: () => toggleFileShelf() },
   { id: 'recent', section: 'View', label: 'Recent conversations', icon: 'recent', keywords: ['closed', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
 
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },
