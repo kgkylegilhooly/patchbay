@@ -140,6 +140,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
+| `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
 | `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
 | `sessions\` | The hook settings passed to each Claude node |
@@ -276,6 +277,27 @@ any action, warns about conflicts, and resets one or all.
 With a terminal in use, it gets ordinary keys, including Ctrl combinations. Patchbay takes only keys with Ctrl+Shift or
 Alt, function keys, `Ctrl+K`, `Ctrl+,`, and keys you bind yourself after a warning. `Ctrl+C`, `Ctrl+V` and `Ctrl+F` stay
 with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard.
+
+## Search and handoffs
+
+**Search** (Ctrl+Shift+S, or Search conversations and notes in the palette) finds words in every agent conversation
+Patchbay knows, in every project, closed conversations included, in notes, and in the messages agents sent each other.
+Filter by project, by date and by kind. Each result says its project. Click it to go to the window or note, or to read a
+closed conversation at the message that matched, with Reopen. Every word has to be in one message; put a phrase in quotes to keep it together.
+
+- The index is built in a background thread and kept up to date as transcripts grow. Searching never waits for it:
+  while it's still reading, results say they may be incomplete and fill in. It reads only what was added, and
+  waits for a line still being written. **Rebuild index** reads everything again. Transcripts are only ever read.
+- It holds what Patchbay still knows: open windows, the closed history, notes and the last 300 messages. A deleted
+  project's closed conversations stay findable under its old name. A transcript deleted from disk drops out.
+- Agents can't use it. Search is the person's alone, and links still decide what an agent can read.
+
+**Continue with another agent** (on a conversation in the results, or an agent window's right-click menu) prepares a
+handoff from the conversation: objective, decisions, changed files, verification, remaining work and sources. It's
+extracted from the transcript and git, with no AI call, and says so. What it can't find is marked `[Missing: …]` and
+what may be out of date `[Stale: …]`, such as a test that ran before later edits, a file that's gone, or an agent
+still working. Edit any of it, choose Claude Code or Codex, the folder and a title, and start the agent with it.
+Copy as Markdown copies the whole handoff.
 
 ## Projects and undo
 

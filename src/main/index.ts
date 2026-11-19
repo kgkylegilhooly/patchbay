@@ -23,6 +23,7 @@ import { pruneBoardImages } from './boardImages'
 import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
+import { registerSearchIpc } from './search/ipc'
 import {
   closeAction,
   createScrollbackSaver,
@@ -506,6 +507,7 @@ async function boot(): Promise<void> {
     onSettingsSaved: () => keepAwake.update(tracker.all())
   })
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
+  const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
 
@@ -558,6 +560,7 @@ async function boot(): Promise<void> {
       await usage.flush()
       await messages.flush()
       await agentEdits.flush()
+      await search.stop()
     }
     // Saved before stopping sessions in case that hangs, and after because stopping can change the doc.
     await save()

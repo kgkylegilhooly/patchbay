@@ -2,6 +2,7 @@ import { isArmed } from '../core/trigger/arming'
 import type { AgentStatus, CanvasNode } from '../shared/model'
 import type { IconName } from './iconPaths'
 import type { Direction } from './nodeNav'
+import { openHandoff } from './searchUi'
 
 export interface Point {
   x: number
@@ -330,6 +331,7 @@ export function nodeMenu(
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },
     { id: 'show-in-focus', label: 'Show in focus view', icon: 'grid', run: () => c.toggleFocus(node.id) },
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
+    ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
     { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
     ...(ctx.canRestart ? [{ id: 'restart', label: 'Restart', icon: 'restart' as const, run: () => c.restartNode(node.id) }] : []),
