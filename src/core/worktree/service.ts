@@ -71,14 +71,17 @@ export function defaultWorktreePath(repo: string, branch: string): string {
   return join(dirname(root), `${basename(root)}-worktrees`, branch.replaceAll('/', '-'))
 }
 
-export async function createWorktree(args: { repo: string; branch: string; path?: string }): Promise<Worktree> {
+/** `base`, a full commit id, is where the new branch starts. Absent means HEAD. */
+export async function createWorktree(args: { repo: string; branch: string; path?: string; base?: string }): Promise<Worktree> {
   const repo = await repoRoot(args.repo)
   await assertValidBranch(repo, args.branch)
   await assertHasCommit(repo)
   await assertBranchIsNew(repo, args.branch)
   const path = args.path ? resolve(repo, args.path) : defaultWorktreePath(repo, args.branch)
+  // A base is a commit id, so it can't be mistaken for an option.
+  if (args.base !== undefined && !/^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(args.base)) throw new Error(`Not a full commit id: "${args.base}"`)
   try {
-    await git(repo, 'worktree', 'add', '-b', args.branch, path)
+    await git(repo, 'worktree', 'add', '-b', args.branch, path, ...(args.base ? [args.base] : []))
   } catch (e) {
     // git creates the branch before it checks the folder. Plain -d can't lose commits.
     await git(repo, 'branch', '-d', args.branch).catch(() => {})

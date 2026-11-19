@@ -7,6 +7,11 @@ export interface RunOptions {
   timeoutMs: number
   /** Output past this many bytes is dropped, and the result says so. */
   maxBytes: number
+  /**
+   * Keeps the end instead: stdout and stderr together, in the order they arrived, as `stdout` (stderr is then empty),
+   * with the oldest bytes past maxBytes dropped. For a log whose summary comes last, such as a test run.
+   */
+  keepTail?: boolean
 }
 
 export interface RunResult {
@@ -18,6 +23,8 @@ export interface RunResult {
   timedOut: boolean
   /** It couldn't be started at all, such as when it isn't installed. */
   missing: boolean
+  /** How many bytes of output there were in all, kept or not. */
+  totalBytes?: number
 }
 
 /**
@@ -68,8 +75,32 @@ export function runProgram(file: string, args: string[], o: RunOptions): Promise
       chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk)
       return size + Math.min(room, chunk.length)
     }
-    child.stdout.on('data', (c: Buffer) => (outBytes = take(out, outBytes, c)))
-    child.stderr.on('data', (c: Buffer) => (errBytes = take(err, errBytes, c)))
+    let total = 0
+    /** The newest maxBytes of both streams together, the oldest dropped first. */
+    const keepEnd = (chunk: Buffer): void => {
+      out.push(chunk)
+      outBytes += chunk.length
+      while (outBytes > o.maxBytes && out.length) {
+        truncated = true
+        const extra = outBytes - o.maxBytes
+        if (out[0].length <= extra) outBytes -= out.shift()!.length
+        else {
+          out[0] = out[0].subarray(extra)
+          outBytes -= extra
+        }
+      }
+    }
+    const onData = (chunks: Buffer[], size: number, c: Buffer): number => {
+      total += c.length
+      if (!o.keepTail) return take(chunks, size, c)
+      keepEnd(c)
+      return 0
+    }
+    child.stdout.on('data', (c: Buffer) => {
+      const n = onData(out, outBytes, c)
+      if (!o.keepTail) outBytes = n
+    })
+    child.stderr.on('data', (c: Buffer) => (errBytes = onData(err, errBytes, c)))
     const timer = setTimeout(() => {
       timedOut = true
       endTree(child.pid, child)
@@ -79,7 +110,7 @@ export function runProgram(file: string, args: string[], o: RunOptions): Promise
       settled = true
       clearTimeout(timer)
       const stderr = Buffer.concat(err).toString('utf8') + extra
-      done({ code: timedOut ? null : code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated, timedOut, missing })
+      done({ code: timedOut ? null : code, stdout: Buffer.concat(out).toString('utf8'), stderr, truncated, timedOut, missing, totalBytes: total })
     }
     child.on('error', (e: NodeJS.ErrnoException) => finish(null, e.code === 'ENOENT', e.message))
     child.on('close', (code) => finish(code, false))

@@ -145,6 +145,8 @@ Everything is in `%APPDATA%\Patchbay`:
 | `pastes\` | Images pasted into terminals |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
+| `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
+| `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
@@ -262,6 +264,11 @@ first, then labels, and the text size folds into one button.
 - **Name with AI** titles the window from recent output, only when clicked, and spends a little plan quota. It runs
   `claude -p` in an empty folder with no tools, hooks or saved conversation.
 - **Text size** is for that window only and is saved with it. Click the number to go back to the global size.
+- **Zoom to a node:** double-click an empty part of any node's header bar (a window, note, whiteboard, browser, trigger,
+  or a group, which fits the whole group) and the canvas pans and zooms so it fills the view. Nothing moves or resizes.
+  Double-click the header again, or press Esc, to go back to exactly the view from before; pan or zoom by hand in
+  between and that's forgotten. The title still renames and the buttons still work. Esc stays with a terminal that has
+  the keyboard, and with reduced motion turned on in Windows the view jumps instead of gliding.
 - **Maximize** fills the canvas area without changing the saved layout. Esc or the same button restores it. While the
   terminal has the keyboard, Esc stays with the terminal, because that's how Claude is interrupted, so use F11 or the button.
 - **Focus view** (Ctrl+Shift+L, or the grid on the dock) puts windows in split panes filling the app. Split a pane
@@ -283,7 +290,8 @@ any action, warns about conflicts, and resets one or all.
 
 With a terminal in use, it gets ordinary keys, including Ctrl combinations. Patchbay takes only keys with Ctrl+Shift or
 Alt, function keys, `Ctrl+K`, `Ctrl+,`, and keys you bind yourself after a warning. `Ctrl+C`, `Ctrl+V` and `Ctrl+F` stay
-with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard.
+with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard. Esc on the canvas goes back from a
+header zoom (double-click a node's header bar).
 
 ## Search and handoffs
 
@@ -447,6 +455,26 @@ linked, and setup steps that run before the agents start.
 
 The design is in `docs/plans/recipes.md`.
 
+## Comparing two approaches
+
+**Try another approach…** (canvas menu, an agent's menu, palette) gives one brief to two attempts, each with its own
+agent (Claude Code or Codex, any mix), an optional approach line, and its own new worktree and branch. Both start
+from the commit shown in the dialog, which is recorded.
+
+- If the checkout has uncommitted changes, the dialog lists them, and you must tick to leave them out before Start.
+  They're never copied into an attempt, and never touched.
+- **Comparisons…** (palette) shows the attempts side by side: baseline, branch, folder, the agent's status, commits
+  since the baseline, and the changed files in two lists, committed and uncommitted. Click a file for its diff.
+  Looking only reads git.
+- An optional verification command (an argument list, no shell) runs in each worktree when you ask, one at a time.
+  Each result keeps the command, exit code, time, the commit it ran at and its output, and says when the attempt has
+  changed since.
+- **Choose A** or **B** only records the choice. Merge the branch yourself with Git.
+- **Remove worktree…** stops the sessions in it. Uncommitted changes, or (when also deleting the branch) commits no
+  other branch has, are listed and need a second confirmation for that removal.
+
+The design is in `docs/plans/compare.md`.
+
 ## Browser nodes
 
 Add one from the canvas menu, the File menu or the palette. It has back, forward, reload and an address bar, and reopens
@@ -461,6 +489,14 @@ its page on the next launch.
 - **Agents** drive a browser node they opened, or one you linked to them, with `patchbay open-browser` and `patchbay
   browser navigate|back|forward|reload|read|click|type|scroll|screenshot`. The node shows which agent is driving and what
   it did, never what it typed. Agents can't type into password, code or card fields.
+- **Recorded checks.** `patchbay browser verify --phase start|step|finish` records an attempt: the URL, viewport,
+  actions, a picture at each phase, and console errors and failed requests with the page and time. `browser viewport
+  --preset desktop|mobile` sets the page size first, and finish, Take control or `--preset node` set it back. The
+  node's **Evidence** panel shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
+  labels the agent's passed or failed as its claim, not proof. Only the agent that started an attempt can finish it.
+  One left alone for 10 minutes is marked abandoned. With `--task-id`, the task's card lists the attempt too, and it
+  never makes the task ready. Console text, headers, request bodies and typed text are never kept, and evidence
+  pictures hide what's typed in fields.
 - **Take control**, on the node or in its right-click menu, refuses every agent verb on it until you press Hand back. It
   stays taken after a restart.
 - A page only runs while its project is on screen. Switching projects reloads it when you come back. An agent can still
