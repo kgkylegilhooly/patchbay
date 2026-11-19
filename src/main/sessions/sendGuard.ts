@@ -19,6 +19,8 @@ export interface SendGuard {
   typed(id: string, data: string): void
   /** What to put ahead of text main is about to type, which counts as typing. */
   prefixFor(id: string): string
+  /** Whether the session's output last turned bracketed paste on or off. Undefined until it has said either. */
+  pasteOn(id: string): boolean | undefined
   forget(id: string): void
 }
 
@@ -44,6 +46,7 @@ export function createSendGuard({ isGitBash }: { isGitBash: (id: string) => bool
       const was = resized.delete(id)
       return was && pasteOn.get(id) === true && isGitBash(id) ? SACRIFICE : ''
     },
+    pasteOn: (id) => pasteOn.get(id),
     forget(id) {
       resized.delete(id)
       pasteOn.delete(id)

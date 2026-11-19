@@ -55,3 +55,14 @@ test('only Git for Windows bash counts, not WSL or other shells', () => {
   expect(isGitBashFile(String.raw`C:\Program Files\PowerShell\7\pwsh.exe`)).toBe(false)
   expect(isGitBashFile('cmd.exe')).toBe(false)
 })
+
+test("says whether a session last turned bracketed paste on or off, and nothing for one it hasn't seen", () => {
+  const g = createSendGuard({ isGitBash: () => false })
+  expect(g.pasteOn('a')).toBeUndefined()
+  g.output('a', '\x1b[?2004h')
+  expect(g.pasteOn('a')).toBe(true)
+  g.output('a', 'editor opens\x1b[?2004l')
+  expect(g.pasteOn('a')).toBe(false)
+  g.forget('a')
+  expect(g.pasteOn('a')).toBeUndefined()
+})

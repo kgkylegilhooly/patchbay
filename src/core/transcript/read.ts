@@ -19,7 +19,7 @@ function textOf(content: unknown): string {
     .join('\n')
 }
 
-function parseLine(line: string): Message | null {
+export function parseLine(line: string): Message | null {
   let entry
   try {
     entry = JSON.parse(line)
