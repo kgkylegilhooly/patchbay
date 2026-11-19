@@ -11,6 +11,7 @@ import { closeNodes, patchNode, useStore } from '../store'
 import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useLinkMenu } from '../useLinkMenu'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 /** The first is the default, the tape yellow notes have always been. */
 export const NOTE_COLORS = ['#d9c64a', '#e8806f', '#6fc08a', '#6fa8f0', '#b08cf0', '#9a9aa2']
@@ -181,6 +182,7 @@ function ColorPicker({ node, color, onDone }: { node: StickyModel; color: string
 
 export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as StickyModel
+  const headerZoom = useHeaderZoom(node.id)
   const [editing, setEditing] = useState(false)
   const [picking, setPicking] = useState(false)
   const html = useMemo(() => renderMarkdown(node.text, { tasks: true }), [node.text])
@@ -228,7 +230,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
     <div className={`note${selected ? ' note-selected' : ''}${editing ? ' note-editing' : ''}`} style={{ '--note': color } as React.CSSProperties}>
       <Resizer node={node} min={{ w: 220, h: 120 }} />
       <Jacks />
-      <header className="note-head">
+      <header className="note-head" onDoubleClick={headerZoom}>
         <EditableTitle node={node} />
         <span className="note-spacer" />
         {picking ? (

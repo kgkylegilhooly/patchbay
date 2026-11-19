@@ -82,7 +82,11 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
       <button className="git-mini" onClick={() => setExpanded(false)}>Hide details</button>
       <ul>{task.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
       {attempts.map((a) => <div className="task-attempt" key={a.id}>
-        {a.kind === 'agent-report' ? <><strong>Agent self-report</strong><p>{a.summary}</p></> : <>
+        {a.kind === 'agent-report' ? <><strong>Agent self-report</strong><p>{a.summary}</p></> : a.kind === 'browser' ? <>
+          <strong>Browser check · {a.state === 'recording' ? 'recording' : a.state === 'incomplete' ? 'incomplete' : 'recorded'} · agent says {a.state === 'recording' ? '—' : a.assertion}</strong>
+          <span>{a.url}</span><span>{new Date(a.startedAt).toLocaleString()} → {a.endedAt ? new Date(a.endedAt).toLocaleString() : 'recording'}</span>
+          <span>The agent's claim, not proof. {a.gaps ? `${a.gaps} ${a.gaps === 1 ? 'gap' : 'gaps'} reported. ` : ''}Pictures and diagnostics are in the browser node's Evidence panel.</span>
+        </> : <>
           <strong>Executed command · {a.status}{a.exitCode !== null ? ` · exit ${a.exitCode}` : ''}</strong><code>{a.command}</code>
           <span>{a.cwd}</span><span>{new Date(a.startedAt).toLocaleString()} → {a.endedAt ? new Date(a.endedAt).toLocaleString() : 'running'}</span>
           <code title="Saved command output">Output: {a.outputRef}</code>{a.error && <span>{a.error}</span>}

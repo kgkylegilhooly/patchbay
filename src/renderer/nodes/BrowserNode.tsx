@@ -8,6 +8,8 @@ import { Icon } from '../icons'
 import { patchNode, useStore } from '../store'
 import { DesignStrip, startPicking, type DesignState } from './DesignStrip'
 import { Jacks, Resizer, EditableTitle } from './NodeChrome'
+import { BrowserEvidence } from './BrowserEvidence'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 /** How long after an agent's last action the node keeps saying it's being driven. */
 const DRIVING_SHOWN_MS = 15_000
@@ -170,6 +172,7 @@ function AddressBar({ node, design, setDesign }: { node: BrowserNodeModel; desig
 
 export const BrowserNode = memo(function BrowserNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as BrowserNodeModel
+  const headerZoom = useHeaderZoom(node.id)
   const notice = useStore((s) => s.browsers[node.id]?.notice)
   const [design, setDesign] = useState<DesignState>({ kind: 'off' })
   return (
@@ -177,7 +180,7 @@ export const BrowserNode = memo(function BrowserNode({ data, selected }: NodePro
       <Resizer node={node} min={{ w: 360, h: 240 }} />
       <Jacks />
       <div className={`unit unit-browser${selected ? ' unit-selected' : ''}`}>
-        <header className="unit-head pb-drag">
+        <header className="unit-head pb-drag" onDoubleClick={headerZoom}>
           <Icon name="browser" size={14} />
           <EditableTitle node={node} />
           <span className="head-space" />
@@ -186,6 +189,7 @@ export const BrowserNode = memo(function BrowserNode({ data, selected }: NodePro
         <AddressBar node={node} design={design} setDesign={setDesign} />
         <ControlStrip node={node} />
         <DesignStrip nodeId={node.id} state={design} set={setDesign} />
+        <BrowserEvidence nodeId={node.id} />
         {notice && (
           <div className="strip strip-browser-notice" role="status" data-browser-notice>
             <div className="strip-text">
@@ -210,3 +214,4 @@ function CloseButton({ node }: { node: BrowserNodeModel }): React.JSX.Element {
 }
 
 const closeBrowser = (id: string): Promise<void> => bridge.dispatch({ op: 'removeNodes', ids: [id], at: Date.now() })
+

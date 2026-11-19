@@ -53,7 +53,12 @@ const VERBS = {
   'browser click': { node: 'text', ref: 'text' },
   'browser type': { node: 'text', ref: 'text', text: 'text', clear: 'flag', enter: 'flag' },
   'browser scroll': { node: 'text', by: 'signed', to: 'text', ref: 'text' },
-  'browser screenshot': { node: 'text' }
+  'browser screenshot': { node: 'text' },
+  'browser console': { node: 'text' },
+  'browser network': { node: 'text' },
+  'browser viewport': { node: 'text', preset: 'text' },
+  'browser verify': { node: 'text', phase: 'text', 'task-id': 'text', outcome: 'text' },
+  'browser evidence': { node: 'text' }
 }
 
 const USAGE = `Usage: patchbay <verb> [--flag value]
@@ -97,6 +102,9 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   browser type       --node ID --ref REF --text TEXT [--clear] [--enter]
   browser scroll     --node ID (--by PIXELS | --to top|bottom | --ref REF)
   browser screenshot --node ID
+  browser console|network|evidence --node ID
+  browser viewport   --node ID --preset desktop|mobile|node
+  browser verify     --node ID --phase start|step|finish [--task-id ID] [--outcome passed|failed|unknown]
 `
 
 /** The usage lines for one verb, or for every `browser` verb, with a pointer to the full guide. */
