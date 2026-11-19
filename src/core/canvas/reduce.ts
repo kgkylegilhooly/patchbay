@@ -185,6 +185,10 @@ function removeNodes(doc: CanvasDoc, ids: string[], at: number): CanvasDoc {
       if (next.kind === 'trigger' && next.targetId && removing.has(next.targetId)) {
         next = { ...next, ...DISARMED, targetId: null }
       }
+      // The node an event trigger watches went: it can't fire as agreed, so it stops.
+      if (next.kind === 'trigger' && (next.schedule.type === 'agent' || next.schedule.type === 'run') && removing.has(next.schedule.nodeId)) {
+        next = { ...next, ...DISARMED }
+      }
       return next
     })
 

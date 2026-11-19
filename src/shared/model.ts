@@ -65,17 +65,42 @@ export interface RunNode extends Base {
   launch?: { folder: string; name: string }
 }
 
-/** When a trigger fires. Times are local to this PC. */
-export type TriggerSchedule = { type: 'cron'; expr: string } | { type: 'interval'; everyMs: number } | { type: 'once'; at: number }
+/** Something on this PC a trigger fires on, instead of a time. See src/core/trigger/events.ts. */
+export type TriggerEventSource =
+  | { type: 'agent'; nodeId: string; on: 'turn' | 'needs-you' | 'exit' }
+  | { type: 'run'; nodeId: string; failedOnly: boolean }
+  /** `folder` is inside the project. Changes are gathered until `quietMs` passes with none. */
+  | { type: 'files'; folder: string; glob: string; quietMs: number }
 
-export type TriggerOutcome = 'delivered' | 'queued' | 'missed' | 'failed'
+/** When a trigger fires. Times are local to this PC. */
+export type TriggerSchedule = { type: 'cron'; expr: string } | { type: 'interval'; everyMs: number } | { type: 'once'; at: number } | TriggerEventSource
+
+/** A command run, without a shell, before each firing. It fires only if this exits 0. */
+export interface TriggerPreflight {
+  argv: string[]
+  cwd: string
+}
+
+/** What an event firing must pass: a gap since the last firing, and a cap per hour. */
+export interface TriggerLimits {
+  gapMs: number
+  perHour: number
+}
+
+export type TriggerOutcome = 'delivered' | 'queued' | 'missed' | 'failed' | 'skipped'
 
 export interface TriggerRun {
   id: string
   at: number
-  source: 'schedule' | 'manual'
+  source: 'schedule' | 'manual' | 'event'
   outcome: TriggerOutcome
   detail?: string
+  /** What happened, for an event firing. */
+  event?: string
+  /** The check before firing: its exit code (null if it never ended by itself) and the end of its output. */
+  preflight?: { code: number | null; tail: string }
+  /** The same skip, this many times in a row. The newest is `at`. */
+  repeats?: number
 }
 
 /**
@@ -96,6 +121,10 @@ export interface TriggerNode extends Base {
   nextAt: number | null
   /** Newest first. */
   runs: TriggerRun[]
+  /** Absent in older triggers. Part of what arming agrees to. */
+  preflight?: TriggerPreflight | null
+  /** For event kinds. Absent means the defaults. Part of what arming agrees to. */
+  limits?: TriggerLimits
 }
 
 /** The part of a trigger that only the trigger service changes. */

@@ -65,7 +65,21 @@ function isSchedule(s: unknown): boolean {
   if (!isObject(s)) return false
   if (s.type === 'cron') return isString(s.expr)
   if (s.type === 'interval') return isNumber(s.everyMs)
+  // Event kinds. See src/core/trigger/events.ts.
+  if (s.type === 'agent') return isString(s.nodeId) && (s.on === 'turn' || s.on === 'needs-you' || s.on === 'exit')
+  if (s.type === 'run') return isString(s.nodeId) && typeof s.failedOnly === 'boolean'
+  if (s.type === 'files') return isString(s.folder) && isString(s.glob) && isNumber(s.quietMs)
   return s.type === 'once' && isNumber(s.at)
+}
+
+/** Optional on a trigger, so ones saved before they existed load as they were. */
+function isTriggerExtras(n: Fields): boolean {
+  const p = n.preflight
+  const l = n.limits
+  return (
+    (p === undefined || p === null || (isObject(p) && Array.isArray(p.argv) && p.argv.every(isString) && isString(p.cwd))) &&
+    (l === undefined || (isObject(l) && isNumber(l.gapMs) && isNumber(l.perHour)))
+  )
 }
 
 function isTriggerRun(r: unknown): boolean {
@@ -73,9 +87,12 @@ function isTriggerRun(r: unknown): boolean {
     isObject(r) &&
     isString(r.id) &&
     isNumber(r.at) &&
-    (r.source === 'schedule' || r.source === 'manual') &&
-    (r.outcome === 'delivered' || r.outcome === 'queued' || r.outcome === 'missed' || r.outcome === 'failed') &&
-    (r.detail === undefined || isString(r.detail))
+    (r.source === 'schedule' || r.source === 'manual' || r.source === 'event') &&
+    (r.outcome === 'delivered' || r.outcome === 'queued' || r.outcome === 'missed' || r.outcome === 'failed' || r.outcome === 'skipped') &&
+    (r.detail === undefined || isString(r.detail)) &&
+    (r.event === undefined || isString(r.event)) &&
+    (r.repeats === undefined || isNumber(r.repeats)) &&
+    (r.preflight === undefined || (isObject(r.preflight) && isNumberOrNull(r.preflight.code) && isString(r.preflight.tail)))
   )
 }
 
@@ -122,7 +139,8 @@ function isNode(n: unknown): boolean {
         isNumberOrNull(n.armedAt) &&
         isNumberOrNull(n.nextAt) &&
         Array.isArray(n.runs) &&
-        n.runs.every(isTriggerRun)
+        n.runs.every(isTriggerRun) &&
+        isTriggerExtras(n)
       )
     case 'browser':
       return isString(n.url) && (n.held === undefined || typeof n.held === 'boolean')

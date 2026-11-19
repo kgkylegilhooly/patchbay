@@ -27,6 +27,7 @@ import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
 import { pruneBoardImages } from './boardImages'
 import { createTriggerService } from './triggers/service'
+import { triggerEventDeps } from './triggers/eventDeps'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
@@ -413,7 +414,7 @@ async function boot(): Promise<void> {
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
   const allVerbs = withRecipeVerbs(verbs, { store, service: recipes })
-  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
+  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }) })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
   const hostAtBoot = await host.connect()

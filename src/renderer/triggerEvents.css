@@ -1,0 +1,68 @@
+/* Event triggers: the extra form fields, and skipped runs. See src/core/trigger/events.ts. */
+
+.pop-trigger {
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.trigger-when select {
+  min-width: 0;
+}
+
+.trigger-when select[name='agent'],
+.trigger-when select[name='runNode'] {
+  flex: 1;
+}
+
+.trigger-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trigger-num {
+  flex: 0 0 4.5em !important;
+  width: 4.5em;
+}
+
+.trigger-unit {
+  align-self: center;
+  color: var(--ink-dim);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.trigger-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.trigger-run-skipped .trigger-run-outcome {
+  color: var(--ink-dim);
+}
+
+.trigger-run-event {
+  flex-basis: 100%;
+}
+
+.trigger-run-check {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 3px 6px;
+  max-height: 4.2em;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-dim);
+  background: var(--well);
+  border-radius: 4px;
+}
+
+.arm-review code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
