@@ -49,7 +49,7 @@ describe('opening a result reads the index, not the transcript (H1, H2, L1)', ()
     const result = (await engine.handle({ type: 'search', input: input(d), query: { text: 'png frames' } })) as SearchResult
     const hit = result.hits[0]
     expect(hit.entry).toBe(41)
-    const w = (await engine.handle({ type: 'source', key: hit.key, around: hit.entry, before: 2, after: 2 })) as SourceWindow
+    const w = (await engine.handle({ type: 'source', key: hit.key, from: hit.entry - 2, count: 5, focus: hit.entry })) as SourceWindow
     expect(w).toMatchObject({ title: 'Exporter', start: 39, focus: 41, total: 62 })
     expect(w.entries.map((e) => e.text)).toEqual(['progress note 38', 'progress note 39', 'The exporter streams PNG frames now.', 'progress note 40', 'progress note 41'])
   })
@@ -60,8 +60,8 @@ describe('opening a result reads the index, not the transcript (H1, H2, L1)', ()
     const engine = createSearchEngine({ indexFile: null })
     await engine.handle({ type: 'sync', input: input(doc([agent('a1', path)])) })
     const key = input(doc([agent('a1', path)])).sources[0].key
-    expect(await engine.handle({ type: 'source', key, around: 99, before: 500, after: 500 })).toMatchObject({ start: 0, focus: 1, total: 2 })
-    expect(await engine.handle({ type: 'source', key: 'conv:nothing', around: 0, before: 1, after: 1 })).toBeNull()
+    expect(await engine.handle({ type: 'source', key, from: -5, count: 5000, focus: 99 })).toMatchObject({ start: 0, focus: 1, total: 2 })
+    expect(await engine.handle({ type: 'source', key: 'conv:nothing', from: 0, count: 1, focus: 0 })).toBeNull()
   })
 })
 

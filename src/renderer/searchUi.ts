@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { HandoffSource } from '../core/search/types'
+import type { HandoffSource, SourceWindow } from '../core/search/types'
 import type { SearchBridge } from '../shared/searchBridge'
 
 declare global {
@@ -63,4 +63,21 @@ export const RANGES: Array<{ id: DateRange; label: string }> = [
 /** The earliest time a date filter lets through, or none. */
 export function rangeStart(range: DateRange, now: number): number | undefined {
   return range === 'day' ? now - DAY : range === 'week' ? now - 7 * DAY : range === 'month' ? now - 30 * DAY : undefined
+}
+
+/** How many messages either side of the match the viewer shows first. */
+const SPAN = 15
+/** How many messages each Earlier or Later page shows. Each page replaces the last, so the view stays small. */
+const PAGE = 40
+
+/** The first page of a result: the message that matched, with some either side. */
+export function matchPage(entry: number): { from: number; count: number } {
+  return { from: Math.max(0, entry - SPAN), count: 2 * SPAN + 1 }
+}
+
+/** The page before or after one, which every message can be reached through. */
+export function turnPage(w: Pick<SourceWindow, 'start' | 'entries' | 'total'>, way: 'earlier' | 'later'): { from: number; count: number } | null {
+  if (way === 'earlier') return w.start > 0 ? { from: Math.max(0, w.start - PAGE), count: Math.min(PAGE, w.start) } : null
+  const end = w.start + w.entries.length
+  return end < w.total ? { from: end, count: PAGE } : null
 }

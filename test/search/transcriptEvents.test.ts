@@ -20,7 +20,7 @@ describe('transcript events', () => {
     expect(events).toEqual([
       { kind: 'message', role: 'user', text: 'Fix the parser', at: T },
       { kind: 'message', role: 'assistant', text: 'I decided to keep the old API.', at: T + 1000 },
-      { kind: 'edit', path: 'C:\\repo\\src\\parse.ts', at: T + 2000 },
+      { kind: 'edit', path: 'C:\\repo\\src\\parse.ts', ok: null, at: T + 2000 },
       { kind: 'command', command: 'npx vitest run', ok: false, output: '1 failed', at: T + 3000 }
     ])
   })
@@ -30,7 +30,7 @@ describe('transcript events', () => {
     expect(events).toEqual([
       { kind: 'message', role: 'user', text: 'Add search', at: T },
       { kind: 'command', command: 'npm test', ok: true, output: 'ok', at: T + 1 },
-      { kind: 'edit', path: 'C:\\repo\\a.ts', at: T + 2 },
+      { kind: 'edit', path: 'C:\\repo\\a.ts', ok: true, at: T + 2 },
       { kind: 'message', role: 'assistant', text: 'Done.', at: T + 3 }
     ])
   })
@@ -48,7 +48,7 @@ describe('transcript events', () => {
     expect(events).toEqual([
       { kind: 'message', role: 'user', text: 'Old style', at: T },
       { kind: 'command', command: 'cargo test', ok: true, output: 'test result: ok', at: T },
-      { kind: 'edit', path: 'src/lib.rs', at: T }
+      { kind: 'edit', path: 'src/lib.rs', ok: null, at: T }
     ])
   })
 

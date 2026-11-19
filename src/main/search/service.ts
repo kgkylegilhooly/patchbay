@@ -165,9 +165,9 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
         return failure(e)
       }
     },
-    async readSource(key, around, before = 15, after = 15) {
+    async readSource(key, from, count, focus) {
       try {
-        const window = await d.backend({ type: 'source', key: String(key), around: Number(around), before: Number(before), after: Number(after) })
+        const window = await d.backend({ type: 'source', key: String(key), from: Number(from), count: Number(count), focus: Number(focus) })
         return window ? { ok: true, window: window as never } : { ok: false, reason: "This isn't in the search index any more. Search again to find it." }
       } catch (e) {
         return failure(e)

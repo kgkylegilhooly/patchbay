@@ -3,7 +3,7 @@ import { useReactFlow } from '@xyflow/react'
 import type { IndexStats, SearchHit, SearchKind, SourceWindow } from '../core/search/types'
 import { bridge } from './bridge'
 import { ClaudeIcon, CodexIcon, Icon } from './icons'
-import { closeSearch, markedParts, openHandoff, RANGES, rangeStart, searchBridge, useSearchUi, type DateRange } from './searchUi'
+import { closeSearch, markedParts, matchPage, openHandoff, RANGES, rangeStart, searchBridge, turnPage, useSearchUi, type DateRange } from './searchUi'
 import { useStore } from './store'
 import './search.css'
 
@@ -31,13 +31,12 @@ function statsLine(s: IndexStats): string {
   return `Indexed ${parts.join(', ')}${s.syncedAt ? `, updated ${TIME.format(s.syncedAt)}` : ''}.`
 }
 
-/** How many messages either side of the match the viewer shows first, and adds with each Show earlier or later. */
-const SPAN = 15
-
 interface Viewing {
   hit: SearchHit
   window: SourceWindow | null
   problem: string | null
+  /** Which way the last page turned, to keep the reader at the edge they came from. */
+  turned: 'match' | 'earlier' | 'later'
 }
 
 const SPEAKER: Record<string, string> = { user: 'Asked', assistant: 'Agent' }
@@ -55,14 +54,18 @@ function Marked({ text, terms }: { text: string; terms: string[] }): React.JSX.E
  * Where a result came from, read from the search index rather than the transcript, so even a huge conversation opens
  * at once without holding up the app. It shows the message that matched, with some on either side, and more on asking.
  */
-function SourceViewer({ viewing, terms, onMore, onClose }: { viewing: Viewing; terms: string[]; onMore: (before: number, after: number) => void; onClose: () => void }): React.JSX.Element {
+function SourceViewer({ viewing, terms, onPage, onClose }: { viewing: Viewing; terms: string[]; onPage: (way: 'match' | 'earlier' | 'later') => void; onClose: () => void }): React.JSX.Element {
   const focused = useRef<HTMLLIElement>(null)
+  const body = useRef<HTMLDivElement>(null)
   const w = viewing.window
   const hit = viewing.hit
-  useEffect(() => focused.current?.scrollIntoView({ block: 'center' }), [w?.focus, hit])
+  const focusShown = !!w && hit.entry !== -1 && w.focus >= w.start && w.focus < w.start + w.entries.length
+  useEffect(() => {
+    if (viewing.turned === 'match') focused.current?.scrollIntoView({ block: 'center' })
+    // A page back in time is read up towards where it was; a later one, down from its top.
+    else if (body.current) body.current.scrollTop = viewing.turned === 'earlier' ? body.current.scrollHeight : 0
+  }, [w, viewing.turned])
   const closedId = hit.ref.type === 'closed' ? hit.ref.closedId : null
-  const before = w ? w.focus - w.start : 0
-  const after = w ? w.start + w.entries.length - 1 - w.focus : 0
   return (
     <div className="viewer search-viewer" role="dialog" aria-label={`Source of ${hit.title}`}>
       <header className="drawer-head">
@@ -90,10 +93,15 @@ function SourceViewer({ viewing, terms, onMore, onClose }: { viewing: Viewing; t
       ) : w.entries.length === 0 ? (
         <p className="drawer-empty">This conversation has no readable messages.</p>
       ) : (
-        <div className="source-body" tabIndex={0}>
+        <div className="source-body" tabIndex={0} ref={body}>
           {w.start > 0 && (
-            <button className="btn source-more" onClick={() => onMore(before + SPAN, after)}>
+            <button className="btn source-more" onClick={() => onPage('earlier')}>
               Show earlier ({w.start} more)
+            </button>
+          )}
+          {!focusShown && hit.entry !== -1 && (
+            <button className="btn source-more" onClick={() => onPage('match')}>
+              Back to the match
             </button>
           )}
           <ol className="source-list">
@@ -114,7 +122,7 @@ function SourceViewer({ viewing, terms, onMore, onClose }: { viewing: Viewing; t
             })}
           </ol>
           {w.start + w.entries.length < w.total && (
-            <button className="btn source-more" onClick={() => onMore(before, after + SPAN)}>
+            <button className="btn source-more" onClick={() => onPage('later')}>
               Show later ({w.total - w.start - w.entries.length} more)
             </button>
           )}
@@ -213,15 +221,18 @@ export function SearchPanel(): React.JSX.Element {
     const ref = hit.ref
     if (ref.type === 'node' && showNode(ref.nodeId)) return
     if (ref.type === 'message' && (showNode(ref.to) || showNode(ref.from))) return
-    showSource(hit, SPAN, SPAN)
+    showSource(hit, 'match')
   }
 
   /** Reads part of a result's source from the index, around the message that matched. */
-  const showSource = (hit: SearchHit, before: number, after: number): void => {
-    setViewing((v) => (v?.hit === hit ? v : { hit, window: null, problem: null }))
+  const showSource = (hit: SearchHit, way: Viewing['turned']): void => {
+    const current = viewing?.hit === hit ? viewing.window : null
+    const page = way === 'match' || !current ? matchPage(Math.max(0, hit.entry)) : turnPage(current, way)
+    if (!page) return
+    setViewing((v) => (v?.hit === hit ? v : { hit, window: null, problem: null, turned: way }))
     void searchBridge()
-      .readSource(hit.key, Math.max(0, hit.entry), before, after)
-      .then((r) => setViewing((v) => (v?.hit === hit ? { hit, window: r.ok ? r.window : null, problem: r.ok ? null : r.reason } : v)))
+      .readSource(hit.key, page.from, page.count, Math.max(0, hit.entry))
+      .then((r) => setViewing((v) => (v?.hit === hit ? { hit, window: r.ok ? r.window : null, problem: r.ok ? null : r.reason, turned: way } : v)))
   }
 
   const rebuild = async (): Promise<void> => {
@@ -333,7 +344,7 @@ export function SearchPanel(): React.JSX.Element {
           </button>
         </footer>
       </aside>
-      {viewing && <SourceViewer viewing={viewing} terms={terms} onMore={(before, after) => showSource(viewing.hit, before, after)} onClose={() => setViewing(null)} />}
+      {viewing && <SourceViewer viewing={viewing} terms={terms} onPage={(way) => showSource(viewing.hit, way)} onClose={() => setViewing(null)} />}
     </>
   )
 }

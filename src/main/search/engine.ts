@@ -12,7 +12,8 @@ export type EngineRequest =
   | { type: 'search'; input: SyncInput; query: SearchQuery }
   | { type: 'rebuild'; input: SyncInput }
   | { type: 'stats' }
-  | { type: 'source'; key: string; around: number; before: number; after: number }
+  /** One page of a source's entries: `count` of them from `from`, with `focus` the one that matched. */
+  | { type: 'source'; key: string; from: number; count: number; focus: number }
   | { type: 'handoff'; input: Omit<HandoffInput, 'transcript' | 'exists' | 'now'> }
   | { type: 'flush' }
 
@@ -35,7 +36,7 @@ const SAVE_AFTER_MS = 5 * 60_000
 const SAVE_AFTER_REMOVAL_MS = 15_000
 /** A search right after a sync answers from the index as it is, without looking at the files again. */
 const FRESH_MS = 10_000
-/** The most messages one source request returns. */
+/** The most messages one page of a source holds. */
 const MAX_WINDOW = 200
 
 /** What the canvas says search should hold, without transcripts' contents: if it differs, a sync is due at once. */
@@ -136,11 +137,12 @@ export function createSearchEngine(opts: { indexFile: string | null; now?: () =>
     const doc = index.doc(r.key)
     if (!doc) return null
     const total = doc.entries.length
-    const focus = Math.min(Math.max(0, Math.floor(r.around) || 0), Math.max(0, total - 1))
-    const before = Math.min(Math.max(0, Math.floor(r.before) || 0), MAX_WINDOW)
-    const after = Math.min(Math.max(0, Math.floor(r.after) || 0), MAX_WINDOW - before)
-    const start = Math.max(0, focus - before)
-    return { title: doc.title, kind: doc.kind, start, entries: doc.entries.slice(start, Math.min(total, focus + after + 1)), total, focus }
+    const whole = (n: number): number => (Number.isFinite(n) ? Math.floor(n) : 0)
+    const focus = Math.min(Math.max(0, whole(r.focus)), Math.max(0, total - 1))
+    const count = Math.min(Math.max(1, whole(r.count)), MAX_WINDOW)
+    // Any page can be asked for, so every message can be reached, a page at a time.
+    const start = Math.min(Math.max(0, whole(r.from)), Math.max(0, total - 1))
+    return { title: doc.title, kind: doc.kind, start, entries: doc.entries.slice(start, start + count), total, focus }
   }
 
   return {

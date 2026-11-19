@@ -110,7 +110,7 @@ export interface SearchHit {
   entry: number
 }
 
-/** Part of a source's indexed messages, around one of them, for reading it without loading the whole transcript. */
+/** One page of a source's indexed messages, for reading it without loading the whole transcript. */
 export interface SourceWindow {
   title: string
   kind: SearchKind
@@ -119,7 +119,7 @@ export interface SourceWindow {
   entries: SearchEntry[]
   /** How many entries the source has in all. */
   total: number
-  /** The entry asked for, as an index in the whole source. */
+  /** The entry that matched, as an index in the whole source. It may be on another page. */
   focus: number
 }
 
