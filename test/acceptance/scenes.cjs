@@ -120,6 +120,7 @@ const gitRepoProject = async (page) => {
 
 /** Each one prepares what the picture shows, once the seeded canvas is up. Selectors that only exist after a change are guarded. */
 const scenes = {
+  'browser-evidence': (page) => require('../browser/evidenceScene.cjs').act(page),
   canvas: async () => {},
   links: async (page) => {
     await seedLinks(page)
@@ -441,6 +442,7 @@ const noteText = [
 
 /** Changes to the seeded canvas that have to be there before the app opens, such as where the view starts. */
 const seeds = {
+  'browser-evidence': (doc) => require('../browser/evidenceScene.cjs').seed(doc),
   note: (doc) => {
     Object.assign(doc.nodes.find((n) => n.id === 'note'), { text: noteText, width: 460, height: 520 })
     doc.viewport = { x: -360, y: -680, zoom: 1.1 }

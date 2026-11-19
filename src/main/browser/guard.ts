@@ -43,7 +43,7 @@ export function plainUserAgent(ua: string): string {
  * Set once per partition. Everything a page could ask of the browser is answered no here: no asking the person either,
  * because a prompt raised by a page an agent is driving is a poor question to put to them.
  */
-export function lockSession(ses: Session, onBlocked: (contents: WebContents | null, message: string) => void): void {
+export function lockSession(ses: Session, onBlocked: (contents: WebContents | null, message: string) => void, onRequest?: (details: { id: number; webContentsId?: number; url: string; method: string; resourceType?: string }) => void): void {
   ses.setPermissionRequestHandler((contents, permission, callback, details) => {
     callback(false)
     const extra = permission === 'openExternal' ? ` (${(details as { externalURL?: string }).externalURL?.split(':')[0] ?? 'another program'})` : ''
@@ -60,6 +60,12 @@ export function lockSession(ses: Session, onBlocked: (contents: WebContents | nu
   })
   // The backstop, because it sees loads the navigation events don't, such as a <webview> src or a loadURL.
   ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+    // Only watching, for browser evidence. Whatever goes wrong there must never keep the guard from answering.
+    try {
+      onRequest?.(details)
+    } catch {
+      /* The request is still decided below. */
+    }
     const allowed =
       details.resourceType === 'mainFrame'
         ? isAllowedTopLevel(details.url)
