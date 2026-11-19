@@ -186,6 +186,11 @@ export interface Project {
    * Absent means it's open. The project on screen is always open.
    */
   closedAt?: number
+  /**
+   * When it was archived: its sessions were stopped, and it's left off the tabs and the closed list. An archived
+   * project is also closed. Absent means it isn't archived. See src/core/canvas/projectOps.ts.
+   */
+  archivedAt?: number
   /** The kanban board's columns and where each card sits. Absent until the board is first used. */
   board?: Board
 }
@@ -213,6 +218,10 @@ export function isProjectOpen(project: Pick<Project, 'closedAt'>): boolean {
   return project.closedAt === undefined
 }
 
+export function isProjectArchived(project: Pick<Project, 'archivedAt'> | undefined): boolean {
+  return project?.archivedAt !== undefined
+}
+
 /** Where a node sits and what it's called: the parts of a node that undo can put back. */
 export type NodeLayout = Pick<CanvasNode, 'id' | 'x' | 'y' | 'width' | 'height' | 'parentId' | 'title'>
 
@@ -225,6 +234,8 @@ export interface LayoutRestore {
   add: CanvasNode[]
   remove: string[]
   edges: Edge[]
+  /** The tab order to put back, when the edit moved a project's tab. */
+  projectOrder?: string[]
 }
 
 export type CanvasOp =
@@ -248,6 +259,12 @@ export type CanvasOp =
   | { op: 'closeProject'; id: string; at: number }
   /** Removes it and everything in it, for good. The last project can't be removed. */
   | { op: 'removeProject'; id: string; at: number }
+  /** Moves a project's tab to just before another project, or to the end with null. */
+  | { op: 'moveProject'; id: string; before: string | null }
+  /** Only from main, once the project's sessions are stopped. Main refuses it from the page. */
+  | { op: 'archiveProject'; id: string; at: number }
+  /** Brings an archived project back, closed, or open and on screen. Nothing starts by itself. */
+  | { op: 'unarchiveProject'; id: string; open: boolean }
   | ({ op: 'restoreLayout' } & LayoutRestore)
   /** Replaces a project's board. Only where cards sit changes: no session is touched. */
   | { op: 'setBoard'; projectId: string; board: Board }

@@ -31,6 +31,7 @@ import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
 import { setupCompare } from './compare/setup'
+import { setupProjects } from './projects/ipc'
 import {
   closeAction,
   createScrollbackSaver,
@@ -534,6 +535,15 @@ async function boot(): Promise<void> {
   registerRecipeIpc({ service: recipes, setupGate })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
   setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
+  // The projects manager, and archiving, which stops a project's sessions first. See src/main/projects.
+  setupProjects({
+    dataDir, store, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id), disarmTrigger: (id) => triggers.disarm(id),
+    forgetOutput: async (id) => {
+      saver.forget(id)
+      host.forget?.(id)
+      await scrollback.remove(id)
+    }
+  })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
 

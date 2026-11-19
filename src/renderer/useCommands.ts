@@ -9,6 +9,7 @@ import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLau
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
+import { stepProjectTab } from './projectActions'
 import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
@@ -138,6 +139,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         dispatch({ op: 'switchProject', id })
       },
       deleteProject: (id) => dispatch({ op: 'removeProject', id, at: Date.now() }),
+      moveProjectTab: (step, id) => stepProjectTab(id ?? doc().activeProjectId, step),
       revealNode: (id) => {
         const node = doc().nodes.find((n) => n.id === id)
         if (!node) return

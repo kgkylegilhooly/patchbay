@@ -22,6 +22,7 @@ import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
+import { archivedRefusal } from './archived'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -904,6 +905,8 @@ export function createVerbs({
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
     const args = withIds(caller, given)
+    const archived = archivedRefusal(store.get(), caller, args)
+    if (archived) refuse(archived)
     if (verb.startsWith('task-')) {
       if (!tasks) refuse('Tasks are not available here.')
       return taskVerb(tasks, caller, verb, args)

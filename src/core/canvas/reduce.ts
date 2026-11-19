@@ -1,7 +1,8 @@
-import { DISARMED, isProjectOpen, type CanvasDoc, type CanvasNode, type CanvasOp, type ClosedSession, type LayoutRestore, type Project, type TriggerNode, type TriggerState } from '../../shared/model'
+import { DISARMED, isProjectArchived, isProjectOpen, type CanvasDoc, type CanvasNode, type CanvasOp, type ClosedSession, type LayoutRestore, type Project, type TriggerNode, type TriggerState } from '../../shared/model'
 import { canonicalSpec } from '../trigger/arming'
 import { sanitizeBoard } from '../../shared/board'
 import { arrangeNodes } from './arrange'
+import { archived, archiveRefusal, moveProjectBefore, nearestUnarchived, orderProjects, removeRefusal, unarchived } from './projectOps'
 
 const PADDING = 24
 const HEADER = 40
@@ -246,7 +247,8 @@ function arrange(doc: CanvasDoc, ids: string[], layout: 'grid' | 'row' | 'column
 /** Keeps the current view with the project being left, and brings back the view of the one being shown. */
 function showProject(doc: CanvasDoc, id: string): CanvasDoc {
   const target = doc.projects.find((p) => p.id === id)
-  if (!target || id === doc.activeProjectId) return doc
+  // An archived project comes back only through unarchiveProject, never by being shown.
+  if (!target || id === doc.activeProjectId || isProjectArchived(target)) return doc
   const projects = doc.projects.map((p) => {
     if (p.id === doc.activeProjectId) return { ...p, viewport: doc.viewport }
     if (p.id !== id || isProjectOpen(p)) return p
@@ -273,13 +275,28 @@ function closeProject(doc: CanvasDoc, id: string, at: number): CanvasDoc {
 }
 
 function removeProject(doc: CanvasDoc, id: string, at: number): CanvasDoc {
-  const index = doc.projects.findIndex((p) => p.id === id)
-  if (index === -1 || doc.projects.length === 1) return doc
+  if (removeRefusal(doc, id)) return doc
   // With every other project closed, one of them has to come back, since something must stay on screen.
-  const neighbor = openNeighbor(doc, id) ?? doc.projects[index + 1] ?? doc.projects[index - 1]
-  const shown = id === doc.activeProjectId ? showProject(doc, neighbor.id) : doc
+  const neighbor = openNeighbor(doc, id) ?? nearestUnarchived(doc, id)
+  const shown = id === doc.activeProjectId && neighbor ? showProject(doc, neighbor.id) : doc
   const emptied = removeNodes(shown, shown.nodes.filter((n) => n.projectId === id).map((n) => n.id), at)
   return { ...emptied, projects: emptied.projects.filter((p) => p.id !== id) }
+}
+
+/** Main has stopped its sessions by now. Its nodes, notes, board and layout all stay. */
+function archiveProject(doc: CanvasDoc, id: string, at: number): CanvasDoc {
+  if (archiveRefusal(doc, id)) return doc
+  const neighbor = openNeighbor(doc, id) ?? nearestUnarchived(doc, id)
+  const shown = id === doc.activeProjectId && neighbor ? showProject(doc, neighbor.id) : doc
+  if (shown.activeProjectId === id) return doc
+  return { ...shown, projects: shown.projects.map((p) => (p.id === id ? archived(p, at) : p)) }
+}
+
+function unarchiveProject(doc: CanvasDoc, id: string, open: boolean): CanvasDoc {
+  const target = doc.projects.find((p) => p.id === id)
+  if (!target || !isProjectArchived(target)) return doc
+  const back = { ...doc, projects: doc.projects.map((p) => (p.id === id ? unarchived(p) : p)) }
+  return open ? showProject(back, id) : back
 }
 
 const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group'
@@ -308,7 +325,8 @@ function restoreLayout(doc: CanvasDoc, r: LayoutRestore): CanvasDoc {
     ...removed.edges,
     ...r.edges.filter((e) => here.has(e.from) && here.has(e.to) && !removed.edges.some((have) => have.id === e.id))
   ]
-  return { ...removed, nodes, edges }
+  const projects = r.projectOrder ? orderProjects(removed.projects, r.projectOrder) : removed.projects
+  return { ...removed, nodes, edges, projects }
 }
 
 function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
@@ -342,6 +360,14 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
       return showProject(doc, op.id)
     case 'removeProject':
       return removeProject(doc, op.id, op.at)
+    case 'moveProject': {
+      const projects = moveProjectBefore(doc.projects, op.id, op.before)
+      return projects === doc.projects ? doc : { ...doc, projects }
+    }
+    case 'archiveProject':
+      return archiveProject(doc, op.id, op.at)
+    case 'unarchiveProject':
+      return unarchiveProject(doc, op.id, op.open)
     case 'addNode':
       return addNode(doc, op.node)
     case 'patchNode':

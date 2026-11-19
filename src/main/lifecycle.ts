@@ -1,5 +1,5 @@
 import type { HostInfo } from '../shared/contract'
-import { isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
+import { isProjectArchived, isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 import type { Settings } from '../shared/settings'
 
 export interface RestorePlan {
@@ -41,7 +41,10 @@ export function planReconnect(doc: CanvasDoc, hosted: Array<{ id: string; runnin
 
 export function planRestore(doc: CanvasDoc): RestorePlan {
   const plan: RestorePlan = { claude: [], terminals: [], held: [] }
+  // An archived project's sessions were stopped on purpose, and start again only once it's unarchived.
+  const archived = new Set((doc.projects ?? []).filter(isProjectArchived).map((p) => p.id))
   for (const node of doc.nodes) {
+    if (node.projectId && archived.has(node.projectId)) continue
     if (node.kind === 'terminal') plan.terminals.push(node.id)
     else if (node.kind === 'claude') (node.after.length > 0 || node.setupWait ? plan.held : plan.claude).push(node.id)
   }

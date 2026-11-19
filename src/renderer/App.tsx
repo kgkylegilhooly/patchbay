@@ -50,6 +50,7 @@ import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { ProjectsLayer } from './ProjectsLayer'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -219,7 +220,7 @@ function Canvas(): React.JSX.Element | null {
       hasWindow: windowId !== null,
       canName: windowKind === 'terminal' || windowKind === 'claude',
       canCloseProject: (current?.projects.filter(isProjectOpen).length ?? 0) > 1,
-      closedProjects: current?.projects.filter((p) => !isProjectOpen(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
+      closedProjects: current?.projects.filter((p) => !isProjectOpen(p) && p.archivedAt === undefined).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
       gitPanel: useStore.getState().gitOpen,
       board: useStore.getState().boardOpen,
       focus: !!useStore.getState().focus
@@ -497,6 +498,7 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <ProjectsLayer commands={commands} />
         <HeaderZoomWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}

@@ -273,6 +273,9 @@ text, and only works on notes you opened.
 These work on any node in your own project, which are the nodes `patchbay list` shows. A node in another project
 is refused as if it weren't there, and so is one named by `--group` or `--after`.
 
+A project the person has archived is put away: its sessions are stopped, and every verb that names one of its nodes
+is refused, saying so. Ask the person to unarchive it if you need it.
+
 ## When you need more
 
 Read the file for what you're about to do, beside this one, before you start:

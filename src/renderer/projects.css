@@ -1,0 +1,300 @@
+/* Moving project tabs, the archive confirmation and the projects manager. */
+
+.project-tab,
+.project-add {
+  position: relative;
+}
+
+/* Where a dragged tab lands: a bright bar in the gap before this tab. */
+.project-tab-drop::before {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -2px;
+  width: 2px;
+  content: '';
+  background: var(--cable-link);
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--cable-link);
+}
+
+.project-tab-dragging {
+  opacity: 0.45;
+}
+
+.project-tab:focus-visible {
+  outline: 1px solid var(--cable-link);
+  outline-offset: -1px;
+}
+
+/* The archive confirmation sits over whatever is open, the manager included. */
+.projects-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.pop.archive-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.archive-dialog h2,
+.projects-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.archive-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.archive-warn {
+  color: var(--led-working);
+}
+
+.archive-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.archive-option > input {
+  margin-top: 2px;
+}
+
+.archive-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.archive-option-off {
+  color: var(--ink-dim);
+}
+
+.archive-size {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* The manager */
+
+.pop.projects-sheet {
+  width: min(1220px, calc(100vw - 32px));
+  max-height: calc(100% - 28px);
+  gap: 10px;
+  overflow: hidden;
+}
+
+.projects-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.projects-close {
+  margin-left: auto;
+}
+
+.projects-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a50 transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.projects-table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: collapse;
+}
+
+.projects-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0;
+  text-align: left;
+  background: var(--face);
+  border-bottom: 1px solid var(--line);
+}
+
+.projects-sort {
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  text-align: inherit;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+}
+
+.projects-sort:hover {
+  color: var(--ink);
+}
+
+.projects-table td {
+  padding: 7px 10px;
+  vertical-align: middle;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.projects-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.projects-when {
+  white-space: nowrap;
+}
+
+.projects-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+th.projects-num .projects-sort {
+  text-align: right;
+}
+
+.projects-row-archived td {
+  color: var(--ink-dim);
+}
+
+.projects-row-active {
+  background: rgb(61 139 253 / 0.07);
+}
+
+.projects-name-cell {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  min-width: 200px;
+}
+
+.projects-name-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.projects-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.projects-row-archived .projects-name {
+  color: var(--ink-dim);
+}
+
+.projects-folder {
+  max-width: 200px;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.projects-rename {
+  width: 200px;
+  height: 24px;
+  font-size: 13px;
+}
+
+.projects-state {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 12px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.projects-state-open {
+  color: var(--led-idle);
+  border-color: color-mix(in srgb, var(--led-idle) 40%, transparent);
+}
+
+.projects-state-archived {
+  color: var(--ink-dim);
+  border-style: dashed;
+}
+
+.projects-row-active .projects-state {
+  color: var(--cable-link);
+  border-color: color-mix(in srgb, var(--cable-link) 50%, transparent);
+}
+
+.projects-unused {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--cable-trigger);
+  white-space: nowrap;
+}
+
+.projects-running {
+  color: var(--led-working);
+}
+
+.projects-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.btn.projects-suggested {
+  color: var(--cable-trigger);
+  border-color: var(--cable-trigger);
+}
+
+.projects-delete:not(:disabled):hover {
+  color: var(--led-needs);
+}
+
+.projects-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.projects-storage {
+  flex: 1 1 360px;
+  line-height: 1.45;
+}
+
+.projects-note {
+  color: var(--ink);
+}
+
+.projects-suggest {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-dim);
+}

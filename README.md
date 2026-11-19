@@ -319,6 +319,19 @@ Copy as Markdown copies the whole handoff.
 - **Closing a project** takes it off the tabs, keeps its windows, and leaves its sessions running. Reopen it from
   Recently closed projects in the sidebar, the File menu or the palette. A session waiting on you still shows under
   Status. Clicking it reopens the project.
+- **Moving a tab**: drag it along the top bar, use Move left or Move right on its right-click menu, or press
+  Alt+Shift+Left/Right with the tab focused. The order is saved, and Ctrl+Z puts it back.
+- **Archiving a project** stops its sessions, run commands, browser pages and armed triggers, and takes it off the tabs
+  and the closed list. It keeps every node, note, whiteboard, the board and the layout. Agents keep their saved
+  conversations and resume when started again. It asks first, listing what stops, and can also clear the project's
+  saved terminal output and its pages' site data. Agents can't reach or start its nodes until it's unarchived.
+- **Projects** (View or File menu, a tab's menu, or the palette) lists every project, open, closed and archived, with
+  its folder, nodes, sessions, when it was last active and its saved output. Sort by any column. Open, close, archive,
+  unarchive, rename or delete from there. It can flag projects unused for 14 to 90 days (off by default); nothing is
+  archived by itself.
+- **Storage**: a project takes little room. Its saved terminal output is at most 1 MB per terminal or run node, and
+  its layout is a few KB in `canvas.json`. Browser data and its cache are shared by every project, and Projects can
+  clear the cache. Agents' conversations are kept by Claude Code and Codex in their own folders, not by Patchbay.
 - **Deleting a project** is separate and permanent, and asks first, naming what it ends.
 - **Undo and redo** cover moving, resizing, grouping, tidying, renaming, and adding or deleting notes and groups, one
   history per project, until the app closes. They never start or end a process, so closing a session isn't undoable.

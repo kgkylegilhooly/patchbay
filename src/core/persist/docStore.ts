@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { sanitizeBoard } from '../../shared/board'
 import { recoverTasks, sanitizeTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
+import { withArchiveChecked } from './archiveCheck'
 import { isWhiteboardShape, LIMITS } from '../../shared/whiteboard'
 import {
   isMissingFile,
@@ -218,7 +219,7 @@ function showOpenProject(doc: CanvasDoc): CanvasDoc {
     return showOpenProject({ ...doc, activeProjectId: fallback.id })
   }
   if (isProjectOpen(active)) return doc
-  return { ...doc, projects: doc.projects.map((p) => (p === active ? { ...p, closedAt: undefined } : p)) }
+  return { ...doc, projects: doc.projects.map((p) => (p === active ? { ...p, closedAt: undefined, archivedAt: undefined } : p)) }
 }
 
 /** A node in no known project would be on no tab, looking lost while its session kept running. */
@@ -236,7 +237,8 @@ function rehomeOrphans(doc: CanvasDoc): CanvasDoc {
 export function migrate(input: unknown): CanvasDoc {
   if (!isObject(input)) throw new Error('Save file is not an object')
   const atTwo = input.version === 1 ? fromVersion1(input) : input
-  const raw = atTwo.version === 2 ? fromVersion2(atTwo) : atTwo
+  const atThree = atTwo.version === 2 ? fromVersion2(atTwo) : atTwo
+  const raw: Fields = { ...atThree, projects: withArchiveChecked(atThree.projects) }
   if (raw.version !== CURRENT_VERSION) throw new Error(`Unsupported save file version: ${String(raw.version)}`)
   if (!Array.isArray(raw.projects) || raw.projects.length === 0 || !raw.projects.every(isProject)) {
     throw new Error('Save file has invalid projects')
