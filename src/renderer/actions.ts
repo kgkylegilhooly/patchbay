@@ -3,6 +3,8 @@ import type { Bindable } from './keys'
 import type { Commands, MenuState } from './menus'
 import { toggleSearch } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
+import { toggleReviewInbox } from './reviewInboxUi'
+import { offerCommand } from './agentChoice'
 import { openComparisons, openTryApproach } from './compareUi'
 import { jumpToNext } from './needsYouUi'
 
@@ -77,6 +79,7 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-legend', section: 'View', label: 'Link legend', icon: 'link', keywords: ['key', 'cables'], run: (c) => c.togglePref('legend') },
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
+  { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
   { id: 'recent', section: 'View', label: 'Recent conversations', icon: 'recent', keywords: ['closed', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
   { id: 'next-needs-you', section: 'View', label: 'Next needing you', icon: 'arrow-right', key: 'Ctrl+Shift+J', keywords: ['attention', 'waiting', 'needs you', 'unread', 'jump', 'peek', 'reply', 'inbox'], run: (c) => void jumpToNext(c) },
 
@@ -91,7 +94,7 @@ export const ACTIONS: Action[] = [
 export const ACTION_SECTIONS: ActionSection[] = ['New', 'Canvas', 'Window', 'View', 'App']
 
 /** Besides everything under App, what still acts while the board covers the canvas. */
-const OVER_BOARD = new Set(['toggle-board', 'toggle-git'])
+const OVER_BOARD = new Set(['toggle-board', 'toggle-git', 'review-inbox'])
 
 /** Whether an action means anything with the board on screen. The rest would change a canvas nobody can see. */
 export function worksOverBoard(a: Action): boolean {
@@ -101,6 +104,7 @@ export function worksOverBoard(a: Action): boolean {
 /** Whether an action can run now: its own readiness, and nothing aimed at the canvas while the board hides it. */
 export function actionReady(a: Action, s: MenuState): boolean {
   if (s.board && !worksOverBoard(a)) return false
+  if (!offerCommand(a.id)) return false
   return a.ready?.(s) ?? true
 }
 

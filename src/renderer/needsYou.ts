@@ -1,5 +1,5 @@
 import type { AgentStatus, CanvasDoc } from '../shared/model'
-import type { WaitSince } from '../shared/needsYouBridge'
+import type { PendingTool, WaitSince } from '../shared/needsYouBridge'
 import { bucketOf } from './sidebarView'
 
 /** Pure: which agents "Next needing you" walks, and how a peek words a wait. */
@@ -70,5 +70,33 @@ export function waitText(status: AgentStatus | null, since: WaitSince | null, no
       return { text: `Working for ${length}${plus}`, title }
     default:
       return null
+  }
+}
+
+/** Calls that start a subagent. Still running while the subagent asks, so naming one would point at the wrong thing. */
+const SUBAGENT_CALLS = new Set(['Task', 'Agent'])
+
+export type Ask = { kind: 'call'; tool: string; summary: string } | { kind: 'subagent' } | null
+
+/**
+ * What a session at Need attention is waiting on: a held approval, which is exact, or else the transcript's newest
+ * call with no result. Null when it isn't waiting on you, or Patchbay can't tell.
+ */
+export function whatItAsks(status: AgentStatus | null, approval: PendingTool | undefined, pending: PendingTool | null | undefined): Ask {
+  if (status !== 'needs-you') return null
+  if (approval) return { kind: 'call', ...approval }
+  if (!pending) return null
+  return SUBAGENT_CALLS.has(pending.tool) ? { kind: 'subagent' } : { kind: 'call', ...pending }
+}
+
+/** What a queued reply is waiting for, in the session's own terms. */
+export function queuedText(status: AgentStatus | null): string {
+  switch (status) {
+    case 'needs-you':
+      return 'Queued. It goes once the prompt in its window is answered.'
+    case 'unknown':
+      return "Queued. Patchbay can't tell whether it's ready, so this waits until it next finishes. Open its window to type now."
+    default:
+      return 'Queued. It goes when the agent is next idle.'
   }
 }

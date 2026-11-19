@@ -9,6 +9,7 @@ import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus, CanvasNode, ClaudeNode } from '../../shared/model'
 import type { SearchBridge, StartHandoff } from '../../shared/searchBridge'
 import { spotNear } from '../control/verbs'
+import { agentOffNow } from '../agentsAllowed'
 import type { EngineRequest } from './engine'
 
 /** Plain documents for search from elsewhere in Patchbay, such as task results. Called on every sync, so keep it cheap. */
@@ -227,6 +228,8 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
       if (!a || typeof a.text !== 'string' || !a.text.trim()) return { ok: false, reason: 'The handoff is empty.' }
       if (a.text.length > MAX_HANDOFF_CHARS) return { ok: false, reason: `The handoff is ${a.text.length} characters, over the ${MAX_HANDOFF_CHARS} an agent can be started with. Shorten it first.` }
       if (a.agent !== 'claude' && a.agent !== 'codex') return { ok: false, reason: 'Choose Claude Code or Codex.' }
+      const off = agentOffNow(a.agent)
+      if (off) return { ok: false, reason: off }
       const cwd = typeof a.cwd === 'string' && a.cwd.trim() ? a.cwd.trim() : homedir()
       let isFolder = false
       try {

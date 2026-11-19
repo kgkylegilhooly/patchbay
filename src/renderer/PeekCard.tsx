@@ -6,7 +6,7 @@ import { bridge } from './bridge'
 import { currentKey } from './keys'
 import type { Commands } from './menus'
 import { StatusBadge, StatusDot } from './nodes/StatusBadge'
-import { waitText } from './needsYou'
+import { queuedText, waitText, whatItAsks } from './needsYou'
 import { closePeek, jumpToNext, needsYouBridge, setIncludeUnread, useNeedsYouUi, type PeekPlace } from './needsYouUi'
 import { useStore } from './store'
 
@@ -93,7 +93,7 @@ export function PeekCard({ id, place, commands }: { id: string; place: PeekPlace
   if (!node || !isSessionNode(node) || node.kind !== 'claude') return null
 
   const wait = waitText(status, peek?.since ?? null, now)
-  const asking = status === 'needs-you' ? (approval ? { tool: approval.tool, summary: approval.summary } : peek?.pending) : null
+  const asking = whatItAsks(status, approval && { tool: approval.tool, summary: approval.summary }, peek?.pending)
   const nextKey = (() => {
     const action = actionById('next-needs-you')
     return action ? currentKey(action, overrides) : null
@@ -108,7 +108,7 @@ export function PeekCard({ id, place, commands }: { id: string; place: PeekPlace
       if (!r.ok) setSent({ kind: 'error', text: r.reason })
       else {
         setDraft('')
-        setSent(r.queued ? { kind: 'queued', text: status === 'needs-you' ? 'Queued. It goes once the prompt in its window is answered.' : 'Queued. It goes when the agent is next idle.' } : { kind: 'sent', text: 'Sent.' })
+        setSent(r.queued ? { kind: 'queued', text: queuedText(status) } : { kind: 'sent', text: 'Sent.' })
       }
     } catch (e) {
       setSent({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
@@ -158,7 +158,9 @@ export function PeekCard({ id, place, commands }: { id: string; place: PeekPlace
 
       {status === 'needs-you' && (
         <div className="peek-asking" data-peek-asking>
-          {asking ? (
+          {asking?.kind === 'subagent' ? (
+            <span className="peek-label">A subagent is asking. Open its window to see.</span>
+          ) : asking ? (
             <>
               <span className="peek-label">Waiting on you to allow or answer</span>
               <span className="peek-tool">{asking.tool}</span>

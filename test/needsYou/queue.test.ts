@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { AgentStatus, CanvasDoc, CanvasNode } from '../../src/shared/model'
-import { duration, needsYouQueue, nextInQueue, waitText } from '../../src/renderer/needsYou'
+import { duration, needsYouQueue, nextInQueue, queuedText, waitText, whatItAsks } from '../../src/renderer/needsYou'
 import { ACTIONS } from '../../src/renderer/actions'
 import { actionForKey } from '../../src/renderer/keys'
 import { statusSections } from '../../src/renderer/sidebarView'
@@ -126,5 +126,26 @@ describe('the action', () => {
   })
   test('can be bound to another key', () => {
     expect(actionForKey('Alt+N', ACTIONS, { 'next-needs-you': 'Alt+N' })?.id).toBe('next-needs-you')
+  })
+})
+
+describe('what a peek says it is waiting on', () => {
+  const bash = { tool: 'Bash', summary: 'npm test' }
+  test('a held approval first, as it is exact', () => {
+    expect(whatItAsks('needs-you', bash, { tool: 'Read', summary: '/a' })).toEqual({ kind: 'call', tool: 'Bash', summary: 'npm test' })
+  })
+  test('else the unanswered call, but a running subagent call means a subagent is asking', () => {
+    expect(whatItAsks('needs-you', undefined, bash)).toEqual({ kind: 'call', ...bash })
+    expect(whatItAsks('needs-you', undefined, { tool: 'Task', summary: 'Explore the repo' })).toEqual({ kind: 'subagent' })
+    expect(whatItAsks('needs-you', undefined, { tool: 'Agent', summary: 'x' })).toEqual({ kind: 'subagent' })
+  })
+  test('nothing when it is not waiting on you, or nothing is known', () => {
+    expect(whatItAsks('working', bash, bash)).toBeNull()
+    expect(whatItAsks('needs-you', undefined, null)).toBeNull()
+  })
+  test("a queued reply to an unknown session says Patchbay can't tell when it goes", () => {
+    expect(queuedText('unknown')).toMatch(/can't tell whether it's ready/)
+    expect(queuedText('needs-you')).toMatch(/prompt in its window is answered/)
+    expect(queuedText('working')).toMatch(/next idle/)
   })
 })

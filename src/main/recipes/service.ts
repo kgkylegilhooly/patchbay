@@ -8,6 +8,7 @@ import type { AfterGate } from '../control/after'
 import type { NodeRunner } from '../sessions/nodeRunner'
 import { findRecipe, listRecipes, REPO_RECIPES, saveRecipeFile } from './files'
 import type { SetupGate } from './setupGate'
+import { agentsNow } from '../agentsAllowed'
 
 const MAX_TASK_CHARS = 4000
 const GAP = 40
@@ -87,7 +88,7 @@ export function createRecipeService(d: RecipeServiceDeps) {
   /** What starting would make, with the worktree's folder as it will be. Runs nothing. */
   const preview = (entry: RecipeEntry, p: RecipeParams): RecipePlan => {
     const cwd = p.worktree && p.repo && p.branch ? expectedWorktreePath(p.repo, p.branch) : p.cwd
-    return planRecipe(entry.recipe!, { ...p, cwd }, newId)
+    return planRecipe(entry.recipe!, { ...p, cwd }, newId, agentsNow())
   }
 
   /** Beside the opener, or to the right of everything in the project. */
@@ -136,7 +137,7 @@ export function createRecipeService(d: RecipeServiceDeps) {
     }
     let added = 0
     try {
-      const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId)
+      const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId, agentsNow())
       // Checked again against the worktree's real folder, which a value in the commands may now include.
       if (plan.problems.length) throw new Error(plan.problems[0])
       return await make(req, entry, plan, worktree, () => added++)

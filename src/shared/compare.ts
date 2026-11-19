@@ -4,6 +4,7 @@
  * See docs/plans/compare.md.
  */
 import type { AgentKind } from './model'
+import { agentOffReason, agentNames, type AgentChoice } from './agents'
 
 export type AttemptKey = 'a' | 'b'
 export const ATTEMPT_KEYS: AttemptKey[] = ['a', 'b']
@@ -219,7 +220,7 @@ export function verifyArgv(text: string): { ok: true; argv: string[] | null } | 
  * Why a start request can't be used as it is, or null. Checked before anything is made. `source` is what the
  * checkout holds now: uncommitted changes there need the explicit choice to leave them out.
  */
-export function startProblem(req: StartComparison, source: SourceInfo): string | null {
+export function startProblem(req: StartComparison, source: SourceInfo, agents?: AgentChoice): string | null {
   if (!source.ok) return source.reason
   if (typeof req.brief !== 'string' || !req.brief.trim()) return 'Write the brief both attempts start from.'
   if (req.brief.length > MAX_BRIEF_CHARS) return `The brief must be at most ${MAX_BRIEF_CHARS} characters.`
@@ -227,6 +228,9 @@ export function startProblem(req: StartComparison, source: SourceInfo): string |
   if (!Array.isArray(req.attempts) || req.attempts.length !== 2) return 'Choose two attempts.'
   for (const a of req.attempts) {
     if (a.agent !== 'claude' && a.agent !== 'codex') return 'Each attempt needs Claude Code or Codex.'
+    // Settings > Agents: an attempt with an agent turned off is refused until the person picks one that's on.
+    const off = agents ? agentOffReason(a.agent, agents) : null
+    if (off) return `Attempt ${attemptLabel(ATTEMPT_KEYS[req.attempts.indexOf(a)])}: ${off} Choose ${agentNames(agents!.enabled)} for it instead.`
     if (typeof a.approach !== 'string' || a.approach.length > MAX_APPROACH_CHARS) return `An approach must be at most ${MAX_APPROACH_CHARS} characters.`
     if (typeof a.branch !== 'string' || !plainBranch(a.branch.trim())) return `"${a.branch}" can't be a branch name. Use letters, numbers, - _ . and /.`
   }
