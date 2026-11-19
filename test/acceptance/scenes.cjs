@@ -276,6 +276,38 @@ const scenes = {
     await sleep(800)
     await fitAll(page)
   },
+  // Double-clicks an empty part of an agent window's header, which zooms the canvas to that window.
+  'header-zoom': async (page) => {
+    await page.waitForSelector('.react-flow__node[data-id="idle"] .unit-head', { timeout: 10000 })
+    await sleep(500)
+    const spot = await page.evaluate(() => {
+      const head = document.querySelector('.react-flow__node[data-id="idle"] .unit-head')
+      const r = head.getBoundingClientRect()
+      // A point on the header itself, not on its title, badges or buttons.
+      for (let x = r.left + r.width * 0.55; x < r.right - 4; x += 4) {
+        const hit = document.elementFromPoint(x, r.top + r.height / 2)
+        if (hit === head || hit?.classList.contains('cwd')) return { x, y: r.top + r.height / 2 }
+      }
+      return { x: r.left + r.width * 0.6, y: r.top + r.height / 2 }
+    })
+    await page.mouse.click(spot.x, spot.y, { count: 2 })
+    await sleep(700)
+  },
+  // Zooms to a header, then Esc, then zooms and double-clicks again: both must return to the view from before.
+  'header-zoom-back': async (page) => {
+    const zoomShown = () => page.evaluate(() => [...document.querySelectorAll('.dock *')].map((e) => e.textContent).find((t) => /^[0-9]+%$/.test(t || '')))
+    const before = await (async () => { await page.waitForSelector('.react-flow__node[data-id="idle"] .unit-head', { timeout: 10000 }); await sleep(500); return zoomShown() })()
+    await scenes['header-zoom'](page)
+    const zoomed = await zoomShown()
+    if (zoomed === before) throw new Error(`Double-click didn't zoom: ${zoomed}`)
+    // The double-click leaves the keyboard on the canvas, so Esc is the canvas's, not a terminal's.
+    await page.keyboard.press('Escape')
+    await sleep(700)
+    if ((await zoomShown()) !== before) throw new Error(`Esc didn't go back: ${await zoomShown()} vs ${before}`)
+    await scenes['header-zoom'](page)
+    await scenes['header-zoom'](page)
+    if ((await zoomShown()) !== before) throw new Error(`A second double-click didn't go back: ${await zoomShown()} vs ${before}`)
+  },
   team: async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

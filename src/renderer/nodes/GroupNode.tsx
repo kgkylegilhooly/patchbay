@@ -6,6 +6,7 @@ import type { FlowNode } from '../flowMapping'
 import { closeNodes, patchNode, useStore } from '../store'
 import { teamStatus } from '../teamStatus'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 export const GROUP_COLORS = ['#49c2c9', '#e2b04a', '#e0689b', '#7fa8ff', '#62dc8a']
 
@@ -149,6 +150,7 @@ function Team({ groupId }: { groupId: string }): React.JSX.Element {
 
 export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as GroupModel
+  const headerZoom = useHeaderZoom(node.id)
   const [binding, setBinding] = useState(false)
   const color = node.color ?? GROUP_COLORS[0]
 
@@ -156,7 +158,7 @@ export const GroupNode = memo(function GroupNode({ data, selected }: NodeProps<F
     <div className={`rack${selected ? ' rack-selected' : ''}`} style={{ '--group': color } as React.CSSProperties}>
       <Resizer node={node} min={{ w: 420, h: 140 }} />
       <Jacks hidden />
-      <header className="rack-head">
+      <header className="rack-head" onDoubleClick={headerZoom}>
         <EditableTitle node={node} />
         {selected && (
           <span className="swatches nodrag" role="group" aria-label="Group color">
