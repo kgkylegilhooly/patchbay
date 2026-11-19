@@ -1,0 +1,366 @@
+/* The recipe picker, its preview, and the save dialog. */
+
+.pop.recipe-sheet {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  width: min(1000px, calc(100vw - 32px));
+  max-height: calc(100% - 28px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.recipe-sheet,
+.recipe-save,
+.recipe-list,
+.recipe-preview,
+.recipe-prompt pre {
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a50 transparent;
+}
+
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 10px 14px 14px;
+  overflow: auto;
+  background: var(--well);
+  border-right: 1px solid var(--line);
+  overflow-x: hidden;
+}
+
+.recipe-list .field-label {
+  margin-bottom: 4px;
+}
+
+.recipe-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 9px;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.recipe-item:hover {
+  background: var(--face);
+}
+
+.recipe-item-on {
+  background: var(--face-raised);
+  border-color: var(--line);
+}
+
+.recipe-item-off {
+  opacity: 0.65;
+}
+
+.recipe-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.recipe-why {
+  flex-basis: 100%;
+  color: var(--led-needs);
+  font-size: 12px;
+}
+
+.recipe-source {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.recipe-source-built-in {
+  color: var(--ink-dim);
+}
+
+.recipe-source-personal {
+  color: var(--led-waiting);
+}
+
+.recipe-source-repository {
+  color: var(--cable-trigger);
+}
+
+.recipe-list-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.recipe-list-foot .btn {
+  font-size: 12px;
+}
+
+.recipe-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 18px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.recipe-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+
+.recipe-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.recipe-head .recipe-dim {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.recipe-file {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  align-items: end;
+}
+
+.recipe-wide {
+  grid-column: 1 / -1;
+}
+
+.recipe-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.recipe-params > .recipe-check {
+  grid-column: 1 / -1;
+}
+
+.recipe-preview h3,
+.recipe-save h3 {
+  margin: 0 0 6px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recipe-preview h3 q {
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.recipe-dim {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+
+.recipe-warning {
+  margin: 0;
+  padding: 8px 10px;
+  color: #ffd9a8;
+  font-size: 13px;
+  background: rgb(255 159 67 / 0.1);
+  border: 1px solid rgb(255 159 67 / 0.45);
+  border-radius: 7px;
+}
+
+.recipe-nodes,
+.recipe-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recipe-node,
+.recipe-run {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 3px 10px;
+  align-items: baseline;
+  padding: 7px 10px;
+  background: var(--face);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.recipe-node > :nth-child(n + 3),
+.recipe-run > :nth-child(n + 2) {
+  grid-column: 2;
+}
+
+.recipe-run {
+  grid-template-columns: 1fr;
+}
+
+.recipe-run > :nth-child(n + 2) {
+  grid-column: 1;
+}
+
+.recipe-run-off {
+  opacity: 0.55;
+}
+
+.recipe-node-kind {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.recipe-node-title {
+  font-weight: 600;
+}
+
+.recipe-node-cwd,
+.recipe-run-how code {
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recipe-node-wait {
+  color: var(--led-waiting);
+  font-size: 12px;
+}
+
+.recipe-prompt summary {
+  color: var(--ink-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recipe-prompt pre {
+  max-height: 180px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  background: var(--well);
+  border-radius: 6px;
+}
+
+.recipe-argv {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+code.recipe-argv {
+  padding: 5px 8px;
+  background: var(--well);
+  border-radius: 6px;
+}
+
+.recipe-run-how {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.pop.recipe-save {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+}
+
+.recipe-nodes-compact .recipe-node {
+  padding: 5px 9px;
+}
+
+.recipe-saved {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  z-index: 20;
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transform: translateX(-50%);
+}
+
+.setup-hold-source {
+  display: block;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.recipe-where {
+  margin-top: -2px;
+  margin-bottom: 8px;
+}
+
+.recipe-where code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  word-break: break-all;
+}
+
+/* Start stays in reach however long the preview is. */
+.recipe-preview > .pop-actions {
+  position: sticky;
+  bottom: -14px;
+  margin: auto -18px -14px;
+  padding: 10px 18px 14px;
+  background: var(--face-raised);
+  border-top: 1px solid var(--line);
+}
+
+.recipe-warning p {
+  margin: 0 0 6px;
+}
+
+.recipe-warning p:last-child {
+  margin-bottom: 0;
+}
+
+/* .field sets inputs to full width, which a checkbox or radio mustn't be. */
+.pop .recipe-check input {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}

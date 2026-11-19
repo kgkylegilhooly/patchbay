@@ -18,6 +18,7 @@ import { isArmed } from '../../core/trigger/arming'
 import { describeSchedule } from '../../core/trigger/schedule'
 import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
+import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
@@ -210,9 +211,15 @@ export function createVerbs({
   onNoteEdit,
   onBoardEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
-  defaultAgent = () => 'claude'
+  defaultAgent = () => 'claude',
+  deliveryTiming = DEFAULT_DELIVERY_TIMING,
+  log
 }: {
   waitTiming?: WaitTiming
+  /** How long send waits to see its message in the target's transcript. */
+  deliveryTiming?: DeliveryTiming
+  /** For the app's log file: a message that may not have arrived. */
+  log?: (line: string) => void
   /** A node sent another a message, so the canvas can show it travel down the cable between them, and keep it. */
   onMessage?: (from: string, to: string, text: string) => void
   /** An agent changed a note, so the person can see who did, and undo it. */
@@ -333,9 +340,38 @@ export function createVerbs({
     const body = plainText(raw)
     if (!body.trim()) refuse('--text has nothing to send.')
     const text = `${senderLine(caller)}\n${body}`
-    const queued = sendQueue.add(id, { text, from: caller, said: body }) === 'queued'
+    // Checked against the node's transcript once typed. One typed later, after waiting, is reported back as a message.
+    let waited = false
+    let check: Promise<DeliveryReport> | undefined
+    const onTyped = (): void => {
+      check = checkDelivery(id, text)
+      if (waited) void check.then((report) => report.problem && tellSender(caller, id, report.problem))
+    }
+    const queued = sendQueue.add(id, { text, from: caller, said: body, onTyped }) === 'queued'
+    waited = queued
     onMessage?.(caller, id, body)
-    return queued ? { delivered: false, queued: true } : { delivered: true }
+    if (queued) return { delivered: false, queued: true }
+    return check ?? { delivered: true }
+  }
+
+  /** Whether what was typed into an agent shows up whole in its transcript. Anything less goes in the log. */
+  const checkDelivery = (id: string, text: string): Promise<DeliveryReport> => {
+    const target = find(id)
+    const path = target?.kind === 'claude' ? target.transcriptPath : null
+    // Taken now, before Enter, which is when the agent writes the message down.
+    const from = transcriptEnd(path)
+    return confirmDelivery({ path, from, sent: text, timing: deliveryTiming }).then((outcome) => {
+      const report = reportDelivery(outcome, id, deliveryTiming)
+      if (report.problem) log?.(`send to ${id}: ${outcome.result}. ${report.problem}`)
+      return report
+    })
+  }
+
+  /** A message that waited can't be answered for by send's result, so its sender hears by message if it went wrong. */
+  const tellSender = (caller: string, id: string, problem: string): void => {
+    const sender = find(caller)
+    if (sender?.kind !== 'claude' || tracker.get(caller) === 'exited') return
+    sendQueue.add(caller, { text: `[Patchbay notice about your earlier message to node ${id}]\n${plainText(problem)}` })
   }
 
   /**

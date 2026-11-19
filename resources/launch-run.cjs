@@ -54,6 +54,8 @@ if (/\.(cmd|bat)$/i.test(program)) {
   verbatim = true
 }
 
+// Where the command came from, as for a recipe's setup step.
+if (typeof plan.note === 'string' && plan.note) process.stdout.write(`\x1b[2m${plan.note}\x1b[0m\r\n`)
 process.stdout.write(`\x1b[2m> ${[plan.file, ...plan.args].join(' ')}\x1b[0m\r\n`)
 const child = spawn(file, args, { cwd: plan.cwd, env, stdio: 'inherit', windowsVerbatimArguments: verbatim })
 child.on('error', (e) => fail(e.message))

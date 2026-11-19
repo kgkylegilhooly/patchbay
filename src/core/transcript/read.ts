@@ -19,7 +19,8 @@ function textOf(content: unknown): string {
     .join('\n')
 }
 
-function parseLine(line: string): Message | null {
+/** One transcript line as a message, or null for anything else. Also used by the search index. */
+export function parseLine(line: string): Message | null {
   let entry
   try {
     entry = JSON.parse(line)

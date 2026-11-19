@@ -2,6 +2,8 @@ import { isArmed } from '../core/trigger/arming'
 import type { AgentStatus, CanvasNode } from '../shared/model'
 import type { IconName } from './iconPaths'
 import type { Direction } from './nodeNav'
+import { openHandoff } from './searchUi'
+import { openRecipePicker, openRecipeSave } from './recipeUi'
 
 export interface Point {
   x: number
@@ -136,6 +138,7 @@ export function addMenu(c: Commands, at?: Point): MenuEntry[] {
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
     { id: 'spawn-team', label: 'Spawn a team…', icon: 'team', run: () => c.spawnTeamForm(at) },
     { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
+    { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) },
     { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
     { id: 'new-whiteboard', label: 'New whiteboard', icon: 'whiteboard', run: () => c.newWhiteboard(at) }
   ]
@@ -239,7 +242,10 @@ export function settingsMenu(c: Commands, s: MenuState): MenuEntry[] {
  * arrange them. Nothing that doesn't work yet belongs here.
  */
 export function canvasExtensions(c: Commands, at: Point): MenuItem[] {
-  return [{ id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) }]
+  return [
+    { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
+    { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) }
+  ]
 }
 
 export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
@@ -259,6 +265,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
     { id: 'new-whiteboard', label: 'New whiteboard', icon: 'whiteboard', run: () => c.newWhiteboard(at) },
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group(at) },
+    ...(s.selectedCount ? [{ id: 'save-recipe', label: 'Save selection as recipe…', icon: 'note' as const, run: () => openRecipeSave() }] : []),
     'separator',
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
@@ -330,6 +337,7 @@ export function nodeMenu(
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },
     { id: 'show-in-focus', label: 'Show in focus view', icon: 'grid', run: () => c.toggleFocus(node.id) },
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
+    ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
     { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
     ...(ctx.canRestart ? [{ id: 'restart', label: 'Restart', icon: 'restart' as const, run: () => c.restartNode(node.id) }] : []),
