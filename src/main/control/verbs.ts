@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { taskVerb } from '../tasks/verbs'
+import type { TaskService } from '../tasks/service'
 import { readFileSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { lastLines, readTranscriptAsync, stripAnsi } from '../../core/transcript/read'
@@ -197,6 +199,7 @@ function refuseCycles(members: MemberPlan[]): void {
 }
 
 export function createVerbs({
+  tasks,
   store,
   runner,
   tracker,
@@ -215,6 +218,7 @@ export function createVerbs({
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
   log
 }: {
+  tasks?: TaskService
   waitTiming?: WaitTiming
   /** How long send waits to see its message in the target's transcript. */
   deliveryTiming?: DeliveryTiming
@@ -900,6 +904,10 @@ export function createVerbs({
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
     const args = withIds(caller, given)
+    if (verb.startsWith('task-')) {
+      if (!tasks) refuse('Tasks are not available here.')
+      return taskVerb(tasks, caller, verb, args)
+    }
     if (BROWSER_VERBS.includes(verb)) {
       if (!browserVerb) refuse('Browser nodes are not available here.')
       return browserVerb(callerId, verb, args)

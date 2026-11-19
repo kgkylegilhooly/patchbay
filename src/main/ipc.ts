@@ -187,7 +187,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:getDoc', () => store.get())
   ipcMain.handle('pb:dispatch', async (_e, op: CanvasOp) => {
     // Arming goes through armTrigger, which checks what was shown. The page can't set a trigger's state itself.
-    if (op.op === 'setTriggerState') return
+    if (op.op === 'setTriggerState' || op.op === 'setTasks') return
     if (op.op === 'removeProject') {
       // The last project stays, so its sessions must too.
       if (store.get().projects.length < 2) return

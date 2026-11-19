@@ -317,12 +317,22 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
       return closeProject(doc, op.id, op.at)
     case 'restoreLayout':
       return restoreLayout(doc, op)
-    case 'addProject':
+    case 'addProject': {
       if (doc.projects.some((p) => p.id === op.project.id)) return doc
-      return showProject({ ...doc, projects: [...doc.projects, op.project] }, op.project.id)
-    case 'patchProject':
+      // A new project starts with no tasks. Task records only ever come from the task service, through setTasks.
+      const { tasks: _tasks, ...project } = op.project
+      return showProject({ ...doc, projects: [...doc.projects, project] }, project.id)
+    }
+    case 'patchProject': {
       if (!doc.projects.some((p) => p.id === op.id)) return doc
-      return { ...doc, projects: doc.projects.map((p) => (p.id === op.id ? { ...p, ...op.patch } : p)) }
+      // Only what the op is for. A patch carrying anything else, such as tasks, would let the page forge outcomes.
+      const patch: Partial<Pick<Project, 'name' | 'folder'>> = {}
+      if (typeof op.patch.name === 'string') patch.name = op.patch.name
+      if (typeof op.patch.folder === 'string') patch.folder = op.patch.folder
+      return { ...doc, projects: doc.projects.map((p) => (p.id === op.id ? { ...p, ...patch } : p)) }
+    }
+    case 'setTasks':
+      return { ...doc, projects: doc.projects.map((p) => p.id === op.projectId ? { ...p, tasks: op.tasks } : p) }
     case 'setBoard': {
       const board = sanitizeBoard(op.board)
       if (!board || !doc.projects.some((p) => p.id === op.projectId)) return doc
