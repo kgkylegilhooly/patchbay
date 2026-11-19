@@ -10,6 +10,8 @@ import type { CanvasStore } from '../shared/contract'
 import type { GithubIssue, GithubPr } from '../shared/git'
 import { isSessionNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type GroupNode } from '../shared/model'
 import { cleanEnv } from './sessions/env'
+import { placeInProject } from '../core/canvas/place'
+import { viewSize } from './viewSize'
 import { agentOffNow } from './agentsAllowed'
 
 const key = (p: string): string => resolve(p).toLowerCase()
@@ -162,9 +164,8 @@ export function registerWorkIpc(s: { store: CanvasStore; startNode: (id: string)
       const project = doc.projects.find((p) => p.id === a?.projectId)
       if (!project) return { ok: false, error: 'That project is gone.' }
       if (typeof a.prompt !== 'string' || !a.prompt.trim() || a.prompt.length > 28000) return { ok: false, error: 'The prompt is empty or too long.' }
-      const top = doc.nodes.filter((n) => n.projectId === project.id && !n.parentId)
-      const x = top.length ? Math.max(...top.map((n) => n.x + n.width)) + 40 : 0
-      const y = top.length ? Math.min(...top.map((n) => n.y)) : 0
+      // Sized for the worktree group when there'll be one, so the spot is clear for all of it.
+      const { x, y } = placeInProject(doc, project.id, a.worktreeBranch ? { width: 668, height: 508 } : { width: 620, height: 420 }, viewSize())
       const id = randomUUID()
       const title = String(a.title || `Issue #${a.number}`).slice(0, 80)
       let parentId: string | null = null

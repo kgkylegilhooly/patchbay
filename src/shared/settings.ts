@@ -1,7 +1,16 @@
+import type { TerminalProfile } from './terminalProfiles'
+
 /** What settings.json holds. An absent field means the default. */
 export interface Settings {
-  /** The shell for new terminals. */
+  /**
+   * The shell run commands use. Before terminal profiles it was new terminals' too: with no `terminalProfiles` yet, it
+   * stands in as the default profile. See shared/terminalProfiles.ts.
+   */
   shell?: string
+  /** Terminal profiles the person made. Built-in ones aren't saved. */
+  terminalProfiles?: TerminalProfile[]
+  /** The id of the profile new terminals start with. */
+  defaultTerminalProfile?: string
   permissionMode?: string
   /** The program that starts Claude, such as Git Bash or PowerShell. Absent means run Claude directly. */
   claudeTerminal?: string

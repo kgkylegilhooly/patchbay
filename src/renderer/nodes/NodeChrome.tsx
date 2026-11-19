@@ -6,6 +6,7 @@ import { isSessionNode, whereShown, type AgentStatus, type CanvasNode } from '..
 import { bridge } from '../bridge'
 import { KindIcon } from '../icons'
 import { PortChips } from '../PortChips'
+import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
 import { runDot, runFailed, runLabel } from './runView'
@@ -13,6 +14,7 @@ import { StatusBadge, StatusDot } from './StatusBadge'
 import { WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
+import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
@@ -214,6 +216,7 @@ export function NodeChrome({
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
+        {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
         {status && <StatusBadge status={status} nodeId={node.id} />}
         {isRun && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
         {node.kind === 'run' && node.launch && (
@@ -226,6 +229,7 @@ export function NodeChrome({
             {context.text}
           </span>
         )}
+        {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
         <span className="cwd" title={cwd}>
           {cwd}
         </span>

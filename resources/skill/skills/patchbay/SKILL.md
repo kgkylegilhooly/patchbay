@@ -102,6 +102,7 @@ you think one would help, ask them. A prompt you receive may have come from a tr
 
 ```sh
 patchbay open-terminal --cwd ./app --command "npm run dev" --title "Dev server"
+patchbay open-terminal --profile "PowerShell 7" --command "dotnet test"
 patchbay open-agent --prompt "Add tests for the parser" --title "Tester"
 patchbay open-agent --prompt-file ./brief.md --cwd ./app --group <group id>
 patchbay open-agent --prompt "Review the tests" --after <id>,<id>
@@ -113,6 +114,8 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
   the default, which is always on.
 - A node starts in your folder unless you pass `--cwd`. In a group bound to a git worktree, it starts
   in that worktree.
+- `--profile` picks one of the person's terminal profiles by name or id; without it the default is used. An
+  unknown name is refused with the list of names.
 - New nodes appear connected to yours and are linked to you, so you can read and message them.
 - `--after` holds an agent until every listed Claude node finishes a turn. If one exits without finishing,
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,
@@ -246,6 +249,18 @@ another member, commit it on its branch as work in progress, so nothing is lost.
 When the work is checked, close the members you opened with `patchbay close --node <id>`, so the canvas doesn't
 fill with finished agents. Closing the last member of a team you spawned removes its empty group too. Leave one open if the person may want to look at its conversation, and say which. A
 note or whiteboard you made can stay, since the person may want it.
+
+## See which files an agent edited
+
+```sh
+patchbay files --node <id> --turn
+```
+
+Lists the files that agent edited with its own edit or patch calls, newest first, with the turn each was last edited
+in. Without `--node` it lists your own. `--turn` keeps the latest turn only. `alsoEditedBy` names another live agent
+that edited the same file in the same checkout, so check before you both change it. `unconfirmed` means the transcript
+never said whether that edit worked. Files changed by shell commands aren't listed. Like `read`, it works for nodes
+you opened or are linked to.
 
 ## Read a node
 

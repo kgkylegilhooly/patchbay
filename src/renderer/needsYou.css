@@ -1,0 +1,186 @@
+/* "Next needing you" and the peek card. */
+
+.pop.peek {
+  top: 14px;
+  right: 14px;
+  left: auto;
+  transform: none;
+  z-index: 25;
+  gap: 10px;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100% - 28px);
+  padding: 12px;
+}
+
+/* Beside the sidebar, level with the row it came from. */
+.pop.peek-sidebar {
+  position: fixed;
+  right: auto;
+}
+
+.peek-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.peek-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peek-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: -4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.peek-asking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  background: rgb(255 69 58 / 0.1);
+  border: 1px solid rgb(255 69 58 / 0.4);
+  border-radius: 8px;
+}
+
+.peek-label {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.peek-tool {
+  font-weight: 600;
+}
+
+.peek-call {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.peek-said {
+  min-height: 48px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.peek-said p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.peek-dim {
+  color: var(--ink-dim);
+}
+
+.peek-problem,
+.peek-sent-error {
+  color: var(--led-needs);
+}
+
+.peek-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.peek-reply textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+}
+
+.peek-sent {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.peek-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.peek-grow {
+  flex: 1;
+}
+
+.peek-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* A sidebar row's peek button: shown on hover or focus, and while its card is open. */
+.sidebar li:has(> .peek-btn) {
+  position: relative;
+}
+
+.peek-btn {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--ink-dim);
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  opacity: 0;
+  transform: translateY(-50%);
+}
+
+.sidebar li:hover > .peek-btn,
+.sidebar li:focus-within > .peek-btn,
+.peek-btn-on {
+  opacity: 1;
+}
+
+.peek-btn:hover,
+.peek-btn-on {
+  color: var(--ink);
+  border-color: var(--ink-dim);
+}
+
+.needs-notice {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 25;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  font-size: 13px;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+}

@@ -25,6 +25,8 @@ export interface TerminalNode extends Base {
   command?: string
   /** Set for an SSH terminal: the host or user@host it runs the system's ssh to, in place of a shell. */
   sshHost?: string
+  /** The terminal profile it started with, by id, so a restart uses it again. See shared/terminalProfiles.ts. */
+  profile?: string
 }
 
 /** Which program an agent node runs. Absent means Claude Code, as every node saved before Codex was added. */

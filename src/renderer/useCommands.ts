@@ -5,7 +5,10 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
-import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
+import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfilesUi'
+import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
+import type { Rect } from '../core/canvas/place'
+import { visibleArea } from './viewArea'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
@@ -47,11 +50,12 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
   defaultFolder: (groupId?: string) => string
+  /** Where a new terminal of this profile (the default, with none) opens: see terminalFolderFor. */
+  terminalFolder: (groupId?: string, profileId?: string) => string
   fitAll: () => void
 } {
   const flow = useReactFlow<FlowNode, FlowEdge>()
   const lastFolder = useRef('')
-  const opened = useRef(0)
 
   return useMemo(() => {
     const doc = () => useStore.getState().doc!
@@ -72,17 +76,30 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       return doc().projects.find((p) => p.id === doc().activeProjectId)?.folder || lastFolder.current
     }
 
-    const place = (at?: Point, groupId?: string) => {
+    /** The canvas on screen, in canvas coordinates, less what the sidebar and dock cover. */
+    const visible = (): Rect | null => {
+      const area = visibleArea(prefsRef.current.sidebar)
+      const vp = flow.getViewport()
+      return area && vp.zoom > 0 ? { x: (area.x - vp.x) / vp.zoom, y: (area.y - vp.y) / vp.zoom, width: area.width / vp.zoom, height: area.height / vp.zoom } : null
+    }
+
+    /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
+    const terminalFolder = (groupId?: string, profileId?: string): string =>
+      terminalFolderFor({ worktree: groupFor(groupId)?.worktree?.path, profileCwd: profileFolder(profileId), fallback: defaultFolder(groupId) })
+
+    /**
+     * Where a new node goes: at the given screen point, else beside the one selected node if it's on screen, else in
+     * the middle of the view. Placement keeps it clear of other nodes (see newNodes' placed).
+     */
+    const place = (at?: Point, groupId?: string): Place => {
       const group = groupFor(groupId)
-      if (at) return { at: flow.screenToFlowPosition(at), group, doc: doc() }
-      const bounds = document.querySelector('.react-flow')?.getBoundingClientRect()
-      const center = flow.screenToFlowPosition({
-        x: (bounds?.left ?? 0) + (bounds?.width ?? 800) / 2 - 200,
-        y: (bounds?.top ?? 0) + (bounds?.height ?? 600) / 2 - 150
-      })
-      // Each new node steps down and across, so a run of them doesn't stack exactly.
-      const step = (opened.current++ % 6) * 28
-      return { at: { x: center.x + step, y: center.y + step }, group, doc: doc() }
+      const view = visible()
+      if (at) return { at: flow.screenToFlowPosition(at), group, doc: doc(), view }
+      const selected = selectedRef.current.length === 1 ? doc().nodes.find((n) => n.id === selectedRef.current[0]) : undefined
+      const shown = selected && view && inActiveProject(doc(), selected) ? absolutePosition(doc(), selected) : null
+      const onScreen =
+        shown && view && shown.x < view.x + view.width && view.x < shown.x + selected!.width && shown.y < view.y + view.height && view.y < shown.y + selected!.height
+      return { ...(onScreen ? { beside: selected } : {}), group, doc: doc(), view }
     }
 
     const open = (node: CanvasNode): void => {
@@ -153,7 +170,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }
         center(id)
       },
-      newTerminal: (at, groupId) => open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: defaultFolder(groupId) })),
+      newTerminal: (at, groupId, profileId) =>
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) })),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),
@@ -177,7 +195,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         const members = groupMembers(doc(), selectedRef.current)
         const id = crypto.randomUUID()
         undoable('group', [
-          { op: 'addNode', node: newGroup(doc(), place(at).at, id, members) },
+          { op: 'addNode', node: newGroup(doc(), placed({ ...place(at), group: null }, SIZES.group), id, members) },
           ...(members.length ? [{ op: 'setParent' as const, ids: members.map((m) => m.id), parentId: id }] : [])
         ])
       },
@@ -236,7 +254,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string }): void => {
       lastFolder.current = fields.cwd || lastFolder.current
       if (form.editId) {
         // Applies from the next run. Whatever's running now keeps running.
@@ -262,7 +280,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       open(
         form.kind === 'claude' || form.kind === 'codex'
           ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
-          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text })
+          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) })
       )
     }
 
@@ -277,22 +295,19 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         open(newLaunchRun(place(form.at, form.groupId), crypto.randomUUID(), { folder, name: item.name }))
         return
       }
-      const at = place(form.at).at
       const gap = 24
+      const size = { width: gap + item.members.length * (SIZES.run.width + gap), height: 64 + SIZES.run.height + gap }
       const group: GroupNode = {
         id: crypto.randomUUID(),
         kind: 'group',
         title: item.name,
-        x: at.x,
-        y: at.y,
-        width: gap + item.members.length * (SIZES.run.width + gap),
-        height: 64 + SIZES.run.height + gap,
+        ...placed({ ...place(form.at), group: null }, size),
         parentId: null,
         worktree: null
       }
       dispatch({ op: 'addNode', node: group })
       item.members.forEach((name, i) => {
-        const member = newLaunchRun({ at, group, doc: doc() }, crypto.randomUUID(), { folder, name })
+        const member = newLaunchRun({ group, doc: doc() }, crypto.randomUUID(), { folder, name })
         open({ ...member, x: gap + i * (SIZES.run.width + gap), y: 64 })
       })
     }
@@ -303,6 +318,6 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       else dispatch({ op: 'addNode', node: newTrigger(place(form.at), crypto.randomUUID(), fields) })
     }
 
-    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, fitAll }
+    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder, fitAll }
   }, [flow, prefsRef, selectedRef, setForm, setNodes, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen])
 }

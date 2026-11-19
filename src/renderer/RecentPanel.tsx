@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ClosedSession } from '../shared/model'
 import { bridge } from './bridge'
+import { TranscriptViewer } from './TranscriptViewer'
 import { useStore } from './store'
 import { useAgentOff } from './agentChoice'
 
@@ -64,21 +65,13 @@ export function RecentPanel({ onClose }: { onClose: () => void }): React.JSX.Ele
         )}
       </aside>
       {viewing && (
-        <div className="viewer" role="dialog" aria-label={`Transcript of ${viewing.entry.title}`}>
-          <header className="drawer-head">
-            <h2>{viewing.entry.title}</h2>
-            <button className="icon-btn" aria-label="Close transcript" onClick={() => setViewing(null)}>
-              ×
-            </button>
-          </header>
-          {viewing.missing ? (
-            <p className="drawer-empty">{viewing.missing}</p>
-          ) : (
-            <pre className="viewer-text" tabIndex={0}>
-              {viewing.text ?? 'Loading the transcript…'}
-            </pre>
-          )}
-        </div>
+        <TranscriptViewer
+          title={viewing.entry.title}
+          label={`Transcript of ${viewing.entry.title}`}
+          text={viewing.text}
+          missing={viewing.missing}
+          onClose={() => setViewing(null)}
+        />
       )}
     </>
   )

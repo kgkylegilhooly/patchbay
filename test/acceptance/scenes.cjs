@@ -460,8 +460,12 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
-  ...require('./stopScenes.cjs').scenes,
-  ...require('./compareScenes.cjs').scenes
+  ...require('./terminalProfileScenes.cjs').scenes,
+  ...require('./compareScenes.cjs').scenes,
+  ...require('./subagentScenes.cjs').scenes,
+  ...require('./needsYouScenes.cjs').scenes,
+  ...require('./filesScenes.cjs').scenes,
+  ...require('./stopScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -535,8 +539,11 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   ...require('./searchScenes.cjs').seeds,
-  ...require('./stopScenes.cjs').seeds,
-  ...require('./compareScenes.cjs').seeds
+  ...require('./compareScenes.cjs').seeds,
+  ...require('./subagentScenes.cjs').seeds,
+  ...require('./needsYouScenes.cjs').seeds,
+  ...require('./filesScenes.cjs').seeds,
+  ...require('./stopScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
@@ -570,3 +577,5 @@ function prepare(name, cwdRoot) {
 }
 
 module.exports = { prepare, scenes, canvas, rightClickCanvas, seedLinks, showLegend }
+Object.assign(scenes, require('./placementScenes.cjs').scenes)
+Object.assign(seeds, require('./placementScenes.cjs').seeds)

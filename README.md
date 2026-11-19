@@ -147,6 +147,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
+| `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\objects\` holds the snapshots' git objects, kept out of your repositories: 10 days, up to 512 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `review-inbox.json` | Review inbox comments, review marks (the newest 20 per task) and chosen base branches. A file that can't be read is moved aside, and one with damaged records copied aside, as `review-inbox.json.bad-*` |
 | `review-objects\` | Snapshots of working trees the review inbox compares with, one git object store per repository |
@@ -174,9 +175,18 @@ in the log above, which is the thing to share if Patchbay misbehaves.
 Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent
 holds one while its shell tool runs a command, and so do Git Bash windows outside Patchbay. Past that, a new Git Bash
 ends at once, and the window says so; agents' shell commands fail the same way. Close some terminals, or give some of
-them another shell in `settings.json` (below), and press Restart.
+them another terminal profile (below), and press Restart.
 
-`settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
+**Terminal profiles** set what a new terminal starts: a program, its arguments (one per line, passed as they are), an
+optional startup command typed once at its first prompt, and an optional folder. Set them under Settings > Terminals.
+Git Bash, Windows PowerShell, Command Prompt, PowerShell 7 and WSL appear when installed; duplicate one to change it.
+New terminal opens the default; the others are in the Add menu, the canvas menu, the palette, the New terminal form and
+`patchbay open-terminal --profile NAME`. A terminal keeps its profile across restarts. If that profile is deleted, it
+starts the default and says so. For example: `cmd.exe` with the two arguments `/k` and `C:\...\vcvars64.bat`, or Git
+Bash with the startup command `cd ~/proj && nvm use`.
+
+`settings.json` can set the shell run commands use (with no profiles saved yet, new terminals use it too) and the
+permission mode for Claude nodes:
 
 ```json
 { "shell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "permissionMode": "default" }
@@ -268,6 +278,11 @@ and spends a little quota.
 - **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
   its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
   It goes under Need attention. The reset time comes from Claude's status line, or from its message.
+- **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
+  waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
+  `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
+- **Next needing you** (Ctrl+Shift+J, or the palette) goes to the agent that has waited longest at Need attention,
+  in any project, and opens its peek. Press it again for the next. With "Also unread" ticked, Unread sessions follow.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
 - **Recently closed** reopens a closed Claude conversation, the same as Recent conversations.
@@ -299,6 +314,26 @@ first, then labels, and the text size folds into one button.
   Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
+- **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
+  with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
+  reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
+  the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
+
+## Files each agent edited
+
+An agent's header and its row in the sidebar show **N files** once it has edited files with its own edit or patch
+calls. They're read from its transcript, so files a shell command changed aren't listed. The chip turns amber with ⚠
+when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
+in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
+
+Each file can open, or show its diff. As each turn starts, Patchbay records a snapshot of the checkout with git, through
+a temporary copy of the index into its own object folder, so your index, branches, stash and repository aren't
+touched. Untracked files over 1 MB are left out of it. **This turn** diffs from the latest
+turn's snapshot, and **Session** from the turn that first edited the file. Other agents' changes to the same file in
+that time show too. A folder outside git has the list but no diff.
+
+Agents can list the same with `patchbay files [--node ID] [--turn]`, for themselves or a node they opened or are linked to.
 
 ## Keys
 
