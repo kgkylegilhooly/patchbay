@@ -54,14 +54,65 @@ const hook = (name, extra = {}) => {
 
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
 const chat = /\bchat\b/.test(prompt)
-const transcript = chat ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
+// "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
+const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
+const transcript = chat || fanout ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
 const say = (type, text) =>
   fs.appendFileSync(transcript, `${JSON.stringify({ type, isSidechain: false, message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } })}\n`)
 
+const AGENT_TASKS = [
+  ['Explore', 'Map the session host and its protocol'],
+  ['general-purpose', 'Review the parser for edge cases'],
+  ['Explore', 'Find every caller of spotNear'],
+  ['Plan', 'Plan the placement rewrite'],
+  ['general-purpose', 'Write tests for the reducer'],
+  ['Explore', 'Survey the CSS for unused rules'],
+  ['general-purpose', 'Check the preload bridge types'],
+  ['Explore', 'List the IPC channels'],
+  ['general-purpose', 'Profile the canvas render'],
+  ['Explore', 'Read the hook scripts']
+]
+
+/**
+ * Pretend subagents, in the files Claude Code 2.1.328 writes beside the transcript: agent-<id>.jsonl and its
+ * meta.json, which says "finished" once the agent is done. The first finishes, the second fails on an API error, and
+ * the rest keep running, each calling a tool every few seconds.
+ */
+function fanOut(count) {
+  const path = require('node:path')
+  const dir = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents')
+  fs.mkdirSync(dir, { recursive: true })
+  const line = (o) => `${JSON.stringify({ isSidechain: true, timestamp: new Date().toISOString(), ...o })}\n`
+  for (let i = 0; i < count; i++) {
+    const id = `a${String(i).padStart(4, '0')}fake`
+    const [agentType, description] = AGENT_TASKS[i % AGENT_TASKS.length]
+    const meta = (extra) => fs.writeFileSync(path.join(dir, `agent-${id}.meta.json`), JSON.stringify({ agentType, description, spawnDepth: 1, ...extra }))
+    const file = path.join(dir, `agent-${id}.jsonl`)
+    meta({})
+    fs.writeFileSync(file, line({ type: 'user', message: { content: `${description}. Report back briefly.` } }))
+    let tokens = 9000 + i * 3100
+    const call = (name) => {
+      tokens += 2400
+      const usage = { input_tokens: 4, cache_read_input_tokens: tokens, output_tokens: 300 }
+      fs.appendFileSync(file, line({ type: 'assistant', message: { id: `m${tokens}`, content: [{ type: 'tool_use', name, input: { file_path: 'src/main/index.ts' } }], usage } }))
+    }
+    for (let k = 0; k <= i % 4; k++) call(k % 2 ? 'Grep' : 'Read')
+    if (i === 0) {
+      fs.appendFileSync(file, line({ type: 'assistant', message: { id: 'end', content: [{ type: 'text', text: 'The host speaks framed JSON.' }], usage: { input_tokens: 4, cache_read_input_tokens: tokens, output_tokens: 900 } } }))
+      meta({ finished: true })
+    } else if (i === 1) {
+      fs.appendFileSync(file, line({ type: 'assistant', isApiErrorMessage: true, message: { id: 'err', content: [{ type: 'text', text: 'API Error: 529 Overloaded' }] } }))
+      meta({ finished: true })
+    } else {
+      setInterval(() => call('Read'), 3000 + i * 250)
+    }
+  }
+}
+
 async function main() {
   process.stdout.write(`Pretend Claude. Prompt: ${prompt || '(none)'}\r\n`)
-  if (chat) fs.writeFileSync(transcript, '')
-  await hook('SessionStart', { source: 'startup', ...(chat ? { transcript_path: transcript } : {}) })
+  if (chat || fanout) fs.writeFileSync(transcript, '')
+  await hook('SessionStart', { source: 'startup', ...(chat || fanout ? { transcript_path: transcript } : {}) })
   const context = /context=(\d+)/.exec(prompt)
   if (context && settings.statusLine) {
     await runCommand(settings.statusLine.command, { session_id: sessionId, context_window: { used_percentage: Number(context[1]) } })
@@ -75,6 +126,7 @@ async function main() {
     void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND } })
   } else if (/\bworking\b/.test(prompt)) {
     await hook('UserPromptSubmit')
+    if (fanout) fanOut(fanout)
   } else if (/\bunknown\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('StopFailure')

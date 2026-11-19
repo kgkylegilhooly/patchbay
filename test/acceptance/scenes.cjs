@@ -461,7 +461,8 @@ const scenes = {
   },
   ...require('./searchScenes.cjs').scenes,
   ...require('./terminalProfileScenes.cjs').scenes,
-  ...require('./compareScenes.cjs').scenes
+  ...require('./compareScenes.cjs').scenes,
+  ...require('./subagentScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -535,7 +536,8 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   ...require('./searchScenes.cjs').seeds,
-  ...require('./compareScenes.cjs').seeds
+  ...require('./compareScenes.cjs').seeds,
+  ...require('./subagentScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
