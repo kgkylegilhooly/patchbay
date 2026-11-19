@@ -1,8 +1,9 @@
 import type { SessionHost } from '../../shared/contract'
 import type { StatusTracker } from '../sessions/statusTracker'
+import { asPaste } from '../sessions/paste'
 
 export interface SendTiming {
-  /** Claude takes text and Enter arriving in one chunk as a paste, so Enter follows separately. */
+  /** Enter follows the text separately, after the paste has ended, so it submits rather than adding a line. */
   enterDelayMs: number
   /** How long a delivered message may leave a node looking idle before the next one goes anyway. */
   settleMs: number
@@ -26,6 +27,8 @@ export interface SendItem {
   /** Only for an item that had to wait. One delivered at once is reported by add's result. */
   onDelivered?: () => void
   onDropped?: () => void
+  /** Just after it's typed, before Enter, whether at once or after waiting. Not for one handed over by take. */
+  onTyped?: () => void
 }
 
 export interface SendQueue {
@@ -57,7 +60,9 @@ export function createSendQueue({
   tracker,
   exists,
   timing = DEFAULT_SEND_TIMING,
-  prefix
+  prefix,
+  pasteOn,
+  draft
 }: {
   host: Pick<SessionHost, 'write' | 'isRunning'>
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
@@ -66,6 +71,17 @@ export function createSendQueue({
   timing?: SendTiming
   /** Put ahead of text typed into a terminal: see sessions/sendGuard.ts. */
   prefix?: (id: string) => string
+  /**
+   * Whether an agent's screen last turned bracketed paste on or off (see sendGuard.ts). A message to an agent goes as
+   * a paste unless this says off: see sessions/paste.ts. Not known, as after reconnecting to a running session, counts
+   * as on, since Claude Code and Codex both turn it on.
+   */
+  pasteOn?: (id: string) => boolean | undefined
+  /**
+   * What the person is typing at an agent's prompt (see sendGuard.ts). A message waits while they have text there
+   * unsent, or it would be added to the end of theirs, and goes once they stop.
+   */
+  draft?: { drafting(id: string): boolean; onDraftSettled(cb: (id: string) => void): void }
 }): SendQueue {
   const queues = new Map<string, SendItem[]>()
   /** Nodes just typed into, whose status can't yet show that they took it. */
@@ -80,9 +96,9 @@ export function createSendQueue({
   /** Agents whose status has moved off idle since they were last typed into, so the message went. */
   const took = new Set<string>()
 
-  const type = (id: string, text: string): void => {
+  const type = (id: string, text: string, paste = false): void => {
     took.delete(id)
-    host.write(id, (prefix?.(id) ?? '') + text)
+    host.write(id, (prefix?.(id) ?? '') + (paste ? asPaste(text) : text))
     setTimeout(() => {
       host.write(id, '\r')
       const retry = timing.retryEnterMs
@@ -103,14 +119,15 @@ export function createSendQueue({
       for (const item of queue) item.onDropped?.()
       return
     }
-    if (settling.has(id) || tracker.get(id) !== 'idle' || !host.isRunning(id)) return
+    if (settling.has(id) || tracker.get(id) !== 'idle' || !host.isRunning(id) || draft?.drafting(id)) return
     let item = queue.shift()
     while (item?.stillWanted && !item.stillWanted()) {
       item.onDropped?.()
       item = queue.shift()
     }
     if (!item) return
-    type(id, item.text)
+    type(id, item.text, pasteOn?.(id) !== false)
+    item.onTyped?.()
     const timer = setTimeout(() => {
       settling.delete(id)
       deliverNext(id)
@@ -119,6 +136,8 @@ export function createSendQueue({
     settling.set(id, timer)
     item.onDelivered?.()
   }
+
+  draft?.onDraftSettled((id) => deliverNext(id))
 
   tracker.onChange((id, status) => {
     if (status !== 'idle') took.add(id)
@@ -138,7 +157,7 @@ export function createSendQueue({
       waiting.onDelivered = item.onDelivered
       return 'queued'
     },
-    type,
+    type: (id, text) => type(id, text),
     busy(id) {
       return settling.has(id) || (queues.get(id)?.length ?? 0) > 0
     },

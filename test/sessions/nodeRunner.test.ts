@@ -547,7 +547,7 @@ describe('a prompt through a custom terminal', () => {
     expect(JSON.stringify(host.specs[0].args)).not.toContain('calc')
   })
 
-  test('is typed once Claude is ready, then submitted separately, and only once', async () => {
+  test('is typed once Claude is ready, as one paste so a long one keeps its start, then submitted separately, and only once', async () => {
     vi.useFakeTimers()
     const { runner, host } = setup([claude({ prompt: 'x&calc' })], custom)
     const write = vi.spyOn(host, 'write')
@@ -555,7 +555,7 @@ describe('a prompt through a custom terminal', () => {
     expect(write).not.toHaveBeenCalled()
     await runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 's', source: 'startup' })
     await vi.advanceTimersByTimeAsync(5000)
-    expect(write).toHaveBeenCalledWith('c', 'x&calc')
+    expect(write).toHaveBeenCalledWith('c', '\x1b[200~x&calc\x1b[201~')
     expect(write).toHaveBeenLastCalledWith('c', '\r')
     write.mockClear()
     await runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 's', source: 'clear' })
@@ -571,7 +571,7 @@ describe('a prompt through a custom terminal', () => {
     await runner.startNode('c')
     await runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 's', source: 'startup' })
     await vi.advanceTimersByTimeAsync(5000)
-    expect(write.mock.calls[0][1]).toBe('a[Bbc d')
+    expect(write.mock.calls[0][1]).toBe('\x1b[200~a[Bbc d\x1b[201~')
     vi.useRealTimers()
   })
 

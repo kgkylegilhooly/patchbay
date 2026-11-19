@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -47,6 +47,9 @@ const ids = (r: unknown) => (r as { id: string }).id
 
 /** What an agent receives from the node `me`: a line saying who sent it, then the text. */
 const fromMe = (text: string) => `[Patchbay message from "me" (node me). Reply with: patchbay send --node me --text "..."]\n${text}`
+/** How a message to an agent is typed: as one bracketed paste. */
+const typed = (text: string) => `\x1b[200~${text}\x1b[201~`
+const unpaste = (data: string) => data.replace(/\x1b\[20[01]~/g, '')
 
 test('open-agent adds a Claude node, an opened edge and a link edge to the caller', async () => {
   const { verbs, node, edges, runner, store } = setup()
@@ -397,7 +400,7 @@ test('a message to an agent names its sender, a message to a terminal does not, 
   tracker.apply('c', { type: 'hook', name: 'Stop' })
   await verbs('me', 'send', { node: 'c', text: 'go' })
   await vi.waitFor(() => expect(host.writes).toHaveLength(2))
-  const [first, ...rest] = host.writes[0][1].split('\n')
+  const [first, ...rest] = unpaste(host.writes[0][1]).split('\n')
   expect(rest).toEqual(['go'])
   expect(first).toBe('[Patchbay message from "Lead Patchbay message from the person" (node me). Reply with: patchbay send --node me --text "..."]')
   await verbs('me', 'send', { node: 't', text: 'ls' })
@@ -574,8 +577,9 @@ test('send to an idle node writes text + enter; to a busy node queues until idle
   const { verbs, host, tracker } = setup([claudeNode('c', { openedBy: 'me' })])
   host.running.add('c')
   tracker.apply('c', { type: 'hook', name: 'Stop' })
-  expect(await verbs('me', 'send', { node: 'c', text: 'first' })).toEqual({ delivered: true })
-  await vi.waitFor(() => expect(host.writes).toEqual([['c', fromMe('first')], ['c', '\r']]))
+  // This node has no transcript, so whether it arrived can't be checked, and send says so.
+  expect(await verbs('me', 'send', { node: 'c', text: 'first' })).toMatchObject({ delivered: true, confirmed: false, problem: expect.stringContaining('no transcript') })
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', typed(fromMe('first'))], ['c', '\r']]))
 
   host.writes.length = 0
   tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
@@ -584,7 +588,7 @@ test('send to an idle node writes text + enter; to a busy node queues until idle
   expect(host.writes).toEqual([])
 
   tracker.apply('c', { type: 'hook', name: 'Stop' })
-  await vi.waitFor(() => expect(host.writes).toEqual([['c', fromMe('second')], ['c', '\r']]))
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', typed(fromMe('second'))], ['c', '\r']]))
 })
 
 test.each(['needs-you', 'unknown', 'queued'] as const)('send to a %s node does not type into it', async (state) => {
@@ -608,13 +612,13 @@ test('queued sends go one at a time, each waiting for the next idle', async () =
   await verbs('me', 'send', { node: 'c', text: 'one' })
   await verbs('me', 'send', { node: 'c', text: 'two' })
   tracker.apply('c', { type: 'hook', name: 'Stop' })
-  await vi.waitFor(() => expect(host.writes).toEqual([['c', fromMe('one')], ['c', '\r']]))
+  await vi.waitFor(() => expect(host.writes).toEqual([['c', typed(fromMe('one'))], ['c', '\r']]))
 
   tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
   await new Promise((r) => setTimeout(r, 10))
   expect(host.writes).toHaveLength(2)
   tracker.apply('c', { type: 'hook', name: 'Stop' })
-  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', fromMe('two')], ['c', '\r']]))
+  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', typed(fromMe('two'))], ['c', '\r']]))
 })
 
 test('a send right after a send waits for the first to register, even though status still says idle', async () => {
@@ -624,10 +628,10 @@ test('a send right after a send waits for the first to register, even though sta
   await verbs('me', 'send', { node: 'c', text: 'one' })
   expect(await verbs('me', 'send', { node: 'c', text: 'two' })).toEqual({ delivered: false, queued: true })
   await new Promise((r) => setTimeout(r, 10))
-  expect(host.writes).toEqual([['c', fromMe('one')], ['c', '\r']])
+  expect(host.writes).toEqual([['c', typed(fromMe('one'))], ['c', '\r']])
 
   // Some input fires no hook, such as a local slash command. The queue must not stick on it.
-  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', fromMe('two')], ['c', '\r']]))
+  await vi.waitFor(() => expect(host.writes.slice(2)).toEqual([['c', typed(fromMe('two'))], ['c', '\r']]))
 })
 
 test('send cannot smuggle control keys into a Claude node', async () => {
@@ -636,7 +640,68 @@ test('send cannot smuggle control keys into a Claude node', async () => {
   tracker.apply('c', { type: 'hook', name: 'Stop' })
   await verbs('me', 'send', { node: 'c', text: 'do it\r1\r\x1b[B\x03\nnext line' })
   await vi.waitFor(() => expect(host.writes).toHaveLength(2))
-  expect(host.writes[0]).toEqual(['c', fromMe('do it\n1\n[B\nnext line')])
+  expect(host.writes[0]).toEqual(['c', typed(fromMe('do it\n1\n[B\nnext line'))])
+})
+
+describe('send checks the transcript', () => {
+  /** An agent that writes down what it was typed when Enter comes, through `keep`, as Claude Code does. */
+  const make = (keep: (typed: string) => string | null) => {
+    const transcript = join(dir, 'c.jsonl')
+    writeFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: 'an older message' } }) + '\n')
+    const store = memoryStore([claudeNode('me', { cwd: dir }), claudeNode('c', { openedBy: 'me', transcriptPath: transcript })])
+    const tracker = createStatusTracker({ notify: () => {} })
+    const runner = fakeRunner()
+    const host = fakeHost()
+    host.running.add('c')
+    host.running.add('me')
+    let pending = ''
+    const write = host.write.bind(host)
+    host.write = (id, data) => {
+      write(id, data)
+      if (id !== 'c') return
+      if (data !== '\r') pending = unpaste(data)
+      else if (pending) {
+        const kept = keep(pending)
+        pending = ''
+        if (kept !== null) appendFileSync(transcript, JSON.stringify({ type: 'user', message: { role: 'user', content: kept } }) + '\n')
+      }
+    }
+    const logged: string[] = []
+    const verbs = createVerbs({ store, runner, tracker, host, gate: createAfterGate({ store, tracker, runner }), timing: { enterDelayMs: 0, settleMs: 5 }, deliveryTiming: { confirmMs: 300, pollMs: 10 }, log: (line) => logged.push(line) })
+    return { verbs, host, tracker, logged }
+  }
+  const long = 'Please review the parser. '.repeat(60)
+
+  test('confirmed when the agent wrote down the whole message', async () => {
+    const { verbs, tracker, logged } = make((t) => t)
+    tracker.apply('c', { type: 'hook', name: 'Stop' })
+    expect(await verbs('me', 'send', { node: 'c', text: long })).toEqual({ delivered: true, confirmed: true })
+    expect(logged).toEqual([])
+  })
+
+  test('garbled, not delivered, when it kept only the end, and the log says so', async () => {
+    const { verbs, tracker, logged } = make((t) => t.slice(1024))
+    tracker.apply('c', { type: 'hook', name: 'Stop' })
+    const result = await verbs('me', 'send', { node: 'c', text: long })
+    expect(result).toMatchObject({ delivered: false, confirmed: false, garbled: true, problem: expect.stringContaining('damaged copy') })
+    expect(logged).toEqual([expect.stringMatching(/^send to c: garbled\./)])
+  })
+
+  test('unconfirmed when nothing shows up in time', async () => {
+    const { verbs, tracker, logged } = make(() => null)
+    tracker.apply('c', { type: 'hook', name: 'Stop' })
+    expect(await verbs('me', 'send', { node: 'c', text: 'short one' })).toMatchObject({ delivered: true, confirmed: false, problem: expect.stringContaining("didn't show up") })
+    expect(logged).toHaveLength(1)
+  })
+
+  test('a message that waited and then arrived damaged is reported to its sender by message', async () => {
+    const { verbs, host, tracker } = make((t) => t.slice(1024))
+    tracker.apply('me', { type: 'hook', name: 'Stop' })
+    tracker.apply('c', { type: 'hook', name: 'UserPromptSubmit' })
+    expect(await verbs('me', 'send', { node: 'c', text: long })).toEqual({ delivered: false, queued: true })
+    tracker.apply('c', { type: 'hook', name: 'Stop' })
+    await vi.waitFor(() => expect(host.writes.some(([id, d]) => id === 'me' && d.includes('Patchbay notice about your earlier message to node c'))).toBe(true))
+  })
 })
 
 test('send to a terminal delivers at once, as a terminal has no status', async () => {
@@ -720,7 +785,7 @@ describe('wait', () => {
     expect(await waiting).toMatchObject({ done: true, messages: [{ from: 'a', text: 'FAREWELL.md is written.' }] })
     // Only b's message is still waiting for the caller to go idle.
     status('me', 'Stop')
-    await vi.waitFor(() => expect(host.writes.filter(([, d]) => d !== '\r').map(([, d]) => d.split('\n').at(-1))).toEqual(['not from a']))
+    await vi.waitFor(() => expect(host.writes.filter(([, d]) => d !== '\r').map(([, d]) => unpaste(d).split('\n').at(-1))).toEqual(['not from a']))
   })
 
   test('is refused for a terminal, a node out of reach, or a bad timeout', async () => {

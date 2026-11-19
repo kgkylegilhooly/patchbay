@@ -124,6 +124,9 @@ describe('a terminal target', () => {
   })
 })
 
+/** A Claude target is typed into as one bracketed paste: see src/main/sessions/paste.ts. */
+const paste = (text: string) => `\x1b[200~${text}\x1b[201~`
+
 describe('a Claude target', () => {
   test('gets the prompt at once when idle', () => {
     const s = setup([triggerNode('tr')], 'claude')
@@ -131,7 +134,7 @@ describe('a Claude target', () => {
     s.service.start()
     s.arm()
     s.advance(MIN)
-    expect(s.typed()).toEqual(['t:check the build'])
+    expect(s.typed()).toEqual([`t:${paste('check the build')}`])
     expect(s.trig().runs[0].outcome).toBe('delivered')
   })
 
@@ -145,7 +148,7 @@ describe('a Claude target', () => {
     expect(s.typed()).toEqual([])
     expect(s.trig().runs[0].outcome).toBe('queued')
     s.tracker.apply('t', { type: 'hook', name: 'Stop' })
-    expect(s.typed()).toEqual(['t:check the build'])
+    expect(s.typed()).toEqual([`t:${paste('check the build')}`])
     expect(s.trig().runs[0]).toMatchObject({ outcome: 'delivered', detail: /once it was idle/ })
   })
 
@@ -226,10 +229,10 @@ describe('a Claude target', () => {
     tracker.apply('t', { type: 'hook', name: 'Stop' })
     const typed = () => host.writes.filter(([, d]) => d !== '\r').map(([, d]) => d)
     // An agent's message says who sent it. A trigger's prompt goes as the person set it.
-    const fromAgent = expect.stringMatching(/^\[Patchbay message from "me" \(node me\)\..*\]\nfrom an agent$/)
+    const fromAgent = expect.stringMatching(/^\x1b\[200~\[Patchbay message from "me" \(node me\)\..*\]\nfrom an agent\x1b\[201~$/)
     expect(typed()).toEqual([fromAgent])
     vi.advanceTimersByTime(20)
-    expect(typed()).toEqual([fromAgent, 'check the build'])
+    expect(typed()).toEqual([fromAgent, paste('check the build')])
   })
 })
 

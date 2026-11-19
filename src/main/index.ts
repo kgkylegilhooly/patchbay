@@ -386,7 +386,7 @@ async function boot(): Promise<void> {
       return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(pickDefaultShell(currentSettings().shell).file)
     }
   })
-  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor })
+  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard })
   const messages = createMessageLog(join(dataDir, 'messages.json'))
   const agentEdits = createAgentEditLog(join(dataDir, 'agent-edits.json'))
   ipcMain.handle('pb:getAgentEdits', () => agentEdits.all())
@@ -395,7 +395,7 @@ async function boot(): Promise<void> {
   })
   ipcMain.handle('pb:getMessages', () => messages.all())
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
