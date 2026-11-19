@@ -350,6 +350,11 @@ Copy as Markdown copies the whole handoff.
 - **Deleting a project** is separate and permanent, and asks first, naming what it ends.
 - **Undo and redo** cover moving, resizing, grouping, tidying, renaming, and adding or deleting notes and groups, one
   history per project, until the app closes. They never start or end a process, so closing a session isn't undoable.
+- **Tidy** (dock, View menu, canvas menu, or right-click a group) first shows dashed outlines where each node would
+  go. Pick the whole project, the selection or the group, and turn on Needs you first to put agents waiting on you,
+  then working ones, at the top left. Apply is one undo step; Esc cancels. Tidy keeps cabled nodes together (a lead
+  beside its team, a trigger beside its target), moves groups whole, never overlaps anything, and running it again
+  changes nothing. Agents can run `patchbay arrange --layout tidy`.
 - **Spawn a team**, on the canvas menu, opens one lead Claude with your task. The lead splits it up with `patchbay
   spawn-team`, then collects and reconciles the results.
 

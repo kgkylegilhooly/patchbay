@@ -9,6 +9,7 @@ import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfi
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
 import type { Rect } from '../core/canvas/place'
 import { visibleArea } from './viewArea'
+import { openTidy } from './tidyUi'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
@@ -238,10 +239,10 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       zoomReset: () => void flow.zoomTo(1, { duration: 160 }),
       fitView: fitAll,
       tidy: (ids) => {
-        const top = ids ?? doc().nodes.filter((n) => n.parentId === null && inActiveProject(doc(), n)).map((n) => n.id)
-        if (top.length === 0) return
-        undoable('tidy', [{ op: 'arrange', ids: top, layout: 'grid' }])
-        setTimeout(fitAll, 120)
+        // Opens the preview (see TidyLayer): the selection or the group given, else the whole project.
+        const picked = (ids ?? selectedRef.current).filter((id) => doc().nodes.some((n) => n.id === id && inActiveProject(doc(), n)))
+        const scope = picked.length >= 2 || (picked.length === 1 && groupFor(picked[0])) ? { kind: 'selection' as const, ids: picked } : { kind: 'project' as const }
+        openTidy({ projectId: doc().activeProjectId, scope, selection: picked, view: visible() })
       },
       togglePref: setPref,
       openSettings,

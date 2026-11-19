@@ -53,6 +53,7 @@ import { ReviewInboxLayer } from './ReviewInbox'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
 import { SubagentLayer } from './subagents/SubagentLayer'
+import { TidyLayer } from './TidyLayer'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -407,6 +408,7 @@ function Canvas(): React.JSX.Element | null {
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <SubagentLayer />
+          <TidyLayer sidebar={prefs.sidebar} />
           {prefs.minimap && (
             <MiniMap<FlowNode>
               pannable

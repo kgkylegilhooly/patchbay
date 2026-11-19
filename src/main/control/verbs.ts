@@ -24,6 +24,7 @@ import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd
 import { RpcRefusal } from './server'
 import { absoluteRect, placeInGroup, placeNear, projectOf, viewRect } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
+import { planTidy, tidyOp, type TidyScope } from '../../core/canvas/tidy'
 import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agents'
 import { profileArg, type ProfileList, type TerminalProfile } from '../../shared/terminalProfiles'
 
@@ -812,10 +813,26 @@ export function createVerbs({
     return { id: node.id }
   }
 
+  /** The same tidy as the canvas's: --ids, else --group, else the caller's whole project. --status: needs you first. */
+  const tidyVerb = (caller: CanvasNode, args: Args): unknown => {
+    const ids = list(args, 'ids')
+    for (const id of ids) ownProject(caller, id)
+    const group = optional(args, 'group')
+    if (group !== undefined && ownProject(caller, group).kind !== 'group') refuse(`Node "${group}" isn't a group.`)
+    const doc = store.get()
+    const projectId = projectOf(doc, caller)
+    const scope: TidyScope = ids.length ? { kind: 'selection', ids } : group ? { kind: 'group', id: group } : { kind: 'project' }
+    const statuses = Object.fromEntries(doc.nodes.map((n) => [n.id, tracker.get(n.id)]).filter(([, s]) => s !== 'unknown'))
+    const plan = planTidy(doc, { projectId, scope, byStatus: args.status === true, statuses, view: viewRect(doc, projectId, viewSize()) })
+    if (plan?.moves.length) store.dispatch(tidyOp(plan))
+    return { arranged: plan?.units.length ?? 0, moved: plan?.moves.length ?? 0 }
+  }
+
   const arrange = (caller: CanvasNode, args: Args): unknown => {
     const layout = required(args, 'layout')
+    if (layout === 'tidy') return tidyVerb(caller, args)
     if (layout !== 'grid' && layout !== 'row' && layout !== 'column') {
-      refuse(`Unknown layout "${layout}". Use grid, row or column.`)
+      refuse(`Unknown layout "${layout}". Use grid, row, column or tidy.`)
     }
     const ids = list(args, 'ids')
     for (const id of ids) ownProject(caller, id)
