@@ -8,6 +8,7 @@ import { offerCommand } from './agentChoice'
 import { openComparisons, openTryApproach } from './compareUi'
 import { openProjects } from './projectsUi'
 import { jumpToNext } from './needsYouUi'
+import { pickDocument } from './reader/readerUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -44,6 +45,7 @@ export const ACTIONS: Action[] = [
   { id: 'new-from-recipe', section: 'New', label: 'New from recipe…', icon: 'team', keywords: ['template', 'recipe', 'worktree', 'implement', 'review', 'setup'], run: () => openRecipePicker() },
   { id: 'try-approach', section: 'New', label: 'Try another approach…', icon: 'branch', keywords: ['compare', 'attempt', 'race', 'alternative', 'worktree', 'variant'], run: () => openTryApproach() },
   { id: 'comparisons', section: 'View', label: 'Comparisons…', icon: 'branch', keywords: ['compare', 'attempts', 'approach', 'winner', 'diff', 'verification'], run: () => openComparisons() },
+  { id: 'open-document', section: 'New', label: 'Open document…', icon: 'note', keywords: ['markdown', 'md', 'plan', 'reader', 'read', 'file', 'comment'], run: () => void pickDocument() },
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 
   { id: 'group', section: 'Canvas', label: 'Group selection, or new group', icon: 'group', key: 'Ctrl+Shift+G', run: (c) => c.group() },

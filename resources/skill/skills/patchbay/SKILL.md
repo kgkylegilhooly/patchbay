@@ -123,6 +123,9 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
 - `--after` holds an agent until every listed Claude node finishes a turn. If one exits without finishing,
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,
   and the agent can start without that node's work. `--after` doesn't work on terminals.
+- `patchbay open-doc --path plan.md` shows a Markdown file to the person in a reader beside you: a plan,
+  a report, a design. They can comment on parts of it and send the comments to you as one message. Read the
+  comments any time with `patchbay read --node <reader id>`. The reader never edits the file; you do.
 - Prompts are limited to 28000 characters. Put anything longer in a file and point a short prompt at it.
 - A new folder can stop an agent at a question about trusting it, which only the person can answer. Its
   status is `needs-you` until they do, so tell them which node.
@@ -275,6 +278,7 @@ A Claude node gives its conversation, and `--tail` counts messages. It leaves ou
 A terminal or a run node gives its recent output with colors removed, and `--tail` counts lines. A full-screen
 program's output will look jumbled. A sticky note gives its text, and a trigger gives the prompt it sends. A
 whiteboard gives the words written on it and points you at `patchbay whiteboard`, which shows you the drawing.
+A reader gives its file and the person's open comments on it.
 
 ## Send a message
 

@@ -167,7 +167,18 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode
+/**
+ * A Markdown file, shown read-only with comments for an agent. The file itself is never written. See src/shared/reader.ts.
+ */
+export interface ReaderNode extends Base {
+  kind: 'reader'
+  /** The file's full path. Main reads it only while a reader node names it, and only if it passes the reader's path policy. */
+  path: string
+  /** The node it came from, as the agent whose plan it is. Its comments go there first. */
+  fromNodeId?: string
+}
+
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {

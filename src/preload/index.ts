@@ -12,6 +12,7 @@ import { exposeFiles } from './files'
 import { exposeProjects } from './projects'
 import { exposeView } from './view'
 import { exposeSubagents } from './subagents'
+import { exposeDocs } from './docs'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -150,6 +151,7 @@ exposeFiles()
 exposeProjects()
 exposeView()
 exposeSubagents()
+exposeDocs()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.

@@ -548,7 +548,8 @@ const scenes = {
   ...require('./subagentScenes.cjs').scenes,
   ...require('./needsYouScenes.cjs').scenes,
   ...require('./filesScenes.cjs').scenes,
-  ...require('./stopScenes.cjs').scenes
+  ...require('./stopScenes.cjs').scenes,
+  ...require('./readerScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -647,7 +648,8 @@ const seeds = {
   ...require('./subagentScenes.cjs').seeds,
   ...require('./needsYouScenes.cjs').seeds,
   ...require('./filesScenes.cjs').seeds,
-  ...require('./stopScenes.cjs').seeds
+  ...require('./stopScenes.cjs').seeds,
+  ...require('./readerScenes.cjs').seeds
 }
 
 const launchJsonExample = `{

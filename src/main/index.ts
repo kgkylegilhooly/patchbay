@@ -37,6 +37,9 @@ import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
 import { registerReviewIpc } from './review/ipc'
+import { registerDocsIpc } from './reader/ipc'
+import { withDocVerbs } from './reader/verbs'
+import { spotNear } from './control/verbs'
 import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { withFilesVerbs } from './files/verbs'
@@ -436,7 +439,9 @@ async function boot(): Promise<void> {
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
   // Which files each agent session edited, from its transcript, with a snapshot as each turn starts. See src/main/files.
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
-  const allVerbs = withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched })
+  // The reader: Markdown files shown read-only, with comments for agents. See src/main/reader.
+  const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
+  const allVerbs = withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
     const stop = tracker.get(id) === 'unknown' ? stops.get(id) : undefined
     return (stop && heldReason(stop, Date.now())) ?? undefined

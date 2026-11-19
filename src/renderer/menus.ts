@@ -8,6 +8,7 @@ import { toggleReviewInbox } from './reviewInboxUi'
 import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
+import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
 
 export interface Point {
   x: number
@@ -265,7 +266,8 @@ export function canvasExtensions(c: Commands, at: Point): MenuItem[] {
   return [
     { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
     { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) },
-    { id: 'try-approach', label: 'Try another approach…', icon: 'branch', run: () => openTryApproach() }
+    { id: 'try-approach', label: 'Try another approach…', icon: 'branch', run: () => openTryApproach() },
+    openDocumentEntry(at)
   ]
 }
 
@@ -313,6 +315,7 @@ export function nodeMenu(
   })
   if (node.kind === 'sticky') return [close('Delete note')]
   if (node.kind === 'whiteboard') return [close('Delete whiteboard')]
+  if (node.kind === 'reader') return readerMenu(node, { rename: () => c.renameNode(node.id), close: close('Close reader') })
   if (node.kind === 'trigger') {
     const armed = isArmed(node)
     return [
@@ -359,6 +362,7 @@ export function nodeMenu(
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },
     { id: 'show-in-focus', label: 'Show in focus view', icon: 'grid', run: () => c.toggleFocus(node.id) },
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
+    ...openPlanEntry(node),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
