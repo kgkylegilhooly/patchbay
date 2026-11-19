@@ -21,6 +21,8 @@ export class EvidenceNetwork {
     const origin = this.requests.get(d.id)
     this.requests.delete(d.id)
     if (!origin || (!failed && (d.statusCode ?? 0) < 400)) return
+    // Cancelled by the page, or by moving to another page: not a failure of the site, and busy pages make many.
+    if (failed && d.error === 'net::ERR_ABORTED') return
     this.record({ ...origin, at: Date.now(), kind: 'network', message: failed ? 'Request failed' : 'HTTP failure', status: d.statusCode, ...(failed ? { failure: failureName(d.error) } : {}) })
   }
 }

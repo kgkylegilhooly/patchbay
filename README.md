@@ -145,7 +145,8 @@ Everything is in `%APPDATA%\Patchbay`:
 | `pastes\` | Images pasted into terminals |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
-| `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100 |
+| `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
+| `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
@@ -464,9 +465,12 @@ its page on the next launch.
   it did, never what it typed. Agents can't type into password, code or card fields.
 - **Recorded checks.** `patchbay browser verify --phase start|step|finish` records an attempt: the URL, viewport,
   actions, a picture at each phase, and console errors and failed requests with the page and time. `browser viewport
-  --preset desktop|mobile` sets the page size first. The node's **Evidence** panel shows each attempt, marks missing
-  pictures and cut-short logs, and labels the agent's passed or failed as its claim, not proof. Console text, headers,
-  request bodies and typed text are never kept.
+  --preset desktop|mobile` sets the page size first, and finish, Take control or `--preset node` set it back. The
+  node's **Evidence** panel shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
+  labels the agent's passed or failed as its claim, not proof. Only the agent that started an attempt can finish it.
+  One left alone for 10 minutes is marked abandoned. With `--task-id`, the task's card lists the attempt too, and it
+  never makes the task ready. Console text, headers, request bodies and typed text are never kept, and evidence
+  pictures hide what's typed in fields.
 - **Take control**, on the node or in its right-click menu, refuses every agent verb on it until you press Hand back. It
   stays taken after a restart.
 - A page only runs while its project is on screen. Switching projects reloads it when you come back. An agent can still

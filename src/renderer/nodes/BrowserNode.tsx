@@ -8,8 +8,7 @@ import { Icon } from '../icons'
 import { patchNode, useStore } from '../store'
 import { DesignStrip, startPicking, type DesignState } from './DesignStrip'
 import { Jacks, Resizer, EditableTitle } from './NodeChrome'
-import type { BrowserAttempt, EvidenceCapture } from '../../shared/browserEvidence'
-import './browserEvidence.css'
+import { BrowserEvidence } from './BrowserEvidence'
 
 /** How long after an agent's last action the node keeps saying it's being driven. */
 const DRIVING_SHOWN_MS = 15_000
@@ -214,47 +213,3 @@ function CloseButton({ node }: { node: BrowserNodeModel }): React.JSX.Element {
 
 const closeBrowser = (id: string): Promise<void> => bridge.dispatch({ op: 'removeNodes', ids: [id], at: Date.now() })
 
-function EvidencePicture({ attempt, capture, index }: { attempt: BrowserAttempt; capture: EvidenceCapture; index: number }): React.JSX.Element {
-  const [image, setImage] = useState<string | null>(null)
-  const [loaded, setLoaded] = useState(false)
-  useEffect(() => {
-    let alive = true
-    void bridge.browserEvidenceImage(attempt.nodeId, attempt.id, index).then(value => { if (alive) { setImage(value); setLoaded(true) } })
-    return () => { alive = false }
-  }, [attempt.nodeId, attempt.id, index, capture.state])
-  return <figure>
-    <figcaption>{new Date(capture.at).toLocaleTimeString()} · {capture.viewport.preset ?? 'custom'} {capture.viewport.width} × {capture.viewport.height}</figcaption>
-    {image ? <a href={image} download={`browser-${attempt.id}-${index}.png`}><img src={image} alt={`Observed page at ${new Date(capture.at).toISOString()}`} /></a> : <p>{loaded ? capture.reason ?? 'Screenshot unavailable or expired.' : 'Loading screenshot…'}</p>}
-  </figure>
-}
-
-function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Element {
-  const attempts = useStore(s => s.browsers[nodeId]?.evidence)
-  const problem = useStore(s => s.browsers[nodeId]?.evidenceNotice)
-  const [expanded, setExpanded] = useState(false)
-  const [selected, setSelected] = useState<string | null>(null)
-  return <details className="browser-evidence nodrag nopan nowheel" data-browser-evidence onToggle={e => { if (e.target === e.currentTarget) setExpanded(e.currentTarget.open) }}>
-    <summary>Evidence · {attempts?.length ?? 0} {attempts?.length === 1 ? 'attempt' : 'attempts'}</summary>
-    {expanded && <div className="browser-evidence-content">
-      <p>Observed captures and actions are partial evidence. They do not prove the entire feature works.</p>
-      {problem && <p className="evidence-gap">{problem}</p>}
-      {!attempts?.length && <p>No recorded verification. Agents can use browser verify to record a check.</p>}
-      {attempts?.map(a => <details key={a.id} className="browser-attempt" open={(selected ?? attempts[0].id) === a.id} onToggle={e => { if (e.target === e.currentTarget && e.currentTarget.open) setSelected(a.id) }}>
-        <summary>{a.state === 'recording' ? 'Recording' : a.state === 'incomplete' ? 'Incomplete capture' : 'Recorded capture'} · {new Date(a.startedAt).toLocaleString()}</summary>
-        {(selected ?? attempts[0].id) === a.id && <>
-        <p><strong>Observed</strong> · {a.viewport.preset ?? 'custom'} {a.viewport.width} × {a.viewport.height}<br />{a.url}</p>
-        <p className="evidence-id">Attempt {a.id}{a.taskId && ` · Task ${a.taskId}`}</p>
-        <p>Checkout revision: {a.revision ? `${a.revision.commit.slice(0, 12)}${a.revision.dirty ? ' · uncommitted changes' : ' · clean'}` : 'unavailable'}. Server revision is unknown.</p>
-        <p><strong>Agent assertion:</strong> {a.assertion}. No human acceptance recorded here.</p>
-        {a.gaps.map(g => <p className="evidence-gap" key={g}>{g}</p>)}
-        <div className="evidence-pictures">{a.captures.map((c, i) => <EvidencePicture key={i} attempt={a} capture={c} index={i} />)}</div>
-        <details><summary>Observed actions ({a.actions.length})</summary><ol>{a.actions.map((s, i) => <li key={i}>{new Date(s.at).toLocaleTimeString()} · {s.action} · {s.state}<br /><small>{s.url} · page {s.pageId}</small></li>)}</ol></details>
-        <details><summary>Observed diagnostics ({a.diagnostics.length})</summary>
-          <p>Since recording began. Console text, request headers and bodies are omitted for privacy. Empty logs are not proof of success.</p>
-          {a.diagnostics.map((d, i) => <p key={i}>{new Date(d.at).toLocaleTimeString()} · {d.kind} · {d.message} {d.status ?? d.failure ?? ''}<br />{d.method} {d.url}<br /><small>Page {d.pageId} · {d.pageUrl} · attempt {d.attemptId}</small></p>)}
-        </details>
-        </>}
-      </details>)}
-    </div>}
-  </details>
-}

@@ -16,6 +16,14 @@ function seed(doc) {
   doc.edges = [{ id: 'browser-owner', from: 'evidence-agent', to: 'evidence-page', kind: 'opened' }]
   doc.viewport = { x: 20, y: 10, zoom: 1 }
   doc.projects[0].viewport = doc.viewport
+  // A P1 task for the check to be evidence for: --task-id has to name a real one.
+  doc.projects[0].tasks = {
+    tasks: [{
+      id: 'checkout-check', projectId: doc.projects[0].id, brief: 'Checkout saves the order', acceptanceCriteria: ['Place order saves it'],
+      assignedSessionIds: [], cwd, state: 'running', requiredChecks: [], dependsOn: [], createdAt: Date.now(), updatedAt: Date.now(), acceptances: []
+    }],
+    attempts: []
+  }
   doc.closed = []
 }
 
@@ -36,12 +44,15 @@ async function act(page) {
   await new Promise(r => server.listen(0, '127.0.0.1', r))
   let seq = 0
   const cwd = (await L.doc(page)).projects[0].folder
-  const cli = async args => {
+  const run = async args => {
     const out = path.join(cwd, `evidence-${++seq}`).replace(/\\/g, '/')
     await L.submit(page, 'evidence-agent', `patchbay browser ${args} --node evidence-page > ${out}.txt 2>&1; echo $? > ${out}.code`)
     await L.waitFor('browser evidence command', () => fs.existsSync(`${out}.code`) && fs.readFileSync(`${out}.code`, 'utf8').trim(), 45000, 100)
-    const text = fs.readFileSync(`${out}.txt`, 'utf8')
-    assert.equal(Number(fs.readFileSync(`${out}.code`, 'utf8').trim()), 0, text)
+    return { code: Number(fs.readFileSync(`${out}.code`, 'utf8').trim()), text: fs.readFileSync(`${out}.txt`, 'utf8') }
+  }
+  const cli = async args => {
+    const { code, text } = await run(args)
+    assert.equal(code, 0, text)
     return JSON.parse(text)
   }
   try {
@@ -54,6 +65,9 @@ async function act(page) {
     const mobile = await cli('viewport --preset mobile')
     assert.equal(mobile.observed.width, 390)
     assert.equal(mobile.observed.height, 844)
+    const typo = await run('verify --phase start --task-id checkout-chek')
+    assert.notEqual(typo.code, 0, typo.text)
+    assert.match(typo.text, /no task "checkout-chek"/)
     await cli('verify --phase start --task-id checkout-check')
     const read = await cli('read')
     const ref = read.elements.find(e => e.name.includes('Place order')).ref
@@ -67,6 +81,17 @@ async function act(page) {
     assert(attempt.diagnostics.some(d => d.kind === 'console' && d.attemptId === attempt.id))
     assert(attempt.diagnostics.some(d => d.kind === 'network' && d.status === 503 && d.attemptId === attempt.id))
     assert(!JSON.stringify(attempt).includes('SECRET'))
+    assert.equal(attempt.startedBy.id, 'evidence-agent')
+    assert(attempt.captures.every(c => c.masked === true), 'evidence pictures say fields were hidden')
+    // Finish gave the page back its own size: no longer the mobile preset's 844.
+    const after = await cli('scroll --to top')
+    assert.notEqual(after.viewportHeight ?? after.observed?.viewportHeight, 844, JSON.stringify(after))
+    // The task lists the attempt, as the agent's claim.
+    await L.waitFor('task lists the browser check', async () => {
+      const records = (await L.doc(page)).projects[0].tasks
+      const link = records?.attempts.find(a => a.kind === 'browser' && a.browserAttemptId === attempt.id)
+      return link && link.assertion === 'failed' && link.state !== 'recording'
+    }, 10000)
     await page.click('[data-browser-evidence] > summary')
     await page.waitForSelector('.evidence-pictures img')
     await page.evaluate(() => {

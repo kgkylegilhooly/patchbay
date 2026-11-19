@@ -2,7 +2,7 @@ import { checkUrl, driveRefusal, LIMITS, TIMEOUTS, type BrowserAccess } from '..
 import type { BrowserNode, CanvasNode } from '../../shared/model'
 import type { BrowserDriver } from '../browser/driver'
 import { RpcRefusal } from './server'
-import { VIEWPORTS, type ViewportPreset } from '../../shared/browserEvidence'
+import { VIEWPORTS, type EvidenceAgent, type ViewportPreset } from '../../shared/browserEvidence'
 
 type Args = Record<string, unknown>
 
@@ -74,6 +74,9 @@ export function createBrowserVerbs({
     return node
   }
 
+  /** Who's acting, for the evidence record: the node, and what it's called now. */
+  const agentOf = (caller: string): EvidenceAgent => ({ id: caller, title: find(caller)?.title ?? caller })
+
   /** One thing at a time on each page, so two calls can't interleave their steps. */
   const inTurn = <T>(id: string, work: () => Promise<T>): Promise<T> => {
     const queue = queues.get(id) ?? { tail: Promise.resolve(), waiting: 0 }
@@ -103,14 +106,15 @@ export function createBrowserVerbs({
         refuse(`Browser node "${id}" isn't on screen, so its page isn't open. It opens when the person shows its project.`)
       }
       check()
-      driver.noteDriving(id, find(caller)?.title ?? caller, action)
+      const by = agentOf(caller)
+      driver.noteDriving(id, by.title, action)
       try {
         const result = await work(id, check)
         check()
-        driver.evidence?.action(id, action, 'completed')
+        driver.evidence?.action(id, action, 'completed', by)
         return result
       } catch (error) {
-        driver.evidence?.action(id, action, 'failed')
+        driver.evidence?.action(id, action, 'failed', by)
         throw error
       }
     })
@@ -193,28 +197,37 @@ export function createBrowserVerbs({
   const evidenceVerb = (caller: string, verb: string, args: Args): Promise<unknown> => {
     const evidence = driver.evidence
     if (!evidence) refuse('Browser evidence is unavailable here.')
-    if (verb === 'browser-viewport' && (typeof args.preset !== 'string' || !Object.hasOwn(VIEWPORTS, args.preset))) refuse('--preset must be desktop or mobile.')
+    if (verb === 'browser-viewport' && (typeof args.preset !== 'string' || !(Object.hasOwn(VIEWPORTS, args.preset) || args.preset === 'node'))) {
+      refuse('--preset must be desktop, mobile, or node for the node\'s own size.')
+    }
     if (verb === 'browser-verify') {
       if (!['start', 'step', 'finish'].includes(String(args.phase))) refuse('--phase must be start, step or finish.')
       if (args.taskId !== undefined && (typeof args.taskId !== 'string' || !/^[\w-]{1,100}$/.test(args.taskId))) refuse('--task-id must be an identifier up to 100 characters.')
       if (args.outcome !== undefined && !['passed', 'failed', 'unknown'].includes(String(args.outcome))) refuse('--outcome must be passed, failed or unknown.')
     }
     return drive(caller, args, verb.replace('browser-', '') + (verb === 'browser-verify' ? ` ${args.phase}` : verb === 'browser-viewport' ? ` ${args.preset}` : ''), async (id, check) => {
+      const by = agentOf(caller)
       let result: unknown
       if (verb === 'browser-console' || verb === 'browser-network') result = { diagnostics: evidence.diagnostics(id, verb === 'browser-console' ? 'console' : 'network'), coverage: 'Since page attachment; bounded recent log. Console text, headers and bodies omitted.' }
-      else if (verb === 'browser-viewport') result = await evidence.viewport(id, args.preset as ViewportPreset)
+      else if (verb === 'browser-viewport') result = await evidence.viewport(id, args.preset as ViewportPreset | 'node')
       else if (verb === 'browser-evidence') result = { attempts: evidence.list(id) }
       else if (args.phase === 'start') {
-        await evidence.start(id, args.taskId as string | undefined)
+        await evidence.start(id, by, args.taskId as string | undefined)
         check()
-        result = { attempts: await evidence.capture(id, check) }
-      } else if (args.phase === 'step') result = { attempts: await evidence.capture(id, check) }
+        result = { attempts: await evidence.capture(id, check, by) }
+      } else if (args.phase === 'step') result = { attempts: await evidence.capture(id, check, by) }
       else {
-        await evidence.capture(id, check)
+        await evidence.capture(id, check, by)
         check()
-        result = { attempt: evidence.finish(id, (args.outcome ?? 'unknown') as 'passed' | 'failed' | 'unknown') }
+        result = { attempt: await evidence.finish(id, (args.outcome ?? 'unknown') as 'passed' | 'failed' | 'unknown', by) }
       }
-      return { untrusted: true, notice: UNTRUSTED_NOTICE, observed: result, assertionNotice: 'An agent outcome is an assertion. Captures and interactions do not prove the entire feature works.' }
+      return {
+        untrusted: true,
+        notice: UNTRUSTED_NOTICE,
+        observed: result,
+        assertionNotice: 'An agent outcome is an assertion. Captures and interactions do not prove the entire feature works.',
+        ...(verb === 'browser-verify' ? { pictureNotice: 'Evidence pictures hide what is typed in form fields, and embedded frames.' } : {})
+      }
     })
   }
 

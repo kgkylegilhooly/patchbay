@@ -40,20 +40,26 @@ patchbay browser evidence --node <id>
 Verification records a before picture on start, another on step, and an after picture on finish.
 Actions between them are recorded automatically without typed text. Finish's `passed`, `failed` or
 `unknown` is your assertion, never proof or human acceptance. The person sees the records in the
-browser node's Evidence panel. Optional task IDs are references only; no task is changed.
+browser node's Evidence panel. Only the agent that started an attempt can add steps or finish it; one
+left with no step for 10 minutes is marked abandoned. `--task-id` must name a task in the browser's
+project (`patchbay task list`). The task then lists the attempt, as your claim: it never makes the
+task ready.
 
 Viewports are `desktop` (1280×800) and `mobile` (390×844) CSS pixels; mobile does not emulate a phone's
-touch or user agent. Select the viewport before starting. Revision means the observed containing
+touch or user agent. Select the viewport before starting. Finish, Take control and `--preset node`
+put the page back to the node's own size. Revision means the observed containing
 checkout, including dirty state; the page's actual served revision is unknown.
 
 Console errors and failed requests have page, attempt and time identifiers. A failed request shows its
 HTTP status, or Chromium's error name such as net::ERR_CONNECTION_REFUSED. Console messages are
 omitted because they may contain secrets. No cookies, headers, request bodies or typed values are
-stored. URL credentials, query strings and fragments are removed. Form fields and embedded frames
-are hidden in pictures; visible page content remains private evidence. Never enter secrets.
+stored. URL credentials, query strings and fragments are removed, and so are path parts that look like
+tokens. Evidence pictures hide what's typed in form fields (outlined instead) and embedded frames;
+fields inside web components still show. A plain `browser screenshot` hides nothing. Visible page
+content remains private evidence. Never enter secrets.
 
 Keep the project visible while recording. Take control refuses every agent verb and interrupts the
 attempt. Detaching the page or restarting also leaves an incomplete attempt. Missing pictures and
 truncated logs are explicit, never treated as passing. Retention is 30 days and 100 attempts, with
-200 diagnostics/actions and 20 pictures per attempt, 2 MiB metadata, and 50 pictures / 128 MiB total
-(16 MiB per picture). Old pictures may expire before their record.
+200 diagnostics/actions and 20 pictures per attempt, and 2 MiB metadata. Evidence pictures have their
+own folder: 128 MiB in all, 16 MiB each. Requests cancelled by the page aren't counted as failures.

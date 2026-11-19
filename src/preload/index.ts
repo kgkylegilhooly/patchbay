@@ -122,6 +122,7 @@ const bridge: PatchbayBridge = {
   saveBoardImage: (bytes, mime) => invoke('saveBoardImage', bytes, mime),
   readBoardImage: (file) => invoke('readBoardImage', file),
   browserEvidenceImage: (id, attempt, index) => invoke('browserEvidenceImage', id, attempt, index),
+  browserEvidence: (id) => invoke('browserEvidence', id),
   getActivity: () => invoke('getActivity'),
   onActivity: (cb) => listen('onActivity', cb),
   nameWithAi: (id) => invoke('nameWithAi', id)

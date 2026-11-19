@@ -103,7 +103,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   browser scroll     --node ID (--by PIXELS | --to top|bottom | --ref REF)
   browser screenshot --node ID
   browser console|network|evidence --node ID
-  browser viewport   --node ID --preset desktop|mobile
+  browser viewport   --node ID --preset desktop|mobile|node
   browser verify     --node ID --phase start|step|finish [--task-id ID] [--outcome passed|failed|unknown]
 `
 

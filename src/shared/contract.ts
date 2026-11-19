@@ -115,8 +115,8 @@ export interface PortInfo {
 
 /** What a browser node's page is doing now. Only held while it's on screen, and none of it is saved. */
 export interface BrowserState {
-  evidence?: import('./browserEvidence').BrowserAttempt[]
-  evidenceNotice?: string | null
+  /** How many recorded checks there are. The checks themselves are fetched with browserEvidence when shown. */
+  evidence?: import('./browserEvidence').EvidenceSummary
   url: string
   /** Set by the page, so it's only for showing as plain text. */
   title: string
@@ -175,6 +175,8 @@ export interface PatchbayBridge {
   browserCancelPick(nodeId: string): Promise<void>
   getBrowserStates(): Promise<Record<string, BrowserState>>
   browserEvidenceImage(nodeId: string, attemptId: string, index: number): Promise<string | null>
+  /** A browser node's recorded checks, newest first. */
+  browserEvidence(nodeId: string): Promise<import('./browserEvidence').BrowserAttempt[]>
   onBrowserState(cb: (id: string, state: BrowserState | null) => void): () => void
   /** Opens a port a session is serving in a new browser node beside it. False if it isn't listed for that node. */
   openPortInBrowser(nodeId: string, port: number): Promise<boolean>

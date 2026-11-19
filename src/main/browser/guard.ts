@@ -60,7 +60,12 @@ export function lockSession(ses: Session, onBlocked: (contents: WebContents | nu
   })
   // The backstop, because it sees loads the navigation events don't, such as a <webview> src or a loadURL.
   ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
-    onRequest?.(details)
+    // Only watching, for browser evidence. Whatever goes wrong there must never keep the guard from answering.
+    try {
+      onRequest?.(details)
+    } catch {
+      /* The request is still decided below. */
+    }
     const allowed =
       details.resourceType === 'mainFrame'
         ? isAllowedTopLevel(details.url)

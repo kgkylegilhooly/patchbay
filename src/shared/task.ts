@@ -51,7 +51,23 @@ export interface TaskVerification extends AttemptBase {
   endRevision?: TaskRevision
   error?: string
 }
-export type TaskAttempt = TaskSubmission | TaskVerification
+/**
+ * A recorded browser check an agent made for this task (see shared/browserEvidence.ts). Its outcome is the agent's
+ * claim, so it never counts towards readiness. The pictures and diagnostics stay with the browser node.
+ */
+export interface TaskBrowserCheck extends AttemptBase {
+  kind: 'browser'
+  nodeId: string
+  browserAttemptId: string
+  url: string
+  state: 'recording' | 'recorded' | 'incomplete'
+  assertion: 'passed' | 'failed' | 'unknown'
+  endedAt: number | null
+  /** How many gaps the attempt reported, such as missing pictures or an interruption. */
+  gaps: number
+  revision: TaskRevision
+}
+export type TaskAttempt = TaskSubmission | TaskVerification | TaskBrowserCheck
 export interface TaskRecords {
   tasks: Task[]
   attempts: TaskAttempt[]
@@ -137,12 +153,17 @@ export function isTask(t: unknown): t is Task {
 export function isAttempt(a: unknown): a is TaskAttempt {
   if (!object(a) || typeof a.id !== 'string' || typeof a.taskId !== 'string' || typeof a.sessionId !== 'string' || !time(a.startedAt) || !revision(a.revision)) return false
   if (a.kind === 'agent-report') return typeof a.summary === 'string' && time(a.endedAt)
+  if (a.kind === 'browser') {
+    return typeof a.nodeId === 'string' && typeof a.browserAttemptId === 'string' && typeof a.url === 'string' &&
+      ['recording', 'recorded', 'incomplete'].includes(String(a.state)) && ['passed', 'failed', 'unknown'].includes(String(a.assertion)) &&
+      (a.endedAt === null || time(a.endedAt)) && Number.isInteger(a.gaps)
+  }
   return a.kind === 'command' && typeof a.checkId === 'string' && typeof a.command === 'string' && typeof a.cwd === 'string' && typeof a.outputRef === 'string' &&
     (a.endedAt === null || time(a.endedAt)) && (a.exitCode === null || Number.isInteger(a.exitCode)) && ['running', 'passed', 'failed', 'interrupted'].includes(String(a.status)) &&
     (a.endRevision === undefined || revision(a.endRevision)) && (a.error === undefined || typeof a.error === 'string')
 }
 
-const KNOWN_KINDS = new Set(['agent-report', 'command'])
+const KNOWN_KINDS = new Set(['agent-report', 'command', 'browser'])
 
 /**
  * Task data as loaded, with anything damaged dropped one record at a time, so a bad record never costs the canvas or
@@ -173,6 +194,13 @@ export function isTaskRecords(v: unknown): v is TaskRecords {
 }
 
 export function recoverTasks(records: TaskRecords, now = Date.now()): TaskRecords {
+  // A browser check still recording when the app stopped ended there, as the browser's own record says.
+  if (records.attempts.some((a) => a.kind === 'browser' && a.state === 'recording')) {
+    records = {
+      ...records,
+      attempts: records.attempts.map((a) => (a.kind === 'browser' && a.state === 'recording' ? { ...a, state: 'incomplete', endedAt: now, gaps: a.gaps + 1 } : a))
+    }
+  }
   const interrupted = new Set(records.attempts.filter((a) => a.kind === 'command' && a.status === 'running').map((a) => a.taskId))
   if (!interrupted.size) return records
   return {

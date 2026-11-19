@@ -349,6 +349,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:browserCancelPick', (_e, nodeId: string) => s.browser.cancelPick(nodeId).catch(() => {}))
   ipcMain.handle('pb:getBrowserStates', () => s.browser.states())
   ipcMain.handle('pb:browserEvidenceImage', (_e, id: string, attempt: string, index: number) => s.browser.evidence?.image(id, attempt, index) ?? null)
+  ipcMain.handle('pb:browserEvidence', (_e, id: string) => s.browser.evidence?.list(id) ?? [])
   ipcMain.handle('pb:getUsage', () => usage.state())
   // Every agent's status line reports as it works, many times a second across a busy canvas, and each report redraws
   // whatever shows usage. The window gets the latest at most this often.
