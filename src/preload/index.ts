@@ -4,6 +4,7 @@ import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
 import { exposeReview } from './review'
+import { exposeCompare } from './compare'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -122,6 +123,8 @@ const bridge: PatchbayBridge = {
   settleAgentEdits: (id) => ipcRenderer.send('pb:settleAgentEdits', id),
   saveBoardImage: (bytes, mime) => invoke('saveBoardImage', bytes, mime),
   readBoardImage: (file) => invoke('readBoardImage', file),
+  browserEvidenceImage: (id, attempt, index) => invoke('browserEvidenceImage', id, attempt, index),
+  browserEvidence: (id) => invoke('browserEvidence', id),
   getActivity: () => invoke('getActivity'),
   onActivity: (cb) => listen('onActivity', cb),
   nameWithAi: (id) => invoke('nameWithAi', id)
@@ -132,6 +135,7 @@ exposeWork()
 exposeSearch()
 exposeRecipes()
 exposeReview()
+exposeCompare()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.

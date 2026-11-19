@@ -5,6 +5,7 @@ import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
+import { openComparisons, openTryApproach } from './compareUi'
 
 export interface Point {
   x: number
@@ -246,7 +247,8 @@ export function settingsMenu(c: Commands, s: MenuState): MenuEntry[] {
 export function canvasExtensions(c: Commands, at: Point): MenuItem[] {
   return [
     { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
-    { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) }
+    { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) },
+    { id: 'try-approach', label: 'Try another approach…', icon: 'branch', run: () => openTryApproach() }
   ]
 }
 
@@ -340,6 +342,7 @@ export function nodeMenu(
     { id: 'show-in-focus', label: 'Show in focus view', icon: 'grid', run: () => c.toggleFocus(node.id) },
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
+    ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
     { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
     ...(ctx.canRestart ? [{ id: 'restart', label: 'Restart', icon: 'restart' as const, run: () => c.restartNode(node.id) }] : []),

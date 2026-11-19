@@ -4,6 +4,7 @@ import type { Commands, MenuState } from './menus'
 import { toggleSearch } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
+import { openComparisons, openTryApproach } from './compareUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -38,6 +39,8 @@ export const ACTIONS: Action[] = [
   { id: 'new-whiteboard', section: 'New', label: 'New whiteboard', icon: 'whiteboard', key: 'Ctrl+Shift+D', keywords: ['draw', 'sketch', 'paint', 'diagram', 'canvas'], run: (c) => c.newWhiteboard() },
   { id: 'spawn-team', section: 'New', label: 'Spawn a team…', icon: 'team', keywords: ['agents', 'lead', 'workstreams', 'parallel'], run: (c) => c.spawnTeamForm() },
   { id: 'new-from-recipe', section: 'New', label: 'New from recipe…', icon: 'team', keywords: ['template', 'recipe', 'worktree', 'implement', 'review', 'setup'], run: () => openRecipePicker() },
+  { id: 'try-approach', section: 'New', label: 'Try another approach…', icon: 'branch', keywords: ['compare', 'attempt', 'race', 'alternative', 'worktree', 'variant'], run: () => openTryApproach() },
+  { id: 'comparisons', section: 'View', label: 'Comparisons…', icon: 'branch', keywords: ['compare', 'attempts', 'approach', 'winner', 'diff', 'verification'], run: () => openComparisons() },
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 
   { id: 'group', section: 'Canvas', label: 'Group selection, or new group', icon: 'group', key: 'Ctrl+Shift+G', run: (c) => c.group() },
