@@ -1,15 +1,18 @@
 import type { CanvasStore, RunResult } from '../../shared/contract'
-import type { ClaudeNode, SetupWait } from '../../shared/model'
+import type { AgentStatus, ClaudeNode, SetupWait } from '../../shared/model'
 import type { AfterGate } from '../control/after'
 import type { NodeRunner } from '../sessions/nodeRunner'
 import type { StatusTracker } from '../sessions/statusTracker'
+
+/** Statuses only a session that has started reports. */
+const STARTED = new Set<AgentStatus>(['starting', 'working', 'idle', 'needs-you'])
 
 export interface SetupGate {
   /** Holds an agent until these setup run nodes exit with code 0, then arms it after `after`, or starts it. */
   hold(id: string, wait: SetupWait): void
   /** Settles every held agent. On launch, call this once the run results from the host are in. */
   evaluate(): void
-  /** Serves Start anyway: starts the agent whatever its setup is doing. */
+  /** Serves Start anyway: skips the setup, then starts the agent, or arms it after the agents it starts after. */
   startAnyway(id: string): Promise<void>
 }
 
@@ -34,14 +37,11 @@ export function createSetupGate({
 }): SetupGate {
   let evaluating = false
   let again = false
-  /** Agents this launch has set queued, so one the person starts some other way is noticed. */
-  const queued = new Set<string>()
 
   const patch = (id: string, setupWait: SetupWait | undefined): void =>
     store.dispatch({ op: 'patchNode', id, patch: { setupWait } as Partial<ClaudeNode> })
 
   const release = (node: ClaudeNode, wait: SetupWait): void => {
-    queued.delete(node.id)
     patch(node.id, undefined)
     if (wait.after.length) gate.arm(node.id, wait.after)
     else void runner.startNode(node.id)
@@ -57,10 +57,10 @@ export function createSetupGate({
       const raw = node.setupWait
       const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
       const wait: SetupWait = { ...raw, steps: ids(raw.steps), after: ids(raw.after), recipe: typeof raw.recipe === 'string' ? raw.recipe : 'a recipe' }
-      // Started by the person some other way: the hold no longer means anything.
+      // Started by the person some other way, as with Start on its window: the hold no longer means anything. Only a
+      // status a session reports counts. Anything else, such as unknown or exited after a reattach, is held again.
       const status = tracker.get(node.id)
-      if (queued.has(node.id) && status !== 'queued') {
-        queued.delete(node.id)
+      if (STARTED.has(status)) {
         patch(node.id, undefined)
         continue
       }
@@ -90,7 +90,6 @@ export function createSetupGate({
         patch(node.id, next)
       }
       if (status !== 'queued') tracker.apply(node.id, { type: 'queued' })
-      queued.add(node.id)
     }
   }
 
@@ -116,9 +115,7 @@ export function createSetupGate({
 
   return {
     hold(id, wait) {
-      // Marked queued first, so the evaluation the patch sets off doesn't take it for one started by hand.
       tracker.apply(id, { type: 'queued' })
-      queued.add(id)
       patch(id, wait)
       evaluate()
     },
@@ -126,9 +123,11 @@ export function createSetupGate({
     async startAnyway(id) {
       const node = store.get().nodes.find((n) => n.id === id)
       if (node?.kind !== 'claude' || !node.setupWait) return
-      queued.delete(id)
+      const after = Array.isArray(node.setupWait.after) ? node.setupWait.after : []
       patch(id, undefined)
-      await runner.startNode(id)
+      // It skips the setup, not the agents it starts after: those it still waits for, with their own Start now.
+      if (after.length) gate.arm(id, after)
+      else await runner.startNode(id)
     }
   }
 }

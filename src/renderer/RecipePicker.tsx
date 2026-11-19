@@ -88,13 +88,13 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
 
   const setupNodes = recipe?.nodes.filter((n) => n.kind === 'setup') ?? []
   const missing = worktree ? (!effectiveBranch ? 'Enter a branch for the new worktree.' : !repo ? 'Choose the repository.' : null) : !cwd ? 'Choose a working directory.' : null
-  const canStart = !!recipe && !busy && !missing && badEdits.length === 0
+  const canStart = !!recipe && !busy && !missing && badEdits.length === 0 && !plan?.problems.length
 
   const start = async (): Promise<void> => {
     if (!entry || !canStart) return
     setBusy(true)
     setProblem(null)
-    const r = await recipes.start({ projectId, ref: entry.ref, params })
+    const r = await recipes.start({ projectId, ref: entry.ref, ...(entry.hash ? { hash: entry.hash } : {}), params })
     setBusy(false)
     if (r.ok) onStart({ group: r.group })
     else setProblem(r.reason)
@@ -203,6 +203,11 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
               )}
             </div>
 
+            {plan.problems.map((p) => (
+              <p key={p} className="field-problem" role="alert" data-recipe-problem>
+                {p}
+              </p>
+            ))}
             {plan.warnings.map((w) => (
               <p key={w} className="recipe-warning" data-recipe-warning>
                 {w}
@@ -291,13 +296,13 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
                   )
                 })}
                 {plan.runs
-                  .filter((r) => r.how === 'your shell')
+                  .filter((r) => r.how !== 'no shell')
                   .map((r) => (
                     <li key={r.title + r.what} className="recipe-run">
                       <span>{r.title}</span>
                       <code className="recipe-argv">{r.what}</code>
                       <span className="recipe-run-how">
-                        In your shell, in <code>{where(r.cwd)}</code>.
+                        {r.how === 'ssh' ? 'Connects with ssh from this PC, as soon as it starts.' : <>In your shell, in <code>{where(r.cwd)}</code>.</>}
                       </span>
                     </li>
                   ))}

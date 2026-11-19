@@ -38,7 +38,7 @@ const VERBS = {
   prs: { state: 'text', limit: 'int' },
   'open-browser': { url: 'text', group: 'text', title: 'text' },
   recipes: { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list' },
-  'run-recipe': { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list' },
+  'run-recipe': { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list', hash: 'text' },
   'browser navigate': { node: 'text', url: 'text' },
   'browser back': { node: 'text' },
   'browser forward': { node: 'text' },
@@ -76,7 +76,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   prs           [--state open|closed|merged|all] [--limit N]         (read-only)
   open-browser  [--url URL] [--group ID] [--title T]
   recipes       [--name N [--source S] [--task T] [--branch B] [--no-worktree] [--cwd DIR]]   lists recipes, or previews one; runs nothing
-  run-recipe    --name N [--source built-in|personal|repository] [--task T] [--branch B] [--repo DIR] [--no-worktree] [--cwd DIR] [--skip KEY,KEY]
+  run-recipe    --name N [--source built-in|personal|repository] [--task T] [--branch B] [--repo DIR] [--no-worktree] [--cwd DIR] [--skip KEY,KEY] [--hash H]
   browser navigate   --node ID --url URL
   browser back|forward|reload --node ID
   browser read       --node ID [--max-chars N]

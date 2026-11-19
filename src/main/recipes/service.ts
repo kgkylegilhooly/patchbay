@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { CanvasStore } from '../../shared/contract'
 import type { CanvasDoc, CanvasNode, Edge } from '../../shared/model'
@@ -30,6 +30,8 @@ export interface RecipeServiceDeps {
 export interface StartRequest {
   projectId: string
   ref: string
+  /** The content the preview showed, from list. Start is refused if the recipe no longer matches it. */
+  hash?: string
   params: RecipeParams
   /** Where the recipe's group goes. Absent means beside what's in the project already. */
   at?: { x: number; y: number }
@@ -114,8 +116,12 @@ export function createRecipeService(d: RecipeServiceDeps) {
     if (!found.ok) return { ok: false, reason: found.problem }
     const entry = found.entry
     const recipe = entry.recipe!
+    // Start runs what the preview showed, or nothing: a file changed since, as by an agent in that checkout, is refused.
+    if (req.hash !== undefined && req.hash !== entry.hash) {
+      return { ok: false, reason: `The recipe "${recipe.name}" has changed since it was shown${entry.file ? ` (${entry.file})` : ''}. Look at it again before starting it.` }
+    }
     const params: RecipeParams = { ...req.params, task: req.params.task ?? '', branch: (req.params.branch ?? '').trim(), repo: req.params.repo ?? '', cwd: req.params.cwd ?? '' }
-    const problem = problemWith(recipe, params)
+    const problem = problemWith(recipe, params) ?? preview(entry, params).problems[0] ?? null
     if (problem) return { ok: false, reason: problem }
 
     let worktree: { path: string; branch: string; repo: string } | null = null
@@ -128,10 +134,29 @@ export function createRecipeService(d: RecipeServiceDeps) {
       }
       cwd = worktree.path
     }
-    const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId)
+    let added = 0
+    try {
+      const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId)
+      // Checked again against the worktree's real folder, which a value in the commands may now include.
+      if (plan.problems.length) throw new Error(plan.problems[0])
+      return await make(req, entry, plan, worktree, () => added++)
+    } catch (e) {
+      // Nothing is taken back: the worktree may hold work, and the nodes show what ran. The person is told what's left.
+      const left = [worktree && `the worktree ${worktree.path} on branch ${worktree.branch}`, added && `${added} node${added === 1 ? '' : 's'} on the canvas`].filter(Boolean)
+      return { ok: false, reason: `${(e as Error).message}${left.length ? ` Left in place: ${left.join(' and ')}.` : ''}` }
+    }
+  }
 
+  /** Writes the setup plans, adds the nodes and links, holds the waiting agents and starts the rest. */
+  const make = async (
+    req: StartRequest,
+    entry: RecipeEntry,
+    plan: RecipePlan,
+    worktree: { path: string; branch: string; repo: string } | null,
+    counted: () => void
+  ): Promise<RecipeStartResult> => {
     // The setup plans are written before their nodes exist, so each node's command is final when it's added.
-    const label = `"${recipe.name}" (${sourceLabel(entry)})`
+    const label = `"${entry.recipe!.name}" (${sourceLabel(entry)})`
     mkdirSync(plansDir, { recursive: true })
     const commands = new Map<string, string>()
     plan.setup.forEach((step, i) => {
@@ -141,13 +166,16 @@ export function createRecipeService(d: RecipeServiceDeps) {
       commands.set(step.id, `node ${quoted(d.launcher)} ${quoted(file)}`)
     })
 
+    const project = projectOf(req.projectId)!
     const doc = d.store.get()
     const at = req.at ?? spot(doc, project.id, plan.frame, req.openedBy)
     const own = { projectId: project.id, ...(req.openedBy ? { openedBy: req.openedBy } : {}) }
     d.store.dispatch({ op: 'addNode', node: { ...plan.frame, ...own, x: Math.round(at.x), y: Math.round(at.y), worktree } })
+    counted()
     for (const node of plan.nodes) {
       const command = commands.get(node.id)
       d.store.dispatch({ op: 'addNode', node: { ...node, ...own, ...(command ? { command } : {}) } as CanvasNode })
+      counted()
     }
     const edges: Edge[] = [...plan.edges]
     if (req.openedBy) {
@@ -162,6 +190,28 @@ export function createRecipeService(d: RecipeServiceDeps) {
     for (const id of plan.starts) await d.runner.startNode(id)
     for (const step of plan.setup) await d.runner.startNode(step.id)
     return { ok: true, group: plan.frame.id, ids: plan.ids, worktree: worktree && { path: worktree.path, branch: worktree.branch } }
+  }
+
+  /** Removes setup plans whose run node is no longer on the canvas. Returns how many went. */
+  const prunePlans = (): number => {
+    let names: string[]
+    try {
+      names = readdirSync(plansDir)
+    } catch {
+      return 0
+    }
+    const present = new Set(d.store.get().nodes.map((n) => n.id))
+    let removed = 0
+    for (const name of names) {
+      if (!name.endsWith('.json') || present.has(name.slice(0, -5))) continue
+      try {
+        rmSync(join(plansDir, name), { force: true })
+        removed++
+      } catch {
+        // In use or already gone: tried again next time.
+      }
+    }
+    return removed
   }
 
   const save = async (a: { projectId: string; recipe: Recipe; where: 'personal' | 'repository'; overwrite?: boolean }): Promise<{ ok: true; file: string } | { ok: false; reason: string; exists?: boolean }> => {
@@ -184,6 +234,6 @@ export function createRecipeService(d: RecipeServiceDeps) {
     return repo ? join(repo, REPO_RECIPES) : null
   }
 
-  return { list, preview, start, save, folderFor, problemWith }
+  return { list, preview, start, save, folderFor, problemWith, prunePlans }
 }
 

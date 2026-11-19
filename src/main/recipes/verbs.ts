@@ -75,11 +75,17 @@ export function withRecipeVerbs(verbs: Verbs, { store, service }: { store: Canva
     const params: RecipeParams = { task, branch: optional(args, 'branch') ?? (worktree ? branchFor(task) : ''), repo: optional(args, 'repo') ?? repo ?? cwd, cwd, worktree, skip }
 
     if (verb === 'recipes') {
-      return { recipe: recipe.name, source: found.source, ...(found.file ? { file: found.file } : {}), worktree: worktree ? { branch: params.branch, repo: params.repo } : null, ...(describePlan(service.preview(found, params)) as object), note: 'Nothing has run. Use patchbay run-recipe with the same flags to start it.' }
+      return { recipe: recipe.name, source: found.source, ...(found.file ? { file: found.file } : {}), worktree: worktree ? { branch: params.branch, repo: params.repo } : null, ...(describePlan(service.preview(found, params)) as object), hash: found.hash, note: 'Nothing has run. Use patchbay run-recipe with the same flags, and --hash, to start exactly this.' }
+    }
+    // A repository's recipe is written by whoever wrote the repository: its commands, SSH hosts and prompts. Only the
+    // person starts one, after seeing its preview.
+    if (found.source === 'repository') {
+      refuse(`"${recipe.name}" is the repository's own recipe (${found.file}), so only the person can start it, after seeing what it runs. Ask them to start it with New from recipe on the canvas. patchbay recipes --name shows you what it would do.`)
     }
     const problem = service.problemWith(recipe, params)
     if (problem) refuse(problem)
-    const result = await service.start({ projectId, ref: found.ref, params, openedBy: callerId })
+    const hash = optional(args, 'hash')
+    const result = await service.start({ projectId, ref: found.ref, params, openedBy: callerId, ...(hash !== undefined ? { hash } : {}) })
     if (!result.ok) refuse(result.reason)
     return { group: result.group, nodes: result.ids, worktree: result.worktree }
   }

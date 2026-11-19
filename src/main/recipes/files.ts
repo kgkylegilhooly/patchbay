@@ -1,8 +1,14 @@
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeAtomic } from '../../core/persist/atomicFile'
 import { readRecipe, recipeFileName, type Recipe, type RecipeEntry, type RecipeSource } from '../../shared/recipe'
 import { BUILT_IN_RECIPES } from '../../shared/recipeBuiltins'
+
+/** Names a recipe's content as read, so what a preview showed can be told from what's in the file now. */
+export function recipeHash(recipe: Recipe): string {
+  return createHash('sha256').update(JSON.stringify(recipe)).digest('hex').slice(0, 16)
+}
 
 /** Where a repository keeps its recipes, from its root. */
 export const REPO_RECIPES = join('.patchbay', 'recipes')
@@ -21,7 +27,7 @@ export function readRecipeFolder(dir: string, source: Exclude<RecipeSource, 'bui
     const file = join(dir, f)
     try {
       const recipe = readRecipe(JSON.parse(readFileSync(file, 'utf8')))
-      return { ref: `${source}:${recipe.name}`, source, name: recipe.name, ...(recipe.description ? { description: recipe.description } : {}), file, recipe }
+      return { ref: `${source}:${recipe.name}`, source, name: recipe.name, ...(recipe.description ? { description: recipe.description } : {}), file, recipe, hash: recipeHash(recipe) }
     } catch (e) {
       return { ref: `${source}:${f}`, source, name: f.replace(/\.json$/i, ''), file, problem: (e as Error).message }
     }
@@ -35,7 +41,7 @@ const ORDER: Record<RecipeSource, number> = { repository: 0, personal: 1, 'built
  * precedence: the repository's, then personal ones, then built-in.
  */
 export function listRecipes(personalDir: string, repoRoot: string | null): RecipeEntry[] {
-  const builtIn = BUILT_IN_RECIPES.map((recipe): RecipeEntry => ({ ref: `built-in:${recipe.name}`, source: 'built-in', name: recipe.name, description: recipe.description, recipe }))
+  const builtIn = BUILT_IN_RECIPES.map((recipe): RecipeEntry => ({ ref: `built-in:${recipe.name}`, source: 'built-in', name: recipe.name, description: recipe.description, recipe, hash: recipeHash(recipe) }))
   const entries = [...(repoRoot ? readRecipeFolder(join(repoRoot, REPO_RECIPES), 'repository') : []), ...readRecipeFolder(personalDir, 'personal'), ...builtIn]
   return entries.sort((a, b) => ORDER[a.source] - ORDER[b.source])
 }

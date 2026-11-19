@@ -105,6 +105,8 @@ export interface RecipeEntry {
   /** The file it was read from. Absent for built-in recipes. */
   file?: string
   recipe?: Recipe
+  /** Names exactly this content, so Start can refuse a recipe that changed after its preview was shown. */
+  hash?: string
   problem?: string
 }
 
@@ -312,13 +314,30 @@ export function isAbsoluteFolder(folder: string): boolean {
   return ABSOLUTE.test(folder)
 }
 
-/** A recipe folder against the working directory. Windows paths, worked out without node:path so the page can use it. */
+/**
+ * A recipe folder against the working directory, with . and .. worked out. Windows paths, without node:path, so the
+ * page can use it too.
+ */
 export function folderIn(cwd: string, folder: string | undefined): string {
   if (!folder || folder === '.' || folder === './') return cwd
   if (isAbsoluteFolder(folder)) return folder
-  const rel = folder.replace(/^\.[\\/]/, '').replace(/[\\/]+$/, '')
   const sep = cwd.includes('\\') || !cwd.includes('/') ? '\\' : '/'
-  return `${cwd.replace(/[\\/]+$/, '')}${sep}${rel.replace(/[\\/]/g, sep)}`
+  const root = cwd.replace(/[\\/]+$/, '')
+  const parts = root.split(/[\\/]/)
+  for (const part of folder.split(/[\\/]+/)) {
+    if (!part || part === '.') continue
+    // The drive is never climbed past.
+    if (part === '..') {
+      if (parts.length > 1) parts.pop()
+    } else parts.push(part)
+  }
+  return parts.join(sep)
+}
+
+/** Whether a folder is the working directory or inside it, ignoring case and slashes, as Windows does. */
+export function isInside(cwd: string, folder: string): boolean {
+  const norm = (p: string): string => p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+  return norm(folder) === norm(cwd) || norm(folder).startsWith(`${norm(cwd)}\\`)
 }
 
 /** Shell characters that would make splitting a command on spaces mean something else than the shell would. */
@@ -326,6 +345,8 @@ const SHELL_SYNTAX = /["'`$%^&|<>;(){}*?!~\\\r\n]/
 
 /** What someone expecting a shell would type: quoting, chaining, redirection and substitution. */
 const SHELL_ONLY = /["'`$&|<>;()\r\n]/
+/** Characters some shell acts on, which a parameter must not bring into a command a shell runs. */
+const SHELL_ACTS_ON = /["'`$&|<>;()%^!\r\n]/
 
 /**
  * A command as an argument list, when splitting it on spaces means exactly what a shell would. Null otherwise.
@@ -379,8 +400,10 @@ export interface RecipePlan {
   /** Sessions to start at once: agents with nothing to wait for, and terminals. */
   starts: string[]
   /** Everything that runs when Start is pressed, as shown in the preview. */
-  runs: Array<{ title: string; what: string; how: 'no shell' | 'your shell'; cwd: string }>
+  runs: Array<{ title: string; what: string; how: 'no shell' | 'your shell' | 'ssh'; cwd: string }>
   warnings: string[]
+  /** Why it can't start as it is. Start is refused while there are any. */
+  problems: string[]
   /** Recipe key to new node id. */
   ids: Record<string, string>
 }
@@ -397,6 +420,20 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
   const skipped = new Set(params.skip ?? [])
   const used = recipe.nodes.filter((n) => !(n.kind === 'setup' && skipped.has(n.key)))
   const warnings: string[] = []
+  const problems: string[] = []
+  /**
+   * A command a shell runs, filled in. Which shell (Git Bash, PowerShell or cmd) isn't known here, so a value can't be
+   * quoted for it: one with characters any of them acts on is refused rather than run.
+   */
+  const fillShell = (template: string, title: string): string => {
+    for (const m of template.matchAll(/\{\{\s*(task|branch|repo|cwd)\s*\}\}/g)) {
+      const name = m[1] as keyof typeof values
+      const bad = values[name].match(SHELL_ACTS_ON)?.[0]
+      const why = `"${title}" puts the ${name} into a command your shell runs, and the ${name} has a character the shell would act on (${JSON.stringify(bad)}). Change the ${name}, or the recipe.`
+      if (bad && !problems.includes(why)) problems.push(why)
+    }
+    return fill(template)
+  }
 
   const frameTitle = fill(recipe.frame?.title ?? (params.task ? `${recipe.name}: {{task}}` : params.branch ? `${recipe.name}: {{branch}}` : recipe.name))
   const right = Math.max(...used.filter((n) => !n.parent).map((n) => n.layout.x + n.layout.width), 0) + FRAME_PADDING
@@ -416,8 +453,12 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
 
   const folderOf = (n: { folder?: string; key: string }): string => {
     const folder = n.folder === undefined ? undefined : fill(n.folder)
-    if (folder && isAbsoluteFolder(folder) && !n.folder!.includes('{{')) warnings.push(`"${n.key}" uses its own folder, ${folder}, which isn't part of the working directory.`)
-    return folderIn(params.cwd, folder)
+    const resolved = folderIn(params.cwd, folder)
+    // A folder named from {{repo}} is outside a new worktree on purpose.
+    const named = !!n.folder && /\{\{\s*(cwd|repo)\s*\}\}/.test(n.folder)
+    const why = `"${n.key}" uses the folder ${resolved}, which isn't part of the working directory.`
+    if (folder && !named && !isInside(params.cwd, resolved) && !warnings.includes(why)) warnings.push(why)
+    return resolved
   }
 
   const nodes: CanvasNode[] = []
@@ -442,15 +483,18 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
         break
       }
       case 'terminal': {
-        const command = n.command ? fill(n.command) : undefined
-        nodes.push({ ...base, kind: 'terminal', cwd: folderOf(n), ...(command ? { command } : {}), ...(n.sshHost ? { sshHost: n.sshHost } : {}) })
-        if (command) runs.push({ title: base.title, what: command, how: 'your shell', cwd: folderOf(n) })
+        const command = n.command ? fillShell(n.command, base.title) : undefined
+        const cwd = folderOf(n)
+        nodes.push({ ...base, kind: 'terminal', cwd, ...(command ? { command } : {}), ...(n.sshHost ? { sshHost: n.sshHost } : {}) })
+        // An SSH terminal connects as soon as it starts, so it's listed with what runs.
+        if (n.sshHost) runs.push({ title: base.title, what: `ssh ${n.sshHost}${command ? `, then ${command}` : ''}`, how: 'ssh', cwd })
+        else if (command) runs.push({ title: base.title, what: command, how: 'your shell', cwd })
         break
       }
       case 'run': {
         const cwd = folderOf(n)
         if (n.launch) nodes.push({ ...base, kind: 'run', cwd, command: `launch.json: ${n.launch}`, launch: { folder: cwd, name: n.launch } })
-        else nodes.push({ ...base, kind: 'run', cwd, command: fill(n.command ?? '') })
+        else nodes.push({ ...base, kind: 'run', cwd, command: fillShell(n.command ?? '', base.title) })
         break
       }
       case 'setup': {
@@ -495,7 +539,7 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
     const agents = used.filter((n) => n.kind === 'agent').length
     if (agents > 1) warnings.push('These agents share one checkout. Patchbay does not isolate or lock files between them, so they can overwrite each other\'s changes.')
   }
-  return { frame, nodes, edges, setup, holds, after: afterOnly, starts, runs, warnings, ids }
+  return { frame, nodes, edges, setup, holds, after: afterOnly, starts, runs, warnings, problems, ids }
 }
 
 // Saving a selection
@@ -520,6 +564,22 @@ export interface SavedRecipe {
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Where a saved text names the branch, to become {{branch}}. A name that is a plain word, such as docs or fix, is also
+ * an ordinary word, so it's only taken where it reads as a branch: after checkout, switch, -b or branch, in backticks,
+ * or as a folder in a path. A name with -, /, _, . or a digit, such as dark-mode, is taken wherever it stands alone.
+ */
+export function branchPatterns(branch: string | undefined): RegExp[] {
+  if (!branch || branch.length < 2) return []
+  const b = escapeRegExp(branch)
+  if (/[-/_.\d]/.test(branch)) return [new RegExp(`(?<![\\w/-])${b}(?![\\w/-])`, 'g')]
+  return [
+    new RegExp(`(?<=\\b(?:checkout|switch|branch|-b|-B|--branch)\\s+)${b}(?![\\w/-])`, 'g'),
+    new RegExp(`(?<=\`)${b}(?=\`)`, 'g'),
+    new RegExp(`(?<=[\\\\/])${b}(?=[\\\\/]|$|\\s)`, 'g')
+  ]
+}
 
 function slug(title: string): string {
   const s = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)
@@ -592,9 +652,9 @@ export function recipeFromSelection(nodes: CanvasNode[], edges: Edge[], selected
   }
 
   const replacements: Array<[RegExp, string]> = [
-    ...[...keys].map(([id, key]): [RegExp, string] => [new RegExp(escapeRegExp(id), 'g'), `{{node:${key}}}`]),
+    ...[...keys].map(([id, key]): [RegExp, string] => [new RegExp(`(?<![\\w-])${escapeRegExp(id)}(?![\\w-])`, 'g'), `{{node:${key}}}`]),
     ...(opts.cwd ? [[new RegExp(escapeRegExp(opts.cwd), 'gi'), '{{cwd}}'] as [RegExp, string]] : []),
-    ...(opts.branch && opts.branch.length > 2 ? [[new RegExp(`(?<![\\w/-])${escapeRegExp(opts.branch)}(?![\\w/-])`, 'g'), '{{branch}}'] as [RegExp, string]] : [])
+    ...branchPatterns(opts.branch).map((re): [RegExp, string] => [re, '{{branch}}'])
   ]
   const generic = (t: string): string => replacements.reduce((s, [re, to]) => s.replace(re, to), t)
   const folder = (cwd: string): { folder?: string } => {
@@ -690,7 +750,7 @@ export interface RecipeBridge {
   /** Built-in, personal and the project's repository recipes. Reading them runs nothing. */
   list(projectId: string): Promise<{ entries: RecipeEntry[]; repo: string | null; folder: string }>
   /** Makes the nodes and starts what the preview showed. */
-  start(a: { projectId: string; ref: string; params: RecipeParams; at?: { x: number; y: number } }): Promise<RecipeStartResult | { ok: false; reason: string }>
+  start(a: { projectId: string; ref: string; hash?: string; params: RecipeParams; at?: { x: number; y: number } }): Promise<RecipeStartResult | { ok: false; reason: string }>
   save(a: { projectId: string; recipe: Recipe; where: 'personal' | 'repository'; overwrite?: boolean }): Promise<{ ok: true; file: string } | { ok: false; reason: string; exists?: boolean }>
   /** Clears an agent's setup hold and starts it. */
   startAnyway(nodeId: string): Promise<void>

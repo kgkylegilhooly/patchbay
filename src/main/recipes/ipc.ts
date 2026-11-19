@@ -12,10 +12,10 @@ export function registerRecipeIpc({ service, setupGate }: { service: RecipeServi
     ipcMain.handle(`pb:recipes:${name}`, (_e, ...args: unknown[]) => (fn as (...a: unknown[]) => unknown)(...args))
   }
   handle('list', (projectId: string) => service.list(String(projectId)))
-  handle('start', async (a: { projectId: string; ref: string; params: RecipeParams; at?: { x: number; y: number } }) => {
+  handle('start', async (a: { projectId: string; ref: string; hash?: string; params: RecipeParams; at?: { x: number; y: number } }) => {
     try {
       const at = a?.at && Number.isFinite(a.at.x) && Number.isFinite(a.at.y) ? { x: a.at.x, y: a.at.y } : undefined
-      return await service.start({ projectId: String(a?.projectId), ref: String(a?.ref), params: a?.params, at })
+      return await service.start({ projectId: String(a?.projectId), ref: String(a?.ref), ...(typeof a?.hash === 'string' ? { hash: a.hash } : {}), params: a?.params, at })
     } catch (e) {
       return { ok: false, reason: message(e) }
     }
@@ -29,6 +29,8 @@ export function registerRecipeIpc({ service, setupGate }: { service: RecipeServi
       return { ok: false, reason: message(e) }
     }
   })
+  // Plans of setup steps whose nodes have since closed. Once the canvas has settled, so it costs start-up nothing.
+  setTimeout(() => service.prunePlans(), 60_000).unref()
   handle('startAnyway', (id: string) => setupGate.startAnyway(String(id)))
   handle('openRecipesFolder', async (projectId: string, where: string) => {
     const dir = await service.folderFor(String(projectId), where === 'repository' ? 'repository' : 'personal')

@@ -410,7 +410,11 @@ linked, and setup steps that run before the agents start.
 - **Save selection as recipe…** saves the selected nodes, with folders made relative and the branch made a parameter.
   Sessions, conversations and output are never saved.
 - The built-in **Implement and review** has a Claude implementer, a Codex reviewer that starts after it, a setup step,
-  a test command and a shared brief. Agents use `patchbay recipes` and `patchbay run-recipe`.
+  a test command and a shared brief. Agents use `patchbay recipes` and `patchbay run-recipe`, but only you can start
+  a repository's own recipe.
+- **Start runs what the preview showed.** A recipe file changed since is refused. A task or branch with characters a
+  shell acts on is refused where the recipe puts it into a terminal or run command, and SSH terminals are listed
+  with what runs.
 
 The design is in `docs/plans/recipes.md`.
 
