@@ -321,6 +321,16 @@ export function SettingsPage({
                   ))}
                 </select>
               </Row>
+              <Row
+                title="Claude's own messages"
+                htmlFor="claudeNativeMessaging"
+                help="Claude Code can find and message any other Claude session on this PC by itself. Off, Claude windows message only through Patchbay, to the windows they opened or that you linked, and refuse messages from other sessions. Subagents and teams inside a window work either way. New and restarted Claude windows use it."
+              >
+                <select id="claudeNativeMessaging" name="claudeNativeMessaging" value={draft?.claudeNativeMessaging === 'on' ? 'on' : ''} onChange={(e) => set('claudeNativeMessaging', e.target.value)}>
+                  <option value="">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </Row>
             </div>
           </>
         )}

@@ -13,7 +13,8 @@ import { watchSignals, type SignalWatcher } from './sessions/signals'
 import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
-import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
+import { loadOrCreateSecret, RpcRefusal, startControlServer, type ControlServer } from './control/server'
+import { hookFromAnotherNode } from './control/hookIdentity'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { createWorktree } from '../core/worktree/service'
@@ -442,6 +443,11 @@ async function boot(): Promise<void> {
     secret,
     endpointFile,
     onHook: async (id, payload, signal) => {
+      const owner = hookFromAnotherNode(id, payload, store.get().nodes)
+      if (owner) {
+        log?.write(`Refused a ${String(payload.hook_event_name)} hook sent as ${id} for a session of ${owner}.`)
+        throw new RpcRefusal("This hook came from another node's session.")
+      }
       signals?.heardHook(id)
       const answer = await runner.handleHook(id, payload, signal)
       if (payload.hook_event_name !== 'SessionStart') return answer

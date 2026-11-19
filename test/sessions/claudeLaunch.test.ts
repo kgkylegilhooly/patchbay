@@ -106,7 +106,8 @@ test('an agent may read Patchbay\'s skill and exports, and run the verbs that on
   for (const verb of ['send', 'open-agent', 'open-terminal', 'spawn-team', 'draw', 'note', 'close', 'link', 'sticky', 'browser']) {
     expect(permissions.allow.some((r: string) => r.startsWith(`Bash(patchbay ${verb}`))).toBe(false)
   }
-  expect(permissions.deny).toBeUndefined()
+  // Nothing of the person's own work is denied: only Claude's own way of finding other sessions (nativeMessaging.test).
+  expect(permissions.deny).toEqual(['ListAgents'])
 })
 
 test('paths are written the way Claude Code matches them on Windows', () => {

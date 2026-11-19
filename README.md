@@ -422,6 +422,14 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 - **What agents may do.** They read and message only nodes they opened or that you linked to them, stay in their own
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
+- **Claude's own messages between sessions are off.** Claude Code can find and message any other Claude session on
+  the PC by itself, around the rule above. In Patchbay's Claude windows it's off: they refuse messages from other
+  sessions (`crossSessionInbound: "refuse"`) and can't list them (`ListAgents` is denied). Subagents and teams inside
+  one window still talk to each other. Settings > Agents > Claude's own messages, or `"claudeNativeMessaging": "on"`,
+  turns it back on for new and restarted windows, and Claude's own rules and yours then apply.
+- **Each node speaks for itself.** Hooks and the `patchbay` tool know their node from its environment. Codex nodes start
+  with `--no-daemon`, so a shared Codex server can't run one node's hooks with another's environment, and Patchbay
+  refuses a hook that names another node's session.
 - **An agent waiting on you shows it.** An agent stopped at a question before it starts, such as Claude's or Codex's
   question about trusting a new folder, shows needs-you, so the agent that opened it can tell you which node.
 - **Long briefs and diagrams** can be piped in: `--prompt-file -`, `--members-file -` and `--diagram-file -` read a

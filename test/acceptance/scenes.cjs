@@ -364,6 +364,12 @@ const scenes = {
     await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
     await sleep(400)
   },
+  'settings-messaging': async (page) => {
+    await scenes['settings-agents'](page)
+    // The row's help runs below its select, so its whole group goes into view.
+    await page.evaluate(() => document.getElementById('claudeNativeMessaging')?.closest('.set-group')?.scrollIntoView({ block: 'end' }))
+    await sleep(400)
+  },
   'project-menu': async (page) => {
     const tab = await page.$('.project-tab')
     await tab.click({ button: 'right' })

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { buildCodexLaunch, CODEX_HOOK_EVENTS, codexHookArgs, type CodexLaunchContext } from '../../src/main/sessions/codexLaunch'
+import { buildCodexLaunch, CODEX_HOOK_EVENTS, CODEX_NO_DAEMON, codexHookArgs, codexKnowsNoDaemon, type CodexLaunchContext } from '../../src/main/sessions/codexLaunch'
 import type { ClaudeNode } from '../../src/shared/model'
 
 const node = (over: Partial<ClaudeNode> = {}): ClaudeNode => ({
@@ -25,6 +25,8 @@ const ctx = (over: Partial<CodexLaunchContext> = {}): CodexLaunchContext => ({
   endpointFile: 'C:\\Users\\me\\AppData\\Roaming\\Patchbay\\control.json',
   token: 'tok',
   codex: { file: 'C:\\bin\\codex.exe', prefixArgs: [] },
+  // Not asked of a program that isn't there.
+  noDaemon: true,
   baseEnv: { Path: 'C:\\Windows', CLAUDECODE: '1' },
   ...over
 })
@@ -88,4 +90,42 @@ test('never ask keeps the sandbox, and skip all drops both, for new and resumed 
 
 test('an unknown setting is the default', () => {
   expect(buildCodexLaunch(node(), ctx({ codexApproval: 'yolo' })).args).toEqual(buildCodexLaunch(node(), ctx()).args)
+})
+
+test('every Codex node runs its own server rather than the shared one, new and resumed alike', () => {
+  for (const n of [node({ prompt: 'go' }), node({ sessionId: '01a1b417-7804-7de2-9708-a1a98b5cc824' })]) {
+    const args = buildCodexLaunch(n, ctx({ noDaemon: true })).args
+    const flag = args.indexOf(CODEX_NO_DAEMON)
+    expect(flag).toBeGreaterThan(-1)
+    // An option, so before the prompt's -- and the session id.
+    expect(flag).toBeLessThan(args.length - 1)
+    if (n.prompt) expect(flag).toBeLessThan(args.indexOf('--'))
+    if (n.sessionId) expect(args[0]).toBe('resume')
+  }
+})
+
+test('a Codex too old for the flag is left without it, so it still starts', () => {
+  expect(buildCodexLaunch(node(), ctx({ noDaemon: false })).args).not.toContain(CODEX_NO_DAEMON)
+})
+
+test('a custom Codex command gets the flag, and its line carries it', () => {
+  const launch = buildCodexLaunch(node(), ctx({ codex: undefined, noDaemon: undefined, codexCommand: `"${process.execPath}" codex.js` }))
+  expect(launch.args.join(' ')).toContain(CODEX_NO_DAEMON)
+})
+
+test("whether Codex knows the flag is asked once per program, and an unanswerable question keeps the flag", () => {
+  let asked = 0
+  const knows = (file: string, args: string[]): string => {
+    asked++
+    expect(args).toEqual(['--help'])
+    return file.includes('old') ? 'Usage: codex [OPTIONS]' : '      --no-daemon\n          Run without the shared background server'
+  }
+  expect(codexKnowsNoDaemon({ file: 'C:\new\codex.exe', prefixArgs: [] }, knows)).toBe(true)
+  expect(codexKnowsNoDaemon({ file: 'C:\new\codex.exe', prefixArgs: [] }, knows)).toBe(true)
+  expect(asked).toBe(1)
+  expect(codexKnowsNoDaemon({ file: 'C:\old\codex.exe', prefixArgs: [] }, knows)).toBe(false)
+  const broken = (): string => {
+    throw new Error('ENOENT')
+  }
+  expect(codexKnowsNoDaemon({ file: 'C:\gone\codex.exe', prefixArgs: [] }, broken)).toBe(true)
 })
