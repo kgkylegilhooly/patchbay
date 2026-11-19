@@ -6,6 +6,7 @@ import { isSessionNode, whereShown, type AgentStatus, type CanvasNode } from '..
 import { bridge } from '../bridge'
 import { KindIcon } from '../icons'
 import { PortChips } from '../PortChips'
+import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
 import { runDot, runFailed, runLabel } from './runView'
@@ -228,6 +229,7 @@ export function NodeChrome({
             {context.text}
           </span>
         )}
+        {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
         <span className="cwd" title={cwd}>
           {cwd}
         </span>

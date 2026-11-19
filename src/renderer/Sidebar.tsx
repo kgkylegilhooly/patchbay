@@ -8,6 +8,7 @@ import { closedProjectMenu, type Commands, type Point } from './menus'
 import { runDot, runFailed, runLabel } from './nodes/runView'
 import { StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
+import { FilesChip } from './FilesChip'
 import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, statusSections } from './sidebarView'
@@ -83,6 +84,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
           )}
         </span>
         <PortChips nodeId={session.id} />
+        {session.kind === 'claude' && <FilesChip nodeId={session.id} />}
       </button>
       {peekable && <PeekButton id={session.id} title={session.title} />}
     </li>

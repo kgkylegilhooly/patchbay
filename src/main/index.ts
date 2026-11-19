@@ -37,6 +37,8 @@ import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
 import { registerReviewIpc } from './review/ipc'
 import { setupCompare } from './compare/setup'
+import { setupFilesTouched } from './files/setup'
+import { withFilesVerbs } from './files/verbs'
 import { setupSubagents } from './subagents/setup'
 import {
   closeAction,
@@ -422,7 +424,9 @@ async function boot(): Promise<void> {
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
-  const allVerbs = withRecipeVerbs(verbs, { store, service: recipes })
+  // Which files each agent session edited, from its transcript, with a snapshot as each turn starts. See src/main/files.
+  const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
+  const allVerbs = withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
