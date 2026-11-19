@@ -8,6 +8,7 @@ export function NewSessionForm({
   kind,
   initialFolder,
   initialCommand = '',
+  folderFor,
   editing = false,
   onCancel,
   onOpen
@@ -15,11 +16,13 @@ export function NewSessionForm({
   kind: 'claude' | 'codex' | 'terminal' | 'run' | 'team'
   initialFolder: string
   initialCommand?: string
+  /** For a terminal: where one of this profile (the default, with none) opens when no folder is chosen. */
+  folderFor?: (profile: string | undefined) => string
   editing?: boolean
   onCancel: () => void
   onOpen: (fields: { cwd: string; text?: string; profile?: string }) => void
 }): React.JSX.Element {
-  const [cwd, setCwd] = useState(initialFolder)
+  const [cwd, setCwd] = useState(() => (folderFor ? folderFor(undefined) : initialFolder))
   const [text, setText] = useState(initialCommand)
   const [profile, setProfile] = useState<string | undefined>(undefined)
   /** The folder the person chose, so picking a profile with its own folder doesn't replace it. */
@@ -71,9 +74,10 @@ export function NewSessionForm({
       {kind === 'terminal' && !editing && (
         <ProfilePicker
           value={profile}
-          onChange={(id, folder) => {
+          onChange={(id) => {
             setProfile(id)
-            if (folder && !chose.current) setCwd(folder)
+            // The same order as the menus and patchbay open-terminal: see terminalFolderFor.
+            if (folderFor && !chose.current) setCwd(folderFor(id))
           }}
         />
       )}

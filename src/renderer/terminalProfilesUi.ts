@@ -54,6 +54,14 @@ export function profileFolder(id: string | undefined): string | undefined {
   return (id ? current?.profiles.find((p) => p.id === id) : current?.profiles[0])?.cwd
 }
 
+/**
+ * Where a new terminal opens, in the same order as `patchbay open-terminal`: a folder the person chose, then the group's
+ * worktree, then the profile's folder, then wherever new sessions open otherwise.
+ */
+export function terminalFolderFor(o: { chosen?: string; worktree?: string; profileCwd?: string; fallback: string }): string {
+  return o.chosen || o.worktree || o.profileCwd || o.fallback
+}
+
 /** The profiles other than the default, which plain New terminal already opens. */
 export function otherProfiles(): TerminalProfile[] {
   return current ? current.profiles.slice(1) : []

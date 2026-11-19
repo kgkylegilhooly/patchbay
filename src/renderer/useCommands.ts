@@ -5,7 +5,7 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
-import { pickedProfile, profileFolder } from './terminalProfilesUi'
+import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfilesUi'
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
@@ -47,6 +47,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
   defaultFolder: (groupId?: string) => string
+  /** Where a new terminal of this profile (the default, with none) opens: see terminalFolderFor. */
+  terminalFolder: (groupId?: string, profileId?: string) => string
   fitAll: () => void
 } {
   const flow = useReactFlow<FlowNode, FlowEdge>()
@@ -73,11 +75,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
     }
 
     /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
-    const terminalFolder = (groupId?: string, profileId?: string): string => {
-      const group = groupFor(groupId)
-      if (group?.worktree) return group.worktree.path
-      return profileFolder(profileId) ?? defaultFolder(groupId)
-    }
+    const terminalFolder = (groupId?: string, profileId?: string): string =>
+      terminalFolderFor({ worktree: groupFor(groupId)?.worktree?.path, profileCwd: profileFolder(profileId), fallback: defaultFolder(groupId) })
 
     const place = (at?: Point, groupId?: string) => {
       const group = groupFor(groupId)
@@ -311,6 +310,6 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       else dispatch({ op: 'addNode', node: newTrigger(place(form.at), crypto.randomUUID(), fields) })
     }
 
-    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, fitAll }
+    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder, fitAll }
   }, [flow, prefsRef, selectedRef, setForm, setNodes, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen])
 }
