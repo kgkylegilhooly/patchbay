@@ -50,6 +50,7 @@ import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { SubagentLayer } from './subagents/SubagentLayer'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -401,6 +402,7 @@ function Canvas(): React.JSX.Element | null {
           attributionPosition="top-right"
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
+          <SubagentLayer />
           {prefs.minimap && (
             <MiniMap<FlowNode>
               pannable

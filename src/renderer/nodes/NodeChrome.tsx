@@ -13,6 +13,7 @@ import { StatusBadge, StatusDot } from './StatusBadge'
 import { WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
+import { SubagentEye } from '../subagents/SubagentEye'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -212,6 +213,7 @@ export function NodeChrome({
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
+        {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
         {status && <StatusBadge status={status} />}
         {isRun && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
         {node.kind === 'run' && node.launch && (
