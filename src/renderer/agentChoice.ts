@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { agentChoice, commandAllowed, type AgentChoice } from '../shared/agents'
+import { agentChoice, agentOffReason, commandAllowed, type AgentChoice } from '../shared/agents'
+import type { AgentKind } from '../shared/model'
 import type { Settings } from '../shared/settings'
 
 /**
@@ -18,6 +19,12 @@ export function loadAgentChoice(read: () => Promise<Settings>): void {
   void read()
     .then(noteAgentSettings)
     .catch(() => undefined)
+}
+
+/** Why an agent of this kind can't be started or reopened now, as a button's title, or null. Absent means Claude Code. */
+export function useAgentOff(): (agent?: AgentKind) => string | null {
+  const choice = useAgentChoice()
+  return (agent) => agentOffReason(agent ?? 'claude', choice)
 }
 
 /** For a command, menu item or button: false only when it opens an agent that's turned off. */

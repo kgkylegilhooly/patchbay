@@ -137,7 +137,8 @@ describe('starting, restarting and resuming', () => {
     expect(killed).toEqual([])
     expect(host.isRunning('x')).toBe(true)
     expect(specs).toHaveLength(1)
-    expect(runner.errors().x?.message).toMatch(/Codex is turned off/)
+    // No start error over a session that's still running: the window shows the refusal as a notice instead.
+    expect(runner.errors().x).toBeUndefined()
     // Once Codex is on again, restart works.
     settings = {}
     await runner.restartNode('x')
@@ -166,7 +167,7 @@ describe('triggers', () => {
     const trig = () => store.get().nodes.find((n) => n.id === 'tr') as TriggerNode
     expect(service.arm('tr', canonicalSpec(trig()))).toEqual({ ok: true })
     const r = service.runNow('tr')
-    expect(r).toMatchObject({ ok: true, run: { outcome: 'failed', detail: expect.stringMatching(/^Codex is turned off in Settings > Agents/) } })
+    expect(r).toMatchObject({ ok: true, run: { outcome: 'failed', detail: expect.stringMatching(/^Codex is turned off in Settings > Agents.*"t" is still running, but nothing was sent to it.$/) } })
     expect(trig().runs[0].outcome).toBe('failed')
     expect(host.writes).toEqual([])
   })

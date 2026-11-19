@@ -26,6 +26,10 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
   const [problem, setProblem] = useState<string | null>(null)
   const agents = useAgentChoice()
   const [agent, setAgent] = useState<AgentKind>(agents.enabled.includes('claude') ? 'claude' : agents.default)
+  // Settings may be read, or change, after this opens: never leave an agent that's off chosen.
+  useEffect(() => {
+    if (!agents.enabled.includes(agent)) setAgent(agents.default)
+  }, [agents, agent])
   const [title, setTitle] = useState(`Continue: ${source.title}`.slice(0, 80))
   const [cwd, setCwd] = useState('')
   const [starting, setStarting] = useState(false)

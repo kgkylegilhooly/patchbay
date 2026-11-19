@@ -92,7 +92,7 @@ export function createTriggerService({
       if (!isTriggerTarget(target)) return run('missed', 'What it sends to is gone.')
       // Settings > Agents: nothing goes to an agent turned off, even one still running.
       const off = target.kind === 'claude' ? agentOffNow(agentOf(target)) : null
-      if (off) return run('failed', off)
+      if (off) return run('failed', host.isRunning(target.id) ? `${off} "${target.title}" is still running, but nothing was sent to it.` : off)
       if (!host.isRunning(target.id) || (target.kind === 'claude' && tracker.get(target.id) === 'exited')) {
         return run('missed', `"${target.title}" wasn't running. A trigger never starts a session.`)
       }

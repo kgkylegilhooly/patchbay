@@ -2,11 +2,13 @@ import { useState } from 'react'
 import type { ClosedSession } from '../shared/model'
 import { bridge } from './bridge'
 import { useStore } from './store'
+import { useAgentOff } from './agentChoice'
 
 const NONE: ClosedSession[] = []
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 function Entry({ entry, onView }: { entry: ClosedSession; onView: (e: ClosedSession) => void }): React.JSX.Element {
+  const off = useAgentOff()(entry.agent)
   return (
     <li className="recent-entry">
       <div className="recent-title">{entry.title}</div>
@@ -17,7 +19,7 @@ function Entry({ entry, onView }: { entry: ClosedSession; onView: (e: ClosedSess
         Closed {TIME.format(entry.closedAt)}
       </time>
       <div className="recent-actions">
-        <button className="btn" onClick={() => void bridge.reopenClosed(entry.id)}>
+        <button className="btn" disabled={!!off} title={off ?? undefined} onClick={() => void bridge.reopenClosed(entry.id)}>
           Reopen
         </button>
         <button className="btn" onClick={() => onView(entry)}>

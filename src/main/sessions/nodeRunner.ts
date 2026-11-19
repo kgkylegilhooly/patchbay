@@ -441,9 +441,9 @@ export function createNodeRunner({
         return startNode(id)
       }
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
-      // Refused before anything is stopped, so a session that's running keeps running.
+      // Refused before anything is stopped, so a session that's running keeps running, with no start error over it.
       const off = node.kind === 'claude' ? agentOff(node) : null
-      if (off) return setError(id, { code: 'spawn-failed', message: off })
+      if (off) return host.isRunning(id) ? undefined : setError(id, { code: 'spawn-failed', message: off })
       const run = runs.get(id)
       if (run) run.stopping = true
       if (host.isRunning(id)) await host.kill(id)

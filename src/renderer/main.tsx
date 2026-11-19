@@ -7,5 +7,7 @@ import { connectStore } from './store'
 
 void connectStore()
 loadAgentChoice(() => bridge.getSettings())
+// Picks up a hand edit of settings.json too.
+window.addEventListener('focus', () => loadAgentChoice(() => bridge.getSettings()))
 watchForSlowTasks()
 createRoot(document.getElementById('root')!).render(<App />)
