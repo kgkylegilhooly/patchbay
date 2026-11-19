@@ -8,9 +8,25 @@ import { lockAttach, lockGuest, lockSession } from './guard'
 import type { DesignPick } from '../../shared/design'
 import { CANCEL_SOURCE, PICK_SOURCE } from './designPick'
 import { pageCall, WORLD_ID } from './pageScripts'
+import { BrowserEvidenceStore } from './evidenceStore'
+import { observedViewport, observeRevision, privateScreenshot } from './evidence'
+import { VIEWPORTS, type BrowserAttempt, type BrowserDiagnostic, type EvidenceViewport, type ViewportPreset } from '../../shared/browserEvidence'
+import { randomUUID } from 'node:crypto'
+import { EvidenceNetwork } from './evidenceNetwork'
 
 /** What the agent verbs need from a page. Anything they can't do comes back as a refusal saying why. */
 export interface BrowserDriver {
+  evidence?: {
+    list(id: string): BrowserAttempt[]
+    diagnostics(id: string, kind: BrowserDiagnostic['kind']): BrowserDiagnostic[]
+    viewport(id: string, preset: ViewportPreset): Promise<EvidenceViewport>
+    start(id: string, taskId?: string): Promise<BrowserAttempt>
+    capture(id: string, check: () => void): Promise<BrowserAttempt[]>
+    finish(id: string, assertion: BrowserAttempt['assertion']): BrowserAttempt
+    action(id: string, action: string, state: 'completed' | 'failed'): void
+    interrupt(id: string): void
+    image(id: string, attemptId: string, index: number): string | null
+  }
   /** Until the canvas has drawn this node's page, or the limit passes. */
   waitReady(id: string, timeoutMs: number): Promise<boolean>
   /** Until the page finishes loading, or the limit passes. Whether it finished. */
@@ -129,6 +145,17 @@ export function createBrowserDriver({
   const waiting = new Map<string, Array<() => void>>()
   const pushTimers = new Map<string, NodeJS.Timeout>()
   const urlTimers = new Map<string, NodeJS.Timeout>()
+  const pages = new Map<string, string>()
+  const presets = new Map<string, ViewportPreset>()
+  const evidence = new BrowserEvidenceStore(dataDir, (id) => {
+    if (states.has(id)) { states.set(id, { ...states.get(id)!, evidence: evidence.list(id), evidenceNotice: evidence.problem }); pushSoon(id) }
+  })
+  store.subscribe(doc => {
+    for (const id of guests.keys()) {
+      const node = doc.nodes.find(n => n.id === id)
+      if (!node || (node.kind === 'browser' && node.held)) evidence.interrupt(id, 'Human takeover or node removal interrupted recording.')
+    }
+  })
 
   const nodeOf = (id: string) => store.get().nodes.find((n) => n.id === id)
   const idOf = (guest: WebContents | null): string | undefined => {
@@ -139,6 +166,10 @@ export function createBrowserDriver({
     const guest = guests.get(id)
     if (!guest || guest.isDestroyed()) throw new RpcRefusal(`Browser node "${id}" isn't showing a page right now.`)
     return guest
+  }
+  const agentCheck = (id: string): void => {
+    const node = nodeOf(id)
+    if (!node || (node.kind === 'browser' && node.held)) throw new RpcRefusal('The person has taken control or removed the browser.')
   }
 
   /** A busy page can change a lot at once, and none of it should crowd the canvas. */
@@ -182,6 +213,17 @@ export function createBrowserDriver({
   }
 
   const follow = (id: string, guest: WebContents): void => {
+    pages.set(id, randomUUID())
+    guest.debugger.on('detach', () => {
+      if (!presets.delete(id)) return
+      evidence.gap(id, 'Viewport override was detached; later captures use the node size.')
+      change(id, { notice: 'Viewport preset was released. Set it again before continuing the check.' })
+    })
+    guest.on('did-start-navigation', (_e, _url, _inPlace, main) => { if (main) pages.set(id, randomUUID()) })
+    guest.on('console-message', (details) => {
+      if (details.level !== 'error') return
+      evidence.diagnostic({ at: Date.now(), nodeId: id, pageId: pages.get(id)!, pageUrl: guest.getURL(), kind: 'console', message: 'Console error (message omitted for privacy).', url: details.sourceId, line: details.lineNumber })
+    })
     const update = (): void => refresh(id, guest)
     const moved = (): void => {
       update()
@@ -202,6 +244,8 @@ export function createBrowserDriver({
     guest.on('render-process-gone', (_e, details) => change(id, { notice: `The page stopped working (${details.reason}). Reload to try again.`, loading: false }))
     guest.once('destroyed', () => {
       if (guests.get(id) !== guest) return
+      evidence.interrupt(id, 'Page detached; recording stopped. Show the project and start a new attempt.')
+      evidence.forgetRecent(id)
       guests.delete(id)
       states.delete(id)
       pushSoon(id)
@@ -251,10 +295,18 @@ export function createBrowserDriver({
   const driver: LiveBrowserDriver = {
     install() {
       for (const partition of BROWSER_PARTITIONS) {
+        const network = new EvidenceNetwork(contentsId => {
+          const guest = webContents.fromId(contentsId)
+          const id = guest ? idOf(guest) : undefined
+          return id && guest ? { nodeId: id, pageId: pages.get(id)!, pageUrl: guest.getURL(), attemptId: evidence.active(id)?.id ?? null } : undefined
+        }, d => evidence.diagnostic(d), id => evidence.gap(id, 'Network tracking limit reached; some failures may be missing.'))
         lockSession(session.fromPartition(partition), (contents, message) => {
           const id = idOf(contents)
           if (id) change(id, { notice: message })
-        })
+        }, d => network.start(d))
+        // These events are distinct from the onBeforeRequest security guard. Never inspect headers or bodies.
+        session.fromPartition(partition).webRequest.onErrorOccurred(d => network.end(d, true))
+        session.fromPartition(partition).webRequest.onCompleted(d => network.end(d, false))
       }
       app.on('web-contents-created', (_e, contents) => {
         contents.on('will-attach-webview', (event, prefs, params) => {
@@ -273,8 +325,9 @@ export function createBrowserDriver({
       const guest = webContents.fromId(contentsId)
       if (node?.kind !== 'browser' || !guest || guest.getType() !== 'webview') return
       if (guest.hostWebContents !== from || guest.session !== session.fromPartition(partitionFor(node))) return
+      if (guests.get(id) === guest) return
       guests.set(id, guest)
-      states.set(id, { url: guest.getURL() || node.url, title: guest.getTitle(), loading: guest.isLoading(), canBack: false, canForward: false, notice: null, driving: null })
+      states.set(id, { url: guest.getURL() || node.url, title: guest.getTitle(), loading: guest.isLoading(), canBack: false, canForward: false, notice: null, driving: null, evidence: evidence.list(id), evidenceNotice: evidence.problem })
       follow(id, guest)
       pushSoon(id)
       for (const wake of waiting.get(id) ?? []) wake()
@@ -350,7 +403,9 @@ export function createBrowserDriver({
       await shown(guest, id, () =>
         bounded(
           withDebugger(guest, async (send) => {
+            agentCheck(id)
             await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
+            agentCheck(id)
             await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse })
             await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse })
           }),
@@ -367,7 +422,9 @@ export function createBrowserDriver({
       await shown(guest, id, () =>
         bounded(
           withDebugger(guest, async (send) => {
+            agentCheck(id)
             await send('Emulation.setFocusEmulationEnabled', { enabled: true })
+            agentCheck(id)
             await send('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', ...key })
             await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
           }),
@@ -380,24 +437,85 @@ export function createBrowserDriver({
 
     async screenshot(id) {
       const guest = guestOf(id)
-      const { data } = (await shown(guest, id, () =>
+      const viewport = presets.has(id) ? await observedViewport(guest) : null
+      const { data } = (await privateScreenshot(guest, () => shown(guest, id, () =>
         bounded(
-          withDebugger(guest, (send) => send('Page.captureScreenshot', { format: 'png' })),
+          withDebugger(guest, (send) => { agentCheck(id); return send('Page.captureScreenshot', { format: 'png', ...(viewport ? { clip: { x: 0, y: 0, width: viewport.width, height: viewport.height, scale: 1 }, captureBeyondViewport: true } : {}) }) }),
           TIMEOUTS.screenshotMs,
           'to draw a picture. A window that is minimized or hidden may not draw'
         )
-      )) as { data: string }
+      ))) as { data: string }
       const png = Buffer.from(data, 'base64')
       if (png.length > LIMITS.screenshotBytes) throw new RpcRefusal(`That picture is over ${LIMITS.screenshotBytes} bytes. Make the node smaller.`)
       mkdirSync(shotsDir, { recursive: true })
       const path = join(shotsDir, `${id.slice(0, 40).replace(/[^\w-]/g, '_')}-${Date.now()}.png`)
       writeFileSync(path, png)
       trimShots()
+      evidence.prune()
       return { path, width: png.readUInt32BE(16), height: png.readUInt32BE(20), bytes: png.length }
     },
 
     noteDriving(id, by, action) {
       change(id, { driving: { by, action, at: Date.now() } })
+    },
+
+    evidence: {
+      list: (id) => evidence.list(id),
+      diagnostics: (id, kind) => evidence.diagnostics(id, kind),
+      async viewport(id, preset) {
+        const guest = guestOf(id)
+        const size = VIEWPORTS[preset]
+        // Detaching a DevTools session resets emulation. Keep one session for this guest's preset lifetime,
+        // so screenshots and input borrow it instead of silently restoring the canvas viewport after each call.
+        if (!guest.debugger.isAttached()) guest.debugger.attach('1.3')
+        await guest.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: 1, mobile: false, screenWidth: size.width, screenHeight: size.height })
+        presets.set(id, preset)
+        await new Promise(r => setTimeout(r, 100))
+        return { ...await observedViewport(guest), preset }
+      },
+      async start(id, taskId) {
+        const node = nodeOf(id)
+        let parent = node?.parentId ? nodeOf(node.parentId) : undefined
+        let cwd: string | undefined
+        const visited = new Set<string>()
+        while (parent && !visited.has(parent.id)) {
+          visited.add(parent.id)
+          if (parent.kind === 'group' && parent.worktree) { cwd = parent.worktree.path; break }
+          parent = parent.parentId ? nodeOf(parent.parentId) : undefined
+        }
+        cwd ??= store.get().projects.find(p => p.id === (node?.projectId ?? store.get().activeProjectId))?.folder
+        const revision = await observeRevision(cwd)
+        if (nodeOf(id)?.kind !== 'browser' || (nodeOf(id) as { held?: boolean }).held) throw new RpcRefusal('The person has taken control.')
+        const guest = guestOf(id)
+        return evidence.start({ nodeId: id, projectId: node?.projectId, taskId, url: guest.getURL(), viewport: { ...await observedViewport(guest), preset: presets.get(id) }, revision })
+      },
+      async capture(id, check) {
+        if (!evidence.active(id)) throw new RpcRefusal('No attempt is recording. Start one first.')
+        const guest = guestOf(id)
+        let at = Date.now()
+        const pageId = pages.get(id)!
+        const url = guest.getURL()
+        let viewport: EvidenceViewport = { width: 0, height: 0 }
+        try {
+          const loaded = await settledWithin(id, 3000)
+          check()
+          viewport = { ...await observedViewport(guest), preset: presets.get(id) }
+          check()
+          if (!loaded) evidence.gap(id, 'Page was still loading at capture time.')
+          at = Date.now()
+          const shot = await driver.screenshot(id)
+          check()
+          if (pages.get(id) !== pageId) throw new Error('Page changed during capture.')
+          evidence.capture(id, { at, pageId, url, viewport, state: 'available', path: shot.path, width: shot.width, height: shot.height })
+        } catch {
+          if (evidence.active(id)) evidence.capture(id, { at, pageId, url, viewport, state: 'unavailable', reason: 'Screenshot unavailable or interrupted; no visual result inferred.' })
+        }
+        return evidence.list(id)
+      },
+      finish: (id, assertion) => evidence.finish(id, assertion),
+      action: (id, action, state) => evidence.action(id, pages.get(id) ?? 'unavailable', guests.get(id)?.getURL() ?? '', action, state),
+      interrupt: (id) => evidence.interrupt(id, 'Agent control interrupted; recording stopped.'),
+      image: (id, attemptId, index) => evidence.image(id, attemptId, index)
     },
 
     async addressBar(id, address) {

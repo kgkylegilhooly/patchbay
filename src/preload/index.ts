@@ -117,6 +117,7 @@ const bridge: PatchbayBridge = {
   settleAgentEdits: (id) => ipcRenderer.send('pb:settleAgentEdits', id),
   saveBoardImage: (bytes, mime) => invoke('saveBoardImage', bytes, mime),
   readBoardImage: (file) => invoke('readBoardImage', file),
+  browserEvidenceImage: (id, attempt, index) => invoke('browserEvidenceImage', id, attempt, index),
   getActivity: () => invoke('getActivity'),
   onActivity: (cb) => listen('onActivity', cb),
   nameWithAi: (id) => invoke('nameWithAi', id)

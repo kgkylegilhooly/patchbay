@@ -11,6 +11,13 @@ patchbay browser scroll --node <id> --by 800
 patchbay browser navigate --node <id> --url https://example.com
 patchbay browser back --node <id>
 patchbay browser screenshot --node <id>
+patchbay browser viewport --node <id> --preset mobile
+patchbay browser verify --node <id> --phase start --task-id <optional-task-id>
+patchbay browser verify --node <id> --phase step
+patchbay browser verify --node <id> --phase finish --outcome passed
+patchbay browser console --node <id>
+patchbay browser network --node <id>
+patchbay browser evidence --node <id>
 ```
 
 - A browser node opens only `http`, `https` and `about:blank`. Files, `javascript:` and other programs are
@@ -29,3 +36,23 @@ patchbay browser screenshot --node <id>
   Chrome. There's no verb for cookies, and none that runs scripts.
 - The page only exists while its project is on screen. If it isn't, verbs are refused with a reason.
   Each call waits up to about 25 seconds.
+
+Verification records a before picture on start, another on step, and an after picture on finish.
+Actions between them are recorded automatically without typed text. Finish's `passed`, `failed` or
+`unknown` is your assertion, never proof or human acceptance. The person sees the records in the
+browser node's Evidence panel. Optional task IDs are references only; no task is changed.
+
+Viewports are `desktop` (1280×800) and `mobile` (390×844) CSS pixels; mobile does not emulate a phone's
+touch or user agent. Select the viewport before starting. Revision means the observed containing
+checkout, including dirty state; the page's actual served revision is unknown.
+
+Console errors and failed requests have page, attempt and time identifiers. Console messages are
+omitted because they may contain secrets. No cookies, headers, request bodies or typed values are
+stored. URL credentials, query strings and fragments are removed. Form fields and embedded frames
+are hidden in pictures; visible page content remains private evidence. Never enter secrets.
+
+Keep the project visible while recording. Take control refuses every agent verb and interrupts the
+attempt. Detaching the page or restarting also leaves an incomplete attempt. Missing pictures and
+truncated logs are explicit, never treated as passing. Retention is 30 days and 100 attempts, with
+200 diagnostics/actions and 20 pictures per attempt, 2 MiB metadata, and 50 pictures / 128 MiB total
+(16 MiB per picture). Old pictures may expire before their record.
