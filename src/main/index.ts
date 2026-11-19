@@ -30,6 +30,9 @@ import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
+import { registerDocsIpc } from './reader/ipc'
+import { withDocVerbs } from './reader/verbs'
+import { spotNear } from './control/verbs'
 import { setupCompare } from './compare/setup'
 import {
   closeAction,
@@ -412,7 +415,9 @@ async function boot(): Promise<void> {
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
-  const allVerbs = withRecipeVerbs(verbs, { store, service: recipes })
+  // The reader: Markdown files shown read-only, with comments for agents. See src/main/reader.
+  const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
+  const allVerbs = withDocVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, docs: docs.service, comments: docs.comments })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.

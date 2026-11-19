@@ -126,6 +126,8 @@ function isNode(n: unknown): boolean {
       )
     case 'browser':
       return isString(n.url) && (n.held === undefined || typeof n.held === 'boolean')
+    case 'reader':
+      return isString(n.path) && (n.fromNodeId === undefined || isString(n.fromNodeId))
     case 'group':
       return (
         n.worktree === null ||

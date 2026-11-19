@@ -282,7 +282,7 @@ function removeProject(doc: CanvasDoc, id: string, at: number): CanvasDoc {
   return { ...emptied, projects: emptied.projects.filter((p) => p.id !== id) }
 }
 
-const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group'
+const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'
 
 /**
  * Removing comes before the patches, so what they say wins over any refitting the removal did. A node whose old

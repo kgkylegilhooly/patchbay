@@ -50,6 +50,8 @@ import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { ReaderNode } from './reader/ReaderNode'
+import { ReaderLayer } from './reader/ReaderLayer'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -60,7 +62,7 @@ import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
 
-const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode }
+const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode }
 const edgeTypes = { cable: CableEdge }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -497,6 +499,7 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <ReaderLayer />
         <HeaderZoomWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}

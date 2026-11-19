@@ -383,6 +383,29 @@ Add one from the canvas menu or with Ctrl+Shift+N. A note is markdown, shown for
   can only replace the text of notes they made themselves. A note an agent changed says which one did it, with
   **Undo** and **Keep**.
 
+## Reader
+
+A reader shows a Markdown file, such as an agent's plan, as a document you can read and comment on. It never changes
+the file.
+
+- **Opening.** **Open plan in Reader** on an agent's menu opens its latest plan (Claude Code's plan mode keeps plans in
+  `~/.claude/plans`), or its latest long answer if it has no plan. Click a `.md` path in a terminal and choose **Open in
+  Reader**, drop a file on the canvas, or use **Open document…** in the canvas menu or palette. Agents show you a file
+  with `patchbay open-doc --path plan.md`.
+- **Reading.** Headings, lists, tables, task boxes and colored code, with an **Outline** to jump through and an arrow on
+  each heading to fold its section. **Paper** gives a light page. When the file changes on disk the reader follows it,
+  keeps your place and says when it changed.
+- **Comments.** Select words and press **Comment**, or press the **+** beside a paragraph or heading, or comment on the
+  whole document. A comment keeps the words it's on, so it finds them again after edits, and says **Outdated** when
+  they're gone. Comments are kept per file in app data, so closing the reader doesn't lose them.
+- **Sending.** **Send** puts every open comment you haven't sent into one message, each with its section and quote,
+  and sends it to the agent you pick: the one the document came from comes first. It waits while the agent is busy or
+  you're typing to it. Resolve or reopen comments as the agent works; a reopened or edited comment goes again with the
+  next send. An agent linked to the reader can also read the comments with `patchbay read`.
+- Readers open `.md`, `.markdown`, `.mdx` and `.txt` files on this PC's drives, up to 4 MB, but not network
+  shares or files under Windows or Program Files. Links to the web open in your browser, and links to other Markdown
+  files open in another reader.
+
 ## Whiteboards
 
 Add one from the canvas menu or with Ctrl+Shift+D.
