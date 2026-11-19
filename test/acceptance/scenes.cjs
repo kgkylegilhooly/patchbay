@@ -413,7 +413,8 @@ const scenes = {
     await drag([40, 150], [40, 270])
     await sleep(300)
   },
-  ...require('./searchScenes.cjs').scenes
+  ...require('./searchScenes.cjs').scenes,
+  ...require('./compareScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -485,7 +486,8 @@ const seeds = {
     doc.viewport = { x: -360, y: -680, zoom: 1.1 }
     doc.projects[0].viewport = doc.viewport
   },
-  ...require('./searchScenes.cjs').seeds
+  ...require('./searchScenes.cjs').seeds,
+  ...require('./compareScenes.cjs').seeds
 }
 
 const launchJsonExample = `{

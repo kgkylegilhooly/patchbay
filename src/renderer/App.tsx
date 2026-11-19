@@ -49,6 +49,7 @@ import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
+import { CompareLayer } from './CompareLayer'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -494,6 +495,7 @@ function Canvas(): React.JSX.Element | null {
         {recentOpen && <RecentPanel onClose={() => setRecentOpen(false)} />}
         <SearchLayer />
         <RecipeLayer selected={selected} />
+        <CompareLayer />
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}
