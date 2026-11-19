@@ -7,6 +7,7 @@ import { bridge } from './bridge'
 import { ClaudeIcon, CodexIcon } from './icons'
 import { closeHandoff, closeSearch, searchBridge } from './searchUi'
 import { useStore } from './store'
+import { useAgentChoice } from './agentChoice'
 import './search.css'
 
 const EVIDENCE: Record<Evidence, string> = { found: 'Found', partial: 'Partial', stale: 'Stale', missing: 'Missing' }
@@ -23,7 +24,12 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
   const [draft, setDraft] = useState<HandoffDraft | null>(null)
   const [sections, setSections] = useState<HandoffSection[]>([])
   const [problem, setProblem] = useState<string | null>(null)
-  const [agent, setAgent] = useState<AgentKind>('claude')
+  const agents = useAgentChoice()
+  const [agent, setAgent] = useState<AgentKind>(agents.enabled.includes('claude') ? 'claude' : agents.default)
+  // Settings may be read, or change, after this opens: never leave an agent that's off chosen.
+  useEffect(() => {
+    if (!agents.enabled.includes(agent)) setAgent(agents.default)
+  }, [agents, agent])
   const [title, setTitle] = useState(`Continue: ${source.title}`.slice(0, 80))
   const [cwd, setCwd] = useState('')
   const [starting, setStarting] = useState(false)
@@ -115,7 +121,7 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
         <footer className="handoff-foot">
           <div className="handoff-start">
             <div className="handoff-agents" role="radiogroup" aria-label="Start with">
-              {(['claude', 'codex'] as const).map((k) => (
+              {agents.enabled.map((k) => (
                 <button key={k} role="radio" aria-checked={agent === k} className={`search-kind${agent === k ? ' search-kind-on' : ''}`} onClick={() => setAgent(k)}>
                   {k === 'claude' ? <ClaudeIcon /> : <CodexIcon />} {AGENT_NAMES[k]}
                 </button>

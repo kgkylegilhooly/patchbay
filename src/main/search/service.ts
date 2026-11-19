@@ -9,6 +9,9 @@ import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus, CanvasNode, ClaudeNode } from '../../shared/model'
 import type { SearchBridge, StartHandoff } from '../../shared/searchBridge'
 import { spotNear } from '../control/verbs'
+import { placeInProject } from '../../core/canvas/place'
+import { viewSize } from '../viewSize'
+import { agentOffNow } from '../agentsAllowed'
 import type { EngineRequest } from './engine'
 
 /** Plain documents for search from elsewhere in Patchbay, such as task results. Called on every sync, so keep it cheap. */
@@ -227,6 +230,8 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
       if (!a || typeof a.text !== 'string' || !a.text.trim()) return { ok: false, reason: 'The handoff is empty.' }
       if (a.text.length > MAX_HANDOFF_CHARS) return { ok: false, reason: `The handoff is ${a.text.length} characters, over the ${MAX_HANDOFF_CHARS} an agent can be started with. Shorten it first.` }
       if (a.agent !== 'claude' && a.agent !== 'codex') return { ok: false, reason: 'Choose Claude Code or Codex.' }
+      const off = agentOffNow(a.agent)
+      if (off) return { ok: false, reason: off }
       const cwd = typeof a.cwd === 'string' && a.cwd.trim() ? a.cwd.trim() : homedir()
       let isFolder = false
       try {
@@ -239,12 +244,7 @@ export function createSearchService(d: SearchServiceDeps): SearchBridge & { star
       const projectId = doc.projects.some((p) => p.id === a.projectId) ? a.projectId! : doc.activeProjectId
       const size = { width: 620, height: 420 }
       const beside = a.besideNodeId ? find(a.besideNodeId) : undefined
-      let at: { x: number; y: number }
-      if (beside && beside.projectId === projectId) at = spotNear(doc, beside, size)
-      else {
-        const top = doc.nodes.filter((n) => n.projectId === projectId && !n.parentId)
-        at = { x: top.length ? Math.max(...top.map((n) => n.x + n.width)) + 40 : 0, y: top.length ? Math.min(...top.map((n) => n.y)) : 0 }
-      }
+      const at = beside && beside.projectId === projectId ? spotNear(doc, beside, size) : placeInProject(doc, projectId, size, viewSize())
       const id = randomUUID()
       const node: ClaudeNode = {
         id, kind: 'claude', title: String(a.title || 'Handoff').slice(0, 80), cwd, prompt: a.text, sessionId: null, transcriptPath: null, after: [],

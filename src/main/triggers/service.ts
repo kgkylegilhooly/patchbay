@@ -4,9 +4,10 @@ import { describeEventHappened, describeSeconds, eventVars, expandPrompt, isEven
 import { nextRun, slotsUpTo } from '../../core/trigger/schedule'
 import type { RunResult as ProgramResult } from '../../core/git/run'
 import type { CanvasStore, RunResult, SessionHost } from '../../shared/contract'
-import { DISARMED, type AgentStatus, type TriggerNode, type TriggerRun, type TriggerState } from '../../shared/model'
+import { agentOf, DISARMED, type AgentStatus, type TriggerNode, type TriggerRun, type TriggerState } from '../../shared/model'
 import { plainText, type SendQueue } from '../control/sendQueue'
 import type { StatusTracker } from '../sessions/statusTracker'
+import { agentOffNow } from '../agentsAllowed'
 import { createFileBatcher, type FileBatch, type WatchFolder } from './fileWatch'
 
 /** Later than this, a slot counts as missed rather than run late, as after the PC wakes from sleep. */
@@ -152,6 +153,9 @@ export function createTriggerService({
     const target = store.get().nodes.find((n) => n.id === node.targetId)
     const result = ((): TriggerRun => {
       if (!isTriggerTarget(target)) return run('missed', 'What it sends to is gone.')
+      // Settings > Agents: nothing goes to an agent turned off, even one still running.
+      const off = target.kind === 'claude' ? agentOffNow(agentOf(target)) : null
+      if (off) return run('failed', host.isRunning(target.id) ? `${off} "${target.title}" is still running, but nothing was sent to it.` : off)
       if (!host.isRunning(target.id) || (target.kind === 'claude' && tracker.get(target.id) === 'exited')) {
         return run('missed', `"${target.title}" wasn't running. A trigger never starts a session.`)
       }
