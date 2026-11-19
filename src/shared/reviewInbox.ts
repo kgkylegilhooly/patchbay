@@ -2,7 +2,7 @@
  * The review inbox: task submissions waiting for a person, the changes behind them, and durable review comments.
  * Built on P1 task records. See docs/plans/review-inbox.md. Pure, so main, the window and tests share it.
  */
-import type { Task, TaskVerification, TaskView } from './task'
+import type { Task, TaskBrowserCheck, TaskVerification, TaskView } from './task'
 
 export type ReviewSide = 'new' | 'old'
 
@@ -16,10 +16,44 @@ export interface ReviewAnchor {
   /** The commit, or Patchbay's snapshot tree of the working tree, the line was read from. */
   revision: string
   revisionKind: 'commit' | 'snapshot'
-  /** The line's text, and up to CONTEXT lines either side, as they were. */
+  /**
+   * The line's text, and up to CONTEXT lines either side, as they were. Each is a `lineKey`: a long line keeps its
+   * start and a hash of the whole, so a minified file can't make the review file huge.
+   */
   snippet: string
   before: string[]
   after: string[]
+  /**
+   * Which list the diff it was written on came from, and for `committed` the base it was compared with. An old-side
+   * comment is found again against that same "from": HEAD for local, the merge-base for committed, the recorded
+   * snapshot itself for since-review. Absent in comments written before this was kept: treated as committed.
+   */
+  section?: ChangeSection
+  base?: string
+}
+
+/** Longest line text kept in an anchor. */
+export const LINE_CAP = 400
+
+/** FNV-1a, 32 bits: only to tell long lines apart, never for security. */
+function fnv(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+/** A line as an anchor keeps it: itself when short, else its start, then a hash and the length of the whole line. */
+export function lineKey(s: string): string {
+  return s.length <= LINE_CAP ? s : `${s.slice(0, LINE_CAP)}…#${fnv(s)}:${s.length}`
+}
+
+/** An anchor's line as shown to a person or an agent. */
+export function shownLine(key: string): string {
+  const cut = key.lastIndexOf('…#')
+  return cut >= 0 && cut === LINE_CAP ? `${key.slice(0, cut)}…` : key
 }
 
 export interface ReviewComment {
@@ -71,7 +105,7 @@ export const CONTEXT = 2
 export function anchorAt(lines: string[], line: number): Pick<ReviewAnchor, 'line' | 'snippet' | 'before' | 'after'> | null {
   if (!Number.isInteger(line) || line < 1 || line > lines.length) return null
   const i = line - 1
-  return { line, snippet: lines[i], before: lines.slice(Math.max(0, i - CONTEXT), i), after: lines.slice(i + 1, i + 1 + CONTEXT) }
+  return { line, snippet: lineKey(lines[i]), before: lines.slice(Math.max(0, i - CONTEXT), i).map(lineKey), after: lines.slice(i + 1, i + 1 + CONTEXT).map(lineKey) }
 }
 
 /** A file's text as lines. A final newline doesn't make one more line; Windows line ends match Unix ones. */
@@ -97,8 +131,10 @@ const trivial = (s: string): boolean => s.trim().replace(/[\s{}()[\];,]/g, '').l
  * Where an anchored line is in the file now. Never guesses: a line found in more than one place, or only a
  * plain line found without its context, is outdated rather than pinned somewhere it might not belong.
  */
-export function placeAnchor(anchor: Pick<ReviewAnchor, 'line' | 'snippet' | 'before' | 'after'>, now: string[] | null): Placement {
-  if (!now) return { kind: 'outdated', reason: 'The file is no longer there.' }
+export function placeAnchor(anchor: Pick<ReviewAnchor, 'line' | 'snippet' | 'before' | 'after'>, file: string[] | null | 'too-large'): Placement {
+  if (file === 'too-large') return { kind: 'outdated', reason: 'The file is now too large to check.' }
+  if (!file) return { kind: 'outdated', reason: 'The file is no longer there.' }
+  const now = file.map(lineKey)
   const at = anchor.line - 1
   if (now[at] === anchor.snippet && contextMatches(now, at, anchor.before, anchor.after)) return { kind: 'same', line: anchor.line }
   const hits: number[] = []
@@ -109,7 +145,7 @@ export function placeAnchor(anchor: Pick<ReviewAnchor, 'line' | 'snippet' | 'bef
     return i === at ? { kind: 'same', line: anchor.line } : { kind: 'moved', line: i + 1, from: anchor.line, contextChanged: false }
   }
   if (withContext.length > 1) return { kind: 'outdated', reason: 'The code it was on now appears in more than one place.' }
-  if (hits.length === 1 && !trivial(anchor.snippet)) {
+  if (hits.length === 1 && !trivial(shownLine(anchor.snippet))) {
     const i = hits[0]
     return { kind: 'moved', line: i + 1, from: anchor.line, contextChanged: true }
   }
@@ -152,7 +188,7 @@ export function formatFixRequest(task: Pick<Task, 'id' | 'brief'>, comments: Com
       const where = c.placement.kind === 'outdated'
         ? `${c.anchor.side === 'new' ? 'was line' : 'was removed line'} ${c.anchor.line} (this code changed since the comment; check it still applies)`
         : placementText(c.placement, c.anchor.side)
-      parts.push(`- ${where}: \`${c.anchor.snippet.slice(0, 200).trim()}\``, `  ${c.text.trim().replace(/\n+/g, ' ')}`)
+      parts.push(`- ${where}: \`${shownLine(c.anchor.snippet).slice(0, 200).trim()}\``, `  ${c.text.trim().replace(/\n+/g, ' ')}`)
     }
   }
   return parts.join('\n')
@@ -169,6 +205,7 @@ export function reviewQueue(views: TaskView[]): TaskView[] {
 export type Evidence =
   | { source: 'agent-report'; label: string; summary: string; at: number }
   | { source: 'command'; label: string; checkId: string; command: string; state: 'passed' | 'failed' | 'running' | 'not run' | 'stale'; detail: string; outputRef?: string }
+  | { source: 'browser'; label: string; nodeId: string; url: string; state: 'recording' | 'recorded' | 'incomplete'; assertion: 'passed' | 'failed' | 'unknown'; gaps: number; at: number }
   | { source: 'ci'; label: string; state: 'unavailable'; detail: string }
 
 /**
@@ -189,18 +226,25 @@ export function reviewEvidence(view: TaskView): Evidence[] {
     else if (said.length) out.push({ ...base, state: 'stale', detail: said.join('; '), outputRef: run.outputRef })
     else out.push({ ...base, state: 'passed', detail: 'exit 0, on the files as they are now.', outputRef: run.outputRef })
   }
+  // P6 browser checks: the agent's claim, which never counts towards readiness. The pictures stay with the browser node.
+  for (const b of view.attempts.filter((a): a is TaskBrowserCheck => a.kind === 'browser')) {
+    out.push({ source: 'browser', label: "Browser check recorded by the agent (the agent's claim, not proof)", nodeId: b.nodeId, url: b.url, state: b.state, assertion: b.assertion, gaps: b.gaps, at: b.startedAt })
+  }
   // This version reads no CI. Missing CI is never a pass.
   out.push({ source: 'ci', label: 'CI', state: 'unavailable', detail: 'Unavailable: Patchbay does not read CI yet. This is not a pass.' })
   return out
 }
 
-/** Who a checkout's changes can be put down to. A diff is the checkout's; it's one agent's only if one agent works there. */
+/**
+ * Who a checkout's changes can be put down to. A diff is the checkout's; it's one agent's only if that agent is the
+ * only window open in the checkout. Terminals count: the person or another tool can edit from one.
+ */
 export interface Attribution {
   /** Titles of the agents assigned to the task. */
   assigned: string[]
-  /** Titles of other agents working in the same checkout. */
+  /** Titles of other windows (agents, terminals, run commands) open in the same checkout. */
   others: string[]
-  /** Exactly one agent works in this checkout and it's the task's. */
+  /** Exactly one window is open in this checkout and it's the task's agent. */
   sole: boolean
   note: string
 }
@@ -209,10 +253,10 @@ export function attribution(assigned: string[], others: string[]): Attribution {
   const sole = assigned.length === 1 && others.length === 0
   let note: string
   if (assigned.length === 0) note = 'No agent is assigned to this task. These are the checkout\'s changes.'
-  else if (sole) note = `Only ${assigned[0]} works in this checkout.`
+  else if (sole) note = `Only ${assigned[0]} is open in this checkout.`
   else {
     const all = [...assigned, ...others]
-    note = `${all.length} agents work in this checkout (${all.join(', ')}). These are the checkout's changes, not any one agent's.`
+    note = `${all.length} windows are open in this checkout (${all.join(', ')}). These are the checkout's changes, not any one agent's.`
   }
   return { assigned, others, sole, note }
 }
@@ -261,6 +305,14 @@ export interface InboxItem {
   base: string | null
 }
 
+/** What the person was looking at: the snapshot and HEAD a review action is about, as the window showed them. */
+export interface Shown {
+  tree: string
+  head: string | null
+  base?: string
+  mergeBase?: string | null
+}
+
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string }
 
 /** The inbox's calls to main, exposed as `window.patchbayReview`. Only the app's own window can call them. */
@@ -269,12 +321,13 @@ export interface ReviewBridge {
   branches(projectId: string, taskId: string): Promise<Result<string[]>>
   changes(projectId: string, taskId: string, mode: CompareMode): Promise<Result<ChangeSet>>
   fileDiff(projectId: string, taskId: string, range: ChangeRange, path: string): Promise<Result<{ text: string; truncated: boolean }>>
-  comments(projectId: string, taskId: string): Promise<Result<CommentView[]>>
-  addComment(projectId: string, taskId: string, c: { path: string; side: ReviewSide; line: number; revision: string; text: string }): Promise<Result<CommentView>>
+  /** `tree`: the snapshot the window just got from changes, so placing comments doesn't take another. */
+  comments(projectId: string, taskId: string, tree?: string): Promise<Result<CommentView[]>>
+  addComment(projectId: string, taskId: string, c: { path: string; side: ReviewSide; line: number; revision: string; text: string; section: ChangeSection; base?: string }): Promise<Result<CommentView>>
   setCommentStatus(projectId: string, commentId: string, status: 'open' | 'resolved'): Promise<Result<true>>
   deleteComment(projectId: string, commentId: string): Promise<Result<true>>
-  markReviewed(projectId: string, taskId: string): Promise<Result<ReviewMark>>
-  requestFixes(projectId: string, taskId: string, sessionId: string): Promise<Result<{ queued: boolean; sent: number; to: string; recorded: boolean }>>
+  markReviewed(projectId: string, taskId: string, shown: Shown): Promise<Result<{ mark: ReviewMark; changedSince: boolean }>>
+  requestFixes(projectId: string, taskId: string, sessionId: string, shown: Shown | null): Promise<Result<{ queued: boolean; sent: number; to: string; recorded: boolean; changedSince: boolean }>>
 }
 
 export const REVIEW_METHODS: (keyof ReviewBridge)[] = ['inbox', 'branches', 'changes', 'fileDiff', 'comments', 'addComment', 'setCommentStatus', 'deleteComment', 'markReviewed', 'requestFixes']
@@ -286,7 +339,8 @@ const strs = (v: unknown): v is string[] => Array.isArray(v) && v.every(str)
 
 function isAnchor(a: unknown): a is ReviewAnchor {
   return object(a) && str(a.path) && (a.side === 'new' || a.side === 'old') && Number.isInteger(a.line) && (a.line as number) >= 1 &&
-    str(a.revision) && (a.revisionKind === 'commit' || a.revisionKind === 'snapshot') && str(a.snippet) && strs(a.before) && strs(a.after)
+    str(a.revision) && (a.revisionKind === 'commit' || a.revisionKind === 'snapshot') && str(a.snippet) && strs(a.before) && strs(a.after) &&
+    (a.section === undefined || a.section === 'committed' || a.section === 'local' || a.section === 'since-review') && (a.base === undefined || str(a.base))
 }
 
 export function isComment(c: unknown): c is ReviewComment {
@@ -300,9 +354,14 @@ export function isMark(m: unknown): m is ReviewMark {
     (m.reason === 'marked' || m.reason === 'fixes-requested')
 }
 
-/** Review data as loaded: damaged records dropped one at a time, the rest kept. Says how many went. */
-export function sanitizeReviewData(v: unknown): { data: ReviewData; dropped: number } {
-  if (!object(v)) return { data: emptyReviewData(), dropped: v === undefined ? 0 : 1 }
+/**
+ * Review data as loaded: damaged records dropped one at a time, the rest kept. Says how many went. `incompatible`: the
+ * file isn't this version's shape at all (another version, or not review data), so nothing in it may be overwritten.
+ */
+export function sanitizeReviewData(v: unknown): { data: ReviewData; dropped: number; incompatible: boolean } {
+  const wrong = (): { data: ReviewData; dropped: number; incompatible: boolean } => ({ data: emptyReviewData(), dropped: 0, incompatible: true })
+  if (!object(v) || v.version !== 1) return wrong()
+  if ((v.comments !== undefined && !Array.isArray(v.comments)) || (v.marks !== undefined && !Array.isArray(v.marks)) || (v.bases !== undefined && !object(v.bases))) return wrong()
   const rawComments = Array.isArray(v.comments) ? v.comments : []
   const rawMarks = Array.isArray(v.marks) ? v.marks : []
   const comments = rawComments.filter(isComment)
@@ -310,5 +369,38 @@ export function sanitizeReviewData(v: unknown): { data: ReviewData; dropped: num
   const bases: Record<string, string> = {}
   let dropped = rawComments.length - comments.length + rawMarks.length - marks.length
   if (object(v.bases)) for (const [k, b] of Object.entries(v.bases)) { if (str(b)) bases[k] = b; else dropped++ }
-  return { data: { version: 1, comments, marks, bases }, dropped }
+  return { data: { version: 1, comments, marks, bases }, dropped, incompatible: false }
+}
+
+/** Review marks kept per task. Only the latest is compared with; a few more show the history. */
+export const MARKS_KEPT = 20
+
+/**
+ * Review data without what can no longer be used: comments, marks and bases of tasks that are gone (`gone` says so
+ * only for a task it knows is gone), and all but the newest MARKS_KEPT marks of each task. The same object back when
+ * nothing changed, so the caller can skip a write.
+ */
+export function pruneReviewData(data: ReviewData, gone: (projectId: string, taskId: string) => boolean): ReviewData {
+  const comments = data.comments.filter((c) => !gone(c.projectId, c.taskId))
+  const byTask = new Map<string, ReviewMark[]>()
+  for (const m of data.marks) {
+    if (gone(m.projectId, m.taskId)) continue
+    const k = taskKey(m.projectId, m.taskId)
+    byTask.set(k, [...(byTask.get(k) ?? []), m])
+  }
+  const keep = new Set([...byTask.values()].flatMap((ms) => ms.sort((a, b) => a.at - b.at).slice(-MARKS_KEPT).map((m) => m.id)))
+  const marks = data.marks.filter((m) => keep.has(m.id))
+  const bases = Object.fromEntries(Object.entries(data.bases).filter(([k]) => {
+    const cut = k.indexOf('/')
+    return cut < 0 || !gone(k.slice(0, cut), k.slice(cut + 1))
+  }))
+  if (comments.length === data.comments.length && marks.length === data.marks.length && Object.keys(bases).length === Object.keys(data.bases).length) return data
+  return { ...data, comments, marks, bases }
+}
+
+/** Fixes were asked for after the task's latest submission, so the agent may still be working on them. */
+export function fixesPending(view: TaskView, last: ReviewMark | undefined): boolean {
+  if (last?.reason !== 'fixes-requested') return false
+  const submitted = view.attempts.find((a) => a.id === view.task.submissionId)?.startedAt ?? 0
+  return last.at >= submitted
 }

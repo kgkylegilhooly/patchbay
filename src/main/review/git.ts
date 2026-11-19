@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
-import { copyFile, rm } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { copyFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { gitEnvFrom, GLOBAL, plainBranchName } from '../../core/git/args'
@@ -38,20 +38,52 @@ export function baseName(name: unknown): string {
   return name
 }
 
-export function createReviewGit(run: RunGit = systemReviewGit()) {
+/**
+ * Review git. `objectsRoot` is a folder of Patchbay's own: snapshots of working trees are written there, one object
+ * store per repository, with the repository's objects read through git's alternates. So a snapshot adds nothing to the
+ * repository, and what was reviewed lasts until Patchbay itself removes it.
+ */
+export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewGit()) {
+  const fail = (r: RunResult, args: string[]): Error =>
+    new Error(r.missing ? 'git was not found on PATH.' : r.timedOut ? `git ${args[0]} took too long.` : r.truncated ? `git ${args[0]} gave more output than Patchbay reads.` : (r.stderr.trim() || `git ${args[0]} ended with code ${r.code}`))
+
+  /** Where each repository's review objects go, worked out once per repository folder. */
+  const stores = new Map<string, Promise<Record<string, string>>>()
+  const storeEnv = (root: string): Promise<Record<string, string>> => {
+    const key = root.toLowerCase()
+    let env = stores.get(key)
+    if (!env) {
+      env = (async () => {
+        const r = await run(root, ['rev-parse', '--git-common-dir'], READ)
+        if (r.code !== 0) throw fail(r, ['rev-parse'])
+        const common = resolve(root, r.stdout.trim())
+        const own = join(objectsRoot, createHash('sha256').update(common.toLowerCase()).digest('hex').slice(0, 16))
+        await mkdir(join(own, 'pack'), { recursive: true })
+        await mkdir(join(own, 'info'), { recursive: true })
+        return { GIT_OBJECT_DIRECTORY: own, GIT_ALTERNATE_OBJECT_DIRECTORIES: join(common, 'objects') }
+      })()
+      env.catch(() => stores.delete(key))
+      stores.set(key, env)
+    }
+    return env
+  }
+  /** Every call on a repository sees its own objects and Patchbay's review objects. */
+  const inRepo = async (root: string, args: string[], limit = READ, extraEnv: Record<string, string> = {}): Promise<RunResult> =>
+    run(root, args, limit, { ...(await storeEnv(root)), ...extraEnv })
   const ok = async (root: string, args: string[], limit = READ, extraEnv?: Record<string, string>): Promise<string> => {
-    const r = await run(root, args, limit, extraEnv)
-    if (r.code !== 0) throw new Error(r.missing ? 'git was not found on PATH.' : r.timedOut ? `git ${args[0]} took too long.` : (r.stderr.trim() || `git ${args[0]} ended with code ${r.code}`))
+    const r = await inRepo(root, args, limit, extraEnv)
+    if (r.code !== 0 || r.truncated) throw fail(r, args)
     return r.stdout
   }
   const maybe = async (root: string, args: string[]): Promise<string | null> => {
-    const r = await run(root, args, READ)
-    return r.code === 0 ? r.stdout.trim() : null
+    const r = await inRepo(root, args, READ)
+    return r.code === 0 && !r.truncated ? r.stdout.trim() : null
   }
 
   async function toplevel(folder: string): Promise<string | null> {
     if (!folder || !isAbsolute(folder)) return null
-    const out = await maybe(folder, ['rev-parse', '--show-toplevel'])
+    const r = await run(folder, ['rev-parse', '--show-toplevel'], READ)
+    const out = r.code === 0 ? r.stdout.trim() : ''
     return out ? resolve(out) : null
   }
 
@@ -60,7 +92,8 @@ export function createReviewGit(run: RunGit = systemReviewGit()) {
 
   /**
    * A tree of the whole working tree as it is, untracked files included and ignored ones left out, written through a
-   * copy of the checkout's index. The real index, the files and the refs are never touched: only git objects are added.
+   * copy of the checkout's index into Patchbay's own object store. The repository, its index, files and refs are never
+   * touched.
    */
   async function snapshot(root: string): Promise<string> {
     const index = join(tmpdir(), `patchbay-review-${randomUUID()}.index`)
@@ -91,7 +124,7 @@ export function createReviewGit(run: RunGit = systemReviewGit()) {
   const mergeBase = (root: string, a: string, b: string): Promise<string | null> => maybe(root, ['merge-base', a, b])
 
   async function isAncestor(root: string, a: string, b: string): Promise<boolean> {
-    return (await run(root, ['merge-base', '--is-ancestor', a, b], READ)).code === 0
+    return (await inRepo(root, ['merge-base', '--is-ancestor', a, b], READ)).code === 0
   }
 
   async function objectType(root: string, oid: string): Promise<string | null> {
@@ -99,6 +132,7 @@ export function createReviewGit(run: RunGit = systemReviewGit()) {
     return maybe(root, ['cat-file', '-t', oid])
   }
 
+  /** The files changed between two revisions. Fails rather than return a list cut short. */
   async function changed(root: string, from: string, to: string, section: ChangeSection): Promise<ChangedFile[]> {
     const out = await ok(root, ['diff', '--no-ext-diff', '--no-renames', '--name-status', '-z', from, to, '--'])
     const parts = out.split('\0')
@@ -108,16 +142,17 @@ export function createReviewGit(run: RunGit = systemReviewGit()) {
   }
 
   async function diff(root: string, from: string, to: string, path: string): Promise<{ text: string; truncated: boolean }> {
-    const r = await run(root, ['diff', '--no-ext-diff', '--no-color', '--no-renames', from, to, '--', repoPath(path)], DIFF)
+    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-color', '--no-renames', from, to, '--', repoPath(path)], DIFF)
     if (r.code !== 0) throw new Error(r.stderr.trim() || 'git diff failed')
     return { text: r.stdout, truncated: r.truncated }
   }
 
-  /** A file's text at a commit or tree, or null when it isn't there. */
-  async function fileAt(root: string, rev: string, path: string): Promise<string | null> {
+  /** A file's text at a commit or tree: null when it isn't there, 'too-large' when it's past what Patchbay reads. */
+  async function fileAt(root: string, rev: string, path: string): Promise<string | null | 'too-large'> {
     if (!isOid(rev)) return null
-    const r = await run(root, ['cat-file', 'blob', `${rev}:${repoPath(path)}`], READ)
-    return r.code === 0 && !r.truncated ? r.stdout : null
+    const r = await inRepo(root, ['cat-file', 'blob', `${rev}:${repoPath(path)}`], READ)
+    if (r.truncated) return 'too-large'
+    return r.code === 0 ? r.stdout : null
   }
 
   async function branches(root: string): Promise<string[]> {

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CommentView, ReviewBridge, ReviewSide } from '../shared/reviewInbox'
+import type { ChangeSection, CommentView, ReviewBridge, ReviewSide } from '../shared/reviewInbox'
 
 declare global {
   interface Window {
@@ -26,16 +26,28 @@ export function closeReviewInbox(): void {
 }
 
 /**
- * Which comments show on a line of a diff. A comment shows at the line it was written on when this diff's side is
- * the very revision it was written on; otherwise at where it is now, but only when this diff's side is the code as
- * it is now (`current`). Anywhere else it's only in the list, so a comment is never shown against code it wasn't on.
+ * Where each comment shows in one diff, keyed "side:line", worked out once per diff rather than per line. A comment
+ * shows at the line it was written on when this diff's side is the very revision it was written on. Otherwise it
+ * shows where it is now, but only when this diff's side is the code it's placed against now: for the new side, the
+ * file as it is (`currentNew`); for the old side, the current "from" of the comment's own list (`currentOld`, and
+ * the same list). Anywhere else it's only in the list, so a comment never shows against code it wasn't on.
  */
-export function commentsOnLine(comments: CommentView[], o: { path: string; side: ReviewSide; line: number; revision: string; current: boolean }): CommentView[] {
-  return comments.filter((c) => {
-    if (c.anchor.path !== o.path || c.anchor.side !== o.side) return false
-    if (c.anchor.revision === o.revision) return c.anchor.line === o.line
-    return o.current && c.placement.kind !== 'outdated' && c.placement.line === o.line
-  })
+export function commentsByLine(comments: CommentView[], o: { path: string; section: ChangeSection; from: string; to: string; currentNew: boolean; currentOld: boolean }): Map<string, CommentView[]> {
+  const out = new Map<string, CommentView[]>()
+  const put = (side: ReviewSide, line: number, c: CommentView): void => {
+    const k = `${side}:${line}`
+    out.set(k, [...(out.get(k) ?? []), c])
+  }
+  for (const c of comments) {
+    if (c.anchor.path !== o.path) continue
+    const side = c.anchor.side
+    if (c.anchor.revision === (side === 'new' ? o.to : o.from)) put(side, c.anchor.line, c)
+    else if (c.placement.kind !== 'outdated') {
+      if (side === 'new' && o.currentNew) put(side, c.placement.line, c)
+      if (side === 'old' && o.currentOld && (c.anchor.section ?? 'committed') === o.section) put(side, c.placement.line, c)
+    }
+  }
+  return out
 }
 
 const AGO = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })

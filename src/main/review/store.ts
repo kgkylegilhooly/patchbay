@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { emptyReviewData, sanitizeReviewData, type ReviewData } from '../../shared/reviewInbox'
 
@@ -10,21 +10,39 @@ export interface ReviewStore {
 
 /**
  * Review comments, review marks and chosen bases, in one JSON file. Written whole to a temporary file and renamed over
- * the old one, so a crash mid-write leaves the last good file. A file that can't be read is moved aside, not lost.
+ * the old one, so a crash mid-write leaves the last good file. Nothing is lost by loading:
+ * - a file that can't be read, or isn't this version's shape (a newer Patchbay's, say), is moved aside and the inbox
+ *   starts empty;
+ * - a file with some damaged records is copied aside whole before the good part is ever written back.
  */
 export function createReviewStore(file: string, log: (line: string) => void = console.error): ReviewStore {
   let data = emptyReviewData()
   let raw: string | null = null
   try { raw = readFileSync(file, 'utf8') } catch { /* No file yet: an empty inbox. */ }
-  if (raw !== null) {
+  const aside = (why: string, move: boolean): void => {
+    const copy = `${file}.bad-${Date.now()}`
     try {
-      const { data: loaded, dropped } = sanitizeReviewData(JSON.parse(raw))
-      data = loaded
-      if (dropped) log(`Review inbox: ${dropped} damaged record(s) in ${file} were left out.`)
+      if (move) renameSync(file, copy)
+      else copyFileSync(file, copy)
+      log(`Review inbox: ${why}; the file as it was is kept as ${copy}.`)
     } catch (e) {
-      const aside = `${file}.bad-${Date.now()}`
-      try { renameSync(file, aside) } catch { /* Left where it is; it'll be overwritten on the next save. */ }
-      log(`Review inbox: ${file} couldn't be read (${(e as Error).message}); moved aside to ${aside}.`)
+      log(`Review inbox: ${why}, and it couldn't be kept aside (${(e as Error).message}).`)
+    }
+  }
+  if (raw !== null) {
+    let parsed: unknown
+    let readable = true
+    try { parsed = JSON.parse(raw) } catch (e) {
+      readable = false
+      aside(`${file} couldn't be read (${(e as Error).message})`, true)
+    }
+    if (readable) {
+      const { data: loaded, dropped, incompatible } = sanitizeReviewData(parsed)
+      if (incompatible) aside(`${file} isn't review data this version can read`, true)
+      else {
+        data = loaded
+        if (dropped) aside(`${dropped} damaged record(s) in ${file} were left out`, false)
+      }
     }
   }
   const write = (d: ReviewData): void => {
@@ -37,6 +55,7 @@ export function createReviewStore(file: string, log: (line: string) => void = co
     get: () => data,
     update(change) {
       const next = change(data)
+      if (next === data) return data
       write(next)
       data = next
       return data

@@ -117,7 +117,7 @@ test("a diff is one agent's only when one agent works in the checkout", () => {
   expect(attribution(['Builder'], [])).toMatchObject({ sole: true })
   const shared = attribution(['Builder'], ['Reviewer'])
   expect(shared.sole).toBe(false)
-  expect(shared.note).toMatch(/2 agents work in this checkout .*not any one agent's/)
+  expect(shared.note).toMatch(/2 windows are open in this checkout .*not any one agent's/)
   expect(attribution(['A', 'B'], []).sole).toBe(false)
   expect(attribution([], []).sole).toBe(false)
 })
@@ -133,15 +133,52 @@ test('loading keeps good records and drops damaged ones one at a time', () => {
 })
 
 test('a comment shows on a diff line only where it was written, or where it is now in a diff of the code as it is now', async () => {
-  const { commentsOnLine } = await import('../../src/renderer/reviewInboxUi')
+  const { commentsByLine } = await import('../../src/renderer/reviewInboxUi')
   const rev = 'a'.repeat(40)
+  const other = 'b'.repeat(40)
   const moved = comment({ placement: { kind: 'moved', line: 5, from: 3, contextChanged: false } })
-  const at = (o: Partial<{ line: number; revision: string; current: boolean; side: 'new' | 'old' }>) => commentsOnLine([moved], { path: 'src/auth.ts', side: 'new', line: 3, revision: rev, current: false, ...o }).length
-  expect(at({})).toBe(1)
-  expect(at({ line: 5 })).toBe(0)
-  expect(at({ revision: 'b'.repeat(40), line: 5, current: true })).toBe(1)
-  expect(at({ revision: 'b'.repeat(40), line: 5, current: false })).toBe(0)
-  expect(at({ side: 'old' })).toBe(0)
+  const keys = (o: Partial<{ from: string; to: string; currentNew: boolean; currentOld: boolean; section: 'committed' | 'local' }>) =>
+    [...commentsByLine([moved], { path: 'src/auth.ts', section: 'committed', from: other, to: rev, currentNew: false, currentOld: false, ...o }).keys()]
+  expect(keys({})).toEqual(['new:3'])
+  expect(keys({ to: other, currentNew: true })).toEqual(['new:5'])
+  expect(keys({ to: other })).toEqual([])
+  const old = comment({ anchor: { ...moved.anchor, side: 'old', section: 'local' }, placement: { kind: 'same', line: 3 } })
+  const oldKeys = (section: 'committed' | 'local') => [...commentsByLine([old], { path: 'src/auth.ts', section, from: other, to: other, currentNew: true, currentOld: true }).keys()]
+  expect(oldKeys('local')).toEqual(['old:3'])
+  expect(oldKeys('committed')).toEqual([])
   const gone = comment({ placement: { kind: 'outdated', reason: 'x' }, state: 'outdated' })
-  expect(commentsOnLine([gone], { path: 'src/auth.ts', side: 'new', line: 3, revision: 'b'.repeat(40), current: true })).toEqual([])
+  expect([...commentsByLine([gone], { path: 'src/auth.ts', section: 'local', from: other, to: other, currentNew: true, currentOld: true }).keys()]).toEqual([])
+})
+
+test('browser checks show as the agent\'s claim, beside commands and CI', async () => {
+  const { reviewEvidence: evidence } = await import('../../src/shared/reviewInbox')
+  const rev = { revision: 'x', uncommitted: false, fingerprint: 'f' }
+  const ev = evidence(view(task({}), { attempts: [{ id: 'b', taskId: 't', sessionId: 'a', kind: 'browser', nodeId: 'web', browserAttemptId: 'ba', url: 'http://localhost:3000', state: 'recorded', assertion: 'passed', endedAt: 2, gaps: 1, startedAt: 1, revision: rev }] }))
+  const b = ev.find((e) => e.source === 'browser')
+  expect(b).toMatchObject({ source: 'browser', nodeId: 'web', assertion: 'passed', gaps: 1, url: 'http://localhost:3000' })
+  expect(b!.label).toMatch(/agent's claim/)
+})
+
+test('fixes are pending when requested after the latest submission, and not once the agent submits again', async () => {
+  const { fixesPending } = await import('../../src/shared/reviewInbox')
+  const rev = { revision: 'x', uncommitted: false, fingerprint: 'f' }
+  const v = view(task({}), { attempts: [{ id: 's', taskId: 't', sessionId: 'a', kind: 'agent-report', summary: 's', startedAt: 100, endedAt: 100, revision: rev }] })
+  const mark = (at: number, reason: 'marked' | 'fixes-requested') => ({ id: 'm', projectId: 'p', taskId: 't', root: 'C:\r', head: null, tree: 't', at, reason })
+  expect(fixesPending(v, mark(150, 'fixes-requested'))).toBe(true)
+  expect(fixesPending(v, mark(50, 'fixes-requested'))).toBe(false)
+  expect(fixesPending(v, mark(150, 'marked'))).toBe(false)
+  expect(fixesPending(v, undefined)).toBe(false)
+})
+
+test('long lines are kept as a start and a hash, still told apart, and a file too large to read is said to be', async () => {
+  const { lineKey, shownLine } = await import('../../src/shared/reviewInbox')
+  const a = 'x'.repeat(5000)
+  const b = `${'x'.repeat(4999)}y`
+  expect(lineKey(a).length).toBeLessThan(450)
+  expect(lineKey(a)).not.toBe(lineKey(b))
+  expect(shownLine(lineKey(a))).toBe(`${'x'.repeat(400)}…`)
+  expect(shownLine('short')).toBe('short')
+  const long = anchorAt([a, b], 2)!
+  expect(placeAnchor(long, ['new', a, b])).toMatchObject({ kind: 'moved', line: 3 })
+  expect(placeAnchor(anchor, 'too-large')).toEqual({ kind: 'outdated', reason: 'The file is now too large to check.' })
 })

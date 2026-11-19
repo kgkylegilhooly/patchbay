@@ -432,3 +432,27 @@
   margin: 8px 0 0;
   color: #b9efc7;
 }
+
+/* Also a "drawer", for what that tells canvas shortcuts; none of the drawer's own look. */
+.rvi.drawer {
+  width: auto;
+  border-left: 0;
+  box-shadow: none;
+  z-index: 12;
+}
+
+.rvi-label-gap {
+  margin-top: 10px;
+}
+
+.rvi-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #ffe2b8;
+}
+
+.rvi-more {
+  margin: 6px 10px;
+}

@@ -148,7 +148,8 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
-| `review-inbox.json` | Review inbox comments, review marks and chosen base branches. A damaged file is moved aside as `review-inbox.json.bad-*` |
+| `review-inbox.json` | Review inbox comments, review marks (the newest 20 per task) and chosen base branches. A file that can't be read is moved aside, and one with damaged records copied aside, as `review-inbox.json.bad-*` |
+| `review-objects\` | Snapshots of working trees the review inbox compares with, one git object store per repository |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
@@ -546,8 +547,12 @@ submitted with `patchbay task submit`, ready or not yet ready, newest first.
   You resolve comments yourself; an agent's reply doesn't.
 - **Request fixes** sends every unresolved comment to an agent assigned to the task, through the same queue as
   `patchbay send`: a busy agent gets it when it's idle. **Accept** is the board's own acceptance, only for you.
-- A snapshot adds git objects to the repository and nothing else: no commits, refs or index changes. git may clean an
-  old one up after two weeks; then "since last review" compares with the reviewed commit and says so.
+- What's recorded as reviewed is what you were looking at, not the files at the moment you click. If they changed after
+  you loaded them, it says so, and those changes show under **Since last review**.
+- Snapshots go to Patchbay's own store (`review-objects\`), never into the repository: no objects, commits, refs or
+  index changes there.
+- With unresolved comments, or fixes requested after the latest submission, **Accept** asks first.
+- Browser checks an agent recorded show beside the command runs, as the agent's claim.
 
 ## Board
 
