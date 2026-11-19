@@ -24,6 +24,7 @@ import { sshHostProblem } from '../../core/ssh/config'
 import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startupQuestion'
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
+import { asPaste } from './paste'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
@@ -280,7 +281,8 @@ export function createNodeRunner({
     // Only text goes in, so a prompt can't press keys, and a line break can't submit it early.
     const text = prompt.replace(/\r?\n/g, ' ').replace(/[\x00-\x1f\x7f-\x9f]/g, '')
     setTimeout(() => {
-      host.write(id, text)
+      // As one paste, or a prompt over 1 KB loses its start: see paste.ts.
+      host.write(id, asPaste(text))
       setTimeout(() => host.write(id, '\r'), SUBMIT_DELAY_MS)
     }, TYPE_PROMPT_DELAY_MS)
   }

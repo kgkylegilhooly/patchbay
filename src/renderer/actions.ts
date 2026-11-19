@@ -1,6 +1,8 @@
 import type { IconName } from './iconPaths'
 import type { Bindable } from './keys'
 import type { Commands, MenuState } from './menus'
+import { toggleSearch } from './searchUi'
+import { openRecipePicker, openRecipeSave } from './recipeUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -34,12 +36,14 @@ export const ACTIONS: Action[] = [
   { id: 'new-sticky', section: 'New', label: 'New note', icon: 'note', key: 'Ctrl+Shift+N', keywords: ['sticky', 'text'], run: (c) => c.newSticky() },
   { id: 'new-whiteboard', section: 'New', label: 'New whiteboard', icon: 'whiteboard', key: 'Ctrl+Shift+D', keywords: ['draw', 'sketch', 'paint', 'diagram', 'canvas'], run: (c) => c.newWhiteboard() },
   { id: 'spawn-team', section: 'New', label: 'Spawn a team…', icon: 'team', keywords: ['agents', 'lead', 'workstreams', 'parallel'], run: (c) => c.spawnTeamForm() },
+  { id: 'new-from-recipe', section: 'New', label: 'New from recipe…', icon: 'team', keywords: ['template', 'recipe', 'worktree', 'implement', 'review', 'setup'], run: () => openRecipePicker() },
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 
   { id: 'group', section: 'Canvas', label: 'Group selection, or new group', icon: 'group', key: 'Ctrl+Shift+G', run: (c) => c.group() },
   { id: 'select-all', section: 'Canvas', label: 'Select all nodes', icon: 'select-all', key: 'Ctrl+A', run: (c) => c.selectAll() },
   { id: 'close-selected', section: 'Canvas', label: 'Close selected', icon: 'close', keywords: ['delete', 'remove'], ready: hasSelection, run: (c) => c.closeSelected() },
   { id: 'tidy', section: 'Canvas', label: 'Tidy canvas', icon: 'tidy', keywords: ['arrange', 'layout', 'grid'], run: (c) => c.tidy() },
+  { id: 'save-recipe', section: 'Canvas', label: 'Save selection as recipe…', icon: 'note', keywords: ['template', 'recipe', 'reuse'], ready: hasSelection, run: () => openRecipeSave() },
   { id: 'undo', section: 'Canvas', label: 'Undo layout change', icon: 'undo', key: 'Ctrl+Z', ready: (s) => s.canUndo, run: (c) => c.undo() },
   { id: 'redo', section: 'Canvas', label: 'Redo layout change', icon: 'redo', key: 'Ctrl+Y', ready: (s) => s.canRedo, run: (c) => c.redo() },
   { id: 'focus-left', section: 'Canvas', label: 'Move to the window on the left', icon: 'arrow-left', key: 'Ctrl+Shift+Left', keywords: ['focus', 'next'], run: (c) => c.moveFocus('left') },
@@ -68,6 +72,7 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-minimap', section: 'View', label: 'Minimap', icon: 'map', keywords: ['overview'], run: (c) => c.togglePref('minimap') },
   { id: 'toggle-legend', section: 'View', label: 'Link legend', icon: 'link', keywords: ['key', 'cables'], run: (c) => c.togglePref('legend') },
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
+  { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'recent', section: 'View', label: 'Recent conversations', icon: 'recent', keywords: ['closed', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
 
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },

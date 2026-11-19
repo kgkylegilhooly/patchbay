@@ -27,7 +27,9 @@
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/node-pty/**"
+      "node_modules/node-pty/**",
+      "out/main/searchWorker.js",
+      "out/main/chunks/**"
     ],
     "extraResources": [
       {

@@ -14,7 +14,9 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           sessionHost: resolve(__dirname, 'src/main/sessions/hostProcess.ts'),
-          hostLauncher: resolve(__dirname, 'src/main/sessions/hostLauncher.ts')
+          hostLauncher: resolve(__dirname, 'src/main/sessions/hostLauncher.ts'),
+          // Search reads and indexes transcripts in a worker thread, off the main thread. It must never import electron.
+          searchWorker: resolve(__dirname, 'src/main/search/worker.ts')
         }
       }
     }

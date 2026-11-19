@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
+import { exposeSearch } from './search'
+import { exposeRecipes } from './recipes'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -126,6 +128,8 @@ const bridge: PatchbayBridge = {
 
 contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
+exposeSearch()
+exposeRecipes()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.

@@ -1,0 +1,435 @@
+/* Search drawer and the handoff editor. Same charcoal surfaces as the other drawers; amber marks what matched. */
+
+.search-drawer {
+  width: min(480px, 100%);
+}
+
+.search-controls {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.search-input {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 14px;
+}
+
+.search-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.search-filters select {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-kinds,
+.handoff-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.search-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-kind:hover {
+  color: var(--ink);
+}
+
+.search-kind-on {
+  color: var(--ink);
+  background: var(--face-raised);
+  border-color: #5a5a60;
+}
+
+.search-problem {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #ffb4ad;
+  background: rgb(255 69 58 / 0.1);
+  border-bottom: 1px solid rgb(255 69 58 / 0.25);
+}
+
+.search-results {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.search-results[aria-busy='true'] {
+  opacity: 0.7;
+}
+
+.search-hit {
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.search-hit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.search-hit-main:hover .search-hit-title {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.search-hit-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.search-hit-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-when {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.search-hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.search-project {
+  padding: 0 6px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.07);
+  border-radius: 4px;
+}
+
+.search-project-gone {
+  color: var(--ink-dim);
+  text-decoration: line-through;
+  text-decoration-color: rgb(255 255 255 / 0.3);
+}
+
+.search-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #c9c9ce;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+
+.search-drawer mark,
+.search-viewer mark {
+  padding: 0 1px;
+  color: #1a1606;
+  background: #e7b53f;
+  border-radius: 2px;
+}
+
+.search-continue {
+  margin-top: 8px;
+}
+
+.search-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  border-top: 1px solid var(--line);
+}
+
+.search-foot span {
+  flex: 1;
+}
+
+.search-viewer {
+  right: min(496px, 45%);
+}
+
+.search-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Handoff editor */
+
+.handoff-back {
+  position: absolute;
+  inset: 0;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(14 14 16 / 0.55);
+}
+
+.handoff {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--face);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 0.65);
+}
+
+.handoff-body {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 4px;
+  overflow: auto;
+}
+
+.handoff-from {
+  margin: 0 0 8px;
+  color: var(--ink-dim);
+}
+
+.handoff-from strong {
+  color: var(--ink);
+}
+
+.handoff-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--tape-ink);
+  background: var(--tape);
+  border: 1px solid var(--tape-line);
+  border-radius: 8px;
+}
+
+.handoff-label-tag {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1606;
+  background: var(--tape-line);
+  border-radius: 4px;
+}
+
+.handoff-section {
+  margin-bottom: 14px;
+}
+
+.handoff-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.handoff-section-head label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.handoff-note,
+.handoff-edited {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.handoff-edited {
+  margin-left: auto;
+  color: var(--cable-link);
+}
+
+.handoff-section textarea {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.evidence {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.evidence-found {
+  color: var(--led-idle);
+}
+
+.evidence-partial {
+  color: var(--led-waiting);
+}
+
+.evidence-stale {
+  color: var(--led-working);
+}
+
+.evidence-missing {
+  color: var(--led-needs);
+}
+
+.handoff-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--well);
+}
+
+.handoff-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.handoff-agents {
+  align-self: center;
+}
+
+.handoff-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.handoff-folder {
+  flex: 2 1 260px;
+}
+
+.handoff-folder-row {
+  display: flex;
+  gap: 6px;
+}
+
+.handoff-folder-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.handoff-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.handoff-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.handoff-count-over {
+  color: var(--led-needs);
+}
+
+/* A result's source: the matching message with some either side, read from the index. */
+
+.source-body {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 14px;
+  overflow: auto;
+  background: var(--well);
+}
+
+.source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-entry {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+}
+
+.source-focus {
+  background: rgb(231 181 63 / 0.08);
+  border-left-color: #e7b53f;
+}
+
+.source-meta {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.source-text {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.source-more {
+  display: block;
+  margin: 4px auto 10px;
+}

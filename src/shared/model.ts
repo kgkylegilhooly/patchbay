@@ -41,6 +41,19 @@ export interface ClaudeNode extends Base {
   sessionId: string | null
   transcriptPath: string | null
   after: string[]
+  /** Held for a recipe's setup steps. See src/main/recipes/setupGate.ts. */
+  setupWait?: SetupWait
+}
+
+/**
+ * A recipe agent waiting for its setup. `steps` are the setup run nodes still to exit with code 0, and `after` the
+ * starts-after list it's armed with once they have. `failed` is the step that last failed, while it stays failed.
+ */
+export interface SetupWait {
+  steps: string[]
+  after: string[]
+  recipe: string
+  failed?: { step: string; title: string; exitCode: number | null; why: 'exit' | 'stopped' | 'closed' }
 }
 
 /** A command run on demand, which never starts by itself on launch. */
