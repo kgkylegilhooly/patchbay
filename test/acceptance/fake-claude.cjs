@@ -81,6 +81,11 @@ async function main() {
   } else if (/\bexit\b/.test(prompt)) {
     process.exit(0)
   }
+  // With "pb-sticky" it runs `patchbay sticky` as an agent would, so a picture shows where the note really lands.
+  if (/\bpb-sticky\b/.test(prompt)) {
+    const cli = require('node:path').join(__dirname, '..', '..', 'resources', 'cli', 'patchbay.cjs')
+    spawn(process.execPath, [cli, 'sticky', '--title', 'Plan', '--text', 'Notes from the lead'], { stdio: 'ignore', windowsHide: true })
+  }
   // Left idle otherwise, and it stays open, echoing what's typed, like a program waiting for input.
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (d) => process.stdout.write(d))

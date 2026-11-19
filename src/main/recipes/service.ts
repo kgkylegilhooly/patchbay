@@ -8,9 +8,11 @@ import type { AfterGate } from '../control/after'
 import type { NodeRunner } from '../sessions/nodeRunner'
 import { findRecipe, listRecipes, REPO_RECIPES, saveRecipeFile } from './files'
 import type { SetupGate } from './setupGate'
+import { placeInProject, projectOf as nodeProject } from '../../core/canvas/place'
+import { spotNear } from '../control/verbs'
+import { viewSize } from '../viewSize'
 
 const MAX_TASK_CHARS = 4000
-const GAP = 40
 
 export interface RecipeServiceDeps {
   store: CanvasStore
@@ -90,18 +92,11 @@ export function createRecipeService(d: RecipeServiceDeps) {
     return planRecipe(entry.recipe!, { ...p, cwd }, newId)
   }
 
-  /** Beside the opener, or to the right of everything in the project. */
+  /** Beside the opener, or where the person is looking in the project. See core/canvas/place. */
   const spot = (doc: CanvasDoc, projectId: string, size: { width: number; height: number }, openedBy?: string): { x: number; y: number } => {
-    const tops = doc.nodes.filter((n) => n.projectId === projectId && !n.parentId)
     const opener = openedBy ? doc.nodes.find((n) => n.id === openedBy) : undefined
-    if (opener && !opener.parentId) {
-      const x = opener.x + opener.width + GAP
-      let y = opener.y
-      const clash = (): CanvasNode | undefined => tops.find((n) => x < n.x + n.width && n.x < x + size.width && y < n.y + n.height && n.y < y + size.height)
-      for (let hit = clash(); hit; hit = clash()) y = hit.y + hit.height + GAP
-      return { x, y }
-    }
-    return tops.length ? { x: Math.max(...tops.map((n) => n.x + n.width)) + GAP, y: Math.min(...tops.map((n) => n.y)) } : { x: 0, y: 0 }
+    if (opener && nodeProject(doc, opener) === projectId) return spotNear(doc, opener, size)
+    return placeInProject(doc, projectId, size, viewSize())
   }
 
   /**
