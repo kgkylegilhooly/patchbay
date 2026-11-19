@@ -115,10 +115,10 @@ test('restart preserves outcomes and attempts, marks interrupted runs, and never
   expect(createDocStore(dir).load().doc.nodes).toEqual([])
 })
 
-test('old projects have no tasks; corrupt task data is refused', () => {
+test('old projects have no tasks; a damaged task record is dropped on its own and the canvas still loads', () => {
   const old = createDocStore(dir).load().doc
   expect(migrate(old).projects[0].tasks).toBeUndefined()
-  expect(() => migrate({ ...old, projects: [{ ...old.projects[0], tasks: { tasks: [{}], attempts: [] } }] })).toThrow(/invalid projects/)
+  expect(migrate({ ...old, projects: [{ ...old.projects[0], tasks: { tasks: [{}], attempts: [] } }] }).projects[0].tasks).toEqual(emptyTasks())
   expect(migrate({ ...old, projects: [{ ...old.projects[0], tasks: emptyTasks() }] }).projects[0].tasks).toEqual(emptyTasks())
 })
 
@@ -146,11 +146,11 @@ test('successful retry promotes a submitted blocked task without erasing its ear
   const task = await tasks.create('project-1', input())
   await tasks.submit('project-1', task.id, 'me', 'Ready when checks pass')
   expect(tasks.list('project-1')[0].state).toBe('blocked')
-  await tasks.verify('project-1', task.id, 'me', input().requiredChecks[0])
+  await tasks.verify('project-1', task.id, 'me', 'unit')
   await waitForCheck(tasks, task.id)
   expect(tasks.list('project-1')[0].state).toBe('blocked')
   pass = true
-  await tasks.verify('project-1', task.id, 'me', input().requiredChecks[0])
+  await tasks.verify('project-1', task.id, 'me', 'unit')
   await waitForCheck(tasks, task.id)
   await vi.waitFor(() => expect(tasks.list('project-1')[0].state).toBe('ready-for-review'))
   const view = await tasks.show('project-1', task.id)
@@ -160,14 +160,14 @@ test('successful retry promotes a submitted blocked task without erasing its ear
 
 test('real command runs record output, cwd, timestamps, exit code, and revision; retries preserve results', async () => {
   const { tasks } = setup()
-  const task = await tasks.create('project-1', input())
-  const first = await tasks.verify('project-1', task.id, 'me', input().requiredChecks[0])
+  const task = await tasks.create('project-1', { ...input(), requiredChecks: [...input().requiredChecks, { id: 'failure', command: 'echo failure && exit 7', cwd: repo }] })
+  const first = await tasks.verify('project-1', task.id, 'me', 'unit')
   expect(first.status).toBe('running')
   await waitForCheck(tasks, task.id)
   let attempts = (await tasks.show('project-1', task.id)).attempts
   expect(attempts[0]).toMatchObject({ kind: 'command', status: 'passed', exitCode: 0, cwd: repo, revision: rev, startedAt: expect.any(Number), endedAt: expect.any(Number) })
   expect(readFileSync(first.outputRef, 'utf8')).toContain('verified')
-  const second = await tasks.verify('project-1', task.id, 'me', { id: 'failure', command: 'echo failure && exit 7', cwd: repo })
+  const second = await tasks.verify('project-1', task.id, 'me', 'failure')
   await waitForCheck(tasks, task.id)
   attempts = (await tasks.show('project-1', task.id)).attempts
   expect(attempts).toHaveLength(2)
@@ -184,7 +184,7 @@ test('verification does not execute before durable start record is saved', async
   const tasks = createTaskService(store, dir, async () => { if (fail) throw new Error('disk full') }, async () => rev, execute)
   const task = await tasks.create('project-1', input())
   fail = true
-  await expect(tasks.verify('project-1', task.id, 'me', input().requiredChecks[0])).rejects.toThrow('disk full')
+  await expect(tasks.verify('project-1', task.id, 'me', 'unit')).rejects.toThrow('disk full')
   expect(execute).not.toHaveBeenCalled()
 })
 
@@ -192,7 +192,7 @@ test('agent routing stays in its project and enforces check definitions', async 
   const { store, tasks } = setup()
   const caller = store.get().nodes[0]
   const task = await taskVerb(tasks, caller, 'task-create', { brief: 'Task', criteria: ['Works'], checks: JSON.stringify(input().requiredChecks) }) as Task
-  await expect(taskVerb(tasks, caller, 'task-verify', { task: task.id, check: 'unit', command: 'echo spoof' })).rejects.toThrow(/must match/)
+  await expect(taskVerb(tasks, caller, 'task-verify', { task: task.id, check: 'unit', command: 'echo spoof' })).rejects.toThrow(/runs a declared check as it was declared/)
   await expect(taskVerb(tasks, { ...caller, projectId: 'other' }, 'task-show', { task: task.id })).rejects.toThrow(/Project not found/)
   await tasks.state('project-1', task.id, 'cancelled')
   await expect(tasks.submit('project-1', task.id, 'me', 'done')).rejects.toThrow(/cancelled/)

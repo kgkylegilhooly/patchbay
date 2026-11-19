@@ -396,6 +396,8 @@ async function boot(): Promise<void> {
   })
   ipcMain.handle('pb:getMessages', () => messages.all())
   const tasks = createTaskService(store, dataDir, () => docStore.flush())
+  // Output of attempts no project records any more. Once the canvas has settled, so it costs start-up nothing.
+  setTimeout(() => tasks.pruneOutput(), 60_000).unref()
   ipcMain.handle('pb:taskShow', (e, projectId: string, taskId: string) => {
     if (e.sender !== mainWindow?.webContents || e.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Tasks are available only in the application UI')
     return tasks.show(projectId, taskId)
@@ -582,6 +584,8 @@ async function boot(): Promise<void> {
       await messages.flush()
       await agentEdits.flush()
       await search.stop()
+      // A verification left running would outlive the record it reports to. On next launch its attempt reads interrupted.
+      tasks.stopAll()
     }
     // Saved before stopping sessions in case that hangs, and after because stopping can change the doc.
     await save()

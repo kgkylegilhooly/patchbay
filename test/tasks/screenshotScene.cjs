@@ -17,13 +17,16 @@ scenes.scenes.tasks = async (page) => {
     const tasks = doc.projects[0].tasks
     await window.patchbay.dispatch({ op: 'setTasks', projectId: 'p1', tasks: { ...tasks, tasks: tasks.tasks.map((t) => ({ ...t, state: 'accepted' })) } })
     if ((await window.patchbay.getDoc()).projects[0].tasks.tasks.some((t) => t.state === 'accepted')) throw new Error('Generic document dispatch forged acceptance')
+    // Nor through a project patch carrying tasks.
+    await window.patchbay.dispatch({ op: 'patchProject', id: 'p1', patch: { tasks: { ...tasks, tasks: tasks.tasks.map((t) => ({ ...t, state: 'accepted' })) } } })
+    if ((await window.patchbay.getDoc()).projects[0].tasks.tasks.some((t) => t.state === 'accepted')) throw new Error('A project patch forged acceptance')
   })
-  await page.click('[data-task="task-ready"] button')
+  await page.evaluate(() => [...document.querySelectorAll('[data-task="task-ready"] button')].find((b) => /Review outcome|Refresh evidence|Checking/.test(b.textContent))?.click())
   await page.waitForFunction(() => [...document.querySelectorAll('[data-task="task-ready"] button')].some((b) => b.textContent === 'Accept this submission' && !b.disabled))
   await page.evaluate(() => [...document.querySelectorAll('[data-task="task-ready"] button')].find((b) => b.textContent === 'Accept this submission').click())
   await page.waitForFunction(() => document.querySelector('[data-task="task-ready"] .task-state')?.textContent === 'accepted')
   // Keep the final board compact while leaving the acceptance badge and blocked result visible.
-  await page.evaluate(() => [...document.querySelectorAll('[data-task="task-ready"] button')].find((b) => b.textContent === 'Hide details').click())
+  await page.evaluate(() => [...document.querySelectorAll('[data-task="task-ready"] button')].find((b) => b.textContent === 'Hide details')?.click())
   await page.waitForSelector('[data-task="task-ready"] .task-accepted')
 }
 scenes.prepare = (name, cwdRoot) => {

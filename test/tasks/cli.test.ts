@@ -22,8 +22,10 @@ test('CLI task verbs parse, execute through authenticated RPC, and preserve acti
   const cli = async (...args: string[]) => (await promisify(execFile)(process.execPath, [resolve('resources/cli/patchbay.cjs'), 'task', ...args], { env, windowsHide: true })).stdout
   try {
     expect(await cli('--help')).toContain('task verify')
-    const task = JSON.parse(await cli('create', '--brief', 'CLI outcome', '--criteria', 'Exit zero', '--cwd', dir, '--checks', JSON.stringify([{ id: 'check', command: 'echo actual-command' }])))
+    const task = JSON.parse(await cli('create', '--brief', 'CLI outcome', '--criteria', 'Exit zero', '--criteria', 'Handles 1,000 rows', '--cwd', dir, '--checks', JSON.stringify([{ id: 'check', command: 'echo actual-command' }])))
+    expect(task.acceptanceCriteria).toEqual(['Exit zero', 'Handles 1,000 rows'])
     expect(JSON.parse(await cli('list'))[0].id).toBe(task.id)
+    await expect(cli('verify', '--task', task.id, '--check', 'check', '--command', 'evil')).rejects.toMatchObject({ stderr: expect.stringContaining('no --command flag') })
     const attempt = JSON.parse(await cli('verify', '--task', task.id, '--check', 'check'))
     expect(attempt).toMatchObject({ kind: 'command', status: 'running', command: 'echo actual-command' })
     await vi.waitFor(async () => expect((await tasks.show('p', task.id)).attempts[0]).toMatchObject({ status: 'passed', exitCode: 0 }), { timeout: 5000 })

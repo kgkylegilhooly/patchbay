@@ -8,11 +8,11 @@ const REQUEST_TIMEOUT_MS = 30000
 
 // How each flag is read: text, list (commas or repeats), int, or path (resolved against this folder).
 const VERBS = {
-  'task create': { brief: 'text', criteria: 'list', sessions: 'list', cwd: 'path', checks: 'text', 'depends-on': 'list' },
-  'task list': {},
+  'task create': { brief: 'text', criteria: 'repeat', sessions: 'list', cwd: 'path', checks: 'text', 'depends-on': 'list' },
+  'task list': { readiness: 'flag' },
   'task show': { task: 'text' },
   'task submit': { task: 'text', summary: 'text' },
-  'task verify': { task: 'text', check: 'text', command: 'text', cwd: 'path' },
+  'task verify': { task: 'text', check: 'text' },
   'task state': { task: 'text', state: 'text' },
   whoami: {},
   list: {},
@@ -58,11 +58,11 @@ const VERBS = {
 
 const USAGE = `Usage: patchbay <verb> [--flag value]
 
-  task create   --brief TEXT --criteria TEXT [--sessions ID,ID] [--cwd DIR] [--checks JSON] [--depends-on ID,ID]
-  task list
+  task create   --brief TEXT --criteria TEXT [--criteria TEXT ...] [--sessions ID,ID] [--cwd DIR] [--checks JSON] [--depends-on ID,ID]
+  task list     [--readiness]   with --readiness, each task's attempts and whether it's ready now
   task show     --task ID
   task submit   --task ID --summary TEXT
-  task verify   --task ID --check NAME [--command CMD] [--cwd DIR]   starts a recorded command; task show reads its result
+  task verify   --task ID --check NAME   runs a check declared at create, in cmd, outside your sandbox; task show reads its result
   task state    --task ID --state planned|running|blocked|cancelled
 
   guide         prints how to use Patchbay, with every rule
@@ -186,6 +186,8 @@ function parseFlags(verb, words) {
     }
     if (kind === 'path') args[key] = toLocalPath(value)
     if (kind === 'list') args[key] = [...(args[key] || []), ...value.split(',').filter(Boolean)]
+    // Each use is one whole item, commas and all, as an acceptance criterion such as "Handles 1,000 rows".
+    if (kind === 'repeat') args[key] = [...(args[key] || []), value]
     if (kind === 'int') {
       if (!/^\d+$/.test(value)) fail(`--${flag} needs a whole number, not "${value}".`)
       args[key] = Number(value)
