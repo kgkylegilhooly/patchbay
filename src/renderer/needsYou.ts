@@ -17,14 +17,15 @@ export interface QueueEntry {
  * the Status tab's own, so a session is never jumped to for a status that view wouldn't give it. Unknown is never
  * jumped to: nothing says it needs anyone.
  */
-export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], waits: Record<string, WaitSince>, includeUnread: boolean): QueueEntry[] {
+/** `stopped`: agents whose turn ended on an API error, such as a usage limit, which the Status tab lists under Need attention too. */
+export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], waits: Record<string, WaitSince>, includeUnread: boolean, stopped: Record<string, unknown> = {}): QueueEntry[] {
   const unread = new Set(attention)
   const entries: (QueueEntry & { order: number })[] = []
   // An archived project can't be shown until it's unarchived, so nothing in it is gone to.
   const archived = new Set(doc.projects.filter(isProjectArchived).map((p) => p.id))
   doc.nodes.forEach((node, order) => {
     if (node.kind !== 'claude' || (node.projectId && archived.has(node.projectId))) return
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped)
     if (bucket === 'needs-you' || (includeUnread && bucket === 'unread')) entries.push({ id: node.id, bucket, since: waits[node.id]?.at ?? null, order })
   })
   const rank = (e: QueueEntry): number => (e.bucket === 'needs-you' ? 0 : 1)

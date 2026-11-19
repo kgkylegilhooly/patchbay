@@ -19,6 +19,9 @@ const MAX_JOURNAL_BYTES = 256 * 1024
 
 /** The fields Patchbay uses. Tool responses can be huge and could push the event past the server's limit. */
 const FORWARDED = ['hook_event_name', 'session_id', 'transcript_path', 'cwd', 'notification_type', 'reason', 'source']
+/** A turn that ended on an API error says why, such as a usage limit and when it resets. Capped, as it's only for a label. */
+const STOP_FAILURE_FIELDS = ['error', 'error_details', 'last_assistant_message']
+const MAX_STOP_TEXT_CHARS = 1000
 
 function done() {
   process.exit(0)
@@ -75,6 +78,9 @@ function pick(raw) {
   const out = {}
   for (const key of FORWARDED) if (event[key] !== undefined) out[key] = event[key]
   if (!out.hook_event_name) out.hook_event_name = process.argv[2]
+  if (out.hook_event_name === 'StopFailure') {
+    for (const key of STOP_FAILURE_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, MAX_STOP_TEXT_CHARS)
+  }
   if (out.hook_event_name === 'PermissionRequest') {
     out.tool_name = event.tool_name
     const input = JSON.stringify(event.tool_input)

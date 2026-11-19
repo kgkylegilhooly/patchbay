@@ -62,7 +62,8 @@ export function createSendQueue({
   timing = DEFAULT_SEND_TIMING,
   prefix,
   pasteOn,
-  draft
+  draft,
+  hold
 }: {
   host: Pick<SessionHost, 'write' | 'isRunning'>
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
@@ -82,6 +83,11 @@ export function createSendQueue({
    * unsent, or it would be added to the end of theirs, and goes once they stop.
    */
   draft?: { drafting(id: string): boolean; onDraftSettled(cb: (id: string) => void): void }
+  /**
+   * Agents stopped on StopFailure (see sessions/agentStops.ts). One held, as at a usage limit, gets nothing until its
+   * reset. One released is at its prompt though its status is `unknown`, so it gets what's waiting.
+   */
+  hold?: { holding(id: string): boolean; released(id: string): boolean; onRelease(cb: (id: string) => void): void }
 }): SendQueue {
   const queues = new Map<string, SendItem[]>()
   /** Nodes just typed into, whose status can't yet show that they took it. */
@@ -96,6 +102,13 @@ export function createSendQueue({
   /** Agents whose status has moved off idle since they were last typed into, so the message went. */
   const took = new Set<string>()
 
+  /** Idle, or stopped on a failure at its prompt with nothing held. */
+  const atPrompt = (id: string): boolean => {
+    const status = tracker.get(id)
+    if (status === 'idle') return !hold?.holding(id)
+    return status === 'unknown' && !!hold?.released(id)
+  }
+
   const type = (id: string, text: string, paste = false): void => {
     took.delete(id)
     host.write(id, (prefix?.(id) ?? '') + (paste ? asPaste(text) : text))
@@ -105,7 +118,7 @@ export function createSendQueue({
       if (retry === undefined) return
       const timer = setTimeout(() => {
         // A terminal has no status, so this only ever presses Enter again for an agent.
-        if (!took.has(id) && tracker.get(id) === 'idle' && host.isRunning(id)) host.write(id, '\r')
+        if (!took.has(id) && atPrompt(id) && host.isRunning(id)) host.write(id, '\r')
       }, retry)
       timer.unref?.()
     }, timing.enterDelayMs)
@@ -119,7 +132,7 @@ export function createSendQueue({
       for (const item of queue) item.onDropped?.()
       return
     }
-    if (settling.has(id) || tracker.get(id) !== 'idle' || !host.isRunning(id) || draft?.drafting(id)) return
+    if (settling.has(id) || !atPrompt(id) || !host.isRunning(id) || draft?.drafting(id)) return
     let item = queue.shift()
     while (item?.stillWanted && !item.stillWanted()) {
       item.onDropped?.()
@@ -138,6 +151,7 @@ export function createSendQueue({
   }
 
   draft?.onDraftSettled((id) => deliverNext(id))
+  hold?.onRelease((id) => deliverNext(id))
 
   tracker.onChange((id, status) => {
     if (status !== 'idle') took.add(id)

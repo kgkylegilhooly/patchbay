@@ -78,6 +78,9 @@ import { createCodexGate } from './usage/codexGate'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
+import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
+import { registerAgentStopIpc } from './agentStopsIpc'
+import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
 import { resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
@@ -363,10 +366,14 @@ async function boot(): Promise<void> {
       secret,
       settings: currentSettings,
       typePrefix: (id) => sendGuard.prefixFor(id),
-      takeMissedHooks: (id) => takeMissedHooks(journalDir, id)
+      takeMissedHooks: (id) => takeMissedHooks(journalDir, id),
+      onMissedStopFailure: (id, event) => stops.noteHook(id, event)
     }
   })
   const usage = createUsageService({ dataDir })
+  // Why agents stopped on StopFailure, such as a usage limit, and holding what's sent to them until it resets.
+  const stops = createAgentStops({ tracker, plan: () => usage.state().plan, continueEnabled: () => currentSettings().continueAtReset === 'on', store: stopFile(join(dataDir, 'agent-stops.json'), (line) => log?.write(line)) })
+  registerAgentStopIpc(stops)
   if (signalDir) {
     signals = watchSignals({
       dir: signalDir,
@@ -402,7 +409,8 @@ async function boot(): Promise<void> {
       return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(terminalStartFor({ settings: currentSettings }, node, true).file)
     }
   })
-  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard })
+  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard, hold: stops })
+  continueAtReset(stops, sendQueue)
   const messages = createMessageLog(join(dataDir, 'messages.json'))
   const agentEdits = createAgentEditLog(join(dataDir, 'agent-edits.json'))
   ipcMain.handle('pb:getAgentEdits', () => agentEdits.all())
@@ -422,14 +430,17 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), stops, log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
   // Which files each agent session edited, from its transcript, with a snapshot as each turn starts. See src/main/files.
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
   const allVerbs = withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched })
-  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }) })
+  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
+    const stop = tracker.get(id) === 'unknown' ? stops.get(id) : undefined
+    return (stop && heldReason(stop, Date.now())) ?? undefined
+  } })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
   const hostAtBoot = await host.connect()
@@ -452,6 +463,8 @@ async function boot(): Promise<void> {
     return plan.adopt
   }
   const adopted = adoptLive()
+  // A node at its usage limit before the app restarted still is, if its session came back.
+  stops.retain(adopted)
 
   const server: ControlServer = await startControlServer({
     secret,
@@ -459,6 +472,7 @@ async function boot(): Promise<void> {
     onHook: async (id, payload, signal) => {
       signals?.heardHook(id)
       const answer = await runner.handleHook(id, payload, signal)
+      stops.noteHook(id, payload)
       if (payload.hook_event_name !== 'SessionStart') return answer
       // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
       const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
@@ -543,7 +557,7 @@ async function boot(): Promise<void> {
     resolveOtherHost,
     triggers,
     launchRunner: join(resourceDir, 'launch-run.cjs'),
-    onSettingsSaved: () => keepAwake.update(tracker.all())
+    onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh())
   })
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })

@@ -15,6 +15,7 @@ import { closedProjects, projectBadge, projectSections, recentlyClosed, relative
 import { useStore } from './store'
 import { contextLabel } from './usageView'
 import { useAgentOff } from './agentChoice'
+import { useAgentStop, useAgentStops } from './agentStops'
 
 const TICK_MS = 20_000
 
@@ -45,6 +46,8 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   const context = contextLabel(useStore((s) => s.usage.nodes[session.id]))
   const at = useStore((s) => s.activity[session.id])
   const inStatus = tab === 'status'
+  // Its section says Need attention, so the row says why.
+  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined)
   const peekable = inStatus && session.kind === 'claude'
   return (
     <li>
@@ -62,7 +65,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
         }}
       >
         <span className="session-top">
-          <StatusDot status={session.kind === 'run' ? runDot(run) : status} />
+          <StatusDot status={session.kind === 'run' ? runDot(run) : status} nodeId={session.id} />
           <Badge project={project} />
           <KindIcon kind={session.kind} agent={session.kind === 'claude' ? session.agent : undefined} />
           <span className="session-title">{session.title}</span>
@@ -72,7 +75,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
               {context.text.replace(' context', '')}
             </span>
           )}
-          {!inStatus && status && <StatusBadge status={status} />}
+          {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} />}
           {session.kind === 'run' && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
         </span>
         <span className="session-where-row">
@@ -109,6 +112,7 @@ function SectionHead({ id, label, count, open, onToggle, help, badge }: { id: st
 function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands; prefs: Prefs; onPrefs: (patch: Partial<Prefs>) => void; onClose: () => void }): React.JSX.Element | null {
   const doc = useStore((s) => s.doc)
   const statuses = useStore((s) => s.statuses)
+  const stops = useAgentStops((s) => s.stops)
   const attention = useStore((s) => s.attention)
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
@@ -124,7 +128,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={now} onReveal={commands.revealNode} />
 
   const bySection = projectSections(doc, query)
-  const byStatus = statusSections(doc, statuses, attention, query)
+  const byStatus = statusSections(doc, statuses, attention, query, stops)
   const total = bySection.reduce((sum, s) => sum + s.tree.total, 0)
   const closed = closedProjects(doc)
   const recent = recentlyClosed(doc, query)

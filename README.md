@@ -275,6 +275,9 @@ and spends a little quota.
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
+- **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
+  its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
+  It goes under Need attention. The reset time comes from Claude's status line, or from its message.
 - **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
   waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
   `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
@@ -415,6 +418,8 @@ or pick one in its form. The moving cable shows where it goes.
 - **Delivery:** a terminal gets the prompt typed straight in, only if it's running. A Claude window gets it only when
   idle, through the same queue as `patchbay send`, and a trigger holds one waiting prompt at most. Disarming or editing
   drops what's waiting. A target that isn't running is a missed run: a trigger never starts a session.
+- **Held at a limit:** a prompt for a Claude window stopped at its usage limit waits until the limit resets, then goes
+  out. Its run says "Held" and until when.
 - **Runs:** Run now fires an armed trigger at once. The node shows the next run time and its last 20 runs as
   Delivered, Waiting, Missed or Failed, with the reason.
 - **While closed:** schedules run in the app, so nothing fires while it's closed, even though sessions keep running.
@@ -513,6 +518,15 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 - **What agents may do.** They read and message only nodes they opened or that you linked to them, stay in their own
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
+- **Usage limits.** A message or trigger prompt for an agent stopped at its usage limit waits until the limit
+  resets, then goes out by itself, even if Patchbay restarted meanwhile (messages queued before a restart are lost, as
+  ever). A short rate limit that names no reset is tried again after a minute, then longer. You can still type to it any
+  time. After a login or billing failure, messages wait until you've sorted it out. `patchbay list` and `patchbay wait` say which agents stopped and why. Settings >
+  Sessions > **Continue after a usage limit resets** (off by default) sends "continue" once at the reset to an agent
+  still stopped there with nothing waiting for it. Its badge says so beforehand.
+- **Leads keep their team going.** `patchbay restart --node <id>` brings back an agent the lead opened that has
+  exited, resuming its conversation, as Restart does. `patchbay link --from <a> --to <b>` links two agents the lead
+  opened, so a reviewer can send its findings to the author directly.
 - **An agent waiting on you shows it.** An agent stopped at a question before it starts, such as Claude's or Codex's
   question about trusting a new folder, shows needs-you, so the agent that opened it can tell you which node.
 - **Long briefs and diagrams** can be piped in: `--prompt-file -`, `--members-file -` and `--diagram-file -` read a

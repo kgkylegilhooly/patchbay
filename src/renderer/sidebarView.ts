@@ -21,8 +21,10 @@ export const BUCKETS: { id: BucketId; label: string; help: string; always: boole
 ]
 
 /** Never guesses: anything with no status from a hook is either Unknown or listed as having none. */
-export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean): BucketId {
+export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean, stopped = false): BucketId {
   if (status === 'needs-you') return 'needs-you'
+  // Stopped at a usage limit, a failed login or an API error: Patchbay knows why, so it isn't Unknown.
+  if (status === 'unknown' && stopped) return 'needs-you'
   if (unread) return 'unread'
   switch (status) {
     case 'working':
@@ -52,7 +54,7 @@ export interface StatusSection {
  * Every session, by status, across projects. A closed project is out of sight on purpose, except for what the taskbar
  * badge is counting: a session waiting on you has to stay findable, wherever it is.
  */
-export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string): StatusSection[] {
+export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}): StatusSection[] {
   const open = new Map(doc.projects.map((p) => [p.id, isProjectOpen(p)]))
   const names = new Map(doc.projects.map((p) => [p.id, p.name.toLowerCase()]))
   const q = query.trim().toLowerCase()
@@ -61,7 +63,7 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
   const sections = new Map<BucketId, Session[]>(BUCKETS.map((b) => [b.id, []]))
   for (const node of doc.nodes) {
     if (!isSessionNode(node) || !shown(node)) continue
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped)
     const hidden = node.projectId !== undefined && open.get(node.projectId) === false
     if (hidden && bucket !== 'needs-you' && bucket !== 'unread') continue
     // An archived project's sessions were stopped on purpose, and can't be shown until it's unarchived.

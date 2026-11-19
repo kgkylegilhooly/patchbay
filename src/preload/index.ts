@@ -7,6 +7,7 @@ import { exposeNeedsYou } from './needsYou'
 import { exposeReview } from './review'
 import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
+import { exposeAgentStops } from './agentStops'
 import { exposeFiles } from './files'
 import { exposeProjects } from './projects'
 import { exposeView } from './view'
@@ -144,6 +145,7 @@ exposeNeedsYou()
 exposeReview()
 exposeTerminalProfiles()
 exposeCompare()
+exposeAgentStops()
 exposeFiles()
 exposeProjects()
 exposeView()
