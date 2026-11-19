@@ -119,65 +119,106 @@ async function waitForReader(page) {
   await sleep(300)
 }
 
+const COMPOSER = `${READER} .reader-composer textarea`
+
+/**
+ * Opens the comment box with `open`, trying again if it didn't open. The reader moves under the pointer as panels
+ * open and as it scrolls, and scrolling hides the + on purpose, so one attempt can miss. Waits are on what the page
+ * shows, never on fixed times alone.
+ */
+async function openComposer(page, what, open) {
+  let last
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await open()
+      await page.waitForSelector(COMPOSER, { timeout: 1500 })
+      return
+    } catch (e) {
+      last = e
+      await sleep(250)
+    }
+  }
+  throw new Error(`The comment box didn't open for ${what}: ${last && last.message}`)
+}
+
+/** Types a comment into the open box and saves it, then waits until the box has closed. */
+async function saveComment(page, text, how) {
+  await page.type(COMPOSER, text)
+  if (how === 'keys') {
+    await page.keyboard.down('Control')
+    await page.keyboard.press('Enter')
+    await page.keyboard.up('Control')
+  } else {
+    await page.click(`${READER} .reader-composer .reader-primary`)
+  }
+  await page.waitForSelector(COMPOSER, { hidden: true, timeout: 3000 })
+}
+
 /** Selects words on the page and comments on them through the selection bubble. */
 async function commentOnWords(page, words, text) {
-  const ok = await page.evaluate(
-    (sel, words) => {
-      const article = document.querySelector(`${sel} .reader-doc`)
-      const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const at = n.data.indexOf(words)
-        if (at < 0) continue
-        window.getSelection().setBaseAndExtent(n, at, n, at + words.length)
-        article.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
-        return true
-      }
-      return false
-    },
-    READER,
-    words
-  )
-  if (!ok) throw new Error(`"${words}" isn't on the page`)
-  await page.waitForSelector(`${READER} .reader-bubble`, { timeout: 3000 })
-  await page.click(`${READER} .reader-bubble`)
-  await page.waitForSelector(`${READER} .reader-composer textarea`, { timeout: 3000 })
-  await page.type(`${READER} .reader-composer textarea`, text)
-  await page.keyboard.down('Control')
-  await page.keyboard.press('Enter')
-  await page.keyboard.up('Control')
-  await sleep(200)
+  await openComposer(page, `"${words}"`, async () => {
+    const ok = await page.evaluate(
+      (sel, words) => {
+        const article = document.querySelector(`${sel} .reader-doc`)
+        const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT)
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const at = n.data.indexOf(words)
+          if (at < 0) continue
+          window.getSelection().setBaseAndExtent(n, at, n, at + words.length)
+          article.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+          return true
+        }
+        return false
+      },
+      READER,
+      words
+    )
+    if (!ok) throw new Error(`"${words}" isn't on the page`)
+    await page.waitForSelector(`${READER} .reader-bubble`, { timeout: 2000 })
+    await page.click(`${READER} .reader-bubble`)
+  })
+  await saveComment(page, text, 'keys')
 }
 
 /** Points at a heading, and comments on it with the + that appears beside it. */
 async function commentOnHeading(page, title, text) {
-  const box = await page.evaluate(
-    (sel, title) => {
-      const h = [...document.querySelectorAll(`${sel} .reader-heading`)].find((e) => e.textContent.trim() === title)
-      if (!h) return null
-      // Into view inside the reader only: scrollIntoView would also move the canvas.
-      const scroll = h.closest('.reader-scroll')
-      scroll.scrollTop += h.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 120
-      const r = h.querySelector('h1,h2,h3,h4,h5,h6').getBoundingClientRect()
-      return { x: r.left + 30, y: r.top + r.height / 2 }
-    },
-    READER,
-    title
-  )
-  if (!box) throw new Error(`No heading "${title}"`)
-  await page.mouse.move(box.x, box.y)
-  await page.waitForSelector(`${READER} .reader-add`, { timeout: 3000 })
-  await page.click(`${READER} .reader-add`)
-  await page.waitForSelector(`${READER} .reader-composer textarea`, { timeout: 3000 })
-  await page.type(`${READER} .reader-composer textarea`, text)
-  await page.click(`${READER} .reader-composer .reader-primary`)
-  await sleep(200)
+  await openComposer(page, `heading "${title}"`, async () => {
+    const found = await page.evaluate(
+      (sel, title) => {
+        const h = [...document.querySelectorAll(`${sel} .reader-heading`)].find((e) => e.textContent.trim() === title)
+        if (!h) return false
+        // Into view inside the reader only: scrollIntoView would also move the canvas.
+        const scroll = h.closest('.reader-scroll')
+        scroll.scrollTop += h.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 120
+        return true
+      },
+      READER,
+      title
+    )
+    if (!found) throw new Error(`No heading "${title}"`)
+    // The scroll's own event comes after this, and hides the +; let it pass before pointing.
+    await sleep(250)
+    const box = await page.evaluate(
+      (sel, title) => {
+        const h = [...document.querySelectorAll(`${sel} .reader-heading`)].find((e) => e.textContent.trim() === title)
+        const r = h.querySelector('h1,h2,h3,h4,h5,h6').getBoundingClientRect()
+        return { x: r.left + 30, y: r.top + r.height / 2 }
+      },
+      READER,
+      title
+    )
+    // From off the heading, so the reader sees the pointer arrive.
+    await page.mouse.move(box.x, box.y - 40)
+    await page.mouse.move(box.x, box.y)
+    await page.waitForSelector(`${READER} .reader-add`, { timeout: 2000 })
+    await page.click(`${READER} .reader-add`)
+  })
+  await saveComment(page, text, 'button')
 }
 
 async function commentOnDocument(page, text) {
-  await page.click(`${READER} [data-reader-whole]`)
-  await page.type(`${READER} .reader-composer textarea`, text)
-  await page.click(`${READER} .reader-composer .reader-primary`)
-  await sleep(200)
+  await openComposer(page, 'the whole document', () => page.click(`${READER} [data-reader-whole]`))
+  await saveComment(page, text, 'button')
 }
 
 async function threeComments(page) {
@@ -226,8 +267,11 @@ const scenes = {
     if (unsent) throw new Error(`${unsent} comments still unsent`)
     // What the agent received, byte for byte, once any second Enter has gone too. The fake's own screen echoes
     // input on top of the console's, so its terminal shows a message twice; the bytes are what count.
+    // A planner still starting gets it once it's idle, so wait for the paste to arrive, then for any second Enter.
+    const log = () => (fs.existsSync(process.env.FAKE_INPUT_LOG) ? fs.readFileSync(process.env.FAKE_INPUT_LOG, 'utf8') : '')
+    for (let i = 0; i < 75 && !log().includes('\x1b[201~'); i++) await sleep(200)
     await sleep(2500)
-    const got = fs.readFileSync(process.env.FAKE_INPUT_LOG, 'utf8')
+    const got = log()
     const pastes = got.split('\x1b[200~').length - 1
     if (pastes !== 1) throw new Error(`The agent got ${pastes} pastes: ${JSON.stringify(got)}`)
     if ((got.match(/Comments on "/g) ?? []).length !== 1) throw new Error(`The message arrived more than once: ${JSON.stringify(got)}`)
