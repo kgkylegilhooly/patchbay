@@ -41,6 +41,10 @@ export interface VerifyResult {
   head: string | null
   /** A fingerprint of the uncommitted changes when it ran, so a later change marks the result as older. */
   changes: string
+  /** How many bytes of output there were in all, when more than the end shown. */
+  totalBytes?: number
+  /** The attempt just after the run, when the command itself changed it (a formatter, a build output). */
+  after?: { head: string | null; changes: string }
 }
 
 export interface Attempt {
@@ -73,6 +77,8 @@ export interface Comparison {
   chosen?: { key: AttemptKey; at: number; head: string | null }
   /** P1 hook: the task this comparison belongs to, once tasks exist. Unused in this slice. */
   taskId?: string
+  /** Attempt entries this build couldn't read, kept as they were so their worktrees stay on record. */
+  unreadable?: unknown[]
 }
 
 /** What the start dialog shows about the source checkout before anything is made. */
@@ -137,6 +143,13 @@ export interface RemovalCheck {
   head: string | null
   uncommitted: number
   unmerged: number
+  /** The uncommitted changes' content fingerprint: a confirmation covers these changes, not just this many. */
+  changes: string
+  /** Git-ignored files and folders in the worktree, which removal deletes too. */
+  ignored: number
+  /** For showing only: the first few of each. */
+  files?: string[]
+  ignoredFiles?: string[]
 }
 
 export type RemoveResult = { ok: true; comparison: Comparison } | { ok: false; reason: string; needs?: RemovalCheck }
@@ -229,23 +242,32 @@ export function startProblem(req: StartComparison, source: SourceInfo): string |
 
 // Removal
 
-/** What removal would lose, and so must be confirmed, or null when nothing would be. */
-export function removalNeeds(state: Pick<RemovalCheck, 'head' | 'uncommitted' | 'unmerged'>, deleteBranch: boolean): RemovalCheck | null {
+/**
+ * What removal would lose, and so must be confirmed, or null when nothing would be. Ignored files count: they may be
+ * an env file or a local database the attempt made, and git deletes them with the worktree.
+ */
+export function removalNeeds(state: RemovalCheck, deleteBranch: boolean): RemovalCheck | null {
   const unmerged = deleteBranch ? state.unmerged : 0
-  return state.uncommitted > 0 || unmerged > 0 ? { head: state.head, uncommitted: state.uncommitted, unmerged } : null
+  return state.uncommitted > 0 || unmerged > 0 || state.ignored > 0 ? { ...state, unmerged } : null
 }
 
-/** A confirmation counts only for exactly what was shown: the same commit, and the same changes to lose. */
+/**
+ * A confirmation counts only for exactly what was shown: the same commit, the same uncommitted content (not just the
+ * same number of files), the same commits and the same ignored files.
+ */
 export function confirmCovers(needs: RemovalCheck, confirm: RemovalCheck | undefined): boolean {
-  return !!confirm && confirm.head === needs.head && confirm.uncommitted === needs.uncommitted && confirm.unmerged === needs.unmerged
+  return !!confirm && confirm.head === needs.head && confirm.uncommitted === needs.uncommitted && confirm.changes === needs.changes && confirm.unmerged === needs.unmerged && confirm.ignored === needs.ignored
 }
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
 /** What a removal needing confirmation would lose, in words. */
 export function describeLoss(needs: RemovalCheck, branch: string): string {
   const parts: string[] = []
-  if (needs.uncommitted) parts.push(`${needs.uncommitted} file${needs.uncommitted === 1 ? '' : 's'} with uncommitted changes`)
-  if (needs.unmerged) parts.push(`${needs.unmerged} commit${needs.unmerged === 1 ? '' : 's'} on ${branch} that no other branch has`)
-  return parts.join(' and ')
+  if (needs.uncommitted) parts.push(`${plural(needs.uncommitted, 'file', 'files')} with uncommitted changes`)
+  if (needs.unmerged) parts.push(`${plural(needs.unmerged, 'commit', 'commits')} on ${branch} that no other branch has`)
+  if (needs.ignored) parts.push(`${plural(needs.ignored, 'git-ignored file or folder', 'git-ignored files or folders')}`)
+  return parts.join(', ')
 }
 
 // Verification
@@ -259,8 +281,13 @@ export function verifyStanding(attempt: Pick<Attempt, 'verify' | 'removed'>, sta
   if (state && !state.ok && state.gone && !result) return { kind: 'unavailable', why: state.reason }
   if (!result) return { kind: 'not-run' }
   if (!state || !state.ok) return { kind: 'older', result }
-  return state.head === result.head && state.changes === result.changes ? { kind: 'current', result } : { kind: 'older', result }
+  // A command that wrote files (a formatter, a build output) is judged against what it left.
+  const at = result.after ?? { head: result.head, changes: result.changes }
+  return state.head === at.head && state.changes === at.changes ? { kind: 'current', result } : { kind: 'older', result }
 }
+
+/** Whether the command itself changed the attempt: it committed, or changed or made files git sees. */
+export const changedByRun = (r: VerifyResult): boolean => !!r.after && (r.after.head !== r.head || r.after.changes !== r.changes)
 
 export const VERIFY_OUTPUT_LIMIT = 64 * 1024
 
@@ -291,7 +318,11 @@ function readVerify(v: unknown): VerifyResult | undefined {
     timedOut: r.timedOut === true,
     missing: r.missing === true,
     head: str(r.head),
-    changes: str(r.changes) ?? ''
+    changes: str(r.changes) ?? '',
+    ...(num(r.totalBytes) !== null ? { totalBytes: r.totalBytes as number } : {}),
+    ...(r.after && typeof r.after === 'object' && str((r.after as Record<string, unknown>).changes) !== null
+      ? { after: { head: str((r.after as Record<string, unknown>).head), changes: (r.after as Record<string, unknown>).changes as string } }
+      : {})
   }
 }
 
@@ -325,6 +356,8 @@ export function readComparison(v: unknown): Comparison | null {
   if (!b || str(b.commit) === null || str(b.source) === null || str(b.repo) === null) return null
   if (str(r.id) === null || str(r.projectId) === null || str(r.brief) === null || num(r.createdAt) === null || !Array.isArray(r.attempts)) return null
   const attempts = r.attempts.map(readAttempt).filter((a): a is Attempt => a !== null)
+  // An entry this build can't read is kept as it was, with any it couldn't read before, so its worktree stays on record.
+  const unreadable = [...r.attempts.filter((a) => readAttempt(a) === null), ...(Array.isArray(r.unreadable) ? r.unreadable : [])]
   const c = r.chosen && typeof r.chosen === 'object' ? (r.chosen as Record<string, unknown>) : null
   const verify = Array.isArray(r.verify) && r.verify.length && r.verify.every((a) => typeof a === 'string') ? (r.verify as string[]) : null
   return {
@@ -337,16 +370,27 @@ export function readComparison(v: unknown): Comparison | null {
     createdAt: r.createdAt as number,
     attempts,
     ...(c && (c.key === 'a' || c.key === 'b') && num(c.at) !== null && attempts.some((a) => a.key === c.key) ? { chosen: { key: c.key, at: c.at as number, head: str(c.head) } } : {}),
-    ...(str(r.taskId) ? { taskId: r.taskId as string } : {})
+    ...(str(r.taskId) ? { taskId: r.taskId as string } : {}),
+    ...(unreadable.length ? { unreadable } : {})
   }
 }
 
 export const COMPARE_SCHEMA = 1
 
-/** The stored file. Throws when it isn't one this build can read, so the caller can keep it aside rather than lose it. */
-export function readComparisonFile(json: unknown): Comparison[] {
-  if (!json || typeof json !== 'object' || (json as { schema?: unknown }).schema !== COMPARE_SCHEMA) throw new Error('Not a comparisons file this version can read.')
-  const list = (json as { comparisons?: unknown }).comparisons
-  if (!Array.isArray(list)) throw new Error('The comparisons file has no list.')
-  return list.map(readComparison).filter((c): c is Comparison => c !== null)
+/**
+ * The stored file. A file from a newer build is read as far as this one can, and marked `newer` so it's never written
+ * over. Throws when it isn't a comparisons file at all, so the caller can keep it aside rather than lose it.
+ */
+export function readComparisonFile(json: unknown): { comparisons: Comparison[]; newer: boolean; unreadable: unknown[] } {
+  const schema = json && typeof json === 'object' ? (json as { schema?: unknown }).schema : undefined
+  if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < COMPARE_SCHEMA) throw new Error('Not a comparisons file this version can read.')
+  const file = json as { comparisons?: unknown; unreadable?: unknown }
+  if (!Array.isArray(file.comparisons)) throw new Error('The comparisons file has no list.')
+  const read = file.comparisons.map((c) => [c, readComparison(c)] as const)
+  return {
+    comparisons: read.map(([, c]) => c).filter((c): c is Comparison => c !== null),
+    newer: schema > COMPARE_SCHEMA,
+    // Records this build can't read are written back as they were, never dropped.
+    unreadable: [...read.filter(([, c]) => c === null).map(([raw]) => raw), ...(Array.isArray(file.unreadable) ? file.unreadable : [])]
+  }
 }

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { attemptLabel, describeLoss, verifyStanding, type Attempt, type AttemptKey, type AttemptState, type Comparison, type FileChange, type RemovalCheck } from '../shared/compare'
+import { attemptLabel, changedByRun, describeLoss, verifyStanding, type Attempt, type AttemptKey, type AttemptState, type Comparison, type FileChange, type RemovalCheck } from '../shared/compare'
 import { AGENT_NAMES, type AgentStatus } from '../shared/model'
 import { compare } from './compareBridge'
 import { parseDiff } from './reviewNotes'
 import { useStore } from './store'
 
-const REFRESH_MS = 4000
+const REFRESH_MS = 5000
 
 const STATUS_TEXT: Record<AgentStatus, string> = { queued: 'Queued', starting: 'Starting', working: 'Working', idle: 'Idle', 'needs-you': 'Needs you', exited: 'Exited', unknown: 'Unknown' }
 
 const short = (sha: string | null | undefined): string => (sha ? sha.slice(0, 7) : '—')
 const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 const seconds = (ms: number): string => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
+const kb = (n: number): string => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`)
 const shown = (argv: string[]): string => argv.map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
 
 function totals(files: FileChange[]): string {
@@ -102,8 +103,9 @@ function Verification({ c, a, state, running, onRun }: { c: Comparison; a: Attem
               {seconds(r.durationMs)} · {when(r.startedAt)} · at {short(r.head)}
               {standing.kind === 'older' && <span className="compare-older"> · Ran on an older state: the attempt has changed since</span>}
             </p>
+            {changedByRun(r) && <p className="compare-warn compare-note">The check itself changed the worktree (it wrote or committed files). The result is judged against what it left.</p>}
             <details className="compare-output" open={!passed}>
-              <summary>Output{r.truncated ? ' (the end of it)' : ''}</summary>
+              <summary>Output{r.truncated ? ` (the last ${kb(r.output.length)}${r.totalBytes ? ` of ${kb(r.totalBytes)}` : ''})` : ''}</summary>
               <pre>{r.output.trim() || '(no output)'}</pre>
             </details>
           </>
@@ -132,7 +134,8 @@ function Removal({ c, a, onDone }: { c: Comparison; a: Attempt; onDone: () => vo
       return
     }
     setNeeds(r.needs ?? null)
-    if (!r.needs) setProblem(r.reason)
+    // Refused after a confirmation: what would be lost has changed since it was shown.
+    if (!r.needs || confirm) setProblem(confirm && r.needs ? 'This changed since you looked. Here is what removing it would lose now.' : r.reason)
     onDone()
   }
 
@@ -152,9 +155,21 @@ function Removal({ c, a, onDone }: { c: Comparison; a: Attempt; onDone: () => vo
         <span>Also delete branch {a.branch}</span>
       </label>
       {needs && (
-        <p className="compare-loss" role="alert">
-          This would lose {describeLoss(needs, a.branch)}. Nothing else has them.
-        </p>
+        <div className="compare-loss" role="alert">
+          <p>This would lose {describeLoss(needs, a.branch)}.</p>
+          {!!needs.files?.length && (
+            <p className="compare-loss-list">
+              Uncommitted: {needs.files.join(', ')}
+              {needs.uncommitted > needs.files.length ? ` and ${needs.uncommitted - needs.files.length} more` : ''}
+            </p>
+          )}
+          {!!needs.ignoredFiles?.length && (
+            <p className="compare-loss-list">
+              Ignored: {needs.ignoredFiles.join(', ')}
+              {needs.ignored > needs.ignoredFiles.length ? ` and ${needs.ignored - needs.ignoredFiles.length} more` : ''}
+            </p>
+          )}
+        </div>
       )}
       {problem && <p className="field-problem">{problem}</p>}
       <div className="pop-actions">
@@ -305,6 +320,8 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
   useEffect(() => {
     void readStates()
     const t = setInterval(() => {
+      // Nothing to see while the window is hidden, so git isn't asked.
+      if (document.hidden) return
       void loadList()
       void readStates()
     }, REFRESH_MS)
@@ -350,6 +367,7 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
         {list?.map((x) => (
           <button type="button" key={x.id} className={`compare-item${x.id === id ? ' compare-item-on' : ''}`} onClick={() => setId(x.id)}>
             <span className="compare-item-title">{x.title}</span>
+            {x.projectId !== projectId && <span className="compare-warn compare-note">From a deleted project</span>}
             <span className="compare-dim">
               {when(x.createdAt)}
               {x.chosen ? ` · chose ${attemptLabel(x.chosen.key)}` : ''}
@@ -408,7 +426,8 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
               {c.attempts.map((a) => (
                 <AttemptColumn key={a.key} c={c} a={a} state={states[a.key] ?? null} running={!!running[a.key]} onRun={() => void run([a.key])} onChanged={replace} onShow={onShow} />
               ))}
-              {c.attempts.length < 2 && <p className="compare-dim">Attempt B was not made.</p>}
+              {c.attempts.length < 2 && !c.unreadable?.length && <p className="compare-dim">Attempt B was not made.</p>}
+              {!!c.unreadable?.length && <p className="compare-warn">{c.unreadable.length} attempt record{c.unreadable.length === 1 ? '' : 's'} couldn't be read by this version. {c.unreadable.length === 1 ? 'It is' : 'They are'} kept as written.</p>}
             </div>
 
             <footer className="compare-foot">

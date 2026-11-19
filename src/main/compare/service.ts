@@ -17,12 +17,14 @@ import {
   titleFor,
   verifyArgv,
   type Attempt,
+  type AttemptState,
   type AttemptKey,
   type Comparison,
   type RemovalCheck,
   type RemoveResult,
   type StartComparison,
-  type StartResult
+  type StartResult,
+  type VerifyResult
 } from '../../shared/compare'
 import { AGENT_NAMES, isSessionNode, type CanvasNode, type ClaudeNode, type GroupNode } from '../../shared/model'
 import type { CompareReads } from './reads'
@@ -60,28 +62,40 @@ const inside = (folder: string, path: string): boolean => {
 export function createCompareService(d: CompareServiceDeps) {
   const now = d.now ?? Date.now
   const newId = d.newId ?? randomUUID
+  /** Set when the file came from a newer Patchbay: it's shown, but never written over. */
+  let readOnly = false
+  /** Records this build couldn't read, written back as they were. */
+  let unreadable: unknown[] = []
   let all: Comparison[] = load()
   const verifying = new Set<string>()
 
-  /** An unreadable file is kept aside, never overwritten silently. */
+  /** An unreadable file is kept aside under a name of its own, never overwritten. */
   function load(): Comparison[] {
     if (!existsSync(d.file)) return []
     try {
-      return readComparisonFile(JSON.parse(readFileSync(d.file, 'utf8')))
+      const read = readComparisonFile(JSON.parse(readFileSync(d.file, 'utf8')))
+      readOnly = read.newer
+      unreadable = read.unreadable
+      return read.comparisons
     } catch {
       try {
-        renameSync(d.file, `${d.file}.bad`)
+        renameSync(d.file, `${d.file}.bad-${now()}`)
       } catch {
-        // Left where it is. The next save replaces it.
+        // Left where it is, and then read-only, so it isn't replaced.
+        readOnly = true
       }
       return []
     }
   }
 
+  const FROZEN = 'The comparisons file was written by a newer version of Patchbay, so this one only shows it. Update Patchbay to change comparisons.'
+  const frozen = (): { ok: false; reason: string } | null => (readOnly ? { ok: false, reason: FROZEN } : null)
+
   function save(): void {
+    if (readOnly) throw new Error(FROZEN)
     mkdirSync(dirname(d.file), { recursive: true })
     const tmp = `${d.file}.tmp`
-    writeFileSync(tmp, JSON.stringify({ schema: COMPARE_SCHEMA, comparisons: all }, null, 2))
+    writeFileSync(tmp, JSON.stringify({ schema: COMPARE_SCHEMA, comparisons: all, ...(unreadable.length ? { unreadable } : {}) }, null, 2))
     renameSync(tmp, d.file)
   }
 
@@ -123,6 +137,7 @@ export function createCompareService(d: CompareServiceDeps) {
    * be checked is checked first. A failure after the first worktree is made leaves it in place, recorded, and says so.
    */
   async function start(req: StartComparison): Promise<StartResult> {
+    if (frozen()) return frozen()!
     if (!d.store.get().projects.some((p) => p.id === req?.projectId)) return { ok: false, reason: 'That project is gone.' }
     const info = await d.reads.source(String(req.source ?? ''))
     const problem = startProblem(req, info)
@@ -176,6 +191,7 @@ export function createCompareService(d: CompareServiceDeps) {
 
   /** Runs the comparison's command in one attempt's worktree. Only the command itself can change files there. */
   async function verify(id: string, key: AttemptKey): Promise<{ ok: true; comparison: Comparison } | { ok: false; reason: string }> {
+    if (frozen()) return frozen()!
     const found = attemptOf(id, key)
     if ('problem' in found) return { ok: false, reason: found.problem }
     const { c, a } = found
@@ -189,8 +205,17 @@ export function createCompareService(d: CompareServiceDeps) {
       if (!before.ok) return { ok: false, reason: before.reason }
       const startedAt = now()
       const r = await d.runVerify(c.verify, a.path)
+      const durationMs = Math.max(0, now() - startedAt)
+      // The runner keeps the end of both streams together, in order. stderr is only set by a runner that doesn't.
       const { output, truncated } = tailOutput(`${r.stdout}${r.stderr ? `\n${r.stderr}` : ''}`)
-      const result = { argv: c.verify, cwd: a.path, exitCode: r.code, startedAt, durationMs: Math.max(0, now() - startedAt), output, truncated: truncated || r.truncated, timedOut: r.timedOut, missing: r.missing, head: before.head, changes: before.changes }
+      // What the command left: a formatter or a build output changes it, and the result is judged against that.
+      const after = await d.reads.attempt(a.path, c.base.commit)
+      const result: VerifyResult = {
+        argv: c.verify, cwd: a.path, exitCode: r.code, startedAt, durationMs, output, truncated: truncated || r.truncated, timedOut: r.timedOut, missing: r.missing,
+        head: before.head, changes: before.changes,
+        ...(r.truncated && r.totalBytes ? { totalBytes: r.totalBytes } : {}),
+        ...(after.ok && (after.head !== before.head || after.changes !== before.changes) ? { after: { head: after.head, changes: after.changes } } : {})
+      }
       const next = patchAttempt(id, key, { verify: result })
       return next ? { ok: true, comparison: next } : { ok: false, reason: 'That comparison is gone.' }
     } finally {
@@ -200,6 +225,7 @@ export function createCompareService(d: CompareServiceDeps) {
 
   /** Records the person's choice, and nothing else: no merge, commit, switch or removal. Null clears it. */
   async function choose(id: string, key: AttemptKey | null): Promise<{ ok: true; comparison: Comparison } | { ok: false; reason: string }> {
+    if (frozen()) return frozen()!
     const c = find(id)
     if (!c) return { ok: false, reason: 'That comparison is gone.' }
     if (key === null) {
@@ -218,6 +244,7 @@ export function createCompareService(d: CompareServiceDeps) {
    * commits only that branch has) is refused unless `confirm` says exactly what was shown and that is still true.
    */
   async function remove(id: string, key: AttemptKey, opts: { deleteBranch: boolean; confirm?: RemovalCheck }): Promise<RemoveResult> {
+    if (frozen()) return frozen()!
     const found = attemptOf(id, key)
     if ('problem' in found) return { ok: false, reason: found.problem }
     const { c, a } = found
@@ -230,10 +257,18 @@ export function createCompareService(d: CompareServiceDeps) {
     }
     const state = await d.reads.attempt(a.path, c.base.commit)
     if (!state.ok) return { ok: false, reason: state.reason }
-    if (deleteBranch && state.branch !== a.branch) {
-      return { ok: false, reason: `The worktree is on ${state.branch ? `branch ${state.branch}` : 'a detached HEAD'} now, not ${a.branch}, so its branch isn't deleted here. Remove the worktree only, and delete branches with git.` }
+    // The folder must still be this attempt's worktree: another worktree can later be made at the same path.
+    if (state.branch !== a.branch) {
+      return { ok: false, reason: `${a.path} is on ${state.branch ? `branch ${state.branch}` : 'a detached HEAD'} now, not ${a.branch}, so it may not be this attempt's worktree any more. Nothing was removed; remove it with git if you mean to.` }
     }
-    const needs = removalNeeds({ head: state.head, uncommitted: state.uncommitted.length, unmerged: state.unmerged }, deleteBranch)
+    const check = async (s: Extract<AttemptState, { ok: true }>): Promise<RemovalCheck | null> => {
+      const ig = await d.reads.ignored(a.path)
+      return removalNeeds(
+        { head: s.head, uncommitted: s.uncommitted.length, unmerged: s.unmerged, changes: s.changes, ignored: ig.count, files: s.uncommitted.slice(0, 10).map((f) => f.path), ignoredFiles: ig.first },
+        deleteBranch
+      )
+    }
+    const needs = await check(state)
     if (needs && !confirmCovers(needs, opts?.confirm)) {
       return { ok: false, needs, reason: `Removing attempt ${attemptLabel(key)} would lose ${describeLoss(needs, a.branch)}. Confirm this removal to go ahead.` }
     }
@@ -244,9 +279,9 @@ export function createCompareService(d: CompareServiceDeps) {
     if (needs) {
       // A session may have written more before it stopped. What's lost must still be exactly what was confirmed.
       const after = await d.reads.attempt(a.path, c.base.commit)
-      const now = after.ok ? removalNeeds({ head: after.head, uncommitted: after.uncommitted.length, unmerged: after.unmerged }, deleteBranch) : null
-      if (!now || !confirmCovers(now, opts?.confirm)) {
-        return { ok: false, ...(now ? { needs: now } : {}), reason: after.ok ? `Attempt ${attemptLabel(key)} changed while its sessions stopped. Look again before removing it.` : after.reason }
+      const again = after.ok ? await check(after) : null
+      if (!again || !confirmCovers(again, opts?.confirm)) {
+        return { ok: false, ...(again ? { needs: again } : {}), reason: after.ok ? `Attempt ${attemptLabel(key)} changed while its sessions stopped. Look again before removing it.` : after.reason }
       }
     }
     const wt = { path: a.path, branch: a.branch, repo: c.base.repo }
@@ -273,6 +308,7 @@ export function createCompareService(d: CompareServiceDeps) {
 
   /** Drops the record only. Worktrees, branches and agents stay as they are. */
   function forget(id: string): { ok: true } | { ok: false; reason: string } {
+    if (frozen()) return frozen()!
     if (!find(id)) return { ok: false, reason: 'That comparison is gone.' }
     all = all.filter((c) => c.id !== id)
     save()
@@ -285,7 +321,11 @@ export function createCompareService(d: CompareServiceDeps) {
     choose,
     remove,
     forget,
-    list: (projectId: string): Comparison[] => all.filter((c) => c.projectId === projectId).sort((x, y) => y.createdAt - x.createdAt),
+    /** This project's comparisons, then any whose project has been deleted, so their worktrees can still be found. */
+    list: (projectId: string): Comparison[] => {
+      const projects = new Set(d.store.get().projects.map((p) => p.id))
+      return all.filter((c) => c.projectId === projectId || !projects.has(c.projectId)).sort((x, y) => Number(x.projectId !== projectId) - Number(y.projectId !== projectId) || y.createdAt - x.createdAt)
+    },
     get: (id: string): Comparison | null => find(id) ?? null,
     async state(id: string, key: AttemptKey) {
       const found = attemptOf(id, key)

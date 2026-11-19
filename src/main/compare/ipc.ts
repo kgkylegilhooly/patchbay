@@ -9,8 +9,8 @@ const keyOf = (k: unknown): AttemptKey | null => (k === 'a' || k === 'b' ? k : n
 function readConfirm(v: unknown): RemovalCheck | undefined {
   if (!v || typeof v !== 'object') return undefined
   const r = v as Record<string, unknown>
-  if (typeof r.uncommitted !== 'number' || typeof r.unmerged !== 'number') return undefined
-  return { head: typeof r.head === 'string' ? r.head : null, uncommitted: r.uncommitted, unmerged: r.unmerged }
+  if (typeof r.uncommitted !== 'number' || typeof r.unmerged !== 'number' || typeof r.ignored !== 'number' || typeof r.changes !== 'string') return undefined
+  return { head: typeof r.head === 'string' ? r.head : null, uncommitted: r.uncommitted, unmerged: r.unmerged, changes: r.changes, ignored: r.ignored }
 }
 
 /**

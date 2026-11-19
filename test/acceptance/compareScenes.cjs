@@ -86,7 +86,20 @@ const scenes = {
     await page.click('.compare-attempt[data-attempt="b"] [data-side="uncommitted"] .compare-file')
     await page.waitForSelector('.compare-attempt[data-attempt="b"] .compare-diff', { timeout: 15000 })
     await sleep(500)
+  },
+  // Removing attempt A, which has an uncommitted note and an ignored env file: the second confirmation lists both.
+  'compare-remove': async (page) => {
+    await scenes.compare(page)
+    const a = await page.evaluate(async () => (await window.patchbayCompare.list((await window.patchbay.getDoc()).activeProjectId))[0].attempts[0].path)
+    fs.writeFileSync(path.join(a, '.gitignore'), '.env.local\n')
+    fs.writeFileSync(path.join(a, '.env.local'), 'API_URL=http://localhost:3000\n')
+    await page.click('[data-remove="a"]')
+    await page.waitForSelector('.compare-remove .btn-danger', { timeout: 5000 })
+    await page.click('.compare-remove .btn-danger')
+    await page.waitForSelector('.compare-loss', { timeout: 15000 })
+    await page.evaluate(() => document.querySelector('.compare-remove').scrollIntoView({ block: 'center' }))
+    await sleep(400)
   }
 }
 
-module.exports = { scenes, seeds: { compare: seedCompare, 'compare-start': seedCompare } }
+module.exports = { scenes, seeds: { compare: seedCompare, 'compare-start': seedCompare, 'compare-remove': seedCompare } }

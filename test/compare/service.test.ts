@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -10,7 +10,7 @@ import { createWorktree, removeWorktree } from '../../src/core/worktree/service'
 import { reduce } from '../../src/core/canvas/reduce'
 import { createCompareReads } from '../../src/main/compare/reads'
 import { createCompareService, type CompareServiceDeps } from '../../src/main/compare/service'
-import type { AttemptState, StartComparison } from '../../src/shared/compare'
+import type { AttemptState, RemovalCheck, StartComparison } from '../../src/shared/compare'
 import type { CanvasStore } from '../../src/shared/contract'
 import type { CanvasDoc, ClaudeNode, GroupNode } from '../../src/shared/model'
 
@@ -290,12 +290,13 @@ test('cleanup keeps uncommitted work unless that specific removal is confirmed',
   expect(w.stopped).toEqual([])
 
   // A confirmation for some other state doesn't count.
-  const needs = (refused as { needs: { head: string | null; uncommitted: number; unmerged: number } }).needs
+  const needs = (refused as { needs: RemovalCheck }).needs
   writeFileSync(join(a.path, 'more.txt'), 'more\n')
-  expect(await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
+  const again = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })
+  expect(again).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
   expect(existsSync(join(a.path, 'more.txt'))).toBe(true)
 
-  const removed = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: { ...needs, uncommitted: 2 } })
+  const removed = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: (again as { needs: RemovalCheck }).needs })
   expect(removed.ok).toBe(true)
   expect(existsSync(a.path)).toBe(false)
   expect(branches()).toContain('try/count-a')
@@ -328,7 +329,7 @@ test('deleting a branch with unmerged commits needs that confirmation, and then 
   writeFileSync(join(a.path, 'app.txt'), 'a\n')
   sh(a.path, 'commit', '-q', '-am', 'a work')
   const refused = await w.service.remove(c.id, 'a', { deleteBranch: true })
-  const needs = (refused as { needs: { head: string | null; uncommitted: number; unmerged: number } }).needs
+  const needs = (refused as { needs: RemovalCheck }).needs
   const r = await w.service.remove(c.id, 'a', { deleteBranch: true, confirm: needs })
   expect(r.ok).toBe(true)
   expect(branches()).not.toContain('try/count-a')
@@ -351,7 +352,11 @@ test('an unreadable comparisons file is kept aside, not overwritten', async () =
   writeFileSync(join(root, 'data', 'comparisons.json'), '{ not json')
   const w = world()
   expect(w.service.list('p')).toEqual([])
-  expect(readFileSync(join(root, 'data', 'comparisons.json.bad'), 'utf8')).toBe('{ not json')
+  // A second bad file doesn't replace the first.
+  writeFileSync(join(root, 'data', 'comparisons.json'), '{ also not json')
+  world({ now: () => 99_000 })
+  const kept = readdirSync(join(root, 'data')).filter((f) => f.startsWith('comparisons.json.bad-'))
+  expect(kept.map((f) => readFileSync(join(root, 'data', f), 'utf8')).sort()).toEqual(['{ also not json', '{ not json'])
 })
 
 test('work written while the sessions stop is not lost under an earlier confirmation', async () => {
@@ -370,7 +375,7 @@ test('work written while the sessions stop is not lost under an earlier confirma
   const [a] = c.attempts
   writeFileSync(join(a.path, 'app.txt'), 'unsaved\n')
   const refused = await w!.service.remove(c.id, 'a', { deleteBranch: false })
-  const needs = (refused as { needs: { head: string | null; uncommitted: number; unmerged: number } }).needs
+  const needs = (refused as { needs: RemovalCheck }).needs
   const r = await w!.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })
   expect(r).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
   expect(readFileSync(join(a.path, 'late.txt'), 'utf8')).toBe('late\n')
@@ -381,4 +386,98 @@ test("a worktree made for an attempt whose agent couldn't start is named as left
   const r = await w.service.start(await startReq())
   expect(r.ok).toBe(false)
   expect((r as { reason: string }).reason).toMatch(/Attempt A could not be made: no agent\. Left in place: attempt A's worktree .*try-count-a on branch try\/count-a\./)
+})
+
+test('a confirmation covers the content shown, not just the number of changed files', async () => {
+  const w = world()
+  const c = await started(w)
+  const [a] = c.attempts
+  writeFileSync(join(a.path, 'app.txt'), 'first draft\n')
+  const refused = await w.service.remove(c.id, 'a', { deleteBranch: false })
+  const needs = (refused as { needs: RemovalCheck }).needs
+  expect(needs.files).toEqual(['app.txt'])
+  // Same file, same count, same commit: different work.
+  writeFileSync(join(a.path, 'app.txt'), 'second draft, never seen\n')
+  const r = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })
+  expect(r).toMatchObject({ ok: false, needs: { uncommitted: 1 } })
+  expect(readFileSync(join(a.path, 'app.txt'), 'utf8')).toBe('second draft, never seen\n')
+})
+
+test('the change fingerprint covers all of a large change, past what a diff read would keep', async () => {
+  const w = world()
+  const c = await started(w)
+  const [a] = c.attempts
+  const big = 'x'.repeat(3 * 1024 * 1024)
+  writeFileSync(join(a.path, 'aaa-big.txt'), `${big}\n`)
+  writeFileSync(join(a.path, 'app.txt'), 'one\n')
+  const first = okState(await w.service.state(c.id, 'a')).changes
+  writeFileSync(join(a.path, 'app.txt'), 'two\n')
+  expect(okState(await w.service.state(c.id, 'a')).changes).not.toBe(first)
+})
+
+test('ignored files are listed and need confirmation before the worktree goes', async () => {
+  const w = world()
+  const c = await started(w)
+  const [a] = c.attempts
+  writeFileSync(join(a.path, '.gitignore'), '.env.local\n')
+  sh(a.path, 'add', '.gitignore')
+  sh(a.path, 'commit', '-q', '-m', 'ignore env')
+  writeFileSync(join(a.path, '.env.local'), 'TOKEN=local\n')
+  const refused = await w.service.remove(c.id, 'a', { deleteBranch: false })
+  expect(refused).toMatchObject({ ok: false, needs: { ignored: 1, ignoredFiles: ['.env.local'], uncommitted: 0 } })
+  expect((refused as { reason: string }).reason).toMatch(/1 git-ignored file or folder/)
+  expect(existsSync(join(a.path, '.env.local'))).toBe(true)
+  const r = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: (refused as { needs: RemovalCheck }).needs })
+  expect(r.ok).toBe(true)
+  expect(existsSync(a.path)).toBe(false)
+})
+
+test('a folder that is no longer on the attempt branch is not removed', async () => {
+  const w = world()
+  const c = await started(w)
+  const [a] = c.attempts
+  sh(a.path, 'switch', '-q', '-c', 'someone-else')
+  const r = await w.service.remove(c.id, 'a', { deleteBranch: false })
+  expect(r).toMatchObject({ ok: false })
+  expect((r as { reason: string }).reason).toMatch(/on branch someone-else now, not try\/count-a/)
+  expect(existsSync(a.path)).toBe(true)
+})
+
+test('a check that changes files is judged against what it left, and records that it did', async () => {
+  const w = world({
+    runVerify: async (_argv, cwd): Promise<RunResult> => {
+      writeFileSync(join(cwd, 'app.txt'), 'formatted\n')
+      return { code: 0, stdout: 'ok', stderr: '', truncated: false, timedOut: false, missing: false }
+    }
+  })
+  const c = await started(w)
+  const r = await w.service.verify(c.id, 'a')
+  const v = r.ok ? r.comparison.attempts[0].verify! : null
+  expect(v!.after).toBeDefined()
+  expect(v!.after!.changes).not.toBe(v!.changes)
+  const { verifyStanding } = await import('../../src/shared/compare')
+  expect(verifyStanding(r.ok ? r.comparison.attempts[0] : {}, await w.service.state(c.id, 'a')).kind).toBe('current')
+})
+
+test('a comparisons file from a newer build is shown but never written over', async () => {
+  mkdirSync(join(root, 'data'), { recursive: true })
+  const file = join(root, 'data', 'comparisons.json')
+  const newer = JSON.stringify({ schema: 2, comparisons: [], futureField: true })
+  writeFileSync(file, newer)
+  const w = world()
+  expect(w.service.list('p')).toEqual([])
+  expect(await w.service.start(await startReq())).toMatchObject({ ok: false, reason: expect.stringMatching(/newer version of Patchbay/) })
+  expect(readFileSync(file, 'utf8')).toBe(newer)
+  expect(worktrees()).toHaveLength(1)
+})
+
+test("comparisons of a deleted project are still listed, after the project's own", async () => {
+  const w = world()
+  const c = await started(w)
+  w.s.dispatch({ op: 'addProject', project: { id: 'q', name: 'Q', folder: '', viewport: { x: 0, y: 0, zoom: 1 } } })
+  expect(w.service.list('q').map((x) => x.id)).toEqual([])
+  w.s.dispatch({ op: 'removeProject', id: 'p', at: Date.now() })
+  expect(w.s.get().projects.map((p) => p.id)).toEqual(['q'])
+  const listed = w.service.list('q')
+  expect(listed.map((x) => x.id)).toEqual([c.id])
 })

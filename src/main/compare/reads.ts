@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { describeFailure, LIMITS, type Git, type GitService } from '../../core/git/service'
 import type { AttemptState, FileChange, SourceInfo } from '../../shared/compare'
@@ -11,6 +11,7 @@ import type { AttemptState, FileChange, SourceInfo } from '../../shared/compare'
 export type CompareReads = ReturnType<typeof createCompareReads>
 
 const SHOWN_UNCOMMITTED = 50
+const SHOWN_IGNORED = 10
 const MAX_COMMITS = 200
 
 /** `--numstat` lines: added, removed, path. Binary files show `-` for both. */
@@ -24,11 +25,36 @@ export function parseNumstat(text: string): FileChange[] {
   return out
 }
 
+/** A file's whole content, read as a stream so there's no size limit. Null when it isn't there or can't be read. */
+function hashFile(path: string): Promise<string | null> {
+  return new Promise((done) => {
+    const h = createHash('sha1')
+    const s = createReadStream(path)
+    s.on('data', (c) => h.update(c))
+    s.on('error', () => done(null))
+    s.on('end', () => done(h.digest('hex')))
+  })
+}
+
+/**
+ * The uncommitted changes as content: each changed or new file's path and full content. Two states with the same
+ * fingerprint have the same files on disk, however large. Staging alone doesn't change it: what's on disk is the same.
+ */
+export async function fingerprintChanges(root: string, paths: string[]): Promise<string> {
+  const h = createHash('sha1')
+  for (const p of [...paths].sort()) {
+    const content = await hashFile(resolve(root, p))
+    h.update(`${p}\0${content ?? '-'}\0`)
+  }
+  return h.digest('hex')
+}
+
 export function createCompareReads(git: Git, service: Pick<GitService, 'status' | 'toplevel' | 'diff'>) {
   const run = (cwd: string, args: string[], limit = LIMITS.read) => git(cwd, args, limit)
   const out = async (cwd: string, args: string[], limit = LIMITS.read): Promise<string> => {
     const r = await run(cwd, args, limit)
     if (r.code !== 0) throw new Error(describeFailure(r, `git ${args[0]}`))
+    if (r.truncated) throw new Error(`git ${args[0]} gave more output than can be read.`)
     return r.stdout
   }
 
@@ -63,25 +89,21 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
     return (await run(repo, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0
   }
 
-  /** Changes to untracked files show up too: each one's size and time go into the fingerprint. */
-  const fingerprint = (diffText: string, root: string, untracked: string[]): string => {
-    const h = createHash('sha1').update(diffText)
-    for (const p of untracked) {
-      try {
-        const s = statSync(resolve(root, p))
-        h.update(`\0${p}\0${s.size}\0${s.mtimeMs}`)
-      } catch {
-        h.update(`\0${p}`)
-      }
-    }
-    return h.digest('hex')
-  }
-
   /** Commits the worktree's HEAD has that no other local branch has: what deleting its branch would lose. */
   async function unmergedCount(path: string, branch: string | null): Promise<number> {
+    // With --branches, --exclude takes the short name.
     const args = ['rev-list', '--count', 'HEAD', '--not', ...(branch ? [`--exclude=${branch}`] : []), '--branches']
     return Number((await out(path, args)).trim()) || 0
   }
+
+  /** Git-ignored files and folders (a folder counts once), which removing the worktree deletes too. */
+  async function ignored(path: string): Promise<{ count: number; first: string[] }> {
+    const text = await out(path, ['status', '--porcelain=v1', '-z', '--ignored=traditional', '--untracked-files=normal'])
+    const all = text.split('\0').filter((e) => e.startsWith('!! ')).map((e) => e.slice(3))
+    return { count: all.length, first: all.slice(0, SHOWN_IGNORED) }
+  }
+
+  const numstat = async (path: string, from: string, to?: string): Promise<FileChange[]> => parseNumstat(await out(path, ['diff', '--no-renames', '--numstat', from, ...(to ? [to] : []), '--'], LIMITS.diff))
 
   /** An attempt as it is now, against its base. */
   async function attempt(path: string, base: string): Promise<AttemptState> {
@@ -90,14 +112,13 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
       const c = await changedPaths(path)
       const head = c.head
       if (!head) return { ok: false, gone: false, reason: 'The worktree has no commit checked out.' }
-      const range = `${base}..${head}`
-      const [log, committed, uncommittedNum, diffText, ancestor, unmerged] = await Promise.all([
-        out(path, ['log', `--max-count=${MAX_COMMITS}`, '--format=%H%x09%s', range]),
-        out(path, ['diff', '--no-renames', '--numstat', base, head, '--']),
-        out(path, ['diff', '--no-renames', '--numstat', 'HEAD', '--']),
-        run(path, ['diff', '--no-renames', 'HEAD', '--'], LIMITS.diff),
+      const [log, committed, uncommittedNum, ancestor, unmerged, changes] = await Promise.all([
+        out(path, ['log', `--max-count=${MAX_COMMITS}`, '--format=%H%x09%s', `${base}..${head}`]),
+        numstat(path, base, head),
+        numstat(path, 'HEAD'),
         run(path, ['merge-base', '--is-ancestor', base, head]),
-        unmergedCount(path, c.branch)
+        unmergedCount(path, c.branch),
+        fingerprintChanges(path, c.paths)
       ])
       const untracked: FileChange[] = c.untracked.map((p) => ({ path: p, added: null, removed: null, untracked: true }))
       return {
@@ -108,33 +129,44 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
           .split('\n')
           .filter(Boolean)
           .map((l) => ({ hash: l.slice(0, l.indexOf('\t')), subject: l.slice(l.indexOf('\t') + 1) })),
-        committed: parseNumstat(committed),
-        uncommitted: [...parseNumstat(uncommittedNum), ...untracked],
+        committed,
+        uncommitted: [...uncommittedNum, ...untracked],
         fromBase: ancestor.code === 0,
         unmerged,
-        changes: fingerprint(diffText.stdout, path, c.untracked)
+        changes
       }
     } catch (e) {
       return { ok: false, gone: false, reason: (e as Error).message }
     }
   }
 
-  /** One file's diff, for a file the attempt's state lists. Nothing else can be read through this. */
+  /** One file's diff, for a file the attempt lists on that side now. Nothing else can be read through this. */
   async function fileDiff(path: string, base: string, file: string, side: 'committed' | 'uncommitted'): Promise<{ ok: true; text: string; truncated: boolean } | { ok: false; reason: string }> {
-    const state = await attempt(path, base)
-    if (!state.ok) return { ok: false, reason: state.reason }
-    const listed = (side === 'committed' ? state.committed : state.uncommitted).find((f) => f.path === file)
-    if (!listed) return { ok: false, reason: `${file} has no ${side} changes now.` }
+    if (!existsSync(path)) return { ok: false, reason: `The worktree folder is gone: ${path}` }
     const rel = relative(path, resolve(path, file))
     if (!rel || rel.startsWith('..') || isAbsolute(rel)) return { ok: false, reason: `Not a file in this worktree: ${file}` }
-    if (listed.untracked) {
-      const d = await service.diff(path, file, false)
-      return { ok: true, text: d.binary ? `New, untracked binary file: ${file}` : d.text, truncated: d.truncated }
+    try {
+      // Only the list for that side is read, not the whole state.
+      let untracked = false
+      let listed: boolean
+      if (side === 'committed') listed = (await numstat(path, base, 'HEAD')).some((f) => f.path === file)
+      else {
+        const c = await changedPaths(path)
+        untracked = c.untracked.includes(file)
+        listed = c.paths.includes(file)
+      }
+      if (!listed) return { ok: false, reason: `${file} has no ${side} changes now.` }
+      if (untracked) {
+        const d = await service.diff(path, file, false)
+        return { ok: true, text: d.binary ? `New, untracked binary file: ${file}` : d.text, truncated: d.truncated }
+      }
+      const r = await run(path, side === 'committed' ? ['diff', '--no-renames', base, 'HEAD', '--', file] : ['diff', '--no-renames', 'HEAD', '--', file], LIMITS.diff)
+      if (r.code !== 0) return { ok: false, reason: describeFailure(r, 'git diff') }
+      return { ok: true, text: r.stdout, truncated: r.truncated }
+    } catch (e) {
+      return { ok: false, reason: (e as Error).message }
     }
-    const r = await run(path, side === 'committed' ? ['diff', '--no-renames', base, state.head!, '--', file] : ['diff', '--no-renames', 'HEAD', '--', file], LIMITS.diff)
-    if (r.code !== 0) return { ok: false, reason: describeFailure(r, 'git diff') }
-    return { ok: true, text: r.stdout, truncated: r.truncated }
   }
 
-  return { source, isCommit, branchExists, attempt, fileDiff, unmergedCount }
+  return { source, isCommit, branchExists, attempt, fileDiff, unmergedCount, ignored }
 }

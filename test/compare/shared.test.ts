@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import {
   attemptPrompt,
+  changedByRun,
   confirmCovers,
+  describeLoss,
   readComparison,
   readComparisonFile,
   removalNeeds,
@@ -11,6 +13,7 @@ import {
   verifyArgv,
   verifyStanding,
   type AttemptState,
+  type RemovalCheck,
   type SourceInfo,
   type StartComparison
 } from '../../src/shared/compare'
@@ -79,21 +82,31 @@ describe('start requests', () => {
 })
 
 describe('removal', () => {
+  const s = (over: Partial<RemovalCheck> = {}): RemovalCheck => ({ head: SHA, uncommitted: 0, unmerged: 0, changes: 'c', ignored: 0, ...over })
+
   test('a clean worktree whose branch is kept needs no confirmation', () => {
-    expect(removalNeeds({ head: SHA, uncommitted: 0, unmerged: 3 }, false)).toBeNull()
+    expect(removalNeeds(s({ unmerged: 3 }), false)).toBeNull()
   })
 
-  test('uncommitted changes, or unmerged commits on a branch being deleted, need confirmation', () => {
-    expect(removalNeeds({ head: SHA, uncommitted: 2, unmerged: 3 }, false)).toEqual({ head: SHA, uncommitted: 2, unmerged: 0 })
-    expect(removalNeeds({ head: SHA, uncommitted: 0, unmerged: 3 }, true)).toEqual({ head: SHA, uncommitted: 0, unmerged: 3 })
+  test('uncommitted changes, unmerged commits on a branch being deleted, or ignored files need confirmation', () => {
+    expect(removalNeeds(s({ uncommitted: 2, unmerged: 3 }), false)).toEqual(s({ uncommitted: 2, unmerged: 0 }))
+    expect(removalNeeds(s({ unmerged: 3 }), true)).toEqual(s({ unmerged: 3 }))
+    expect(removalNeeds(s({ ignored: 1 }), false)).toEqual(s({ ignored: 1 }))
   })
 
-  test('a confirmation only covers exactly what was shown', () => {
-    const needs = { head: SHA, uncommitted: 2, unmerged: 0 }
+  test('a confirmation only covers exactly what was shown, content included', () => {
+    const needs = s({ uncommitted: 2 })
     expect(confirmCovers(needs, undefined)).toBe(false)
     expect(confirmCovers(needs, { ...needs })).toBe(true)
     expect(confirmCovers(needs, { ...needs, uncommitted: 1 })).toBe(false)
     expect(confirmCovers(needs, { ...needs, head: 'b'.repeat(40) })).toBe(false)
+    // The same number of files with different content is a different state.
+    expect(confirmCovers(needs, { ...needs, changes: 'other' })).toBe(false)
+    expect(confirmCovers(needs, { ...needs, ignored: 1 })).toBe(false)
+  })
+
+  test('the loss is said in words, ignored files included', () => {
+    expect(describeLoss(s({ uncommitted: 1, unmerged: 2, ignored: 3 }), 'try/a')).toBe('1 file with uncommitted changes, 2 commits on try/a that no other branch has, 3 git-ignored files or folders')
   })
 })
 
@@ -141,8 +154,35 @@ describe('the stored file', () => {
     expect(readComparison({ ...stored, chosen: { key: 'b', at: 2, head: SHA } })!.chosen).toBeUndefined()
   })
 
-  test('another schema is refused rather than read as empty', () => {
-    expect(() => readComparisonFile({ schema: 2, comparisons: [] })).toThrow()
-    expect(readComparisonFile({ schema: 1, comparisons: [stored, { nonsense: true }] })).toHaveLength(1)
+  test('a file from a newer build is read as far as possible and marked, not set aside', () => {
+    const r = readComparisonFile({ schema: 2, comparisons: [stored] })
+    expect(r.newer).toBe(true)
+    expect(r.comparisons).toHaveLength(1)
+    expect(() => readComparisonFile({ schema: 0, comparisons: [] })).toThrow()
+    expect(() => readComparisonFile({ comparisons: [] })).toThrow()
+  })
+
+  test('records and attempts that cannot be read are kept as they were, not dropped', () => {
+    const broken = { key: 'b', agent: 'claude' }
+    const r = readComparisonFile({ schema: 1, comparisons: [{ ...stored, attempts: [...stored.attempts, broken] }, { nonsense: true }] })
+    expect(r.comparisons).toHaveLength(1)
+    expect(r.comparisons[0].attempts).toHaveLength(1)
+    expect(r.comparisons[0].unreadable).toEqual([broken])
+    expect(r.unreadable).toEqual([{ nonsense: true }])
+    // Read again after a save, they're still there.
+    expect(readComparison(JSON.parse(JSON.stringify(r.comparisons[0])))!.unreadable).toEqual([broken])
+  })
+})
+
+describe('a check that changes the worktree', () => {
+  const result = { argv: ['npm', 'test'], cwd: 'C:/w', exitCode: 0, startedAt: 1, durationMs: 5, output: '', truncated: false, timedOut: false, missing: false, head: SHA, changes: 'before' }
+  const state = (changes: string): AttemptState => ({ ok: true, head: SHA, branch: 'b', commits: [], committed: [], uncommitted: [], fromBase: true, unmerged: 0, changes })
+
+  test('is judged against what it left, and says it changed it', () => {
+    const r = { ...result, after: { head: SHA, changes: 'after' } }
+    expect(verifyStanding({ verify: r }, state('after')).kind).toBe('current')
+    expect(verifyStanding({ verify: r }, state('before')).kind).toBe('older')
+    expect(changedByRun(r)).toBe(true)
+    expect(changedByRun(result)).toBe(false)
   })
 })
