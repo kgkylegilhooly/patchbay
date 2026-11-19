@@ -5,6 +5,7 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
+import { pickedProfile, profileFolder } from './terminalProfilesUi'
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
@@ -152,7 +153,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }
         center(id)
       },
-      newTerminal: (at, groupId) => open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: defaultFolder(groupId) })),
+      newTerminal: (at, groupId, profileId) =>
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: profileFolder(profileId) ?? defaultFolder(groupId), profile: pickedProfile(profileId) })),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),
@@ -235,7 +237,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string }): void => {
       lastFolder.current = fields.cwd || lastFolder.current
       if (form.editId) {
         // Applies from the next run. Whatever's running now keeps running.
@@ -261,7 +263,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       open(
         form.kind === 'claude' || form.kind === 'codex'
           ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
-          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text })
+          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) })
       )
     }
 

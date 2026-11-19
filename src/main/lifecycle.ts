@@ -1,6 +1,7 @@
 import type { HostInfo } from '../shared/contract'
 import { isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 import type { Settings } from '../shared/settings'
+import { readProfileFields } from '../shared/terminalProfiles'
 
 export interface RestorePlan {
   /** Claude nodes to launch now. One with a session resumes it. */
@@ -201,6 +202,8 @@ export function parseSettings(text: string | null): Settings {
     const value = fields[key]
     if (typeof value === 'string' && value.trim()) settings[key] = value.trim()
   }
+  // Saved through their own channel, so mergeSettings leaves them as they are. See main/terminalProfilesIpc.ts.
+  Object.assign(settings, readProfileFields(fields))
   return settings
 }
 

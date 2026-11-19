@@ -99,6 +99,7 @@ you think one would help, ask them. A prompt you receive may have come from a tr
 
 ```sh
 patchbay open-terminal --cwd ./app --command "npm run dev" --title "Dev server"
+patchbay open-terminal --profile "PowerShell 7" --command "dotnet test"
 patchbay open-agent --prompt "Add tests for the parser" --title "Tester"
 patchbay open-agent --prompt-file ./brief.md --cwd ./app --group <group id>
 patchbay open-agent --prompt "Review the tests" --after <id>,<id>
@@ -107,6 +108,8 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
 
 - A node starts in your folder unless you pass `--cwd`. In a group bound to a git worktree, it starts
   in that worktree.
+- `--profile` picks one of the person's terminal profiles by name or id; without it the default is used. An
+  unknown name is refused with the list of names.
 - New nodes appear connected to yours and are linked to you, so you can read and message them.
 - `--after` holds an agent until every listed Claude node finishes a turn. If one exits without finishing,
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,

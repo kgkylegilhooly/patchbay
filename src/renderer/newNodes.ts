@@ -42,15 +42,16 @@ function placed(p: Place, size: { width: number; height: number }): Pick<CanvasN
   return { ...size, x: 24, y, parentId: p.group.id }
 }
 
-export function newTerminal(p: Place, id: string, fields: { cwd: string; command?: string }): TerminalNode {
+export function newTerminal(p: Place, id: string, fields: { cwd: string; command?: string; profile?: { id: string; name: string } }): TerminalNode {
   const node: TerminalNode = {
     ...placed(p, SIZES.terminal),
     id,
     kind: 'terminal',
-    title: fields.command ? fields.command.split(/\s+/)[0] : 'Terminal',
+    title: fields.command ? fields.command.split(/\s+/)[0] : (fields.profile?.name ?? 'Terminal'),
     cwd: fields.cwd
   }
   if (fields.command) node.command = fields.command
+  if (fields.profile) node.profile = fields.profile.id
   return node
 }
 

@@ -8,7 +8,9 @@ import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
-import { claudeRunsBash, pickDefaultShell } from './sessions/shell'
+import { claudeRunsBash, terminalProfiles } from './sessions/shell'
+import { terminalStartFor } from './sessions/terminalStart'
+import { registerTerminalProfileIpc } from './terminalProfilesIpc'
 import { watchSignals, type SignalWatcher } from './sessions/signals'
 import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
@@ -348,6 +350,7 @@ async function boot(): Promise<void> {
       endpointFile,
       secret,
       settings: currentSettings,
+      typePrefix: (id) => sendGuard.prefixFor(id),
       takeMissedHooks: (id) => takeMissedHooks(journalDir, id)
     }
   })
@@ -384,7 +387,7 @@ async function boot(): Promise<void> {
   const sendGuard = createSendGuard({
     isGitBash: (id) => {
       const node = store.get().nodes.find((n) => n.id === id)
-      return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(pickDefaultShell(currentSettings().shell).file)
+      return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(terminalStartFor({ settings: currentSettings }, node, true).file)
     }
   })
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard })
@@ -407,7 +410,7 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), terminalProfiles: () => terminalProfiles(currentSettings()), log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -531,6 +534,7 @@ async function boot(): Promise<void> {
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
+  registerTerminalProfileIpc({ settingsFile })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
 

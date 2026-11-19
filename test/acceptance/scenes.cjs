@@ -413,7 +413,8 @@ const scenes = {
     await drag([40, 150], [40, 270])
     await sleep(300)
   },
-  ...require('./searchScenes.cjs').scenes
+  ...require('./searchScenes.cjs').scenes,
+  ...require('./terminalProfileScenes.cjs').scenes
 }
 
 const TICKS = '```'

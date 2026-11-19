@@ -19,6 +19,8 @@ import { SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
+import { createStartupTyper, missingProfileNotice, terminalStartFor } from './terminalStart'
+import { shellKind, type TerminalProfile } from '../../shared/terminalProfiles'
 import { findSsh, sshArgs } from './ssh'
 import { sshHostProblem } from '../../core/ssh/config'
 import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startupQuestion'
@@ -41,6 +43,10 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   secret: string
   /** The shell setting from the settings file. */
   shell?: string
+  /** The terminal profiles installed shells offer. Defaults to detecting them. See shell.ts. */
+  builtInProfiles?: () => TerminalProfile[]
+  /** Put ahead of a startup command typed into a terminal: see sendGuard.ts. */
+  typePrefix?: (id: string) => string
   /** Finds the Claude program when `claude` isn't set. Defaults to resolveClaude. */
   locateClaude?: () => ClaudeProgram
   codex?: ClaudeProgram
@@ -112,16 +118,6 @@ interface ClaudeRun {
   startupScreen?: string
   /** It's showing such a question now, so its status says it needs the person. */
   askedAtStartup?: boolean
-}
-
-/** Runs the command, then leaves the shell open for more, as PowerShell's -NoExit and cmd's /k do. */
-function terminalArgs(shell: string, command: string): string[] {
-  const name = basename(shell).toLowerCase().replace(/\.exe$/, '')
-  // bash -c ends with its command, so a terminal that ran `npm test` closed, with nothing to run it again in.
-  if (name === 'bash') return ['--login', '-i', '-c', `${command}\nexec bash --login -i`]
-  if (name === 'powershell' || name === 'pwsh') return ['-NoExit', '-Command', command]
-  if (name === 'cmd') return ['/k', command]
-  return ['-c', command]
 }
 
 /** Runs the command and ends with it, unlike a terminal, which stays open for more. */
@@ -200,7 +196,12 @@ export function createNodeRunner({
     tracker.apply(id, { type: 'startup-question' })
   })
 
+  // A terminal profile's startup command, typed once at the shell's first prompt. See terminalStart.ts.
+  const startupTyper = createStartupTyper({ host, prefix: ctx.typePrefix })
+  host.onOutput((id, data) => startupTyper.output(id, data))
+
   host.onExit((id, code) => {
+    startupTyper.cancel(id)
     started.delete(id)
     approvals?.clearNode(id)
     // Git Bash can only have so many consoles open across the whole PC, and one more ends at once with a stack dump.
@@ -289,17 +290,21 @@ export function createNodeRunner({
 
   const startTerminal = async (node: TerminalNode, initialScrollback?: string, restored = false): Promise<void> => {
     if (node.sshHost !== undefined) return startSsh(node, node.sshHost, initialScrollback)
-    const shell = pickDefaultShell(ctx.settings?.().shell ?? ctx.shell)
+    // Coming back from a restart is a fresh shell. A command like a deploy mustn't run again with nobody there.
+    const launch = terminalStartFor(ctx, node, restored)
+    // Recorded at its first start, so a restart after the default changes still uses the profile it began with.
+    if (node.profile === undefined) store.dispatch({ op: 'patchNode', id: node.id, patch: { profile: launch.profile.id } })
+    startupTyper.cancel(node.id)
     await host.start({
       nodeId: node.id,
-      file: shell.file,
-      // Coming back from a restart is a fresh shell. A command like a deploy mustn't run again with nobody there.
-      args: node.command && !restored ? terminalArgs(shell.file, node.command) : shell.args,
+      file: launch.file,
+      args: launch.args,
       cwd: node.cwd,
       env: sessionEnv(node.id, tokenFor(ctx.secret, node.id), ctx),
-      initialScrollback,
+      initialScrollback: launch.missing ? `${initialScrollback ?? ''}${missingProfileNotice(launch.profile.name)}` : initialScrollback,
       saveScrollback: true
     })
+    startupTyper.arm(node.id, launch.typed, { promptSignOnly: shellKind(launch.file) === 'git-bash' })
   }
 
   /** ssh straight to the host, with no shell to read the name. Coming back from a restart connects again. */

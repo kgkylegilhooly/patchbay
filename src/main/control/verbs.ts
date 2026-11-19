@@ -22,6 +22,7 @@ import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
+import { profileArg, type ProfileList } from '../../shared/terminalProfiles'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -215,6 +216,7 @@ export function createVerbs({
   onBoardEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude',
+  terminalProfiles,
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
   log
 }: {
@@ -234,6 +236,8 @@ export function createVerbs({
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
   defaultAgent?: () => AgentKind
+  /** Every terminal profile, the default first, for open-terminal --profile. */
+  terminalProfiles?: () => ProfileList
   github?: GithubRead
   store: CanvasStore
   runner: Pick<NodeRunner, 'startNode' | 'stopNode'>
@@ -506,7 +510,8 @@ export function createVerbs({
   const openTerminal = async (caller: CanvasNode, args: Args): Promise<unknown> => {
     if (args.after !== undefined) refuse('--after only works on Claude nodes, not terminals.')
     const group = groupFor(caller, args)
-    const cwd = cwdFor(args, caller, group)
+    const profile = profileArg(terminalProfiles, optional(args, 'profile'), refuse)
+    const cwd = profile?.cwd && optional(args, 'cwd') === undefined ? profile.cwd : cwdFor(args, caller, group)
     const command = optional(args, 'command')
     const node: TerminalNode = {
       ...placement(caller, group, SIZES.terminal),
@@ -516,6 +521,7 @@ export function createVerbs({
       cwd
     }
     if (command) node.command = command
+    if (profile) node.profile = profile.id
     store.dispatch({ op: 'addNode', node })
     connect(caller.id, node.id)
     await runner.startNode(node.id)
