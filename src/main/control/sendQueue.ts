@@ -61,7 +61,8 @@ export function createSendQueue({
   exists,
   timing = DEFAULT_SEND_TIMING,
   prefix,
-  pasteOn
+  pasteOn,
+  draft
 }: {
   host: Pick<SessionHost, 'write' | 'isRunning'>
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
@@ -76,6 +77,11 @@ export function createSendQueue({
    * as on, since Claude Code and Codex both turn it on.
    */
   pasteOn?: (id: string) => boolean | undefined
+  /**
+   * What the person is typing at an agent's prompt (see sendGuard.ts). A message waits while they have text there
+   * unsent, or it would be added to the end of theirs, and goes once they stop.
+   */
+  draft?: { drafting(id: string): boolean; onDraftSettled(cb: (id: string) => void): void }
 }): SendQueue {
   const queues = new Map<string, SendItem[]>()
   /** Nodes just typed into, whose status can't yet show that they took it. */
@@ -113,7 +119,7 @@ export function createSendQueue({
       for (const item of queue) item.onDropped?.()
       return
     }
-    if (settling.has(id) || tracker.get(id) !== 'idle' || !host.isRunning(id)) return
+    if (settling.has(id) || tracker.get(id) !== 'idle' || !host.isRunning(id) || draft?.drafting(id)) return
     let item = queue.shift()
     while (item?.stillWanted && !item.stillWanted()) {
       item.onDropped?.()
@@ -130,6 +136,8 @@ export function createSendQueue({
     settling.set(id, timer)
     item.onDelivered?.()
   }
+
+  draft?.onDraftSettled((id) => deliverNext(id))
 
   tracker.onChange((id, status) => {
     if (status !== 'idle') took.add(id)

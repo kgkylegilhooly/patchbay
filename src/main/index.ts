@@ -380,7 +380,7 @@ async function boot(): Promise<void> {
       return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(pickDefaultShell(currentSettings().shell).file)
     }
   })
-  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn })
+  const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard })
   const messages = createMessageLog(join(dataDir, 'messages.json'))
   const agentEdits = createAgentEditLog(join(dataDir, 'agent-edits.json'))
   ipcMain.handle('pb:getAgentEdits', () => agentEdits.all())

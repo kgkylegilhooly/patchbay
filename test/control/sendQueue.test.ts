@@ -117,3 +117,26 @@ test('onTyped hears each message typed, before its Enter, and not one handed ove
   tracker.apply('a', { type: 'hook', name: 'Stop' })
   expect(typed).toEqual(['now@1'])
 })
+
+test('a message waits while the person has half-typed something at the prompt, then goes once they stop', () => {
+  const tracker = createStatusTracker({ notify: () => {} })
+  const host = fakeHost()
+  host.running.add('a')
+  let drafting = true
+  const settled: Array<(id: string) => void> = []
+  const queue = createSendQueue({
+    host,
+    tracker,
+    exists: () => true,
+    timing: { enterDelayMs: 100, settleMs: 5000 },
+    draft: { drafting: () => drafting, onDraftSettled: (cb) => void settled.push(cb) }
+  })
+  tracker.apply('a', { type: 'launched' })
+  tracker.apply('a', { type: 'hook', name: 'SessionStart' })
+  expect(queue.add('a', { text: 'from the lead' })).toBe('queued')
+  expect(queue.busy('a')).toBe(true)
+  expect(host.writes).toEqual([])
+  drafting = false
+  for (const cb of settled) cb('a')
+  expect(host.writes).toHaveLength(1)
+})
