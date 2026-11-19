@@ -38,6 +38,14 @@ export function checkDocPath(path: string, system: string[] = systemFolders()): 
   return { ok: true, path: full }
 }
 
+/** Whether a path is a folder or inside it, however either is written. */
+export function insideFolder(path: string, folder: string): boolean {
+  if (!folder.trim()) return false
+  const p = docKey(path)
+  const f = docKey(folder).replace(/[\\/]+$/, '')
+  return p === f || p.startsWith(`${f}\\`) || p.startsWith(`${f}/`)
+}
+
 /** The same file however its path is written, for keeping its comments: resolved, and case-folded as Windows is. */
 export function docKey(path: string): string {
   const full = normalize(resolve(path))

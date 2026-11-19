@@ -19,7 +19,11 @@ export interface ReaderComment {
   createdAt: number
   resolved: boolean
   /** When it last went to an agent, and to whom. Cleared when it's edited or reopened, so it goes again. */
-  sent?: { at: number; to: string }
+  /**
+   * When it last went to an agent, and to whom. `queued` when the agent was busy, so it waits its turn: it goes once
+   * the agent is idle, and is lost if the agent exits first.
+   */
+  sent?: { at: number; to: string; queued?: boolean }
 }
 
 /** What reading a reader node's file gives the window. */

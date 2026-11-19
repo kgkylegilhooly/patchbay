@@ -3,10 +3,12 @@ import { inReadingOrder, formatComments, unsent } from '../../core/reader/commen
 import { outline } from '../../core/reader/outline'
 import { lastLines } from '../../core/transcript/read'
 import type { CanvasStore } from '../../shared/contract'
-import type { CanvasNode, Edge } from '../../shared/model'
+import { isSessionNode, type CanvasDoc, type CanvasNode, type Edge } from '../../shared/model'
+import { archivedRefusal } from '../control/archived'
 import { RpcRefusal } from '../control/server'
 import type { Verbs } from '../control/verbs'
 import type { CommentStore } from './commentStore'
+import { plansFolder } from './planFind'
 import type { DocsService } from './service'
 
 export const DOC_VERBS = ['open-doc']
@@ -22,6 +24,22 @@ function optional(args: Args, key: string): string | undefined {
   if (v === undefined) return undefined
   if (typeof v !== 'string') refuse(`--${key} must be text.`)
   return v
+}
+
+/**
+ * The folders an agent may show files from: its own, its group's worktree, its project's, and where Claude Code's plan
+ * mode keeps plans. A reader shows the whole file to the agent through `read`, so it mustn't reach further than the
+ * agent's own work. The person can open anything the reader policy allows.
+ */
+export function agentFolders(doc: CanvasDoc, caller: CanvasNode, home: string): string[] {
+  const group = caller.parentId ? doc.nodes.find((n) => n.id === caller.parentId) : undefined
+  const project = doc.projects.find((p) => p.id === caller.projectId)
+  return [
+    ...(isSessionNode(caller) ? [caller.cwd] : []),
+    ...(group?.kind === 'group' && group.worktree ? [group.worktree.path] : []),
+    ...(project?.folder ? [project.folder] : []),
+    plansFolder(home)
+  ]
 }
 
 /**
@@ -46,6 +64,8 @@ export function withDocVerbs(verbs: Verbs, { store, docs, comments }: { store: C
     if (verb === 'read' && caller && typeof args.node === 'string') {
       const node = named(caller, args.node)
       if (node?.kind === 'reader') {
+        const archived = archivedRefusal(store.get(), caller, { node: node.id })
+        if (archived) refuse(archived)
         if (node.openedBy !== callerId && !linked(callerId, node.id)) {
           refuse(`Can't read node "${node.id}": it isn't linked to you and you didn't open it. To see it, ask the person to draw a cable between it and you.`)
         }
@@ -65,6 +85,9 @@ export function withDocVerbs(verbs: Verbs, { store, docs, comments }: { store: C
     }
     if (!DOC_VERBS.includes(verb)) return verbs(callerId, verb, args)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
+    const groupArg = optional(args, 'group')
+    const archived = archivedRefusal(store.get(), caller, groupArg === undefined ? {} : { group: named(caller, groupArg)?.id ?? groupArg })
+    if (archived) refuse(archived)
     const path = optional(args, 'path')
     if (!path) refuse('--path is required: the Markdown file to show.')
     const groupId = optional(args, 'group')
@@ -72,7 +95,7 @@ export function withDocVerbs(verbs: Verbs, { store, docs, comments }: { store: C
       const g = named(caller, groupId)
       if (g?.kind !== 'group' || g.projectId !== caller.projectId) refuse(`Node "${groupId}" is not a group.`)
     }
-    const r = await docs.openFile(path, { from: caller, title: optional(args, 'title'), openedBy: callerId })
+    const r = await docs.openFile(path, { from: caller, title: optional(args, 'title'), openedBy: callerId, within: agentFolders(store.get(), caller, docs.home) })
     if (!r.ok) refuse(r.reason)
     if (groupId !== undefined && !r.existed) store.dispatch({ op: 'setParent', ids: [r.nodeId], parentId: named(caller, groupId)!.id })
     if (!r.existed) add(callerId, r.nodeId, 'opened')

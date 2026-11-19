@@ -7,7 +7,7 @@ import { docName, isDocPath, type OpenDoc, type ReadResult, type ReaderComment }
 import { localPaths, openTerminalLink, type LinkDeps } from '../shellActions'
 import type { CommentStore } from './commentStore'
 import { findPlan, tailLines } from './planFind'
-import { checkDocPath, docKey, MAX_DOC_BYTES, systemFolders } from './policy'
+import { checkDocPath, docKey, insideFolder, MAX_DOC_BYTES, systemFolders } from './policy'
 
 export const READER_SIZE = { width: 780, height: 720 }
 
@@ -68,7 +68,7 @@ export function createDocsService(d: DocsDeps) {
   }
 
   /** Whether a path may be read now: the policy on the path as given and as it really is, and that it's a small file. */
-  const checkFile = async (path: string): Promise<{ ok: true; path: string; mtimeMs: number } | Fail> => {
+  const checkFile = async (path: string): Promise<{ ok: true; path: string; real: string; mtimeMs: number } | Fail> => {
     const given = checkDocPath(path, system)
     if (!given.ok) return given
     let real: string
@@ -83,7 +83,7 @@ export function createDocsService(d: DocsDeps) {
     const st = await d.fs.stat(real)
     if (!st.isFile()) return { ok: false, reason: `That isn't a file: ${given.path}` }
     if (st.size > MAX_DOC_BYTES) return { ok: false, reason: `${docName(given.path)} is ${Math.round(st.size / 1024 / 1024)} MB, too large to read here.` }
-    return { ok: true, path: given.path, mtimeMs: st.mtimeMs }
+    return { ok: true, path: given.path, real, mtimeMs: st.mtimeMs }
   }
 
   const readText = async (path: string): Promise<ReadResult> => {
@@ -111,10 +111,26 @@ export function createDocsService(d: DocsDeps) {
    */
   const openFile = async (
     target: string,
-    o: { from?: CanvasNode; at?: { x: number; y: number }; title?: string; openedBy?: string; projectId?: string; group?: CanvasNode | null } = {}
+    o: {
+      from?: CanvasNode
+      at?: { x: number; y: number }
+      title?: string
+      openedBy?: string
+      projectId?: string
+      /** For an agent: the folders the file must be in, as named and once symlinks are followed. */
+      within?: string[]
+    } = {}
   ): Promise<Opened | Fail> => {
     const folder = o.from && isSessionNode(o.from) ? o.from.cwd : o.from?.kind === 'reader' ? dirname(o.from.path) : d.home
     const path = resolveFrom(folder, target)
+    if (o.within) {
+      const c = await checkFile(path)
+      if (!c.ok) return c
+      const inside = (p: string): boolean => o.within!.some((f) => insideFolder(p, f))
+      if (!inside(c.path) || !inside(c.real)) {
+        return { ok: false, reason: `${c.path} isn't in your folder, your project's folder or ~/.claude/plans, so you can't open it in a reader. Ask the person to open it.` }
+      }
+    }
     const read = await readText(path)
     if (!read.ok) return read
     const doc = d.store.get()
@@ -170,6 +186,7 @@ export function createDocsService(d: DocsDeps) {
   const unsubscribe = d.store.subscribe(syncWatches)
 
   return {
+    home: d.home,
     checkFile,
     openFile,
 

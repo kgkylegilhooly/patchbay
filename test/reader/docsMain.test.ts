@@ -9,7 +9,7 @@ import { findPlan, isLongMarkdown } from '../../src/main/reader/planFind'
 import { checkDocPath, docKey } from '../../src/main/reader/policy'
 import { createDocsService, titleFrom, type DocsWatcher } from '../../src/main/reader/service'
 import { withDocVerbs } from '../../src/main/reader/verbs'
-import type { ClaudeNode, ReaderNode, TerminalNode } from '../../src/shared/model'
+import type { CanvasNode, ClaudeNode, GroupNode, ReaderNode, TerminalNode } from '../../src/shared/model'
 import { memoryStore } from '../control/fakes'
 
 const SYSTEM = ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)', 'C:\\ProgramData']
@@ -259,15 +259,15 @@ describe('doc verbs', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  const setup = () => {
-    const caller: ClaudeNode = { id: 'agent', kind: 'claude', title: 'Planner', x: 0, y: 0, width: 600, height: 400, parentId: null, cwd: dir, sessionId: null, transcriptPath: null, after: [], projectId: 'p1' }
-    const other: ClaudeNode = { ...caller, id: 'other', title: 'Other' }
-    const store = memoryStore([caller, other])
+  const setup = (o: { cwd?: string; home?: string; parentId?: string; nodes?: CanvasNode[] } = {}) => {
+    const caller: ClaudeNode = { id: 'agent', kind: 'claude', title: 'Planner', x: 0, y: 0, width: 600, height: 400, parentId: o.parentId ?? null, cwd: o.cwd ?? dir, sessionId: null, transcriptPath: null, after: [], projectId: 'p1' }
+    const other: ClaudeNode = { ...caller, id: 'other', title: 'Other', parentId: null }
+    const store = memoryStore([...(o.nodes ?? []), caller, other])
     const comments = createCommentStore(join(dir, 'appdata'))
     const service = createDocsService({
       store,
       dataDir: join(dir, 'appdata'),
-      home: dir,
+      home: o.home ?? dir,
       comments,
       fs: { realpath, stat, readFile: (p) => readFile(p, 'utf8'), writeFile: (p, t) => writeFile(p, t, 'utf8'), mkdir: async (p) => void (await mkdir(p, { recursive: true })), exists: existsSync },
       watcher: { watch: () => {}, unwatch: () => {} },
@@ -291,6 +291,38 @@ describe('doc verbs', () => {
       ['agent', r.id, 'opened'],
       ['agent', r.id, 'link']
     ])
+  })
+
+  it("limits an agent to its own folder, its worktree, its project's folder and the plans folder", async () => {
+    const file = (rel: string): string => {
+      const p = join(dir, rel)
+      mkdirSync(join(p, '..'), { recursive: true })
+      writeFileSync(p, '# Doc\n')
+      return p
+    }
+    const own = file('work/notes.md')
+    const plan = file('home/.claude/plans/brave-otter.md')
+    const project = file('proj/spec.md')
+    const tree = file('tree/design.md')
+    const secret = file('home/Documents/passwords.txt')
+    const appData = file('home/AppData/Roaming/tool/notes.md')
+    const group: GroupNode = { id: 'g', kind: 'group', title: 'Tree', x: 0, y: 0, width: 900, height: 900, parentId: null, worktree: { path: join(dir, 'tree'), branch: 'b', repo: dir }, projectId: 'p1' }
+    const { store, verbs } = setup({ cwd: join(dir, 'work'), home: join(dir, 'home'), parentId: 'g', nodes: [group] })
+    store.get().projects.push({ id: 'p1', name: 'P', folder: join(dir, 'proj'), viewport: { x: 0, y: 0, zoom: 1 } })
+    for (const ok of [own, plan, project, tree]) await expect(verbs('agent', 'open-doc', { path: ok })).resolves.toMatchObject({ path: ok })
+    for (const no of [secret, appData]) await expect(verbs('agent', 'open-doc', { path: no })).rejects.toThrow(/Ask the person to open it/)
+    expect(store.get().nodes.filter((n) => n.kind === 'reader').map((n) => (n as ReaderNode).path)).toEqual([own, plan, project, tree])
+  })
+
+  it('refuses agents in an archived project, and readers in one', async () => {
+    const reader: ReaderNode = { id: 'r', kind: 'reader', title: 'Plan', path: join(dir, 'plan.md'), x: 0, y: 0, width: 1, height: 1, parentId: null, projectId: 'p2' }
+    const { store, verbs, base } = setup({ nodes: [reader] })
+    store.dispatch({ op: 'addEdge', edge: { id: 'e', from: 'agent', to: 'r', kind: 'link' } })
+    store.get().projects.push({ id: 'p1', name: 'Live', folder: '', viewport: { x: 0, y: 0, zoom: 1 } }, { id: 'p2', name: 'Old', folder: '', viewport: { x: 0, y: 0, zoom: 1 }, archivedAt: 1 })
+    await expect(verbs('agent', 'read', { node: 'r' })).rejects.toThrow(/archived/)
+    store.get().projects[0].archivedAt = 2
+    await expect(verbs('agent', 'open-doc', { path: join(dir, 'plan.md') })).rejects.toThrow(/archived/)
+    expect(base).not.toHaveBeenCalled()
   })
 
   it('refuses a path the reader may not open', async () => {

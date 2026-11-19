@@ -98,7 +98,9 @@ function Card({
         />
       )}
       <div className="reader-c-foot">
-        <span className="reader-c-sent">{c.sent ? `Sent to ${c.sent.to} ${changedAgo(c.sent.at, now)}` : c.resolved ? '' : 'Not sent yet'}</span>
+        <span className="reader-c-sent" title={c.sent?.queued ? 'It goes when the agent is idle and you are not typing to it.' : undefined}>
+          {c.sent ? `${c.sent.queued ? 'Queued for' : 'Sent to'} ${c.sent.to} ${changedAgo(c.sent.at, now)}` : c.resolved ? '' : 'Not sent yet'}
+        </span>
         {editing !== null ? (
           <>
             <button type="button" className="git-mini" onClick={() => setEditing(null)}>
@@ -181,7 +183,7 @@ export function ReaderComments({
     const text = formatComments({ title: node.title, path: node.path, comments: sending, doc })
     const r = await bridge.sendToAgent(chosen.id, text)
     if (!r.ok) return setResult({ ok: false, text: r.reason })
-    update((l) => markSent(l, sending.map((c) => c.id), chosen.title, Date.now()))
+    update((l) => markSent(l, sending.map((c) => c.id), chosen.title, Date.now(), r.queued))
     setResult({ ok: true, text: r.queued ? `Queued for ${chosen.title}. It goes out when it's idle and you're not typing to it.` : `Sent to ${chosen.title}.` })
   }
 

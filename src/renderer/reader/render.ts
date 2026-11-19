@@ -33,13 +33,28 @@ const markdown = new Marked({
 const PURIFY = {
   USE_PROFILES: { html: true },
   FORBID_TAGS: ['style', 'form', 'button', 'iframe', 'object', 'embed', 'video', 'audio', 'img', 'link', 'meta', 'base', 'svg', 'math'],
-  FORBID_ATTR: ['style', 'srcset', 'action', 'formaction']
+  // No ids or data attributes from the document: they could pose as the reader's own markers or the app's.
+  FORBID_ATTR: ['style', 'srcset', 'action', 'formaction', 'id'],
+  ALLOW_DATA_ATTR: false,
+  RETURN_DOM_FRAGMENT: true as const
 }
 
-function clean(html: string): string {
+/** The classes this renderer gives out. Any other class in a document is dropped, so it can't pass for an app part. */
+const OWN_CLASS = /^(code-(block|head|lang|copy)|tok-[a-z]+|task|reader-img)$/
+
+/** A document's HTML, made safe: see PURIFY and OWN_CLASS. Exported for tests. */
+export function clean(html: string): string {
   // DOMPurify returns its input untouched when it has no DOM. Never let that through.
   if (!DOMPurify.isSupported) return escapeHtml(html.replace(/<[^>]*>/g, ''))
-  return DOMPurify.sanitize(html, PURIFY) as string
+  const fragment = DOMPurify.sanitize(html, PURIFY)
+  for (const el of fragment.querySelectorAll('[class]')) {
+    const kept = [...el.classList].filter((c) => OWN_CLASS.test(c))
+    if (kept.length) el.setAttribute('class', kept.join(' '))
+    else el.removeAttribute('class')
+  }
+  const box = document.createElement('div')
+  box.append(fragment)
+  return box.innerHTML
 }
 
 /** A section's blocks, with the document's link definitions. */

@@ -90,6 +90,12 @@ describe('comment state', () => {
     expect(unsent(sent).map((c) => c.id)).toEqual(['b'])
   })
 
+  it('says a comment is queued, not sent, while a busy agent has yet to get it', () => {
+    expect(markSent(base, ['a'], 'Planner', 50, true)[0].sent).toEqual({ at: 50, to: 'Planner', queued: true })
+    expect(isComment(markSent(base, ['a'], 'Planner', 50, true)[0])).toBe(true)
+    expect(unsent(markSent(base, ['a'], 'Planner', 50, true))).toEqual([])
+  })
+
   it('leaves resolved comments out of a send', () => {
     expect(unsent(resolveComment(base, 'a'))).toEqual([])
   })

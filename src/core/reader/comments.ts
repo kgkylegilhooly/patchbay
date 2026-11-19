@@ -43,9 +43,9 @@ export function unsent(list: ReaderComment[]): ReaderComment[] {
   return list.filter((c) => !c.resolved && !c.sent)
 }
 
-export function markSent(list: ReaderComment[], ids: string[], to: string, at: number): ReaderComment[] {
+export function markSent(list: ReaderComment[], ids: string[], to: string, at: number, queued = false): ReaderComment[] {
   const sending = new Set(ids)
-  return list.map((c) => (sending.has(c.id) ? { ...c, sent: { at, to } } : c))
+  return list.map((c) => (sending.has(c.id) ? { ...c, sent: { at, to, ...(queued ? { queued } : {}) } } : c))
 }
 
 /**
