@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ATTEMPT_KEYS, attemptLabel, startProblem, suggestBranches, type AttemptKey, type AttemptRequest, type Comparison, type SourceInfo, type StartComparison } from '../shared/compare'
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { compare } from './compareBridge'
+import { useAgentChoice } from './agentChoice'
 
 const SHOWN_FILES = 8
 
@@ -19,6 +20,8 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
   const briefRef = useRef<HTMLTextAreaElement>(null)
+  // Settings > Agents: an agent turned off can't be picked, and an attempt left on one blocks Start until changed.
+  const agents = useAgentChoice()
 
   const read = (): void => {
     setInfo(null)
@@ -35,7 +38,7 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
   const req: StartComparison | null = info?.ok
     ? { projectId, source, brief, base: info.commit, leaveOutUncommitted: leaveOut, attempts: ATTEMPT_KEYS.map((k) => ({ ...attempts[k], branch: branchOf(k) })), verify }
     : null
-  const blocked = info ? (req ? startProblem(req, info) : info.ok ? null : info.reason) : 'Reading the checkout…'
+  const blocked = info ? (req ? startProblem(req, info, agents) : info.ok ? null : info.reason) : 'Reading the checkout…'
 
   const start = async (): Promise<void> => {
     if (!req || blocked || busy) return
@@ -124,8 +127,9 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
             <div className="compare-agents" role="radiogroup" aria-label={`Agent for attempt ${attemptLabel(k)}`}>
               {(['claude', 'codex'] as AgentKind[]).map((agent) => (
                 <label key={agent} className={`compare-agent${attempts[k].agent === agent ? ' compare-agent-on' : ''}`}>
-                  <input type="radio" name={`agent-${k}`} checked={attempts[k].agent === agent} onChange={() => set(k, { agent })} />
+                  <input type="radio" name={`agent-${k}`} checked={attempts[k].agent === agent} disabled={!agents.enabled.includes(agent)} onChange={() => set(k, { agent })} />
                   {AGENT_NAMES[agent]}
+                  {!agents.enabled.includes(agent) && ' (off in Settings)'}
                 </label>
               ))}
             </div>

@@ -4,6 +4,8 @@ import type { IconName } from './iconPaths'
 import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
+import { toggleReviewInbox } from './reviewInboxUi'
+import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
 
 export interface Point {
@@ -43,7 +45,8 @@ export interface Commands {
   deleteProject(id: string): void
   /** Shows a session, switching to its project first if need be. */
   revealNode(id: string): void
-  newTerminal(at?: Point, groupId?: string): void
+  /** With a profile id, a terminal of that profile. Without, the default. */
+  newTerminal(at?: Point, groupId?: string, profileId?: string): void
   newTerminalForm(at?: Point, groupId?: string): void
   newSshForm(at?: Point, groupId?: string): void
   newClaudeForm(at?: Point, groupId?: string): void
@@ -130,6 +133,7 @@ export interface MenuState {
 export function addMenu(c: Commands, at?: Point): MenuEntry[] {
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
@@ -225,6 +229,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-board', label: 'Board view', icon: 'board', checked: !!s.board, run: c.toggleBoard },
     { id: 'toggle-focus', label: 'Focus view', icon: 'grid', checked: !!s.focus, run: () => c.toggleFocus() },
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
+    { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
@@ -254,6 +259,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   const extensions = canvasExtensions(c, at)
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },

@@ -12,6 +12,7 @@ import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, statusSections } from './sidebarView'
 import { useStore } from './store'
 import { contextLabel } from './usageView'
+import { useAgentOff } from './agentChoice'
 
 const TICK_MS = 20_000
 
@@ -95,6 +96,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
+  const agentOff = useAgentOff()
   if (!doc) return null
 
   const tab = prefs.sidebarTab
@@ -220,7 +222,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
                 {recent.length === 0 && <li className="sidebar-empty">Close a Claude or Codex session and its conversation appears here.</li>}
                 {recent.map((entry) => (
                   <li key={entry.id}>
-                    <button type="button" className="session closed-row" data-closed-session={entry.id} title={`Reopen, in ${entry.cwd}`} onClick={() => void bridge.reopenClosed(entry.id)}>
+                    <button type="button" className="session closed-row" data-closed-session={entry.id} title={agentOff(entry.agent) ?? `Reopen, in ${entry.cwd}`} disabled={!!agentOff(entry.agent)} onClick={() => void bridge.reopenClosed(entry.id)}>
                       <KindIcon kind="claude" agent={entry.agent} />
                       <span className="session-title">{entry.title}</span>
                       <time className="session-time" dateTime={new Date(entry.closedAt).toISOString()}>

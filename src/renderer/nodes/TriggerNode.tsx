@@ -8,6 +8,7 @@ import { KindIcon } from '../icons'
 import { closeNodes, useStore } from '../store'
 import { nextLabel, OUTCOME_LABELS, STATE_LABELS, triggerState } from '../triggerView'
 import { EditableTitle, Resizer } from './NodeChrome'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 /** The time now, ticking only while there's a countdown to show. Only this node renders for it. */
 function useNow(ticking: boolean): number {
@@ -28,6 +29,7 @@ function ask(kind: 'edit' | 'arm', id: string): void {
 
 export const TriggerNode = memo(function TriggerNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.node as TriggerModel
+  const headerZoom = useHeaderZoom(node.id)
   const state = triggerState(node)
   const armed = state === 'armed'
   const now = useNow(armed && node.nextAt !== null)
@@ -43,7 +45,7 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
     <div className={`unit trigger trigger-${state}${selected ? ' unit-selected' : ''}`} data-trigger-state={state}>
       <Resizer node={node} min={{ w: 300, h: 220 }} />
       <Handle className="jack" type="source" position={Position.Right} aria-label="Drag to a terminal or Claude window to choose what this sends to" />
-      <header className="unit-head pb-drag">
+      <header className="unit-head pb-drag" onDoubleClick={headerZoom}>
         <KindIcon kind="trigger" />
         <EditableTitle node={node} />
         <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>

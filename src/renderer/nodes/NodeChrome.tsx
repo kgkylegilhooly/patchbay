@@ -14,6 +14,7 @@ import { WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
+import { useHeaderZoom } from '../useHeaderZoom'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -204,11 +205,12 @@ export function NodeChrome({
   const runProblem = useStore((s) => s.runProblem[node.id])
   const maximized = useStore((s) => s.maximized === node.id)
   const slot = useStore((s) => (s.focus ? s.focusSlots[node.id] : undefined))
+  const headerZoom = useHeaderZoom(node.id)
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (
     <div className={classes.join(' ')}>
-      <header className="unit-head pb-drag">
+      <header className="unit-head pb-drag" onDoubleClick={headerZoom}>
         <StatusDot status={isRun ? runDot(run) : status} />
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />

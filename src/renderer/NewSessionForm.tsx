@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { bridge } from './bridge'
+import { ProfilePicker } from './TerminalProfilePicker'
 
 const NAMES = { claude: 'New Claude', codex: 'New Codex', team: 'Spawn a team', terminal: 'New terminal', run: 'New run command' }
 
@@ -7,6 +8,7 @@ export function NewSessionForm({
   kind,
   initialFolder,
   initialCommand = '',
+  folderFor,
   editing = false,
   onCancel,
   onOpen
@@ -14,12 +16,17 @@ export function NewSessionForm({
   kind: 'claude' | 'codex' | 'terminal' | 'run' | 'team'
   initialFolder: string
   initialCommand?: string
+  /** For a terminal: where one of this profile (the default, with none) opens when no folder is chosen. */
+  folderFor?: (profile: string | undefined) => string
   editing?: boolean
   onCancel: () => void
-  onOpen: (fields: { cwd: string; text?: string }) => void
+  onOpen: (fields: { cwd: string; text?: string; profile?: string }) => void
 }): React.JSX.Element {
-  const [cwd, setCwd] = useState(initialFolder)
+  const [cwd, setCwd] = useState(() => (folderFor ? folderFor(undefined) : initialFolder))
   const [text, setText] = useState(initialCommand)
+  const [profile, setProfile] = useState<string | undefined>(undefined)
+  /** The folder the person chose, so picking a profile with its own folder doesn't replace it. */
+  const chose = useRef(false)
   const team = kind === 'team'
   const claude = kind === 'claude' || kind === 'codex' || team
   const agentName = kind === 'codex' ? 'Codex' : 'Claude'
@@ -44,7 +51,7 @@ export function NewSessionForm({
       onSubmit={(e) => {
         e.preventDefault()
         if (blocked) return
-        onOpen({ cwd, text: text.trim() || undefined })
+        onOpen({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}) })
       }}
     >
       {team && <p className="pop-note">One lead Claude opens here. It splits the task into workstreams, starts a team for them, and brings the results together.</p>}
@@ -58,12 +65,22 @@ export function NewSessionForm({
             ref={chooseRef}
             type="button"
             className="btn"
-            onClick={() => void bridge.pickFolder().then((folder) => folder && setCwd(folder))}
+            onClick={() => void bridge.pickFolder().then((folder) => folder && ((chose.current = true), setCwd(folder)))}
           >
             Choose folder
           </button>
         </div>
       </div>
+      {kind === 'terminal' && !editing && (
+        <ProfilePicker
+          value={profile}
+          onChange={(id) => {
+            setProfile(id)
+            // The same order as the menus and patchbay open-terminal: see terminalFolderFor.
+            if (folderFor && !chose.current) setCwd(folderFor(id))
+          }}
+        />
+      )}
       <label className="field">
         <span className="field-label">{team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}</span>
         {claude ? (

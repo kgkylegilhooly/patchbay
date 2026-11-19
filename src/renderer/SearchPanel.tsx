@@ -5,6 +5,7 @@ import { bridge } from './bridge'
 import { ClaudeIcon, CodexIcon, Icon } from './icons'
 import { closeSearch, markedParts, matchPage, openHandoff, RANGES, rangeStart, searchBridge, turnPage, useSearchUi, type DateRange } from './searchUi'
 import { useStore } from './store'
+import { useAgentOff } from './agentChoice'
 import './search.css'
 
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -66,6 +67,7 @@ function SourceViewer({ viewing, terms, onPage, onClose }: { viewing: Viewing; t
     else if (body.current) body.current.scrollTop = viewing.turned === 'earlier' ? body.current.scrollHeight : 0
   }, [w, viewing.turned])
   const closedId = hit.ref.type === 'closed' ? hit.ref.closedId : null
+  const reopenOff = useAgentOff()(hit.agent)
   return (
     <div className="viewer search-viewer" role="dialog" aria-label={`Source of ${hit.title}`}>
       <header className="drawer-head">
@@ -73,7 +75,7 @@ function SourceViewer({ viewing, terms, onPage, onClose }: { viewing: Viewing; t
         <div className="search-viewer-actions">
           {closedId && (
             <>
-              <button className="btn" onClick={() => void bridge.reopenClosed(closedId).then(onClose)}>
+              <button className="btn" disabled={!!reopenOff} title={reopenOff ?? undefined} onClick={() => void bridge.reopenClosed(closedId).then(onClose)}>
                 Reopen
               </button>
               <button className="btn" onClick={() => openHandoff({ type: 'closed', closedId }, hit.title)}>
