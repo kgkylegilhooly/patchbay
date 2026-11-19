@@ -21,10 +21,18 @@ export interface AgentStop {
   holds: 'reset' | 'person' | null
   /** Settings say to send "continue" once at the reset, and this stop qualifies. */
   willContinue?: boolean
+  /**
+   * A rate limit that named no reset time, such as a short burst of 429s: `until` is a guess, a short wait after which
+   * messages are tried again. Another limit straight after records a new stop that waits longer.
+   */
+  retry?: true
 }
 
 /** Messages wait this long past a reset time, which the message gives only to the minute. */
 export const RELEASE_MARGIN_MS = 30_000
+/** How long a rate limit with no reset time holds messages at first. Each one straight after it doubles this. */
+export const RETRY_FIRST_MS = 60_000
+export const RETRY_MAX_MS = 15 * 60_000
 const MESSAGE_CHARS = 500
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
@@ -35,7 +43,7 @@ const RESET_TEXT =
  * The next local time a message such as "resets 12:30am" or "resets Nov 21, 9am" names, after `after`. Null when it
  * names none. A bare number needs am/pm or minutes to count, so "resets 5" isn't read as 5 o'clock.
  */
-export function parseResetTime(text: string, after: number): number | null {
+export function parseResetTime(text: string, after: number, localZone = localTimeZone()): number | null {
   const m = RESET_TEXT.exec(text)
   if (!m) return null
   const [, month, day, hourText, minuteText, half] = m
@@ -44,6 +52,9 @@ export function parseResetTime(text: string, after: number): number | null {
   const minute = minuteText === undefined ? 0 : Number(minuteText)
   if (minute > 59 || (half ? hour < 1 || hour > 12 : hour > 23)) return null
   if (half) hour = (hour % 12) + (half.toLowerCase() === 'pm' ? 12 : 0)
+  // "resets 12:30am (Europe/London)": a time in a zone other than this PC's is read in that zone.
+  const zone = ZONE_TEXT.exec(text.slice(m.index + m[0].length))?.[1]
+  if (zone && zone !== localZone) return inZone(zone, after, month ? MONTHS.indexOf(month.toLowerCase()) : null, Number(day), hour, minute)
   const base = new Date(after)
   if (month) {
     const at = new Date(base.getFullYear(), MONTHS.indexOf(month.toLowerCase()), Number(day), hour, minute)
@@ -54,6 +65,38 @@ export function parseResetTime(text: string, after: number): number | null {
   const at = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, minute)
   if (at.getTime() <= after) at.setDate(at.getDate() + 1)
   return at.getTime()
+}
+
+const ZONE_TEXT = /^\s*\(([A-Za-z_]+(?:\/[A-Za-z_+-]+)+|UTC)\)/
+
+function localTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    return undefined
+  }
+}
+
+/** How far a zone's wall clock is ahead of UTC at a moment, in ms. Null for a zone Intl doesn't know. */
+function zoneOffset(zone: string, at: number): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(at)
+    const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value)
+    return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - Math.floor(at / 1000) * 1000
+  } catch {
+    return null
+  }
+}
+
+/** The next time after `after` that a zone's clock shows this, as parseResetTime does for local time. */
+function inZone(zone: string, after: number, month: number | null, day: number, hour: number, minute: number): number | null {
+  const offset = zoneOffset(zone, after)
+  if (offset === null) return null
+  const wall = new Date(after + offset)
+  const y = wall.getUTCFullYear()
+  let at = month !== null ? Date.UTC(y, month, day, hour, minute) : Date.UTC(y, wall.getUTCMonth(), wall.getUTCDate(), hour, minute)
+  if (at <= after + offset) at = month !== null ? Date.UTC(y + 1, month, day, hour, minute) : Date.UTC(y, wall.getUTCMonth(), wall.getUTCDate() + 1, hour, minute)
+  return at - (zoneOffset(zone, at - offset) ?? offset)
 }
 
 /** A plan window at its limit that resets after the failure: the exact time, from the status line. */
@@ -80,24 +123,34 @@ function kindOf(error: string, message: string): StopKind {
 const text = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 /** What a StopFailure hook's fields say happened, using the status line's limits for the reset time where it can. */
-export function stopFromHook(payload: Record<string, unknown>, at: number, plan?: PlanUsage | null): AgentStop {
+export function stopFromHook(payload: Record<string, unknown>, at: number, plan?: PlanUsage | null, retryMs = RETRY_FIRST_MS): AgentStop {
   const said = [text(payload.last_assistant_message), text(payload.error_details)].filter(Boolean).join('\n')
   const kind = kindOf(text(payload.error), said)
   const limit = kind === 'usage-limit' || kind === 'rate-limit'
   const until = limit ? (fullWindowReset(plan, at) ?? parseResetTime(said, at)) : null
-  return {
+  const stop: AgentStop = {
     kind,
     at,
     until,
     message: said ? said.slice(0, MESSAGE_CHARS) : null,
     holds: limit ? (until !== null ? 'reset' : 'person') : kind === 'auth' || kind === 'billing' ? 'person' : null
   }
+  // A short rate limit clears by itself, so messages are tried again soon rather than left for the person.
+  if (kind === 'rate-limit' && until === null) return { ...stop, until: at + retryMs, holds: 'reset', retry: true }
+  return stop
+}
+
+/** When messages held for it may go: a little after a stated reset, which is given to the minute, or at a retry. */
+export function releaseAt(stop: AgentStop): number | null {
+  if (stop.holds !== 'reset' || stop.until === null) return null
+  return stop.until + (stop.retry ? 0 : RELEASE_MARGIN_MS)
 }
 
 /** Whether messages for a node stopped like this wait now. */
 export function stopHolds(stop: AgentStop, now: number): boolean {
   if (stop.holds === 'person') return true
-  return stop.holds === 'reset' && stop.until !== null && now < stop.until + RELEASE_MARGIN_MS
+  const release = releaseAt(stop)
+  return release !== null && now < release
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0')
@@ -124,6 +177,7 @@ export function stopLabel(stop: AgentStop, now: number): string {
   const name = NAMES[stop.kind]
   if (stop.until === null) return name
   const time = clockTime(stop.until, now)
+  if (stop.retry) return now < stop.until ? `${name}, retrying at ${time}` : name
   if (now >= stop.until) return `${name} reset at ${time}`
   return `${name} until ${time}${stop.willContinue ? ' · continues then' : ''}`
 }
@@ -132,7 +186,7 @@ export function stopLabel(stop: AgentStop, now: number): string {
 export function stopExplained(stop: AgentStop, now: number): string {
   const label = stopLabel(stop, now)
   if (stop.holds === 'reset' && stopHolds(stop, now))
-    return `${label}. Messages and trigger prompts for it wait until then and go out by themselves${stop.willContinue ? ', and it gets "continue" if nothing is waiting' : ''}. Its work so far stays on disk.`
+    return `${label}. Messages and trigger prompts for it wait until then and go out by themselves${stop.willContinue ? ', and it gets "continue" if nothing is waiting' : ''}${stop.retry ? '; another limit holds them longer' : ''}. Its work so far stays on disk. Held messages don't survive Patchbay restarting, so if it restarts first, send again.`
   if (stop.holds === 'person') return `${label}. Messages for it wait until it's working again, which needs the person. Tell them which node.`
   return `${label}. It's back at its prompt, so a message starts it again.`
 }

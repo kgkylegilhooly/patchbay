@@ -475,8 +475,9 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
 - **Usage limits.** A message or trigger prompt for an agent stopped at its usage limit waits until the limit
-  resets, then goes out by itself. You can still type to it any time. After a login or billing failure, messages wait
-  until you've sorted it out. `patchbay list` and `patchbay wait` say which agents stopped and why. Settings >
+  resets, then goes out by itself, even if Patchbay restarted meanwhile (messages queued before a restart are lost, as
+  ever). A short rate limit that names no reset is tried again after a minute, then longer. You can still type to it any
+  time. After a login or billing failure, messages wait until you've sorted it out. `patchbay list` and `patchbay wait` say which agents stopped and why. Settings >
   Sessions > **Continue after a usage limit resets** (off by default) sends "continue" once at the reset to an agent
   still stopped there with nothing waiting for it. Its badge says so beforehand.
 - **Leads keep their team going.** `patchbay restart --node <id>` brings back an agent the lead opened that has

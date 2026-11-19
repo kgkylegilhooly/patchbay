@@ -1,3 +1,4 @@
+import '../agentStops.css'
 import type { AgentStatus } from '../../shared/model'
 import { stopLabel } from '../../shared/agentStop'
 import { useAgentStop } from '../agentStops'

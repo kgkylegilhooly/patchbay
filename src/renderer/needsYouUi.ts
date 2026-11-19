@@ -78,7 +78,8 @@ export async function jumpToNext(c: Commands): Promise<void> {
   const { doc, statuses, attention } = useStore.getState()
   if (!doc) return
   const { last, includeUnread } = useNeedsYouUi.getState()
-  const next = nextInQueue(needsYouQueue(doc, statuses, attention, waits, includeUnread), last)
+  const { useAgentStops } = await import('./agentStops')
+  const next = nextInQueue(needsYouQueue(doc, statuses, attention, waits, includeUnread, useAgentStops.getState().stops), last)
   if (!next) {
     useNeedsYouUi.setState({ peek: null })
     return notify(includeUnread ? 'Nothing needs you' : 'Nothing needs you. Unread sessions are left out')

@@ -76,7 +76,7 @@ import { createCodexGate } from './usage/codexGate'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
-import { continueAtReset, createAgentStops } from './sessions/agentStops'
+import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
 import { registerAgentStopIpc } from './agentStopsIpc'
 import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
@@ -370,7 +370,7 @@ async function boot(): Promise<void> {
   })
   const usage = createUsageService({ dataDir })
   // Why agents stopped on StopFailure, such as a usage limit, and holding what's sent to them until it resets.
-  const stops = createAgentStops({ tracker, plan: () => usage.state().plan, continueEnabled: () => currentSettings().continueAtReset === 'on' })
+  const stops = createAgentStops({ tracker, plan: () => usage.state().plan, continueEnabled: () => currentSettings().continueAtReset === 'on', store: stopFile(join(dataDir, 'agent-stops.json'), (line) => log?.write(line)) })
   registerAgentStopIpc(stops)
   if (signalDir) {
     signals = watchSignals({
@@ -461,6 +461,8 @@ async function boot(): Promise<void> {
     return plan.adopt
   }
   const adopted = adoptLive()
+  // A node at its usage limit before the app restarted still is, if its session came back.
+  stops.retain(adopted)
 
   const server: ControlServer = await startControlServer({
     secret,

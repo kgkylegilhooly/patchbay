@@ -41,5 +41,12 @@ export async function restartVerb(
   await deps.restart(id)
   const problem = deps.error(id)
   if (problem) refuse(`Node "${id}" didn't start: ${problem}`)
-  return { id, restarted: true, agent: agentOf(node), resumed }
+  // A resume can still fail in its first seconds, which only shows later, so this says what to check.
+  return {
+    id,
+    restarted: true,
+    agent: agentOf(node),
+    resuming: resumed,
+    ...(resumed ? { check: `It's reopening its conversation. If patchbay list shows it exited in a few seconds, the resume failed: patchbay restart starts a new one if its transcript is gone.` } : {})
+  }
 }

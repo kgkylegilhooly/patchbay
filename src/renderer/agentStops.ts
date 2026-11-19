@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { AgentStop, AgentStopBridge } from '../shared/agentStop'
-import './agentStops.css'
 
 declare global {
   interface Window {

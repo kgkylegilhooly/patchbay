@@ -98,7 +98,7 @@ test('restart brings back an exited agent the caller opened, resuming its conver
   const { verbs, tracker, host, restarted } = setup()
   host.running.delete('author')
   tracker.apply('author', { type: 'process-exit' })
-  expect(await verbs('lead', 'restart', { node: 'author' })).toEqual({ id: 'author', restarted: true, agent: 'claude', resumed: true })
+  expect(await verbs('lead', 'restart', { node: 'author' })).toEqual({ id: 'author', restarted: true, agent: 'claude', resuming: true, check: expect.stringMatching(/exited in a few seconds/) })
   expect(restarted).toEqual(['author'])
 })
 

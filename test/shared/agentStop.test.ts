@@ -37,7 +37,7 @@ test('a usage limit takes its reset from the status line window at 100%, else fr
 })
 
 test('each error kind says what it holds: limits until their reset, logins for the person, the rest nothing', () => {
-  expect(stopFromHook({ error: 'rate_limit' }, NOW)).toMatchObject({ kind: 'rate-limit', until: null, holds: 'person' })
+  expect(stopFromHook({ error: 'rate_limit' }, NOW)).toMatchObject({ kind: 'rate-limit', until: NOW + 60_000, holds: 'reset', retry: true })
   expect(stopFromHook({ error: 'rate_limit', error_details: 'Too many requests. Resets at 9:50pm' }, NOW)).toMatchObject({ kind: 'usage-limit', until: at(2026, 11, 19, 21, 50), holds: 'reset' })
   expect(stopFromHook({ error: 'authentication_failed' }, NOW)).toMatchObject({ kind: 'auth', holds: 'person' })
   expect(stopFromHook({ error: 'billing_error' }, NOW)).toMatchObject({ kind: 'billing', holds: 'person' })
