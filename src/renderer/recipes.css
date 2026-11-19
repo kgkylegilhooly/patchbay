@@ -348,3 +348,19 @@ code.recipe-argv {
   background: var(--face-raised);
   border-top: 1px solid var(--line);
 }
+
+.recipe-warning p {
+  margin: 0 0 6px;
+}
+
+.recipe-warning p:last-child {
+  margin-bottom: 0;
+}
+
+/* .field sets inputs to full width, which a checkbox or radio mustn't be. */
+.pop .recipe-check input {
+  flex: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
+}

@@ -131,6 +131,8 @@ const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null &
 const isText = (v: unknown): v is string => typeof v === 'string'
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const KEY = /^[A-Za-z0-9_-]{1,40}$/
+/** A node id as Patchbay makes them. */
+const NODE_ID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 const NODE_REF = /\{\{\s*node:([A-Za-z0-9_-]+)\s*\}\}/g
 
 export class RecipeError extends Error {}
@@ -413,14 +415,20 @@ export interface RecipePlan {
  * here, so two starts of one recipe never share a node.
  */
 export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => string): RecipePlan {
-  const ids: Record<string, string> = {}
-  for (const n of recipe.nodes) ids[n.key] = newId()
-  const values = { task: params.task, branch: params.branch, repo: params.repo, cwd: params.cwd }
-  const fill = (t: string): string => fillIn(t, values, ids)
   const skipped = new Set(params.skip ?? [])
   const used = recipe.nodes.filter((n) => !(n.kind === 'setup' && skipped.has(n.key)))
+  // Only nodes this start makes get an id. {{node:KEY}} of a step left out stays as written, and is warned about below.
+  const ids: Record<string, string> = {}
+  for (const n of used) ids[n.key] = newId()
+  const values = { task: params.task, branch: params.branch, repo: params.repo, cwd: params.cwd }
+  const fill = (t: string): string => fillIn(t, values, ids)
   const warnings: string[] = []
   const problems: string[] = []
+  for (const n of used) {
+    for (const ref of new Set(nodeRefs(n))) {
+      if (!ids[ref]) warnings.push(`"${fill(n.title)}" names {{node:${ref}}}, which is left out of this start, so the text keeps {{node:${ref}}} as written.`)
+    }
+  }
   /**
    * A command a shell runs, filled in. Which shell (Git Bash, PowerShell or cmd) isn't known here, so a value can't be
    * quoted for it: one with characters any of them acts on is refused rather than run.
@@ -539,6 +547,16 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
     const agents = used.filter((n) => n.kind === 'agent').length
     if (agents > 1) warnings.push('These agents share one checkout. Patchbay does not isolate or lock files between them, so they can overwrite each other\'s changes.')
   }
+  // A node id written into a recipe names one node on one canvas, not one this start makes. An agent told it would
+  // reach that same node, if it still exists, so the preview says so.
+  const made = new Set(Object.values(ids))
+  for (const n of nodes) {
+    const text = [n.title, n.kind === 'claude' ? n.prompt : undefined, n.kind === 'sticky' ? n.text : undefined, 'command' in n ? n.command : undefined].filter(Boolean).join('\n')
+    for (const id of new Set(text.match(NODE_ID) ?? [])) {
+      const why = `"${n.title}" names node ${id}, which this start doesn't make. An agent told it reaches that same node, if it still exists.`
+      if (!made.has(id) && !warnings.includes(why)) warnings.push(why)
+    }
+  }
   return { frame, nodes, edges, setup, holds, after: afterOnly, starts, runs, warnings, problems, ids }
 }
 
@@ -561,6 +579,36 @@ export interface SavedRecipe {
   skipped: Array<{ title: string; why: string }>
   /** Run nodes asked to be setup steps that stayed run commands, and why. */
   notSetup: Array<{ title: string; why: string }>
+  /** Node ids in the saved text that aren't in the selection: agents started from it would reach those same nodes. */
+  outside: Array<{ title: string; id: string; names: string }>
+  /** Saved text that looks like a secret. */
+  secrets: Array<{ title: string; what: string }>
+}
+
+/** Text that looks like a credential: token prefixes, NAME=value for secret-sounding names, and so on. */
+const SECRETS: Array<[RegExp, string]> = [
+  [/\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{10,}/, 'a GitHub token'],
+  [/\bsk-[A-Za-z0-9_-]{16,}/, 'an API key (sk-…)'],
+  [/\bxox[abposr]-[A-Za-z0-9-]{10,}/, 'a Slack token'],
+  [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a private key'],
+  [/\bBearer\s+[A-Za-z0-9._~+/-]{12,}/i, 'a bearer token'],
+  [/https?:\/\/[^\s/]*:[^\s@/]+@/i, 'a password in a URL'],
+  [/https?:\/\/\S+\?\S*\b(?:token|key|secret|sig|signature|password|auth|code|access_token)=[^\s&]+/i, 'a credential in a URL'],
+  [/\b[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|PWD|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY)\s*[=:]\s*[^\s&|;"'{}]{4,}/i, 'a secret set to a value'],
+]
+
+/** Saved text that looks like it holds a secret, by node. Shown before saving, so nothing is shared by accident. */
+export function secretsIn(recipe: Recipe): Array<{ title: string; what: string }> {
+  const found: Array<{ title: string; what: string }> = []
+  for (const n of recipe.nodes) {
+    const texts = [n.title, n.kind === 'agent' ? n.prompt : undefined, n.kind === 'note' ? n.text : undefined, n.kind === 'browser' ? n.url : undefined, 'command' in n ? n.command : undefined, n.kind === 'setup' ? n.run.join(' ') : undefined]
+    const text = texts.filter((t): t is string => typeof t === 'string').join('\n')
+    // The most specific kind is named once per node. The general NAME=value one comes last, after the URL ones.
+    const hit = SECRETS.find(([re]) => re.test(text))
+    if (hit) found.push({ title: n.title, what: hit[1] })
+  }
+  return found
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -715,7 +763,17 @@ export function recipeFromSelection(nodes: CanvasNode[], edges: Edge[], selected
   if (frameGroup) recipe.frame = { title: generic(frameGroup.title), width: frameGroup.width, height: frameGroup.height, ...(frameGroup.color ? { color: frameGroup.color } : {}) }
   if (links.length) recipe.links = links
   // Read back through the same checks as a file, so what's saved can always be loaded.
-  return { recipe: readRecipe(JSON.parse(JSON.stringify(recipe))), skipped, notSetup }
+  const saved = readRecipe(JSON.parse(JSON.stringify(recipe)))
+  // Ids of selected nodes became {{node:KEY}}. Any id left names a node outside the selection.
+  const outside: SavedRecipe['outside'] = []
+  for (const n of saved.nodes) {
+    const text = [n.title, n.kind === 'agent' ? n.prompt : undefined, n.kind === 'note' ? n.text : undefined, 'command' in n ? n.command : undefined].filter(Boolean).join('\n')
+    for (const id of new Set(text.match(NODE_ID) ?? [])) {
+      const other = byId.get(id)
+      outside.push({ title: n.title, id, names: other ? `"${other.title}"` : 'a node no longer on the canvas' })
+    }
+  }
+  return { recipe: saved, skipped, notSetup, outside, secrets: secretsIn(saved) }
 }
 
 /** A file name for a recipe's name. */

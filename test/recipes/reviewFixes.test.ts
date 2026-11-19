@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { withRecipeVerbs } from '../../src/main/recipes/verbs'
 import type { ClaudeNode, RunNode } from '../../src/shared/model'
-import { branchPatterns, folderIn, planRecipe, readRecipe, recipeFromSelection, type RecipeParams } from '../../src/shared/recipe'
+import { branchPatterns, folderIn, planRecipe, readRecipe, recipeFromSelection, secretsIn, type RecipeParams } from '../../src/shared/recipe'
+import { BUILT_IN_RECIPES } from '../../src/shared/recipeBuiltins'
 import { recipeWorld } from './fakes'
 
 const at = { x: 24, y: 64, width: 560, height: 300 }
@@ -196,5 +197,78 @@ describe('M2: agents and repository recipes', () => {
     const shown = (await verbs('lead', 'recipes', { name: 'Implement and review', task: 'T' })) as { hash: string }
     expect(await verbs('lead', 'run-recipe', { name: 'Implement and review', task: 'T', hash: shown.hash })).toMatchObject({ group: expect.any(String) })
     expect((w.store.get().nodes.find((n) => n.kind === 'run' && n.title.startsWith('Setup')) as RunNode).command).toContain('launch-run.cjs')
+  })
+})
+
+describe('M5: node ids from outside the selection', () => {
+  const lead = '1d015715-b71f-441e-bdfc-3333e6b4be2a'
+  const worker = '2e126826-c820-452f-ace0-444405c5cf3b'
+  const nodes = [
+    { id: lead, kind: 'claude' as const, title: 'Lead', x: 0, y: 0, width: 600, height: 400, parentId: null, cwd: 'C:\r', sessionId: null, transcriptPath: null, after: [] },
+    { id: worker, kind: 'claude' as const, title: 'Worker', x: 700, y: 0, width: 600, height: 400, parentId: null, cwd: 'C:\r', prompt: `When done: patchbay send --node ${lead} --text done. Old: 9f0e8d7c-6b5a-4938-a271-605f4e3d2c1b`, sessionId: null, transcriptPath: null, after: [] }
+  ]
+
+  test('saving lists them, by the name of the node they reach', () => {
+    const { outside } = recipeFromSelection(nodes, [], [worker], { name: 'R', cwd: 'C:\r' })
+    expect(outside).toEqual([
+      { title: 'Worker', id: lead, names: '"Lead"' },
+      { title: 'Worker', id: '9f0e8d7c-6b5a-4938-a271-605f4e3d2c1b', names: 'a node no longer on the canvas' }
+    ])
+  })
+
+  test('selecting the node too makes it a reference to the new one instead', () => {
+    const { outside, recipe } = recipeFromSelection(nodes, [], [worker, lead], { name: 'R', cwd: 'C:\r' })
+    expect(outside.map((o) => o.id)).toEqual(['9f0e8d7c-6b5a-4938-a271-605f4e3d2c1b'])
+    expect(JSON.stringify(recipe)).toContain('--node {{node:lead}}')
+  })
+
+  test('the preview warns about an id no node of this start has', () => {
+    const recipe = recipeWith([{ key: 'w', kind: 'agent', title: 'Worker', prompt: `Report to ${lead}, and to {{node:w}}.`, layout: at }])
+    const plan = planRecipe(recipe, params(), () => crypto.randomUUID())
+    expect(plan.warnings).toEqual([expect.stringContaining(`names node ${lead}, which this start doesn't make`)])
+  })
+})
+
+test('L7: a prompt naming a skipped setup step keeps the reference as written, with a warning', () => {
+  const recipe = recipeWith([
+    { key: 'setup', kind: 'setup', title: 'Setup', run: ['npm', 'ci'], layout: at },
+    { key: 'a', kind: 'agent', title: 'Agent', prompt: 'Read {{node:setup}} output', layout: at }
+  ])
+  const plan = planRecipe(recipe, params({ skip: ['setup'] }), ids())
+  expect(plan.ids.setup).toBeUndefined()
+  expect((plan.nodes.find((n) => n.id === plan.ids.a) as ClaudeNode).prompt).toBe('Read {{node:setup}} output')
+  expect(plan.warnings).toEqual([expect.stringContaining('names {{node:setup}}, which is left out of this start')])
+})
+
+describe('L8: secrets in what is saved', () => {
+  const recipe = (over: Record<string, unknown>) => recipeWith([{ key: 'x', kind: 'terminal', title: 'X', layout: at, ...over }])
+  test.each([
+    [{ command: 'set GH_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123 && npm publish' }, 'a GitHub token'],
+    [{ command: 'export OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234' }, 'an API key (sk-…)'],
+    [{ command: 'deploy --password=hunter2hunter2' }, 'a secret set to a value'],
+    [{ command: 'git clone https://me:s3cr3t@example.com/r.git' }, 'a password in a URL']
+  ])('%o is flagged as %s', (over, what) => {
+    expect(secretsIn(recipe(over)).map((s) => s.what)).toContain(what)
+  })
+
+  test('a browser URL with a token in its query, and a note, are flagged too', () => {
+    const r = recipeWith([
+      { key: 'b', kind: 'browser', title: 'App', url: 'http://localhost:3000/?token=abc123', layout: at },
+      { key: 'n', kind: 'note', title: 'Brief', text: 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz', layout: at }
+    ])
+    expect(secretsIn(r)).toEqual([
+      { title: 'App', what: 'a credential in a URL' },
+      { title: 'Brief', what: 'a bearer token' }
+    ])
+  })
+
+  test('ordinary commands are not flagged', () => {
+    expect(secretsIn(recipe({ command: 'npm test -- --grep token' }))).toEqual([])
+    expect(secretsIn(BUILT_IN_RECIPES[0])).toEqual([])
+  })
+
+  test('saving a selection reports them', () => {
+    const nodes = [{ id: 't', kind: 'terminal' as const, title: 'Publish', x: 0, y: 0, width: 500, height: 300, parentId: null, cwd: 'C:\r', command: 'set NPM_TOKEN=npm_abcdefgh1234 && npm publish' }]
+    expect(recipeFromSelection(nodes, [], ['t'], { name: 'R', cwd: 'C:\r' }).secrets).toEqual([{ title: 'Publish', what: 'a secret set to a value' }])
   })
 })

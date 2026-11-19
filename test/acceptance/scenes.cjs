@@ -234,6 +234,31 @@ const scenes = {
     await page.type('.recipe-params textarea', 'Add dark mode to the settings page')
     await sleep(300)
   },
+  // Save selection as recipe, on an agent whose prompt holds a token and names a node outside the selection.
+  'recipes-save': async (page) => {
+    await gitRepoProject(page)
+    await page.evaluate(async () => {
+      const prompt = 'Review the docs, publish with GH_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123, then report with patchbay send --node 0b2d7b0e-6391-463b-883c-7ba575320d69'
+      await window.patchbay.dispatch({ op: 'patchNode', id: 'idle', patch: { prompt } })
+    })
+    await page.waitForSelector('.react-flow__node[data-id="idle"] .unit-head', { timeout: 10000 })
+    await sleep(800)
+    await page.click('.react-flow__node[data-id="idle"] .unit-head')
+    await sleep(200)
+    await page.keyboard.down('Control')
+    await page.keyboard.press('k')
+    await page.keyboard.up('Control')
+    await sleep(200)
+    await page.type('.palette-input', 'save selection as recipe')
+    await sleep(200)
+    await page.keyboard.press('Enter')
+    await sleep(300)
+    if (!(await page.$('.recipe-save'))) return
+    await page.type('.recipe-save input', 'Review and publish')
+    const radios = await page.$$('.recipe-save input[name="recipe-where"]')
+    if (radios[1]) await radios[1].click()
+    await sleep(300)
+  },
   // A recipe started with a setup step that fails, so its agents stay queued and say why. Nothing real starts.
   'recipes-failed': async (page) => {
     await gitRepoProject(page)

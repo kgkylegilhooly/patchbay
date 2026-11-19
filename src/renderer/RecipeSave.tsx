@@ -16,6 +16,7 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
   const [problem, setProblem] = useState<string | null>(null)
   const [exists, setExists] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [secretsChecked, setSecretsChecked] = useState(false)
 
   // The folder saved folders are made relative to: a selected worktree group's, or the project's.
   const base = useMemo(() => {
@@ -43,8 +44,10 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
     }
     return doc.nodes.filter((n) => inside.has(n.id) && n.kind === 'run' && !n.launch)
   }, [doc, selected])
+  // A repository recipe is shared with everyone who gets the repository, so text that looks secret needs a yes first.
+  const blockedBySecrets = 'secrets' in saved && saved.secrets.length > 0 && where === 'repository' && !secretsChecked
   const save = async (overwrite: boolean): Promise<void> => {
-    if (!('recipe' in saved) || !name.trim()) return
+    if (!('recipe' in saved) || !name.trim() || blockedBySecrets) return
     setBusy(true)
     setProblem(null)
     const r = await recipes.save({ projectId, recipe: saved.recipe, where, overwrite })
@@ -90,7 +93,9 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
       ) : (
         <>
           <section aria-label="What is saved">
-            <h3>Saves {saved.recipe.nodes.length} nodes</h3>
+            <h3>
+              Saves {saved.recipe.nodes.length} node{saved.recipe.nodes.length === 1 ? '' : 's'}
+            </h3>
             <ul className="recipe-nodes recipe-nodes-compact">
               {saved.recipe.nodes.map((n) => (
                 <li key={n.key} className="recipe-node">
@@ -128,6 +133,26 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
               Left out: {saved.skipped.map((s) => `${s.title} (${s.why})`).join(' ')}
             </p>
           )}
+          {saved.outside.length > 0 && (
+            <p className="recipe-warning" data-recipe-outside>
+              Names nodes outside the selection: {saved.outside.map((o) => `${o.names} in "${o.title}"`).join(', ')}. Agents started from this
+              recipe would reach those same nodes, not new ones. Select them too, or edit the text first.
+            </p>
+          )}
+          {saved.secrets.length > 0 && (
+            <div className="recipe-warning" data-recipe-secrets>
+              <p>
+                This may hold secrets: {saved.secrets.map((s) => `${s.what} in "${s.title}"`).join(', ')}. A recipe keeps text as it
+                is{where === 'repository' ? ', and one in the repository is shared with whoever gets it' : ''}.
+              </p>
+              {where === 'repository' && (
+                <label className="recipe-check">
+                  <input type="checkbox" checked={secretsChecked} onChange={(e) => setSecretsChecked(e.target.checked)} />
+                  <span>I've checked: save it to the repository anyway</span>
+                </label>
+              )}
+            </div>
+          )}
         </>
       )}
       {problem && <p className="field-problem" role="alert">{problem}</p>}
@@ -136,11 +161,11 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
           Cancel
         </button>
         {exists ? (
-          <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void save(true)}>
+          <button type="button" className="btn btn-danger" disabled={busy || blockedBySecrets} onClick={() => void save(true)}>
             Replace it
           </button>
         ) : (
-          <button className="btn btn-solid" disabled={busy || !name.trim() || 'error' in saved}>
+          <button className="btn btn-solid" disabled={busy || !name.trim() || 'error' in saved || blockedBySecrets}>
             Save recipe
           </button>
         )}
