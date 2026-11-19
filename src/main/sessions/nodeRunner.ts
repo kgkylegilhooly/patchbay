@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../shared/contract'
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
 import type { Settings } from '../../shared/settings'
+import { agentChoice, agentOffReason } from '../../shared/agents'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -350,11 +351,19 @@ export function createNodeRunner({
 
   const isRun = (id: string): boolean => nodeById(id)?.kind === 'run'
 
+  /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
+  const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
+
   const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
     setError(id, null)
+    const off = node.kind === 'claude' ? agentOff(node) : null
+    if (off) {
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: off })
+    }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.
       started.add(id)
@@ -432,6 +441,9 @@ export function createNodeRunner({
         return startNode(id)
       }
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
+      // Refused before anything is stopped, so a session that's running keeps running.
+      const off = node.kind === 'claude' ? agentOff(node) : null
+      if (off) return setError(id, { code: 'spawn-failed', message: off })
       const run = runs.get(id)
       if (run) run.stopping = true
       if (host.isRunning(id)) await host.kill(id)

@@ -3,6 +3,7 @@ import type { Bindable } from './keys'
 import type { Commands, MenuState } from './menus'
 import { toggleSearch } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
+import { offerCommand } from './agentChoice'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -96,6 +97,7 @@ export function worksOverBoard(a: Action): boolean {
 /** Whether an action can run now: its own readiness, and nothing aimed at the canvas while the board hides it. */
 export function actionReady(a: Action, s: MenuState): boolean {
   if (s.board && !worksOverBoard(a)) return false
+  if (!offerCommand(a.id)) return false
   return a.ready?.(s) ?? true
 }
 

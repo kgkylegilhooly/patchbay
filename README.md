@@ -186,6 +186,17 @@ only in folders you trust. Leave it out to keep Codex's own default. It's also u
 { "codexApproval": "never" }
 ```
 
+Settings > Agents has a switch for each agent, Claude Code and Codex, for when one's usage has run out or you don't want
+it used. One stays on. With an agent off, nothing new of it starts: it leaves the menus, the dock and the palette,
+restarting or resuming one of its windows is refused, a trigger aimed at one records a failed run, and `patchbay
+open-agent` and `spawn-team` refuse it. Windows already running keep running. If the default agent is off, the other
+stands in. A recipe that needs it says so, and starts only if you choose to use the other agent instead. In
+`settings.json` it's `agentsOff`, the agents turned off:
+
+```json
+{ "agentsOff": "codex" }
+```
+
 `envNotPassed` lists name prefixes of environment variables that sessions don't inherit, separated by spaces or
 commas. It's for starting Patchbay from inside another terminal app, whose sessions must not think Patchbay's are theirs:
 
