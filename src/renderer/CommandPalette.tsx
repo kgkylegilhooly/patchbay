@@ -59,7 +59,8 @@ export function CommandPalette({
       if (!item || (project && !isProjectOpen(project))) return []
       return [{ id: `node:${n.id}`, ...item, detail: project?.name, run: () => commands.revealNode(n.id) }]
     })
-    const closed = (doc?.projects ?? []).filter((p) => !isProjectOpen(p)).map((p): Entry => ({
+    // An archived project comes back from the projects manager, not by a plain reopen.
+    const closed = (doc?.projects ?? []).filter((p) => !isProjectOpen(p) && p.archivedAt === undefined).map((p): Entry => ({
       id: `reopen:${p.id}`,
       label: `Reopen project: ${p.name}`,
       keywords: ['closed'],

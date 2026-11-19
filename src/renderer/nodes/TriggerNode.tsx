@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { memo, useEffect, useState } from 'react'
 import { describeSchedule } from '../../core/trigger/schedule'
+import { describeLimits, limitsOf, preflightText, sourceNodeId } from '../../core/trigger/events'
 import type { TriggerNode as TriggerModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
@@ -34,6 +35,9 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
   const armed = state === 'armed'
   const now = useNow(armed && node.nextAt !== null)
   const target = useStore((s) => s.doc?.nodes.find((n) => n.id === node.targetId))
+  const sourceId = sourceNodeId(node.schedule)
+  const sourceTitle = useStore((s) => (sourceId ? s.doc?.nodes.find((n) => n.id === sourceId)?.title : undefined))
+  const limits = limitsOf(node)
   const [problem, setProblem] = useState<string | null>(null)
 
   const runNow = async (): Promise<void> => {
@@ -56,9 +60,23 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
       <div className="trigger-body nodrag nowheel">
         <dl className="trigger-facts">
           <dt>When</dt>
-          <dd data-trigger="schedule">{describeSchedule(node.schedule)}</dd>
+          <dd data-trigger="schedule">{describeSchedule(node.schedule, () => sourceTitle)}</dd>
           <dt>Next</dt>
           <dd data-trigger="next">{nextLabel(node, now)}</dd>
+          {node.preflight && (
+            <>
+              <dt>Only if</dt>
+              <dd data-trigger="preflight">
+                <code>{preflightText(node.preflight)}</code> exits 0
+              </dd>
+            </>
+          )}
+          {limits && (
+            <>
+              <dt>Limits</dt>
+              <dd data-trigger="limits">{describeLimits(limits)}</dd>
+            </>
+          )}
           <dt>Sends to</dt>
           <dd data-trigger="target">{target ? `${target.title} (${target.kind === 'claude' ? 'Claude, when idle' : 'terminal'})` : 'Nothing yet. Drag from the jack on the right to a terminal or Claude window.'}</dd>
         </dl>
@@ -94,7 +112,14 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
               <span className="trigger-run-outcome">{OUTCOME_LABELS[r.outcome]}</span>
               <time>{new Date(r.at).toLocaleString()}</time>
               {r.source === 'manual' && <span className="trigger-run-manual">by hand</span>}
+              {(r.repeats ?? 1) > 1 && <span className="trigger-run-manual">{r.repeats} times</span>}
+              {r.event && <span className="trigger-run-event">{r.event}</span>}
               {r.detail && <span className="trigger-run-detail">{r.detail}</span>}
+              {r.preflight && (
+                <pre className="trigger-run-check" title="The end of the check's output">
+                  {`Check exited ${r.preflight.code ?? '(no code)'}${r.preflight.tail ? `: ${r.preflight.tail}` : ''}`}
+                </pre>
+              )}
             </li>
           ))}
         </ol>

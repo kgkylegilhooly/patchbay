@@ -6,6 +6,9 @@ import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
 import { offerCommand } from './agentChoice'
 import { openComparisons, openTryApproach } from './compareUi'
+import { openProjects } from './projectsUi'
+import { jumpToNext } from './needsYouUi'
+import { pickDocument } from './reader/readerUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -42,6 +45,7 @@ export const ACTIONS: Action[] = [
   { id: 'new-from-recipe', section: 'New', label: 'New from recipe…', icon: 'team', keywords: ['template', 'recipe', 'worktree', 'implement', 'review', 'setup'], run: () => openRecipePicker() },
   { id: 'try-approach', section: 'New', label: 'Try another approach…', icon: 'branch', keywords: ['compare', 'attempt', 'race', 'alternative', 'worktree', 'variant'], run: () => openTryApproach() },
   { id: 'comparisons', section: 'View', label: 'Comparisons…', icon: 'branch', keywords: ['compare', 'attempts', 'approach', 'winner', 'diff', 'verification'], run: () => openComparisons() },
+  { id: 'open-document', section: 'New', label: 'Open document…', icon: 'note', keywords: ['markdown', 'md', 'plan', 'reader', 'read', 'file', 'comment'], run: () => void pickDocument() },
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 
   { id: 'group', section: 'Canvas', label: 'Group selection, or new group', icon: 'group', key: 'Ctrl+Shift+G', run: (c) => c.group() },
@@ -80,10 +84,14 @@ export const ACTIONS: Action[] = [
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
   { id: 'recent', section: 'View', label: 'Recent conversations', icon: 'recent', keywords: ['closed', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
+  { id: 'next-needs-you', section: 'View', label: 'Next needing you', icon: 'arrow-right', key: 'Ctrl+Shift+J', keywords: ['attention', 'waiting', 'needs you', 'unread', 'jump', 'peek', 'reply', 'inbox'], run: (c) => void jumpToNext(c) },
 
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
+  { id: 'manage-projects', section: 'App', label: 'Manage projects…', icon: 'project', keywords: ['archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
+  { id: 'move-project-left', section: 'App', label: "Move this project's tab left", icon: 'arrow-left', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(-1) },
+  { id: 'move-project-right', section: 'App', label: "Move this project's tab right", icon: 'arrow-right', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(1) },
   // Sessions live in the background host, so quitting leaves them running. Ending them is its own, separate choice.
   { id: 'quit', section: 'App', label: 'Quit (sessions keep running)', icon: 'quit', keywords: ['exit', 'close', 'leave running', 'background'], run: (c) => c.quit() },
   { id: 'stop-all-quit', section: 'App', label: 'Stop all sessions and quit', icon: 'quit', keywords: ['exit', 'end', 'kill', 'terminate', 'host'], run: (c) => c.stopAllAndQuit() }

@@ -67,17 +67,42 @@ export interface RunNode extends Base {
   launch?: { folder: string; name: string }
 }
 
-/** When a trigger fires. Times are local to this PC. */
-export type TriggerSchedule = { type: 'cron'; expr: string } | { type: 'interval'; everyMs: number } | { type: 'once'; at: number }
+/** Something on this PC a trigger fires on, instead of a time. See src/core/trigger/events.ts. */
+export type TriggerEventSource =
+  | { type: 'agent'; nodeId: string; on: 'turn' | 'needs-you' | 'exit' }
+  | { type: 'run'; nodeId: string; failedOnly: boolean }
+  /** `folder` is inside the project. Changes are gathered until `quietMs` passes with none. */
+  | { type: 'files'; folder: string; glob: string; quietMs: number }
 
-export type TriggerOutcome = 'delivered' | 'queued' | 'missed' | 'failed'
+/** When a trigger fires. Times are local to this PC. */
+export type TriggerSchedule = { type: 'cron'; expr: string } | { type: 'interval'; everyMs: number } | { type: 'once'; at: number } | TriggerEventSource
+
+/** A command run, without a shell, before each firing. It fires only if this exits 0. */
+export interface TriggerPreflight {
+  argv: string[]
+  cwd: string
+}
+
+/** What an event firing must pass: a gap since the last firing, and a cap per hour. */
+export interface TriggerLimits {
+  gapMs: number
+  perHour: number
+}
+
+export type TriggerOutcome = 'delivered' | 'queued' | 'missed' | 'failed' | 'skipped'
 
 export interface TriggerRun {
   id: string
   at: number
-  source: 'schedule' | 'manual'
+  source: 'schedule' | 'manual' | 'event'
   outcome: TriggerOutcome
   detail?: string
+  /** What happened, for an event firing. */
+  event?: string
+  /** The check before firing: its exit code (null if it never ended by itself) and the end of its output. */
+  preflight?: { code: number | null; tail: string }
+  /** The same skip, this many times in a row. The newest is `at`. */
+  repeats?: number
 }
 
 /**
@@ -98,6 +123,10 @@ export interface TriggerNode extends Base {
   nextAt: number | null
   /** Newest first. */
   runs: TriggerRun[]
+  /** Absent in older triggers. Part of what arming agrees to. */
+  preflight?: TriggerPreflight | null
+  /** For event kinds. Absent means the defaults. Part of what arming agrees to. */
+  limits?: TriggerLimits
 }
 
 /** The part of a trigger that only the trigger service changes. */
@@ -138,7 +167,18 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode
+/**
+ * A Markdown file, shown read-only with comments for an agent. The file itself is never written. See src/shared/reader.ts.
+ */
+export interface ReaderNode extends Base {
+  kind: 'reader'
+  /** The file's full path. Main reads it only while a reader node names it, and only if it passes the reader's path policy. */
+  path: string
+  /** The node it came from, as the agent whose plan it is. Its comments go there first. */
+  fromNodeId?: string
+}
+
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {
@@ -188,6 +228,11 @@ export interface Project {
    * Absent means it's open. The project on screen is always open.
    */
   closedAt?: number
+  /**
+   * When it was archived: its sessions were stopped, and it's left off the tabs and the closed list. An archived
+   * project is also closed. Absent means it isn't archived. See src/core/canvas/projectOps.ts.
+   */
+  archivedAt?: number
   /** The kanban board's columns and where each card sits. Absent until the board is first used. */
   board?: Board
 }
@@ -215,6 +260,10 @@ export function isProjectOpen(project: Pick<Project, 'closedAt'>): boolean {
   return project.closedAt === undefined
 }
 
+export function isProjectArchived(project: Pick<Project, 'archivedAt'> | undefined): boolean {
+  return project?.archivedAt !== undefined
+}
+
 /** Where a node sits and what it's called: the parts of a node that undo can put back. */
 export type NodeLayout = Pick<CanvasNode, 'id' | 'x' | 'y' | 'width' | 'height' | 'parentId' | 'title'>
 
@@ -227,6 +276,8 @@ export interface LayoutRestore {
   add: CanvasNode[]
   remove: string[]
   edges: Edge[]
+  /** The tab order to put back, when the edit moved a project's tab. */
+  projectOrder?: string[]
 }
 
 export type CanvasOp =
@@ -252,6 +303,12 @@ export type CanvasOp =
   | { op: 'closeProject'; id: string; at: number }
   /** Removes it and everything in it, for good. The last project can't be removed. */
   | { op: 'removeProject'; id: string; at: number }
+  /** Moves a project's tab to just before another project, or to the end with null. */
+  | { op: 'moveProject'; id: string; before: string | null }
+  /** Only from main, once the project's sessions are stopped. Main refuses it from the page. */
+  | { op: 'archiveProject'; id: string; at: number }
+  /** Brings an archived project back, closed, or open and on screen. Nothing starts by itself. */
+  | { op: 'unarchiveProject'; id: string; open: boolean }
   | ({ op: 'restoreLayout' } & LayoutRestore)
   /** Replaces a project's board. Only where cards sit changes: no session is touched. */
   | { op: 'setBoard'; projectId: string; board: Board }

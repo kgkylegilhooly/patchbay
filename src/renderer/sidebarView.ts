@@ -1,4 +1,4 @@
-import { isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
+import { isProjectArchived, isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
 import { matchesSession, sessionTree, type Session, type SessionTree } from './sessionTree'
 
 export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' | 'starting' | 'stopped' | 'plain'
@@ -21,8 +21,10 @@ export const BUCKETS: { id: BucketId; label: string; help: string; always: boole
 ]
 
 /** Never guesses: anything with no status from a hook is either Unknown or listed as having none. */
-export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean): BucketId {
+export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean, stopped = false): BucketId {
   if (status === 'needs-you') return 'needs-you'
+  // Stopped at a usage limit, a failed login or an API error: Patchbay knows why, so it isn't Unknown.
+  if (status === 'unknown' && stopped) return 'needs-you'
   if (unread) return 'unread'
   switch (status) {
     case 'working':
@@ -52,7 +54,7 @@ export interface StatusSection {
  * Every session, by status, across projects. A closed project is out of sight on purpose, except for what the taskbar
  * badge is counting: a session waiting on you has to stay findable, wherever it is.
  */
-export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string): StatusSection[] {
+export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}): StatusSection[] {
   const open = new Map(doc.projects.map((p) => [p.id, isProjectOpen(p)]))
   const names = new Map(doc.projects.map((p) => [p.id, p.name.toLowerCase()]))
   const q = query.trim().toLowerCase()
@@ -61,9 +63,11 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
   const sections = new Map<BucketId, Session[]>(BUCKETS.map((b) => [b.id, []]))
   for (const node of doc.nodes) {
     if (!isSessionNode(node) || !shown(node)) continue
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped)
     const hidden = node.projectId !== undefined && open.get(node.projectId) === false
     if (hidden && bucket !== 'needs-you' && bucket !== 'unread') continue
+    // An archived project's sessions were stopped on purpose, and can't be shown until it's unarchived.
+    if (hidden && isProjectArchived(doc.projects.find((p) => p.id === node.projectId))) continue
     sections.get(bucket)!.push(node)
   }
   return BUCKETS.filter((b) => b.always || sections.get(b.id)!.length > 0).map((b) => ({ id: b.id, label: b.label, help: b.help, sessions: sections.get(b.id)! }))
@@ -88,7 +92,7 @@ export function projectSections(doc: CanvasDoc, query: string): ProjectSection[]
 
 /** Closed projects, the most recently closed first. */
 export function closedProjects(doc: CanvasDoc): Project[] {
-  return doc.projects.filter((p) => !isProjectOpen(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
+  return doc.projects.filter((p) => !isProjectOpen(p) && !isProjectArchived(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
 }
 
 /** The same history the Recent conversations panel shows, the newest first. */

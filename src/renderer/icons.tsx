@@ -1,5 +1,6 @@
 import type { AgentKind, CanvasNode } from '../shared/model'
 import { PATHS, type IconName } from './iconPaths'
+import { ReaderIcon } from './reader/ReaderIcon'
 
 export type { IconName }
 
@@ -74,6 +75,7 @@ export function KindIcon({ kind, agent }: { kind: CanvasNode['kind']; agent?: Ag
   if (kind === 'terminal') return <TerminalIcon />
   if (kind === 'run') return <RunIcon />
   if (kind === 'browser') return <Icon name="browser" size={14} />
+  if (kind === 'reader') return <ReaderIcon />
   if (kind === 'trigger') {
     return (
       <svg className="kind-icon kind-icon-trigger" width={14} height={14} viewBox="0 0 24 24" aria-hidden="true">

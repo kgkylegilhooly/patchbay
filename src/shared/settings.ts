@@ -42,6 +42,8 @@ export interface Settings {
   sound?: string
   /** 'off' lets the PC sleep while an agent is working. It's kept awake otherwise. */
   keepAwake?: string
+  /** 'on' sends "continue" once to an agent still stopped at a usage limit when it resets. Off otherwise. */
+  continueAtReset?: string
   /** Where the usage pill reads from: 'claude' (the default), 'endpoint', 'page' or 'off'. */
   usageSource?: string
   usageUrl?: string

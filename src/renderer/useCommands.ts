@@ -13,6 +13,8 @@ import { openTidy } from './tidyUi'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
+import { stepProjectTab } from './projectActions'
+import { openProjects } from './projectsUi'
 import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { defaultAgentOf } from '../shared/agents'
@@ -157,10 +159,14 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         dispatch({ op: 'switchProject', id })
       },
       deleteProject: (id) => dispatch({ op: 'removeProject', id, at: Date.now() }),
+      moveProjectTab: (step, id) => stepProjectTab(id ?? doc().activeProjectId, step),
       revealNode: (id) => {
         const node = doc().nodes.find((n) => n.id === id)
         if (!node) return
         bridge.markSeen(id)
+        // Its project can't be shown until it's unarchived, so say so where that can be done.
+        const archivedIn = doc().projects.find((p) => p.id === node.projectId && p.archivedAt !== undefined)
+        if (archivedIn) return openProjects(`"${node.title}" is in the archived project "${archivedIn.name}". Unarchive it to open it.`)
         // The focus view covers the canvas, so the window comes to a pane there instead.
         if (useStore.getState().focus && isSessionNode(node) && inActiveProject(doc(), node)) return revealInFocus(id)
         // Going to a session means seeing it, so the board steps aside.

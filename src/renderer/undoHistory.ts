@@ -25,7 +25,7 @@ const layoutOf = ({ id, x, y, width, height, parentId, title }: CanvasNode): Nod
 const sameLayout = (a: CanvasNode, b: CanvasNode): boolean =>
   a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.parentId === b.parentId && a.title === b.title
 
-const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group'
+const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'
 
 /** What it takes to go each way between two docs. Null if the layout didn't change. */
 export function diffLayout(before: CanvasDoc, after: CanvasDoc): Pick<HistoryEntry, 'undo' | 'redo'> | null {
@@ -43,10 +43,14 @@ export function diffLayout(before: CanvasDoc, after: CanvasDoc): Pick<HistoryEnt
   const removed = before.nodes.filter((n) => !now.has(n.id) && isLayoutOnly(n))
   const edgeIdsAfter = new Set(after.edges.map((e) => e.id))
   const lostEdges = before.edges.filter((e) => !edgeIdsAfter.has(e.id))
-  if (!undoPatches.length && !added.length && !removed.length && !lostEdges.length) return null
+  // Moving a tab is a layout edit too. The order is put back whole.
+  const orderBefore = before.projects.map((p) => p.id)
+  const orderAfter = after.projects.map((p) => p.id)
+  const reordered = orderBefore.length === orderAfter.length && orderBefore.some((id, i) => id !== orderAfter[i])
+  if (!undoPatches.length && !added.length && !removed.length && !lostEdges.length && !reordered) return null
   return {
-    undo: { patches: undoPatches, add: removed, remove: added.map((n) => n.id), edges: lostEdges },
-    redo: { patches: redoPatches, add: added, remove: removed.map((n) => n.id), edges: [] }
+    undo: { patches: undoPatches, add: removed, remove: added.map((n) => n.id), edges: lostEdges, ...(reordered && { projectOrder: orderBefore }) },
+    redo: { patches: redoPatches, add: added, remove: removed.map((n) => n.id), edges: [], ...(reordered && { projectOrder: orderAfter }) }
   }
 }
 
