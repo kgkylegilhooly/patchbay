@@ -8,7 +8,12 @@ import type { Overrides } from './keys'
 import type { UpdateState } from '../shared/contract'
 import { cleanTerminalLook, FONT_SIZE, SCROLLBACK, type Prefs, type TerminalLook, type TogglePref } from './prefs'
 import { ShortcutSettings } from './ShortcutSettings'
+import { TerminalProfilesSection } from './TerminalProfilesSection'
 import type { UsageMode } from './usageView'
+import { AGENT_KINDS, agentChoice, defaultAgentNote, withAgent } from '../shared/agents'
+import { AGENT_NAMES, type AgentKind } from '../shared/model'
+import { noteAgentSettings } from './agentChoice'
+import './agents.css'
 
 /** Suggestions only. Any installed font can be typed. */
 const MONO_FONTS = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono', 'Hack', 'Iosevka', 'Courier New']
@@ -79,9 +84,9 @@ function Row({ title, help, htmlFor, wide, children }: { title: string; help?: R
   )
 }
 
-function Toggle({ id, checked, onChange }: { id: string; checked: boolean; onChange: () => void }): React.JSX.Element {
+function Toggle({ id, checked, onChange, disabled }: { id: string; checked: boolean; onChange: () => void; disabled?: boolean }): React.JSX.Element {
   return (
-    <button type="button" id={id} role="switch" aria-checked={checked} className={`switch${checked ? ' switch-on' : ''}`} onClick={onChange}>
+    <button type="button" id={id} role="switch" aria-checked={checked} disabled={disabled} className={`switch${checked ? ' switch-on' : ''}`} onClick={onChange}>
       <span className="switch-knob" />
     </button>
   )
@@ -141,7 +146,10 @@ export function SettingsPage({
     // Held back until it's valid. Whatever was last saved stays in use.
     if (!next.claudeTerminal?.trim() && needsTerminal(next.claudeCommand ?? '')) return
     dirty.current = false
-    void bridge.saveSettings(next).then((result) => setSaved(result.ok ? { ok: true, text: 'Saved' } : { ok: false, text: result.reason }))
+    void bridge.saveSettings(next).then((result) => {
+      setSaved(result.ok ? { ok: true, text: 'Saved' } : { ok: false, text: result.reason })
+      if (result.ok) noteAgentSettings(next)
+    })
   }
   const commitRef = useRef(commit)
   commitRef.current = commit
@@ -187,6 +195,13 @@ export function SettingsPage({
   const command = draft?.claudeCommand ?? ''
   const noShell = !terminal.trim() && needsTerminal(command)
   const mode = draft?.permissionMode ?? ''
+  const agents = agentChoice(draft ?? {})
+  const fallback = draft ? defaultAgentNote(draft) : null
+  /** At least one agent stays on: withAgent refuses the last one, and its switch is disabled. */
+  const setAgentOn = (kind: AgentKind, on: boolean): void => {
+    const next = withAgent(latest.current ?? {}, kind, on)
+    if (next) set('agentsOff', next.agentsOff ?? '')
+  }
   const modes = PERMISSION_MODES.some(([value]) => value === mode) ? PERMISSION_MODES : [...PERMISSION_MODES, [mode, mode] as [string, string]]
 
   return (
@@ -293,10 +308,42 @@ export function SettingsPage({
               </Row>
             </div>
             <div className="set-group">
-              <Row title="Default agent" htmlFor="defaultAgent" help="Leads a new team, and is what agents open when they don't name one. New windows from the menus ask which you want.">
-                <select id="defaultAgent" name="defaultAgent" value={draft?.defaultAgent === 'codex' ? 'codex' : 'claude'} onChange={(e) => set('defaultAgent', e.target.value === 'codex' ? 'codex' : '')}>
-                  <option value="claude">Claude Code</option>
-                  <option value="codex">Codex</option>
+              {AGENT_KINDS.map((kind) => {
+                const on = agents.enabled.includes(kind)
+                const last = on && agents.enabled.length === 1
+                const name = AGENT_NAMES[kind]
+                const help = last
+                  ? `On. At least one agent stays on, so turn another on before turning ${name} off.`
+                  : on
+                    ? `Patchbay may start ${name}. Turn it off, as when its usage has run out, and nothing new of it starts.`
+                    : `Off. No new ${name} windows, restarts or resumes, and agents can't open one. Ones running now keep running.`
+                return (
+                  <Row key={kind} title={name} htmlFor={`agent-${kind}`} help={help}>
+                    <Toggle id={`agent-${kind}`} checked={on} disabled={last} onChange={() => setAgentOn(kind, !on)} />
+                  </Row>
+                )
+              })}
+              <Row
+                title="Default agent"
+                htmlFor="defaultAgent"
+                help={
+                  <>
+                    Leads a new team, and is what agents open when they don't name one. New windows from the menus ask which you want.
+                    {fallback && (
+                      <span className="set-note" role="status" data-default-fallback>
+                        {' '}
+                        {fallback}
+                      </span>
+                    )}
+                  </>
+                }
+              >
+                <select id="defaultAgent" name="defaultAgent" value={agents.default} onChange={(e) => set('defaultAgent', e.target.value === 'codex' ? 'codex' : '')}>
+                  {AGENT_KINDS.map((kind) => (
+                    <option key={kind} value={kind} disabled={!agents.enabled.includes(kind)}>
+                      {AGENT_NAMES[kind]}
+                    </option>
+                  ))}
                 </select>
               </Row>
               <Row
@@ -337,7 +384,8 @@ export function SettingsPage({
 
         {section === 'terminals' && draft && (
           <div className="set-group">
-            <Row wide title="Shell" htmlFor="shell" help="The program new terminal windows run. Leave it empty for Git Bash, or PowerShell if Git Bash isn't installed.">
+            <TerminalProfilesSection />
+            <Row wide title="Shell for run commands" htmlFor="shell" help="The program run command windows use. Leave it empty for Git Bash, or PowerShell if Git Bash isn't installed. New terminals use the profiles above.">
               <ProgramInput name="shell" value={draft.shell ?? ''} placeholder="Automatic" onChange={(v) => set('shell', v)} />
             </Row>
             <Row title="Font size" help="Applies to every terminal and agent window, straight away.">
@@ -417,6 +465,9 @@ export function SettingsPage({
               <div className="set-group">
                 <Row title="Keep the PC awake while agents work" help="Stops Windows sleeping while any session is starting or working. The screen can still turn off. It lets go once every agent is idle or waiting on you." htmlFor="set-keep-awake">
                   <Toggle id="set-keep-awake" checked={draft.keepAwake !== 'off'} onChange={() => set('keepAwake', draft.keepAwake === 'off' ? '' : 'off')} />
+                </Row>
+                <Row title="Continue after a usage limit resets" help={'When an agent stopped at its usage limit, it gets "continue" once at the reset time, unless a message is already waiting for it. Its badge says so beforehand. Never sent to an idle agent.'} htmlFor="set-continue-at-reset">
+                  <Toggle id="set-continue-at-reset" checked={draft.continueAtReset === 'on'} onChange={() => set('continueAtReset', draft.continueAtReset === 'on' ? '' : 'on')} />
                 </Row>
               </div>
             )}

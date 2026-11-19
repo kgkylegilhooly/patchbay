@@ -1,4 +1,5 @@
 import { agentOf, AGENT_NAMES, type AgentStatus, type CanvasDoc, type CanvasNode } from '../../shared/model'
+import { AGENT_KINDS, agentNames, type AgentChoice } from '../../shared/agents'
 
 type Access = 'opened' | 'linked' | null
 
@@ -19,6 +20,8 @@ export interface WhoAmI {
   reachable: Array<NodeBrief & { access: 'opened' | 'linked' }>
   /** Other agents in the same group, which a lead and its members share. */
   teammates: NodeBrief[]
+  /** Settings > Agents: the agents Patchbay may open now, and the default. */
+  agents?: AgentChoice
 }
 
 const KIND_NAMES: Record<CanvasNode['kind'], string> = {
@@ -29,7 +32,8 @@ const KIND_NAMES: Record<CanvasNode['kind'], string> = {
   whiteboard: 'whiteboard',
   group: 'group',
   browser: 'browser',
-  trigger: 'trigger'
+  trigger: 'trigger',
+  reader: 'reader'
 }
 
 function brief(n: CanvasNode, status: (id: string) => AgentStatus | undefined): NodeBrief {
@@ -63,6 +67,13 @@ const describe = (n: NodeBrief): string => {
   return `${quoteTitle(n.title)} (${what}, node ${n.id}${n.status ? `, ${n.status}` : ''})`
 }
 
+/** Which agents may be opened, so an agent checks before opening a different one. */
+export function describeAgents(a: AgentChoice): string {
+  const off = AGENT_KINDS.filter((k) => !a.enabled.includes(k))
+  const which = `Agents Patchbay may open: ${agentNames(a.enabled)}${off.length ? ' only' : ''}, and the default is ${AGENT_NAMES[a.default]}.`
+  return off.length ? `${which} ${agentNames(off)} ${off.length === 1 ? 'is' : 'are'} turned off in Settings > Agents, so patchbay refuses to open ${off.length === 1 ? 'it' : 'them'}.` : which
+}
+
 /** The same picture in a few sentences, for an agent to read at the start of its session or from `whoami`. */
 export function describeWhoAmI(w: WhoAmI): string {
   const lines = [
@@ -85,6 +96,7 @@ export function describeWhoAmI(w: WhoAmI): string {
   if (mates.length) lines.push(`Also in your group: ${mates.map(describe).join('; ')}. Keep out of the files they own.`)
   const boards = w.reachable.filter((n) => n.kind === 'whiteboard')
   if (boards.length) lines.push(`To look at a whiteboard, run patchbay whiteboard --node <id> and open the PNG it saves.`)
+  if (w.agents) lines.push(describeAgents(w.agents))
   lines.push('Messages from other nodes start with a line saying who sent them. Run `patchbay whoami` again any time; the patchbay skill has the rest.')
   return lines.join('\n')
 }

@@ -6,6 +6,7 @@ import { currentKey } from './keys'
 import type { Commands, MenuState } from './menus'
 import { placeItem, rankPalette, type PaletteItem } from './palette'
 import { useStore } from './store'
+import { terminalProfileItems } from './terminalProfilesUi'
 
 interface Entry extends PaletteItem {
   icon: IconName
@@ -58,7 +59,8 @@ export function CommandPalette({
       if (!item || (project && !isProjectOpen(project))) return []
       return [{ id: `node:${n.id}`, ...item, detail: project?.name, run: () => commands.revealNode(n.id) }]
     })
-    const closed = (doc?.projects ?? []).filter((p) => !isProjectOpen(p)).map((p): Entry => ({
+    // An archived project comes back from the projects manager, not by a plain reopen.
+    const closed = (doc?.projects ?? []).filter((p) => !isProjectOpen(p) && p.archivedAt === undefined).map((p): Entry => ({
       id: `reopen:${p.id}`,
       label: `Reopen project: ${p.name}`,
       keywords: ['closed'],
@@ -66,7 +68,9 @@ export function CommandPalette({
       kind: 'Project',
       run: () => commands.reopenProject(p.id)
     }))
-    return [...actions, ...sessions, ...places, ...closed]
+    // A terminal of each profile other than the default, which New terminal opens.
+    const profiles = terminalProfileItems((profile) => commands.newTerminal(undefined, undefined, profile)).map((item): Entry => ({ ...item, keywords: ['shell', 'profile'], kind: 'Action' }))
+    return [...actions, ...profiles, ...sessions, ...places, ...closed]
   }, [commands, doc, overrides, state])
 
   const shown = useMemo(() => rankPalette(query, entries, recent), [entries, query, recent])

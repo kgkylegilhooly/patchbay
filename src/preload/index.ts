@@ -3,8 +3,16 @@ import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
+import { exposeNeedsYou } from './needsYou'
 import { exposeReview } from './review'
+import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
+import { exposeAgentStops } from './agentStops'
+import { exposeFiles } from './files'
+import { exposeProjects } from './projects'
+import { exposeView } from './view'
+import { exposeSubagents } from './subagents'
+import { exposeDocs } from './docs'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -134,8 +142,16 @@ contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
 exposeSearch()
 exposeRecipes()
+exposeNeedsYou()
 exposeReview()
+exposeTerminalProfiles()
 exposeCompare()
+exposeAgentStops()
+exposeFiles()
+exposeProjects()
+exposeView()
+exposeSubagents()
+exposeDocs()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.

@@ -11,7 +11,7 @@ export interface ScrollbackStore {
 }
 
 /** Percent-encodes anything outside a safe set, so distinct ids always get distinct, contained names. */
-function fileNameFor(id: string): string {
+export function fileNameFor(id: string): string {
   let name = ''
   for (const byte of Buffer.from(id, 'utf8')) {
     const char = String.fromCharCode(byte)

@@ -10,6 +10,8 @@ import { StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { dispatch, useStore } from './store'
 import { contextLabel } from './usageView'
 import { work } from './workBridge'
+import { useAgentChoice } from './agentChoice'
+import { agentOffReason } from '../shared/agents'
 import './work.css'
 import { SessionTaskOutcomes, TaskOutcomes } from './tasks/TaskOutcomes'
 
@@ -40,12 +42,12 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
   return (
     <>
       <span className="card-top">
-        <StatusDot status={node.kind === 'run' ? runDot(run) : status} />
+        <StatusDot status={node.kind === 'run' ? runDot(run) : status} nodeId={node.id} />
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <span className="card-title">{node.title}</span>
       </span>
       <span className="card-meta">
-        {status && <StatusBadge status={status} />}
+        {status && <StatusBadge status={status} nodeId={node.id} />}
         {node.kind === 'run' && <span className="run-label">{runLabel(run)}</span>}
         {context && <span className={`session-context usage-${context.level}`}>{context.text}</span>}
       </span>
@@ -102,6 +104,8 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
   const [adding, setAdding] = useState('')
   const [ask, setAsk] = useState<IssueAsk | null>(null)
   const [start, setStart] = useState<StartAsk | null>(null)
+  // Settings > Agents: an issue's work starts in Claude Code, so it can't while Claude Code is off.
+  const claudeOff = agentOffReason('claude', useAgentChoice())
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
   const [repoDraft, setRepoDraft] = useState<string | null>(null)
   const loadedAt = useRef(0)
@@ -396,12 +400,13 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
           <h3>Start Claude on #{start.issue.number}?</h3>
           <p>A Claude session opens in {start.worktree ? `a new worktree on branch "${start.branch}"` : `the project's folder`} with exactly this prompt. The issue's text is fenced as untrusted.</p>
           <pre className="board-prompt" data-board="prompt">{start.prompt}</pre>
+          {claudeOff && <p className="field-problem" role="alert">{claudeOff}</p>}
           <label className="board-worktree">
             <input type="checkbox" data-board="worktree" checked={start.worktree} onChange={(e) => setStart({ ...start, worktree: e.target.checked })} /> In a new worktree group, on branch
             <input aria-label="Branch name" value={start.branch} disabled={!start.worktree} onChange={(e) => setStart({ ...start, branch: e.target.value })} />
           </label>
           <div className="git-confirm-row">
-            <button type="button" className="git-btn git-btn-main" data-board="confirm-start" disabled={start.worktree && !start.branch.trim()} onClick={() => void startWork(start)}>Start session</button>
+            <button type="button" className="git-btn git-btn-main" data-board="confirm-start" disabled={!!claudeOff || (start.worktree && !start.branch.trim())} onClick={() => void startWork(start)}>Start session</button>
             <button type="button" className="git-btn" data-board="cancel-start" onClick={() => setStart(null)}>Cancel</button>
           </div>
         </div>

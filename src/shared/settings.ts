@@ -1,7 +1,16 @@
+import type { TerminalProfile } from './terminalProfiles'
+
 /** What settings.json holds. An absent field means the default. */
 export interface Settings {
-  /** The shell for new terminals. */
+  /**
+   * The shell run commands use. Before terminal profiles it was new terminals' too: with no `terminalProfiles` yet, it
+   * stands in as the default profile. See shared/terminalProfiles.ts.
+   */
   shell?: string
+  /** Terminal profiles the person made. Built-in ones aren't saved. */
+  terminalProfiles?: TerminalProfile[]
+  /** The id of the profile new terminals start with. */
+  defaultTerminalProfile?: string
   permissionMode?: string
   /** The program that starts Claude, such as Git Bash or PowerShell. Absent means run Claude directly. */
   claudeTerminal?: string
@@ -9,6 +18,11 @@ export interface Settings {
   claudeCommand?: string
   /** 'codex' makes Codex the agent that new teams and patchbay open-agent use when none is named. Claude otherwise. */
   defaultAgent?: string
+  /**
+   * Agents Patchbay may not start, separated by spaces or commas, as `codex`. Absent means every agent is on. At least
+   * one stays on: see src/shared/agents.ts.
+   */
+  agentsOff?: string
   /** What to run instead of `codex`, the same way as claudeCommand. */
   codexCommand?: string
   /** What Codex may do without asking: '' (Codex's own default), 'never' or 'bypass'. */
@@ -30,6 +44,8 @@ export interface Settings {
   sound?: string
   /** 'off' lets the PC sleep while an agent is working. It's kept awake otherwise. */
   keepAwake?: string
+  /** 'on' sends "continue" once to an agent still stopped at a usage limit when it resets. Off otherwise. */
+  continueAtReset?: string
   /** Where the usage pill reads from: 'claude' (the default), 'endpoint', 'page' or 'off'. */
   usageSource?: string
   usageUrl?: string

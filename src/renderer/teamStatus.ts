@@ -22,15 +22,20 @@ const WORDS: Record<AgentStatus, string> = {
   unknown: 'unknown'
 }
 
-export function teamStatus(nodes: CanvasNode[], statuses: Record<string, AgentStatus>, messages: NodeMessage[], groupId: string): TeamStatus {
+/** `stopped` holds the agents whose turn ended on an API error, such as a usage limit: counted as stopped, not unknown. */
+export function teamStatus(nodes: CanvasNode[], statuses: Record<string, AgentStatus>, messages: NodeMessage[], groupId: string, stopped: Record<string, unknown> = {}): TeamStatus {
   const members = nodes
     .filter((n) => n.kind === 'claude' && n.parentId === groupId)
     .map((n) => ({ id: n.id, title: n.title, status: statuses[n.id] ?? 'unknown' }))
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status))
-  const counts = new Map<AgentStatus, number>()
-  for (const m of members) counts.set(m.status, (counts.get(m.status) ?? 0) + 1)
-  const summary = ORDER.filter((s) => counts.has(s))
-    .map((s) => `${counts.get(s)} ${WORDS[s]}`)
+  const counts = new Map<AgentStatus | 'stopped', number>()
+  for (const m of members) {
+    const key = m.status === 'unknown' && m.id in stopped ? 'stopped' : m.status
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const summary = [...ORDER.slice(0, -1), 'stopped' as const, 'unknown' as const]
+    .filter((s) => counts.has(s))
+    .map((s) => `${counts.get(s)} ${s === 'stopped' ? 'stopped' : WORDS[s]}`)
     .join(', ')
   const ids = new Set(members.map((m) => m.id))
   let latest: NodeMessage | null = null

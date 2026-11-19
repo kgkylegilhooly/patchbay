@@ -11,6 +11,8 @@ import { bridge, subscribeOutput } from '../bridge'
 import { ContextMenu } from '../Menu'
 import type { Point } from '../menus'
 import { linkMenu as linkMenuEntries, pathMenu as pathMenuEntries } from '../pathMenu'
+import { isDocPath } from '../../shared/reader'
+import { openDocument } from '../reader/readerUi'
 import { linkKind } from '../terminalPaths'
 import { copyText } from '../clipboard'
 import { fontStack, windowFontSize } from '../prefs'
@@ -108,7 +110,8 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
             (e: unknown) => setNotice(`Couldn't copy: ${e instanceof Error ? e.message : String(e)}`)
           )
         ),
-      reveal: () => void bridge.revealTerminalPath(nodeId, target).then(report)
+      reveal: () => void bridge.revealTerminalPath(nodeId, target).then(report),
+      ...(isDocPath(target) ? { reader: () => void openDocument(target, { fromNodeId: nodeId }).then(report) } : {})
     }
   }
 

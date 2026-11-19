@@ -4,6 +4,7 @@ import { basename } from 'node:path'
 import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../shared/contract'
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
 import type { Settings } from '../../shared/settings'
+import { agentChoice, agentOffReason } from '../../shared/agents'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -19,12 +20,15 @@ import { SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
+import { createStartupTyper, missingProfileNotice, STARTUP_WAITING, startupSkipped, terminalStartFor } from './terminalStart'
+import type { TerminalProfile } from '../../shared/terminalProfiles'
 import { findSsh, sshArgs } from './ssh'
 import { sshHostProblem } from '../../core/ssh/config'
 import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startupQuestion'
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 import { asPaste } from './paste'
+import { ARCHIVED_START, inArchivedProject } from '../../core/canvas/projectOps'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
@@ -41,6 +45,10 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   secret: string
   /** The shell setting from the settings file. */
   shell?: string
+  /** The terminal profiles installed shells offer. Defaults to detecting them. See shell.ts. */
+  builtInProfiles?: () => TerminalProfile[]
+  /** Put ahead of a startup command typed into a terminal: see sendGuard.ts. */
+  typePrefix?: (id: string) => string
   /** Finds the Claude program when `claude` isn't set. Defaults to resolveClaude. */
   locateClaude?: () => ClaudeProgram
   codex?: ClaudeProgram
@@ -56,6 +64,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
   takeMissedHooks?: (id: string) => MissedHook[]
+  /** A StopFailure found among them, when it's how they end: why the agent stopped, such as a usage limit. */
+  onMissedStopFailure?: (id: string, event: Record<string, unknown>) => void
   /** When a session last signalled a tool call ending through a file. See signals.ts. */
   latestSignal?: (id: string) => number | undefined
   /**
@@ -112,16 +122,6 @@ interface ClaudeRun {
   startupScreen?: string
   /** It's showing such a question now, so its status says it needs the person. */
   askedAtStartup?: boolean
-}
-
-/** Runs the command, then leaves the shell open for more, as PowerShell's -NoExit and cmd's /k do. */
-function terminalArgs(shell: string, command: string): string[] {
-  const name = basename(shell).toLowerCase().replace(/\.exe$/, '')
-  // bash -c ends with its command, so a terminal that ran `npm test` closed, with nothing to run it again in.
-  if (name === 'bash') return ['--login', '-i', '-c', `${command}\nexec bash --login -i`]
-  if (name === 'powershell' || name === 'pwsh') return ['-NoExit', '-Command', command]
-  if (name === 'cmd') return ['/k', command]
-  return ['-c', command]
 }
 
 /** Runs the command and ends with it, unlike a terminal, which stays open for more. */
@@ -200,7 +200,22 @@ export function createNodeRunner({
     tracker.apply(id, { type: 'startup-question' })
   })
 
+  // A terminal profile's startup command, typed once at the shell's first prompt. See terminalStart.ts.
+  const startupTyper = createStartupTyper({
+    host,
+    prefix: ctx.typePrefix,
+    events: {
+      waiting: (id) => setError(id, { code: 'spawn-failed', message: STARTUP_WAITING }),
+      typed: (id) => {
+        if (errors.get(id)?.message === STARTUP_WAITING) setError(id, null)
+      },
+      skipped: (id, lines) => setError(id, { code: 'spawn-failed', message: startupSkipped(lines) })
+    }
+  })
+  host.onOutput((id, data) => startupTyper.output(id, data))
+
   host.onExit((id, code) => {
+    startupTyper.cancel(id)
     started.delete(id)
     approvals?.clearNode(id)
     // Git Bash can only have so many consoles open across the whole PC, and one more ends at once with a stack dump.
@@ -289,17 +304,23 @@ export function createNodeRunner({
 
   const startTerminal = async (node: TerminalNode, initialScrollback?: string, restored = false): Promise<void> => {
     if (node.sshHost !== undefined) return startSsh(node, node.sshHost, initialScrollback)
-    const shell = pickDefaultShell(ctx.settings?.().shell ?? ctx.shell)
+    // Coming back from a restart is a fresh shell. A command like a deploy mustn't run again with nobody there.
+    const launch = terminalStartFor(ctx, node, restored)
+    // Recorded at its first start, so a restart after the default changes still uses the profile it began with.
+    if (node.profile === undefined) store.dispatch({ op: 'patchNode', id: node.id, patch: { profile: launch.profile.id } })
+    startupTyper.cancel(node.id)
     await host.start({
       nodeId: node.id,
-      file: shell.file,
-      // Coming back from a restart is a fresh shell. A command like a deploy mustn't run again with nobody there.
-      args: node.command && !restored ? terminalArgs(shell.file, node.command) : shell.args,
+      file: launch.file,
+      args: launch.args,
       cwd: node.cwd,
       env: sessionEnv(node.id, tokenFor(ctx.secret, node.id), ctx),
       initialScrollback,
       saveScrollback: true
     })
+    // Shown on the node rather than written into its output, which is saved and would gather a copy at every restart.
+    if (launch.missing) setError(node.id, { code: 'spawn-failed', message: missingProfileNotice(launch.profile.name) })
+    startupTyper.arm(node.id, launch.typed, launch.waitFor)
   }
 
   /** ssh straight to the host, with no shell to read the name. Coming back from a restart connects again. */
@@ -350,11 +371,21 @@ export function createNodeRunner({
 
   const isRun = (id: string): boolean => nodeById(id)?.kind === 'run'
 
+  /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
+  const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
+
   const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
+    // Covers every way in: the after-gate, triggers, launch, the page and agents.
+    if (inArchivedProject(store.get(), node)) return setError(id, { code: 'spawn-failed', message: ARCHIVED_START })
     setError(id, null)
+    const off = node.kind === 'claude' ? agentOff(node) : null
+    if (off) {
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: off })
+    }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.
       started.add(id)
@@ -382,6 +413,7 @@ export function createNodeRunner({
     if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
     const missed = foldMissedHooks(events)
     tracker.seed(id, missed.status, missed.turns)
+    if (missed.stopFailure) ctx.onMissedStopFailure?.(id, missed.stopFailure)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation
     if (missed.promptSubmitted) {
       const node = nodeById(id)
@@ -432,6 +464,9 @@ export function createNodeRunner({
         return startNode(id)
       }
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
+      // Refused before anything is stopped, so a session that's running keeps running, with no start error over it.
+      const off = node.kind === 'claude' ? agentOff(node) : null
+      if (off) return host.isRunning(id) ? undefined : setError(id, { code: 'spawn-failed', message: off })
       const run = runs.get(id)
       if (run) run.stopping = true
       if (host.isRunning(id)) await host.kill(id)
@@ -467,6 +502,7 @@ export function createNodeRunner({
     },
 
     noteInput(id, data) {
+      startupTyper.input(id, data)
       if (runResults.get(id)?.running && data.includes('\x03')) stoppingRuns.add(id)
       if (!runs.has(id)) return
       if (data !== '\x1b' && !data.includes('\x03')) return

@@ -147,6 +147,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
+| `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\objects\` holds the snapshots' git objects, kept out of your repositories: 10 days, up to 512 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `review-inbox.json` | Review inbox comments, review marks (the newest 20 per task) and chosen base branches. A file that can't be read is moved aside, and one with damaged records copied aside, as `review-inbox.json.bad-*` |
 | `review-objects\` | Snapshots of working trees the review inbox compares with, one git object store per repository |
@@ -174,9 +175,18 @@ in the log above, which is the thing to share if Patchbay misbehaves.
 Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent
 holds one while its shell tool runs a command, and so do Git Bash windows outside Patchbay. Past that, a new Git Bash
 ends at once, and the window says so; agents' shell commands fail the same way. Close some terminals, or give some of
-them another shell in `settings.json` (below), and press Restart.
+them another terminal profile (below), and press Restart.
 
-`settings.json` can set the shell for new terminals and the permission mode for Claude nodes:
+**Terminal profiles** set what a new terminal starts: a program, its arguments (one per line, passed as they are), an
+optional startup command typed once at its first prompt, and an optional folder. Set them under Settings > Terminals.
+Git Bash, Windows PowerShell, Command Prompt, PowerShell 7 and WSL appear when installed; duplicate one to change it.
+New terminal opens the default; the others are in the Add menu, the canvas menu, the palette, the New terminal form and
+`patchbay open-terminal --profile NAME`. A terminal keeps its profile across restarts. If that profile is deleted, it
+starts the default and says so. For example: `cmd.exe` with the two arguments `/k` and `C:\...\vcvars64.bat`, or Git
+Bash with the startup command `cd ~/proj && nvm use`.
+
+`settings.json` can set the shell run commands use (with no profiles saved yet, new terminals use it too) and the
+permission mode for Claude nodes:
 
 ```json
 { "shell": "C:\\Program Files\\PowerShell\\7\\pwsh.exe", "permissionMode": "default" }
@@ -188,6 +198,18 @@ only in folders you trust. Leave it out to keep Codex's own default. It's also u
 
 ```json
 { "codexApproval": "never" }
+```
+
+Settings > Agents has a switch for each agent, Claude Code and Codex, for when one's usage has run out or you don't want
+it used. One stays on. With an agent off, nothing new of it starts: it leaves the menus, the dock and the palette,
+restarting or resuming one of its windows is refused, a trigger aimed at one records a failed run, and `patchbay
+open-agent` and `spawn-team` refuse it. Windows already running keep running. If the default agent is off, the other
+stands in. A recipe that needs it says so, and starts only if you choose to use the other agent instead. Try another
+approach offers only agents that are on, and won't start an attempt left on one that's off. In
+`settings.json` it's `agentsOff`, the agents turned off:
+
+```json
+{ "agentsOff": "codex" }
 ```
 
 `envNotPassed` lists name prefixes of environment variables that sessions don't inherit, separated by spaces or
@@ -253,6 +275,14 @@ and spends a little quota.
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
+- **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
+  its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
+  It goes under Need attention. The reset time comes from Claude's status line, or from its message.
+- **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
+  waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
+  `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
+- **Next needing you** (Ctrl+Shift+J, or the palette) goes to the agent that has waited longest at Need attention,
+  in any project, and opens its peek. Press it again for the next. With "Also unread" ticked, Unread sessions follow.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
 - **Recently closed** reopens a closed Claude conversation, the same as Recent conversations.
@@ -284,6 +314,26 @@ first, then labels, and the text size folds into one button.
   Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
+- **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
+  with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
+  reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
+  the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
+
+## Files each agent edited
+
+An agent's header and its row in the sidebar show **N files** once it has edited files with its own edit or patch
+calls. They're read from its transcript, so files a shell command changed aren't listed. The chip turns amber with ⚠
+when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
+in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
+
+Each file can open, or show its diff. As each turn starts, Patchbay records a snapshot of the checkout with git, through
+a temporary copy of the index into its own object folder, so your index, branches, stash and repository aren't
+touched. Untracked files over 1 MB are left out of it. **This turn** diffs from the latest
+turn's snapshot, and **Session** from the turn that first edited the file. Other agents' changes to the same file in
+that time show too. A folder outside git has the list but no diff.
+
+Agents can list the same with `patchbay files [--node ID] [--turn]`, for themselves or a node they opened or are linked to.
 
 ## Keys
 
@@ -321,6 +371,19 @@ Copy as Markdown copies the whole handoff.
 - **Closing a project** takes it off the tabs, keeps its windows, and leaves its sessions running. Reopen it from
   Recently closed projects in the sidebar, the File menu or the palette. A session waiting on you still shows under
   Status. Clicking it reopens the project.
+- **Moving a tab**: drag it along the top bar, use Move left or Move right on its right-click menu, or press
+  Alt+Shift+Left/Right with the tab focused. The order is saved, and Ctrl+Z puts it back.
+- **Archiving a project** stops its sessions, run commands, browser pages and armed triggers, and takes it off the tabs
+  and the closed list. It keeps every node, note, whiteboard, the board and the layout. Agents keep their saved
+  conversations and resume when started again. It asks first, listing what stops, and can also clear the project's
+  saved terminal output and its pages' site data. Agents can't reach or start its nodes until it's unarchived.
+- **Projects** (View or File menu, a tab's menu, or the palette) lists every project, open, closed and archived, with
+  its folder, nodes, sessions, when it was last active and its saved output. Sort by any column. Open, close, archive,
+  unarchive, rename or delete from there. It can flag projects unused for 14 to 90 days (off by default); nothing is
+  archived by itself.
+- **Storage**: a project takes little room. Its saved terminal output is at most 1 MB per terminal or run node, and
+  its layout is a few KB in `canvas.json`. Browser data and its cache are shared by every project, and Projects can
+  clear the cache. Agents' conversations are kept by Claude Code and Codex in their own folders, not by Patchbay.
 - **Deleting a project** is separate and permanent, and asks first, naming what it ends.
 - **Undo and redo** cover moving, resizing, grouping, tidying, renaming, and adding or deleting notes and groups, one
   history per project, until the app closes. They never start or end a process, so closing a session isn't undoable.
@@ -355,6 +418,8 @@ or pick one in its form. The moving cable shows where it goes.
 - **Delivery:** a terminal gets the prompt typed straight in, only if it's running. A Claude window gets it only when
   idle, through the same queue as `patchbay send`, and a trigger holds one waiting prompt at most. Disarming or editing
   drops what's waiting. A target that isn't running is a missed run: a trigger never starts a session.
+- **Held at a limit:** a prompt for a Claude window stopped at its usage limit waits until the limit resets, then goes
+  out. Its run says "Held" and until when.
 - **Runs:** Run now fires an armed trigger at once. The node shows the next run time and its last 20 runs as
   Delivered, Waiting, Missed or Failed, with the reason.
 - **While closed:** schedules run in the app, so nothing fires while it's closed, even though sessions keep running.
@@ -364,6 +429,37 @@ or pick one in its form. The moving cable shows where it goes.
   or `jan`. When clocks go forward, a time inside the skipped hour doesn't run that day. When they go back, a time
   inside the repeated hour runs twice.
 - A trigger in a closed project keeps running, as its sessions do.
+
+### Event triggers
+
+A trigger can also fire when something happens, instead of at a time. Pick it under When:
+
+- **An agent…** finishes a turn, needs you, or exits.
+- **A run node…** finishes, or only when it fails (a non-zero exit). A run you stopped doesn't count.
+- **Files change…** in a folder inside the project, matching a pattern such as `**/*.ts`. Changes are gathered until
+  there's a quiet spell (5 seconds by default), then fire once. `.git` and `node_modules` are never watched. A pattern
+  without `/` matches file names at any depth.
+
+Arming, editing and delivery work as above. Only events that happen while the app is open and the trigger is armed
+count. Deleting the node it watches disarms it.
+
+- **Placeholders:** the prompt can use `{{node}}`, `{{event}}`, `{{exitCode}}`, `{{files}}`, `{{folder}}` and
+  `{{time}}`, as the kind has them. The form lists them, and arming refuses any the kind doesn't have. `\{{` writes a
+  literal `{{`. Values go in in one pass. Typed into a terminal, a value keeps only letters, digits, spaces and
+  `. _ / \ : , @ + = -`, so a file name can't run anything in the shell; `{{files}}` gives one argument per file, and
+  a name starting with `-` gets `./` in front. Sent to Claude, each file name is in backticks, marked as a name. A
+  schedule trigger sends its prompt exactly as written.
+- **Limits:** at most once every 30 seconds and 10 times an hour by default; both are in the form. A firing that's held
+  back is recorded as Skipped with the reason, and the same skip in a row is shown once with a count.
+- **No loops:** when a trigger sends to the agent it watches, or a file trigger sends to a Claude window, what happens
+  during the turn its own prompt started doesn't fire it again. A file trigger that types into a terminal ignores
+  changes while that terminal keeps printing, plus the quiet time (at least 30 seconds, at most 10 minutes). Arming is
+  refused if it would close a loop with armed triggers, such as one sending A's turns to B and another sending B's
+  turns to A; the refusal names each trigger. A file trigger counts every session working in its folder.
+- **Only if this succeeds:** any trigger can run a command first, such as `npm test`, in a folder inside the project.
+  It runs without a shell, so no quotes, pipes or `&&`; name a script instead. It fires only if the command exits 0.
+  The exit code and the end of the output go in the run history. A check that runs longer than 2 minutes is ended
+  and counts as failed. Run now skips the check and the limits, since it's you asking.
 
 ## Links
 
@@ -384,6 +480,29 @@ Add one from the canvas menu or with Ctrl+Shift+N. A note is markdown, shown for
 - **Agents** make notes with `patchbay sticky` and add to any note linked to them with `patchbay note --append`. They
   can only replace the text of notes they made themselves. A note an agent changed says which one did it, with
   **Undo** and **Keep**.
+
+## Reader
+
+A reader shows a Markdown file, such as an agent's plan, as a document you can read and comment on. It never changes
+the file.
+
+- **Opening.** **Open plan in Reader** on an agent's menu opens its latest plan (Claude Code's plan mode keeps plans in
+  `~/.claude/plans`), or its latest long answer if it has no plan. Click a `.md` path in a terminal and choose **Open in
+  Reader**, drop a file on the canvas, or use **Open document…** in the canvas menu or palette. Agents show you a file
+  with `patchbay open-doc --path plan.md`.
+- **Reading.** Headings, lists, tables, task boxes and colored code, with an **Outline** to jump through and an arrow on
+  each heading to fold its section. **Paper** gives a light page. When the file changes on disk the reader follows it,
+  keeps your place and says when it changed.
+- **Comments.** Select words and press **Comment**, or press the **+** beside a paragraph or heading, or comment on the
+  whole document. A comment keeps the words it's on, so it finds them again after edits, and says **Outdated** when
+  they're gone. Comments are kept per file in app data, so closing the reader doesn't lose them.
+- **Sending.** **Send** puts every open comment you haven't sent into one message, each with its section and quote,
+  and sends it to the agent you pick: the one the document came from comes first. It waits while the agent is busy or
+  you're typing to it. Resolve or reopen comments as the agent works; a reopened or edited comment goes again with the
+  next send. An agent linked to the reader can also read the comments with `patchbay read`.
+- Readers open `.md`, `.markdown`, `.mdx` and `.txt` files on this PC's drives, up to 4 MB, but not network
+  shares or files under Windows or Program Files. Links to the web open in your browser, and links to other Markdown
+  files open in another reader.
 
 ## Whiteboards
 
@@ -430,6 +549,15 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 - **Each node speaks for itself.** Hooks and the `patchbay` tool know their node from its environment. Codex nodes start
   with `--no-daemon`, so a shared Codex server can't run one node's hooks with another's environment, and Patchbay
   refuses a hook that names another node's session.
+- **Usage limits.** A message or trigger prompt for an agent stopped at its usage limit waits until the limit
+  resets, then goes out by itself, even if Patchbay restarted meanwhile (messages queued before a restart are lost, as
+  ever). A short rate limit that names no reset is tried again after a minute, then longer. You can still type to it any
+  time. After a login or billing failure, messages wait until you've sorted it out. `patchbay list` and `patchbay wait` say which agents stopped and why. Settings >
+  Sessions > **Continue after a usage limit resets** (off by default) sends "continue" once at the reset to an agent
+  still stopped there with nothing waiting for it. Its badge says so beforehand.
+- **Leads keep their team going.** `patchbay restart --node <id>` brings back an agent the lead opened that has
+  exited, resuming its conversation, as Restart does. `patchbay link --from <a> --to <b>` links two agents the lead
+  opened, so a reviewer can send its findings to the author directly.
 - **An agent waiting on you shows it.** An agent stopped at a question before it starts, such as Claude's or Codex's
   question about trusting a new folder, shows needs-you, so the agent that opened it can tell you which node.
 - **Long briefs and diagrams** can be piped in: `--prompt-file -`, `--members-file -` and `--diagram-file -` read a
