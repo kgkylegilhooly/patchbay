@@ -7,6 +7,7 @@ import { closeNodes, patchNode, useStore } from '../store'
 import { teamStatus } from '../teamStatus'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
+import { useAgentStops } from '../agentStops'
 
 export const GROUP_COLORS = ['#49c2c9', '#e2b04a', '#e0689b', '#7fa8ff', '#62dc8a']
 
@@ -127,7 +128,8 @@ function Team({ groupId }: { groupId: string }): React.JSX.Element {
   const nodes = useStore((s) => s.doc?.nodes)
   const statuses = useStore((s) => s.statuses)
   const messages = useStore((s) => s.messages)
-  const team = useMemo(() => teamStatus(nodes ?? [], statuses, messages, groupId), [nodes, statuses, messages, groupId])
+  const stops = useAgentStops((s) => s.stops)
+  const team = useMemo(() => teamStatus(nodes ?? [], statuses, messages, groupId, stops), [nodes, statuses, messages, groupId, stops])
   if (!team.members.length) return <span className="rack-spacer" />
   const titleOf = (id: string): string => nodes?.find((n) => n.id === id)?.title ?? 'a closed node'
   const latest = team.latest
