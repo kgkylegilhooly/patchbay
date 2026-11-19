@@ -6,7 +6,7 @@ import { bridge } from './bridge'
 import { playChime } from './chime'
 import type { Overrides } from './keys'
 import type { Pane } from './focusLayout'
-import { absolutePosition, newTerminal } from './newNodes'
+import { newTerminal } from './newNodes'
 import { loadPrefs, type TerminalLook } from './prefs'
 import { EMPTY_HISTORY, entryFor, recordEntry, stepBack, stepForward, type History } from './undoHistory'
 import type { UsageMode } from './usageView'
@@ -302,8 +302,7 @@ export function openTerminalBeside(besideId: string, cwd: string): string | null
   const doc = useStore.getState().doc
   const beside = doc?.nodes.find((n) => n.id === besideId)
   if (!doc || !beside) return null
-  const at = absolutePosition(doc, beside)
-  const node = newTerminal({ at: { x: at.x + beside.width + 24, y: at.y }, group: null, doc }, crypto.randomUUID(), { cwd })
+  const node = newTerminal({ beside, group: null, doc }, crypto.randomUUID(), { cwd })
   dispatch({ op: 'addNode', node })
   void bridge.startNode(node.id).then((r) => noteRunProblem(node.id, r))
   return node.id

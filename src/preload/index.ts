@@ -3,7 +3,14 @@ import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
+import { exposeNeedsYou } from './needsYou'
+import { exposeReview } from './review'
+import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
+import { exposeFiles } from './files'
+import { exposeProjects } from './projects'
+import { exposeView } from './view'
+import { exposeSubagents } from './subagents'
 import { exposeDocs } from './docs'
 
 /**
@@ -134,7 +141,14 @@ contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
 exposeSearch()
 exposeRecipes()
+exposeNeedsYou()
+exposeReview()
+exposeTerminalProfiles()
 exposeCompare()
+exposeFiles()
+exposeProjects()
+exposeView()
+exposeSubagents()
 exposeDocs()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,

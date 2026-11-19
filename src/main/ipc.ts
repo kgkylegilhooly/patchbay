@@ -8,7 +8,7 @@ import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
-import { isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
+import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
 import type { Settings } from '../shared/settings'
 import { createActivityLog } from './activity'
 import type { LiveBrowserDriver } from './browser/driver'
@@ -32,10 +32,12 @@ import type { UsageService } from './usage/usageService'
 import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImage, saveBoardImage } from './boardImages'
+import { agentOffNow } from './agentsAllowed'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
 import type { SignalWatcher } from './sessions/signals'
+import { removeRefusal } from '../core/canvas/projectOps'
 
 export interface IpcServices {
   dataDir: string
@@ -187,10 +189,11 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:getDoc', () => store.get())
   ipcMain.handle('pb:dispatch', async (_e, op: CanvasOp) => {
     // Arming goes through armTrigger, which checks what was shown. The page can't set a trigger's state itself.
-    if (op.op === 'setTriggerState' || op.op === 'setTasks') return
+    // Archiving stops the project's sessions first, so it goes through pb:projects:archive. See src/main/projects.
+    if (op.op === 'setTriggerState' || op.op === 'setTasks' || op.op === 'archiveProject') return
     if (op.op === 'removeProject') {
-      // The last project stays, so its sessions must too.
-      if (store.get().projects.length < 2) return
+      // The last project stays, so its sessions must too. So does the last one that isn't archived.
+      if (removeRefusal(store.get(), op.id)) return
       await stopSessions(store.get().nodes.filter((n) => n.projectId === op.id).map((n) => n.id))
       return store.dispatch({ ...op, at: Date.now() })
     }
@@ -243,6 +246,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     clearExited(id)
   })
   ipcMain.handle('pb:restartNode', async (_e, id: string) => {
+    // Settings > Agents: refused as a notice the window can dismiss. A session still running keeps running.
+    const agent = find(id)
+    const off = agent?.kind === 'claude' ? agentOffNow(agentOf(agent)) : null
+    if (off) return { ok: false as const, reason: off }
     const refused = await prepareRun(id)
     if (refused) return refused
     const node = find(id)
@@ -456,6 +463,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   })
 
   ipcMain.handle('pb:reopenClosed', async (_e, closedId: string) => {
+    // Settings > Agents: an agent turned off isn't reopened, and its entry stays in the list for later.
+    const entry = store.get().closed.find((c) => c.id === closedId)
+    if (entry && agentOffNow(entry.agent ?? 'claude')) return
     const id = reopenClosed(store, closedId, randomUUID())
     if (id) await runner.startNode(id)
   })

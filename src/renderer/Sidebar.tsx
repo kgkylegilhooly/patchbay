@@ -3,15 +3,18 @@ import { isSessionNode, whereShown, type Project } from '../shared/model'
 import { bridge } from './bridge'
 import { Icon, KindIcon } from './icons'
 import { ContextMenu } from './Menu'
+import { PeekButton, peekFrom } from './NeedsYouLayer'
 import { closedProjectMenu, type Commands, type Point } from './menus'
 import { runDot, runFailed, runLabel } from './nodes/runView'
 import { StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
+import { FilesChip } from './FilesChip'
 import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, statusSections } from './sidebarView'
 import { useStore } from './store'
 import { contextLabel } from './usageView'
+import { useAgentOff } from './agentChoice'
 
 const TICK_MS = 20_000
 
@@ -42,9 +45,22 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   const context = contextLabel(useStore((s) => s.usage.nodes[session.id]))
   const at = useStore((s) => s.activity[session.id])
   const inStatus = tab === 'status'
+  const peekable = inStatus && session.kind === 'claude'
   return (
     <li>
-      <button type="button" className="session" data-session={session.id} title={whereShown(session)} onClick={() => onReveal(session.id)}>
+      <button
+        type="button"
+        className="session"
+        data-session={session.id}
+        title={whereShown(session)}
+        onClick={() => onReveal(session.id)}
+        onKeyDown={(e) => {
+          // Space peeks, as in Claude's agent view. Enter still goes to the window.
+          if (!peekable || e.key !== ' ' || e.ctrlKey || e.altKey || e.shiftKey) return
+          e.preventDefault()
+          peekFrom(session.id, e.currentTarget)
+        }}
+      >
         <span className="session-top">
           <StatusDot status={session.kind === 'run' ? runDot(run) : status} />
           <Badge project={project} />
@@ -68,7 +84,9 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
           )}
         </span>
         <PortChips nodeId={session.id} />
+        {session.kind === 'claude' && <FilesChip nodeId={session.id} />}
       </button>
+      {peekable && <PeekButton id={session.id} title={session.title} />}
     </li>
   )
 }
@@ -95,6 +113,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
+  const agentOff = useAgentOff()
   if (!doc) return null
 
   const tab = prefs.sidebarTab
@@ -220,7 +239,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
                 {recent.length === 0 && <li className="sidebar-empty">Close a Claude or Codex session and its conversation appears here.</li>}
                 {recent.map((entry) => (
                   <li key={entry.id}>
-                    <button type="button" className="session closed-row" data-closed-session={entry.id} title={`Reopen, in ${entry.cwd}`} onClick={() => void bridge.reopenClosed(entry.id)}>
+                    <button type="button" className="session closed-row" data-closed-session={entry.id} title={agentOff(entry.agent) ?? `Reopen, in ${entry.cwd}`} disabled={!!agentOff(entry.agent)} onClick={() => void bridge.reopenClosed(entry.id)}>
                       <KindIcon kind="claude" agent={entry.agent} />
                       <span className="session-title">{entry.title}</span>
                       <time className="session-time" dateTime={new Date(entry.closedAt).toISOString()}>

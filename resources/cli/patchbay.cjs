@@ -16,7 +16,7 @@ const VERBS = {
   'task state': { task: 'text', state: 'text' },
   whoami: {},
   list: {},
-  'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', after: 'list' },
+  'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', profile: 'text', after: 'list' },
   'open-agent': {
     prompt: 'text',
     'prompt-file': 'path',
@@ -37,6 +37,7 @@ const VERBS = {
   draw: { node: 'text', diagram: 'text', 'diagram-file': 'path', replace: 'flag' },
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
+  files: { node: 'text', turn: 'flag' },
   send: { node: 'text', text: 'text' },
   wait: { nodes: 'list', node: 'text', timeout: 'int', any: 'flag' },
   close: { node: 'text' },
@@ -74,7 +75,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   guide         prints how to use Patchbay, with every rule
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
-  open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD]
+  open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD] [--profile NAME|ID]
   open-agent    [--prompt TEXT | --prompt-file FILE|-] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
   spawn-team    --label L (--members JSON | --members-file FILE|-) [--color C]
                   members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]
@@ -88,6 +89,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   draw          --node ID (--diagram JSON | --diagram-file FILE|-) [--replace]   draws boxes and arrows on a whiteboard
   link          --to ID [--from ID]
   read          --node ID [--tail N]
+  files         [--node ID] [--turn]   files an agent edited (itself by default), newest first; --turn: the latest turn only
   send          --node ID --text TEXT
   wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
   close         --node ID

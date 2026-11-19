@@ -1,0 +1,458 @@
+/* The review inbox: a queue on the left, the selected task's evidence, changes and comments on the right. */
+
+.rvi {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--face);
+  color: var(--ink);
+}
+
+.rvi-head {
+  gap: 10px;
+}
+
+.rvi-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rvi-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rvi-queue {
+  flex: none;
+  width: min(300px, 34%);
+  overflow-y: auto;
+  padding: 8px;
+  border-right: 1px solid var(--line);
+  background: var(--well);
+}
+
+.rvi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 9px 10px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--face);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.rvi-item:hover {
+  border-color: #55555b;
+}
+
+.rvi-item-on {
+  border-color: var(--cable-link);
+  box-shadow: inset 3px 0 0 var(--cable-link);
+}
+
+.rvi-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.rvi-item-agents,
+.rvi-dim {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.rvi-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.rvi-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--face-raised);
+  border-radius: 999px;
+}
+
+.rvi-ok,
+.rvi-check-passed,
+.rvi-state-resolved {
+  color: #c8f3d2;
+  background: #1f4a2b;
+}
+
+.rvi-warn,
+.rvi-check-stale,
+.rvi-check-running,
+.rvi-state-outdated {
+  color: #ffe2b8;
+  background: #5a3c12;
+}
+
+.rvi-check-failed {
+  color: #ffd0cc;
+  background: #5c1f1b;
+}
+
+.rvi-state-open {
+  color: #d3e3ff;
+  background: #1d3a6b;
+}
+
+.rvi-local {
+  color: #ffe2b8;
+  background: #4a3410;
+}
+
+.rvi-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 4px 18px 18px;
+}
+
+.rvi-section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rvi-brief {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.rvi-criteria {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  color: var(--ink-dim);
+}
+
+.rvi-checkout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0;
+}
+
+.rvi-detail code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.rvi-shared {
+  margin: 4px 0;
+  padding: 6px 9px;
+  color: #ffe2b8;
+  background: #3b2b0f;
+  border-left: 3px solid #e7b53f;
+  border-radius: 4px;
+}
+
+.rvi-warn-text {
+  margin: 4px 0;
+  color: #ffcf8f;
+}
+
+.rvi-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.rvi-report {
+  margin-bottom: 12px;
+  padding: 8px 11px;
+  background: var(--well);
+  border: 1px dashed #55555b;
+  border-radius: 6px;
+}
+
+.rvi-report p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.rvi-checks ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rvi-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.rvi-ci {
+  margin: 6px 0 0;
+}
+
+.rvi-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.rvi-modes {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.rvi-mode {
+  padding: 4px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.rvi-mode:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rvi-mode-on {
+  color: var(--ink);
+  background: var(--face-raised);
+}
+
+.rvi-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+}
+
+.rvi-compare {
+  margin: 4px 0 8px;
+}
+
+.rvi-note {
+  margin: 4px 0;
+  padding: 5px 9px;
+  color: #d3e3ff;
+  background: #182a47;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+
+.rvi-files {
+  margin: 10px 0;
+}
+
+.rvi-files-local .rvi-label {
+  color: #f0c27a;
+}
+
+.rvi-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.rvi-file:hover,
+.rvi-file-on {
+  background: var(--face-raised);
+}
+
+.rvi-status {
+  width: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.rvi-status-A { color: #6fd48a; }
+.rvi-status-D { color: #ff8a80; }
+.rvi-status-M { color: #e7c96a; }
+
+.rvi-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rvi-diff {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rvi-diff-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--well);
+  border-bottom: 1px solid var(--line);
+}
+
+.rvi-diff .git-diff-text {
+  max-height: 46vh;
+  margin: 0;
+  overflow: auto;
+}
+
+.rvi-inline-outdated,
+.rvi-inline-resolved {
+  opacity: 0.7;
+}
+
+.rvi-comments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rvi-comment {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 3px 9px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.rvi-comment > .rvi-snippet,
+.rvi-comment > .rvi-text,
+.rvi-comment > .rvi-comment-meta {
+  grid-column: 2 / 4;
+}
+
+.rvi-comment-resolved .rvi-text {
+  color: var(--ink-dim);
+}
+
+.rvi-where {
+  font-size: 12.5px;
+}
+
+.rvi-snippet {
+  overflow: hidden;
+  color: var(--ink-dim);
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.rvi-comment-meta {
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.rvi-comment > .rvi-pill {
+  justify-self: start;
+}
+
+.rvi-comment-actions {
+  grid-column: 3;
+  grid-row: 1;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rvi-actions {
+  position: sticky;
+  bottom: -18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -18px;
+  padding: 10px 18px;
+  background: var(--face);
+  border-top: 1px solid var(--line);
+}
+
+.rvi-spacer {
+  flex: 1;
+}
+
+.rvi-error,
+.rvi-result-bad {
+  color: #ff9d94;
+}
+
+.rvi-result {
+  margin: 8px 0 0;
+  color: #b9efc7;
+}
+
+/* Also a "drawer", for what that tells canvas shortcuts; none of the drawer's own look. */
+.rvi.drawer {
+  width: auto;
+  border-left: 0;
+  box-shadow: none;
+  z-index: 12;
+}
+
+.rvi-label-gap {
+  margin-top: 10px;
+}
+
+.rvi-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #ffe2b8;
+}
+
+.rvi-more {
+  margin: 6px 10px;
+}

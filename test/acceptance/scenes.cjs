@@ -161,6 +161,46 @@ const scenes = {
     await page.select('form[aria-label="New trigger"] [name="target"]', 'idle')
     await sleep(200)
   },
+  // Event triggers: see src/core/trigger/events.ts.
+  'trigger-events-form': async (page) => {
+    await rightClickCanvas(page)
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="new-trigger"]')
+    await sleep(200)
+    const form = 'form[aria-label="New trigger"]'
+    await page.select(`${form} [name="scheduleType"]`, 'agent')
+    await page.select(`${form} [name="agent"]`, 'work')
+    await page.type(`${form} [name="prompt"]`, '{{node}} {{event}}. Review its changes and list any problems.')
+    await page.select(`${form} [name="target"]`, 'idle')
+    await page.type(`${form} [name="preflight"]`, 'npm test')
+    await sleep(200)
+  },
+  'trigger-events': async (page) => {
+    await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      const cwd = doc.projects[0].folder
+      const prompt = 'echo {{node}} {{event}}'
+      await window.patchbay.dispatch({
+        op: 'addNode',
+        node: {
+          id: 'trig', kind: 'trigger', title: 'When tests finish', x: 1240, y: 680, width: 380, height: 460, parentId: null, projectId: 'p1',
+          schedule: { type: 'run', nodeId: 'run', failedOnly: false }, prompt, targetId: 'term', preflight: { argv: ['node', '--version'], cwd },
+          limits: { gapMs: 60000, perHour: 10 }, armedSpec: null, armedAt: null, nextAt: null, runs: []
+        }
+      })
+      const spec = JSON.stringify([['run', 'run', false], prompt, 'term', { preflight: [['node', '--version'], cwd], limits: [60000, 10] }])
+      const r = await window.patchbay.armTrigger('trig', spec)
+      if (!r.ok) throw new Error(r.reason)
+      await window.patchbay.startNode('run')
+    })
+    // The run ends, its check runs, and it fires. A second run inside the cool-down is skipped.
+    await page.waitForSelector('.react-flow__node[data-id="trig"] [data-outcome="delivered"]', { timeout: 20000 })
+    await page.evaluate(() => window.patchbay.startNode('run'))
+    await page.waitForSelector('.react-flow__node[data-id="trig"] [data-outcome="skipped"]', { timeout: 20000 })
+    await page.click('[data-cmd="toggle-sidebar"]')
+    await sleep(300)
+    await fitAll(page)
+  },
   'run-config': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)
@@ -364,10 +404,66 @@ const scenes = {
     await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
     await sleep(400)
   },
+  // Codex chosen as the default, then turned off: Claude Code stands in, and its switch can't be turned off.
+  'settings-agents-off': async (page) => {
+    await page.keyboard.down('Control')
+    await page.keyboard.press(',')
+    await page.keyboard.up('Control')
+    await page.waitForSelector('[data-section="claude"]')
+    await page.click('[data-section="claude"]')
+    await page.waitForSelector('#agent-codex')
+    await page.select('#defaultAgent', 'codex')
+    await page.click('#agent-codex')
+    await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
+    await sleep(400)
+  },
   'project-menu': async (page) => {
     const tab = await page.$('.project-tab')
     await tab.click({ button: 'right' })
     await sleep(200)
+  },
+  // A tab part way through a drag, over the first tab, showing where it would land.
+  'project-tab-drag': async (page) => {
+    await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll('.project-tab')]
+      const from = tabs[2]
+      const to = tabs[0].getBoundingClientRect()
+      window.sceneDrag = new DataTransfer()
+      from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: window.sceneDrag }))
+      window.sceneTo = { x: to.left + 4, y: to.top + 8 }
+    })
+    await sleep(200)
+    await page.evaluate(() => {
+      const first = document.querySelector('.project-tab')
+      first.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: window.sceneDrag, clientX: window.sceneTo.x, clientY: window.sceneTo.y }))
+    })
+    await sleep(300)
+  },
+  'projects-manager': async (page) => {
+    await page.evaluate(() => localStorage.setItem('patchbay.projects.suggestArchiveDays', '30'))
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'View').click())
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="manage-projects"]')
+    await sleep(1200)
+  },
+  // Archives "Website" for real, through main, then shows the result and the tabs without it.
+  'archive-done': async (page) => {
+    await scenes['archive-confirm'](page)
+    await page.click('.archive-dialog .btn-solid')
+    await sleep(2500)
+    const state = await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      const runs = await window.patchbay.getStatuses()
+      return { website: doc.projects.find((p) => p.id === 'p2'), tabs: [...document.querySelectorAll('.project-tab')].map((t) => t.textContent), statuses: runs }
+    })
+    console.log(JSON.stringify(state))
+  },
+  'archive-confirm': async (page) => {
+    const tabs = await page.$$('.project-tab')
+    await tabs[1].click({ button: 'right' })
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="archive-project"]')
+    await sleep(1200)
   },
   note: async () => {},
   'note-edit': async (page) => {
@@ -447,7 +543,11 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
+  ...require('./terminalProfileScenes.cjs').scenes,
   ...require('./compareScenes.cjs').scenes,
+  ...require('./subagentScenes.cjs').scenes,
+  ...require('./needsYouScenes.cjs').scenes,
+  ...require('./filesScenes.cjs').scenes,
   ...require('./readerScenes.cjs').scenes
 }
 
@@ -475,6 +575,27 @@ const noteText = [
 
 /** Changes to the seeded canvas that have to be there before the app opens, such as where the view starts. */
 const seeds = {
+  // More projects, one long closed and one archived, with a page and a trigger, for the projects pictures.
+  projects: (doc) => {
+    const day = 24 * 3600_000
+    const cwd = doc.projects[0].folder
+    doc.projects.push(
+      { id: 'p3', name: 'Billing API', folder: cwd, viewport: view, closedAt: Date.now() - 52 * day },
+      { id: 'p4', name: 'Hackathon 2025', folder: cwd, viewport: view, closedAt: Date.now() - 200 * day, archivedAt: Date.now() - 120 * day },
+      { id: 'p5', name: 'Docs site', folder: cwd, viewport: view }
+    )
+    doc.nodes.push(
+      { id: 'w-page', kind: 'browser', title: 'Preview', x: 40, y: 400, width: 380, height: 220, parentId: null, projectId: 'p2', url: 'http://localhost:5173/' },
+      { id: 'w-note', kind: 'sticky', title: 'Note', text: 'Launch checklist', x: 640, y: 400, width: 220, height: 140, parentId: null, projectId: 'p2' },
+      { id: 'b-term', kind: 'terminal', title: 'Migrations', x: 0, y: 0, width: 560, height: 300, parentId: null, cwd, projectId: 'p3' },
+      { id: 'h-note', kind: 'sticky', title: 'Note', text: 'Ideas', x: 0, y: 0, width: 220, height: 140, parentId: null, projectId: 'p4' }
+    )
+  },
+  'projects-manager': (doc) => seeds.projects(doc),
+  'archive-confirm': (doc) => seeds.projects(doc),
+  'archive-done': (doc) => seeds.projects(doc),
+  'project-tab-drag': (doc) => seeds.projects(doc),
+  'project-menu': (doc) => seeds.projects(doc),
   'browser-evidence': (doc) => require('../browser/evidenceScene.cjs').seed(doc),
   note: (doc) => {
     Object.assign(doc.nodes.find((n) => n.id === 'note'), { text: noteText, width: 460, height: 520 })
@@ -523,6 +644,9 @@ const seeds = {
   },
   ...require('./searchScenes.cjs').seeds,
   ...require('./compareScenes.cjs').seeds,
+  ...require('./subagentScenes.cjs').seeds,
+  ...require('./needsYouScenes.cjs').seeds,
+  ...require('./filesScenes.cjs').seeds,
   ...require('./readerScenes.cjs').seeds
 }
 
@@ -557,3 +681,5 @@ function prepare(name, cwdRoot) {
 }
 
 module.exports = { prepare, scenes, canvas, rightClickCanvas, seedLinks, showLegend }
+Object.assign(scenes, require('./placementScenes.cjs').scenes)
+Object.assign(seeds, require('./placementScenes.cjs').seeds)

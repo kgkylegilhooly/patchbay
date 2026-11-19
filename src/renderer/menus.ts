@@ -4,7 +4,10 @@ import type { IconName } from './iconPaths'
 import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
+import { toggleReviewInbox } from './reviewInboxUi'
+import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
+import { askArchive, openProjects } from './projectsUi'
 import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
 
 export interface Point {
@@ -42,9 +45,12 @@ export interface Commands {
   reopenProject(id: string): void
   /** Removes a project for good, ending its sessions. */
   deleteProject(id: string): void
+  /** Moves a project's tab one place along the open tabs, undoably. With no id, the one on screen. */
+  moveProjectTab(step: -1 | 1, id?: string): void
   /** Shows a session, switching to its project first if need be. */
   revealNode(id: string): void
-  newTerminal(at?: Point, groupId?: string): void
+  /** With a profile id, a terminal of that profile. Without, the default. */
+  newTerminal(at?: Point, groupId?: string, profileId?: string): void
   newTerminalForm(at?: Point, groupId?: string): void
   newSshForm(at?: Point, groupId?: string): void
   newClaudeForm(at?: Point, groupId?: string): void
@@ -131,6 +137,7 @@ export interface MenuState {
 export function addMenu(c: Commands, at?: Point): MenuEntry[] {
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
@@ -163,12 +170,20 @@ export function deleteProjectWarning(sessionTitles: string[], items: number): st
 }
 
 /** A project tab's right-click menu. Closing only hides a project. Deleting is the separate one, and always asks. */
-export function projectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void }): MenuEntry[] {
+export function projectMenu(
+  c: Commands,
+  id: string,
+  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null }
+): MenuEntry[] {
   return [
     { id: 'rename-project', label: 'Rename', icon: 'edit', run: ctx.rename },
     { id: 'project-folder', label: 'Choose folder…', icon: 'folder', run: () => c.chooseProjectFolder(id) },
+    { id: 'move-project-left', label: 'Move left', icon: 'arrow-left', disabled: !ctx.canMoveLeft, run: () => c.moveProjectTab(-1, id) },
+    { id: 'move-project-right', label: 'Move right', icon: 'arrow-right', disabled: !ctx.canMoveRight, run: () => c.moveProjectTab(1, id) },
     'separator',
     { id: 'close-project', label: 'Close project, leaving its sessions running', icon: 'folder-closed', disabled: !ctx.canClose, run: () => c.closeProject(id) },
+    { id: 'archive-project', label: 'Archive project, stopping its sessions…', icon: 'archive', disabled: !!ctx.archiveRefusal, run: () => askArchive(id) },
+    { id: 'manage-projects', label: 'All projects…', icon: 'project', run: () => openProjects() },
     { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
   ]
 }
@@ -177,6 +192,7 @@ export function projectMenu(c: Commands, id: string, ctx: { sessionTitles: strin
 export function closedProjectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number }): MenuEntry[] {
   return [
     { id: 'reopen-project', label: 'Reopen', icon: 'folder-open', run: () => c.reopenProject(id) },
+    { id: 'archive-project', label: 'Archive, stopping its sessions…', icon: 'archive', run: () => askArchive(id) },
     'separator',
     { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
   ]
@@ -186,6 +202,7 @@ export function fileMenu(c: Commands, s: MenuState): MenuEntry[] {
   const closed = s.closedProjects ?? []
   return [
     { id: 'new-project', label: 'New project…', icon: 'project', run: c.newProject },
+    { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
     'separator',
     ...addMenu(c),
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group() },
@@ -215,6 +232,7 @@ export function editMenu(c: Commands, s: MenuState): MenuEntry[] {
 export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
   return [
     { id: 'open-palette', label: 'Command palette…', icon: 'palette', run: c.openPalette },
+    { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
     'separator',
     { id: 'zoom-in', label: 'Zoom in', icon: 'plus', run: c.zoomIn },
     { id: 'zoom-out', label: 'Zoom out', icon: 'minus', run: c.zoomOut },
@@ -226,6 +244,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-board', label: 'Board view', icon: 'board', checked: !!s.board, run: c.toggleBoard },
     { id: 'toggle-focus', label: 'Focus view', icon: 'grid', checked: !!s.focus, run: () => c.toggleFocus() },
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
+    { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
@@ -256,6 +275,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   const extensions = canvasExtensions(c, at)
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
