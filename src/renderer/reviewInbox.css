@@ -395,7 +395,13 @@
   font-size: 11.5px;
 }
 
+.rvi-comment > .rvi-pill {
+  justify-self: start;
+}
+
 .rvi-comment-actions {
+  grid-column: 3;
+  grid-row: 1;
   display: inline-flex;
   gap: 4px;
 }

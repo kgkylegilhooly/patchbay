@@ -145,7 +145,9 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
     else { setChanges(null); setProblem(r.error) }
     setShown(null)
     await reloadComments()
-  }, [mode, base, task.projectId, task.id, reloadComments])
+    // Files may have changed since the queue was read, so its readiness is read again with them.
+    void onChanged()
+  }, [mode, base, task.projectId, task.id, reloadComments, onChanged])
   useEffect(() => { void loadChanges() }, [loadChanges])
   useEffect(() => { void reviewBridge().branches(task.projectId, task.id).then((r) => r.ok && setBases(r.value)) }, [task.projectId, task.id])
 

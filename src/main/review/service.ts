@@ -81,11 +81,13 @@ export function createReviewService(d: ReviewDeps) {
     d.data.get().bases[taskKey(projectId, taskId)] ?? (await d.git.defaultBase(root))
 
   /** Agents on the canvas working in this checkout, other than the task's own. Folders are matched by repository, not by path prefix. */
-  const othersIn = async (root: string, assigned: string[]): Promise<string[]> => {
+  const othersIn = async (root: string, assigned: string[], tops = new Map<string, Promise<string | null>>()): Promise<string[]> => {
     const agents = nodes().filter((n) => n.kind === 'claude' && !assigned.includes(n.id))
     const out: string[] = []
     for (const a of agents) {
-      const top = 'cwd' in a ? await d.git.toplevel(a.cwd) : null
+      if (!('cwd' in a)) continue
+      if (!tops.has(a.cwd)) tops.set(a.cwd, d.git.toplevel(a.cwd))
+      const top = await tops.get(a.cwd)!
       if (top && same(top, root)) out.push(a.title)
     }
     return out
@@ -136,6 +138,8 @@ export function createReviewService(d: ReviewDeps) {
   return {
     async inbox(projectId: string): Promise<InboxItem[]> {
       const queue = reviewQueue(await d.tasks.views(projectId))
+      // Each agent's repository is looked up once per listing, however many tasks there are.
+      const tops = new Map<string, Promise<string | null>>()
       const items: InboxItem[] = []
       for (const view of queue) {
         const task = view.task
@@ -149,7 +153,7 @@ export function createReviewService(d: ReviewDeps) {
           items.push({ ...base, root: null, branch: null, head: null, base: null, attribution: attribution(assigned, []), error: `${task.cwd} isn't in a git repository.` })
           continue
         }
-        const [branch, head, others, chosen] = await Promise.all([d.git.branch(root), d.git.head(root), othersIn(root, task.assignedSessionIds), baseFor(projectId, task.id, root)])
+        const [branch, head, others, chosen] = await Promise.all([d.git.branch(root), d.git.head(root), othersIn(root, task.assignedSessionIds, tops), baseFor(projectId, task.id, root)])
         items.push({ ...base, root, branch, head, base: chosen, attribution: attribution(assigned, others) })
       }
       return items

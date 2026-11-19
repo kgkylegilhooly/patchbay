@@ -40,3 +40,12 @@ accepted work while keeping earlier submissions and decisions. Cancelled tasks a
 final. Restarting preserves history and marks unfinished checks interrupted, without
 rerunning them. Dependencies require accepted upstream tasks with current evidence;
 missing upstream tasks block. These records do not launch sessions or change `--after`.
+
+## Review fixes
+
+After you submit, the person reviews the task in Patchbay's review inbox. If they
+request fixes, you get one message naming the task and listing each comment by file
+and line, with the code it was on. A comment marked as changed since may no longer
+apply: check it. Fix what still applies, then submit again with
+`patchbay task submit --task ID --summary "..."`, saying what you changed for each
+comment. Only the person resolves comments and accepts.

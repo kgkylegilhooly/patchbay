@@ -131,3 +131,17 @@ test('loading keeps good records and drops damaged ones one at a time', () => {
   expect(data.bases).toEqual({ 'p/t': 'main' })
   expect(dropped).toBe(3)
 })
+
+test('a comment shows on a diff line only where it was written, or where it is now in a diff of the code as it is now', async () => {
+  const { commentsOnLine } = await import('../../src/renderer/reviewInboxUi')
+  const rev = 'a'.repeat(40)
+  const moved = comment({ placement: { kind: 'moved', line: 5, from: 3, contextChanged: false } })
+  const at = (o: Partial<{ line: number; revision: string; current: boolean; side: 'new' | 'old' }>) => commentsOnLine([moved], { path: 'src/auth.ts', side: 'new', line: 3, revision: rev, current: false, ...o }).length
+  expect(at({})).toBe(1)
+  expect(at({ line: 5 })).toBe(0)
+  expect(at({ revision: 'b'.repeat(40), line: 5, current: true })).toBe(1)
+  expect(at({ revision: 'b'.repeat(40), line: 5, current: false })).toBe(0)
+  expect(at({ side: 'old' })).toBe(0)
+  const gone = comment({ placement: { kind: 'outdated', reason: 'x' }, state: 'outdated' })
+  expect(commentsOnLine([gone], { path: 'src/auth.ts', side: 'new', line: 3, revision: 'b'.repeat(40), current: true })).toEqual([])
+})

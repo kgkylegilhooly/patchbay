@@ -146,6 +146,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
+| `review-inbox.json` | Review inbox comments, review marks and chosen base branches. A damaged file is moved aside as `review-inbox.json.bad-*` |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
 | `whiteboards\` | Whiteboards agents exported with `patchbay whiteboard`, as PNG and SVG, the newest 50 |
@@ -489,6 +490,28 @@ offers the project's folder, its worktree groups and its sessions' folders, with
 - **History** draws the newest 300 commits of every branch, with merges as lanes.
 - Each git call has a time limit and an output limit, and none goes through a shell. The panel refreshes when it opens,
   after its own actions, and when the window comes back into focus, at most every 2 seconds.
+
+## Review inbox
+
+**View > Review inbox…**, the palette, or **Review inbox** on the board's task outcomes. It lists tasks an agent has
+submitted with `patchbay task submit`, ready or not yet ready, newest first.
+
+- Each task shows its brief, its checkout (folder, branch, HEAD), the **agent's report** (written by the agent, not
+  checked), and the **command runs Patchbay recorded** for its declared checks: passed, failed, not run or stale, with
+  the reason. **CI is unavailable**: Patchbay doesn't read CI yet, and that is never shown as a pass.
+- When other agents work in the same checkout, or several are assigned, it says the changes are the checkout's, not any
+  one agent's.
+- **Branch vs base** lists what's committed since the merge-base with the base branch you choose (`main` by default),
+  and separately what's only local: uncommitted and untracked files. The header names the base commit and the
+  merge-base. **Since last review** compares with a snapshot recorded when you pressed **Mark reviewed** or **Request
+  fixes**, never with a time.
+- **+** on a diff line adds a comment. Comments are saved, with the file, side, revision and the code around the line.
+  When the code moves, the comment follows and says where from; when the line changes or goes, it's marked outdated.
+  You resolve comments yourself; an agent's reply doesn't.
+- **Request fixes** sends every unresolved comment to an agent assigned to the task, through the same queue as
+  `patchbay send`: a busy agent gets it when it's idle. **Accept** is the board's own acceptance, only for you.
+- A snapshot adds git objects to the repository and nothing else: no commits, refs or index changes. git may clean an
+  old one up after two weeks; then "since last review" compares with the reviewed commit and says so.
 
 ## Board
 
