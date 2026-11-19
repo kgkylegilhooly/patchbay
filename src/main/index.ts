@@ -18,6 +18,7 @@ import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { createWorktree } from '../core/worktree/service'
 import { registerRecipeIpc } from './recipes/ipc'
+import { registerNeedsYouIpc } from './needsYou/ipc'
 import { createRecipeService } from './recipes/service'
 import { createSetupGate } from './recipes/setupGate'
 import { withRecipeVerbs } from './recipes/verbs'
@@ -532,6 +533,7 @@ async function boot(): Promise<void> {
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
+  registerNeedsYouIpc({ store, tracker })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
   setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))

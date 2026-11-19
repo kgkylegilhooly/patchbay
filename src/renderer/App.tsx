@@ -50,6 +50,7 @@ import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { NeedsYouLayer } from './NeedsYouLayer'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -497,6 +498,7 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <NeedsYouLayer commands={commands} />
         <HeaderZoomWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}

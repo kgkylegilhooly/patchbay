@@ -447,7 +447,8 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
-  ...require('./compareScenes.cjs').scenes
+  ...require('./compareScenes.cjs').scenes,
+  ...require('./needsYouScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -521,7 +522,8 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   ...require('./searchScenes.cjs').seeds,
-  ...require('./compareScenes.cjs').seeds
+  ...require('./compareScenes.cjs').seeds,
+  ...require('./needsYouScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
