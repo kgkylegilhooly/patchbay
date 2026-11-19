@@ -1,9 +1,10 @@
-import { join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { gitEnvFrom } from '../../core/git/args'
 import { LIMITS, systemGit, type GitService } from '../../core/git/service'
 import { createWorktree, removeWorktree } from '../../core/worktree/service'
 import type { CanvasStore } from '../../shared/contract'
 import { cleanEnv } from '../sessions/env'
+import { knownFolders } from '../workIpc'
 import { registerCompareIpc } from './ipc'
 import { createCompareReads } from './reads'
 import { createCompareService } from './service'
@@ -30,5 +31,7 @@ export function setupCompare(d: {
     // Electron's own binary, run as Node, so no separate Node install is needed.
     runVerify: createVerifyRunner({ launcher: d.launcher, planDir: join(d.dataDir, 'compare'), node: process.execPath, env: { ...cleanEnv(process.env, {}), ELECTRON_RUN_AS_NODE: '1' } })
   })
-  registerCompareIpc({ service, inspect: (folder) => reads.source(folder) })
+  // As with the git panel: only folders the canvas itself names can be read or worked from.
+  const known = (folder: string): boolean => !!folder && isAbsolute(folder) && knownFolders(d.store.get()).has(resolve(folder).toLowerCase())
+  registerCompareIpc({ service, inspect: (folder) => reads.source(folder), known })
 }

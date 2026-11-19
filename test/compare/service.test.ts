@@ -375,3 +375,10 @@ test('work written while the sessions stop is not lost under an earlier confirma
   expect(r).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
   expect(readFileSync(join(a.path, 'late.txt'), 'utf8')).toBe('late\n')
 })
+
+test("a worktree made for an attempt whose agent couldn't start is named as left in place", async () => {
+  const w = world({ runner: { startNode: async () => { throw new Error('no agent.') }, stopNode: async () => {} } })
+  const r = await w.service.start(await startReq())
+  expect(r.ok).toBe(false)
+  expect((r as { reason: string }).reason).toMatch(/Attempt A could not be made: no agent\. Left in place: attempt A's worktree .*try-count-a on branch try\/count-a\./)
+})

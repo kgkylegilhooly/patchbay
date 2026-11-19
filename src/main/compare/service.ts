@@ -145,16 +145,21 @@ export function createCompareService(d: CompareServiceDeps) {
     }
     const at = spot(req.projectId)
     for (const [i, key] of ATTEMPT_KEYS.entries()) {
+      let made: Worktree | null = null
       try {
-        const wt = await d.createWorktree({ repo: info.repo, branch: branches[i], base: req.base })
-        comparison.attempts.push(await makeAttempt(req, key, wt, { x: at.x + i * (GROUP.width + GAP), y: at.y }, title))
+        made = await d.createWorktree({ repo: info.repo, branch: branches[i], base: req.base })
+        comparison.attempts.push(await makeAttempt(req, key, made, { x: at.x + i * (GROUP.width + GAP), y: at.y }, title))
       } catch (e) {
-        if (!comparison.attempts.length) return { ok: false, reason: (e as Error).message }
-        // Attempt A stays: it may already hold work. It's recorded, so it can be viewed and cleaned up.
+        // Nothing is taken back: a worktree may already hold work. What's left is said, and attempts made are recorded.
+        const left = [
+          ...comparison.attempts.map((a) => `attempt ${attemptLabel(a.key)}'s worktree ${a.path} on branch ${a.branch}, with its agent`),
+          ...(made ? [`attempt ${attemptLabel(key)}'s worktree ${made.path} on branch ${made.branch}`] : [])
+        ]
+        const reason = `Attempt ${attemptLabel(key)} could not be made: ${(e as Error).message}${left.length ? ` Left in place: ${left.join('; ')}.` : ''}`
+        if (!comparison.attempts.length) return { ok: false, reason }
         all = [...all, comparison]
         save()
-        const a = comparison.attempts[0]
-        return { ok: false, reason: `Attempt ${attemptLabel(key)} could not be made: ${(e as Error).message} Left in place: attempt A's worktree ${a.path} on branch ${a.branch}, with its agent.`, comparison }
+        return { ok: false, reason, comparison }
       }
     }
     all = [...all, comparison]
