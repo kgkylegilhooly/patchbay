@@ -19,7 +19,7 @@ const deps: FileDeps = {
 }
 
 /**
- * The Files shelf and file icons' calls, on `pb:files:<method>`. Only the app's own page may make them: a web page in a
+ * The Files shelf and file icons' calls, on `pb:shelf:<method>`. Only the app's own page may make them: a web page in a
  * browser node has no way to open or list files.
  */
 export function registerFileShelfIpc(s: {
@@ -33,11 +33,11 @@ export function registerFileShelfIpc(s: {
   if (shelf.loadProblem) s.log?.(shelf.loadProblem)
   shelf.keepOnly(s.store.get().projects.map((p) => p.id))
   shelf.onChange((projectId) => {
-    for (const w of s.windows()) if (!w.isDestroyed()) w.send('pb:files:changed', projectId)
+    for (const w of s.windows()) if (!w.isDestroyed()) w.send('pb:shelf:changed', projectId)
   })
 
   const handle = (name: string, fn: (...args: unknown[]) => unknown): void => {
-    ipcMain.handle(`pb:files:${name}`, (e, ...args: unknown[]) => {
+    ipcMain.handle(`pb:shelf:${name}`, (e, ...args: unknown[]) => {
       if (!s.isAppUi(e)) throw new Error('Files are available only in the application UI.')
       return fn(...args)
     })

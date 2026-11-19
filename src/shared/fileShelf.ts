@@ -223,7 +223,7 @@ export interface FileCheckItem {
 
 export type FileActionResult = { ok: true; revealed?: boolean } | { ok: false; reason: string }
 
-/** The shelf's and file icons' calls to main, on `window.patchbayFiles`. Served in src/main/fileShelf/ipc.ts. */
+/** The shelf's and file icons' calls to main, on `window.patchbayFileShelf`. Served in src/main/fileShelf/ipc.ts. */
 export interface FileShelfBridge {
   list(projectId: string): Promise<ShelfEntry[]>
   note(projectId: string, entries: ShelfEntry[]): Promise<void>

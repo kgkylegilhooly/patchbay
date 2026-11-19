@@ -33,6 +33,7 @@ const KIND_NAMES: Record<CanvasNode['kind'], string> = {
   group: 'group',
   browser: 'browser',
   trigger: 'trigger',
+  reader: 'reader',
   file: 'file'
 }
 

@@ -48,7 +48,7 @@ const seedShelf = (page) =>
       { path: files[6].path, source: 'pin', at: now - 4 * 86400_000 },
       { path: files[8].path, source: 'drop', at: now - 6 * 86400_000 }
     ]
-    await window.patchbayFiles.note(doc.activeProjectId, entries.reverse())
+    await window.patchbayFileShelf.note(doc.activeProjectId, entries.reverse())
   })
 
 const seeds = {

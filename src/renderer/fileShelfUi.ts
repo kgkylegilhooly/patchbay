@@ -10,11 +10,11 @@ import type { MenuEntry, MenuItem } from './menus'
 
 declare global {
   interface Window {
-    patchbayFiles?: FileShelfBridge
+    patchbayFileShelf?: FileShelfBridge
   }
 }
 
-export const filesBridge = (): FileShelfBridge | undefined => (typeof window === 'undefined' ? undefined : window.patchbayFiles)
+export const filesBridge = (): FileShelfBridge | undefined => (typeof window === 'undefined' ? undefined : window.patchbayFileShelf)
 
 interface FilesUi {
   open: boolean

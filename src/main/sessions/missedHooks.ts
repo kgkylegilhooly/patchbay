@@ -27,6 +27,8 @@ export interface MissedSummary {
   /** Only set when the events say. */
   hasConversation?: boolean
   promptSubmitted: boolean
+  /** The StopFailure that left it `unknown`, if that's how the events end: why it stopped, such as a usage limit. */
+  stopFailure?: MissedHook & Record<string, unknown>
 }
 
 const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
@@ -40,6 +42,8 @@ export function foldMissedHooks(events: MissedHook[]): MissedSummary {
     const before = summary.status
     summary.status = nextStatus(before, { type: 'hook', name, notificationType: text(event.notification_type), reason: text(event.reason) })
     if (summary.status === 'idle' && before !== 'idle') summary.turns++
+    if (name === 'StopFailure' && summary.status === 'unknown') summary.stopFailure = event as MissedHook & Record<string, unknown>
+    else if (summary.status !== 'unknown') delete summary.stopFailure
     if (name === 'UserPromptSubmit') {
       summary.promptSubmitted = true
       summary.hasConversation = true

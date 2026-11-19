@@ -53,7 +53,9 @@ const hook = (name, extra = {}) => {
 }
 
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
-const chat = /\bchat\b/.test(prompt)
+// "edits=a.ts,b.ts" also keeps one, and runs a turn that edits those files in its folder. See editTurn.
+const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? null
+const chat = /\bchat\b/.test(prompt) || !!edits
 // "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
 const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
 const transcript = chat || fanout ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
@@ -109,6 +111,31 @@ function fanOut(count) {
   }
 }
 
+/**
+ * One turn that edits files as Claude's Edit tool would: the file changes, and the transcript records the call and its
+ * result. A name starting with "?" gets no result line, so it stays unconfirmed. Waits first, for the turn's snapshot.
+ */
+async function editTurn(files) {
+  const path = require('node:path')
+  const line = (entry) => fs.appendFileSync(transcript, `${JSON.stringify({ ...entry, timestamp: new Date().toISOString() })}\n`)
+  say('user', `Edit ${files.join(', ')}`)
+  await hook('UserPromptSubmit')
+  await new Promise((r) => setTimeout(r, 2500))
+  files.forEach((name, i) => {
+    const open = name.startsWith('?')
+    const file = path.join(process.cwd(), open ? name.slice(1) : name)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+    fs.writeFileSync(file, `${before}// edited by ${process.env.PATCHBAY_NODE_ID}\nexport const changed${i} = true\n`)
+    const id = `toolu_fake_${i}`
+    line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file, old_string: '', new_string: 'x' } }] } })
+    if (!open) line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'The file was updated.' }] } })
+  })
+  await hook('PostToolUse')
+  say('assistant', `Edited ${files.length} files.`)
+  await hook('Stop')
+}
+
 async function main() {
   process.stdout.write(`Pretend Claude. Prompt: ${prompt || '(none)'}\r\n`)
   if (chat || fanout) fs.writeFileSync(transcript, '')
@@ -117,6 +144,7 @@ async function main() {
   if (context && settings.statusLine) {
     await runCommand(settings.statusLine.command, { session_id: sessionId, context_window: { used_percentage: Number(context[1]) } })
   }
+  if (edits) await editTurn(edits)
   if (/\bneeds\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('Notification', { notification_type: 'permission_prompt' })
@@ -127,6 +155,13 @@ async function main() {
   } else if (/\bworking\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     if (fanout) fanOut(fanout)
+  } else if (/\blimit\b/.test(prompt)) {
+    // Ends its turn on the usage limit, as Claude does with StopFailure.
+    await hook('UserPromptSubmit')
+    await hook('StopFailure', { error: 'rate_limit', last_assistant_message: "You've hit your 5-hour limit · resets 12:30am" })
+  } else if (/\bloginfail\b/.test(prompt)) {
+    await hook('UserPromptSubmit')
+    await hook('StopFailure', { error: 'authentication_failed', last_assistant_message: 'Invalid API key · Please run /login' })
   } else if (/\bunknown\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('StopFailure')
@@ -138,9 +173,17 @@ async function main() {
     const cli = require('node:path').join(__dirname, '..', '..', 'resources', 'cli', 'patchbay.cjs')
     spawn(process.execPath, [cli, 'sticky', '--title', 'Plan', '--text', 'Notes from the lead'], { stdio: 'ignore', windowsHide: true })
   }
+  // With "paste" in the prompt it reads input as Claude Code does: raw, with bracketed paste on. Otherwise the console
+  // reads it a line at a time, echoing it itself and dropping paste markers and line breaks inside a message.
+  if (/\bpaste\b/.test(prompt) && process.stdin.isTTY) {
+    process.stdin.setRawMode(true)
+    process.stdout.write('\x1b[?2004h')
+  }
   // Left idle otherwise, and it stays open, echoing what's typed, like a program waiting for input.
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (d) => process.stdout.write(d))
+  // Every byte typed into it, for a check of exactly what a send delivered.
+  if (process.env.FAKE_INPUT_LOG) process.stdin.on('data', (d) => fs.appendFileSync(process.env.FAKE_INPUT_LOG, d))
   // With "turns" in the prompt, each submitted line is a turn: "busy" starts one and leaves it running, "done" ends
   // it, and anything else is a prompt it reports, then finishes a moment later. That's what idle gating needs.
   if (/\bturns\b/.test(prompt)) {

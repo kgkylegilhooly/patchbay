@@ -6,6 +6,7 @@ import { isSessionNode, whereShown, type AgentStatus, type CanvasNode } from '..
 import { bridge } from '../bridge'
 import { KindIcon } from '../icons'
 import { PortChips } from '../PortChips'
+import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
 import { runDot, runFailed, runLabel } from './runView'
@@ -211,12 +212,12 @@ export function NodeChrome({
   const card = (
     <div className={classes.join(' ')}>
       <header className="unit-head pb-drag" onDoubleClick={headerZoom}>
-        <StatusDot status={isRun ? runDot(run) : status} />
+        <StatusDot status={isRun ? runDot(run) : status} nodeId={node.id} />
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
         {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
-        {status && <StatusBadge status={status} />}
+        {status && <StatusBadge status={status} nodeId={node.id} />}
         {isRun && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
         {node.kind === 'run' && node.launch && (
           <span className="run-launch" title={`From ${node.launch.folder}\\.vscode\\launch.json, read again at each run`}>
@@ -228,6 +229,7 @@ export function NodeChrome({
             {context.text}
           </span>
         )}
+        {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
         <span className="cwd" title={cwd}>
           {cwd}
         </span>

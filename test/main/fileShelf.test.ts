@@ -149,3 +149,24 @@ describe('checking what is there', () => {
     expect(touched).not.toContain('\\\\attacker\\share\\x.png')
   })
 })
+
+describe('documents opened in a Reader', () => {
+  test('go on their project shelf as the doc viewer source, with the node they came from; ones already open are added once', async () => {
+    const { noteReaders } = await import('../../src/main/fileShelf/readers')
+    const { memoryStore } = await import('../control/fakes')
+    const base = { x: 0, y: 0, width: 10, height: 10, parentId: null }
+    const store = memoryStore([
+      { ...base, id: 'a', kind: 'claude', title: 'Planner', cwd: 'C:/', sessionId: null, transcriptPath: null, after: [], projectId: 'p1' },
+      { ...base, id: 'r0', kind: 'reader', title: 'Old', path: 'C:/docs/old.md', projectId: 'p1' }
+    ])
+    const shelf = new FileShelfStore(join(dir, 's.json'), { writeDelayMs: 60_000 })
+    shelf.note('p1', { path: 'C:/docs/old.md', source: 'drop', at: 1 })
+    const stop = noteReaders(store, shelf, () => 500)
+    expect(shelf.list('p1')).toEqual([{ path: 'C:/docs/old.md', source: 'drop', at: 1 }])
+    store.dispatch({ op: 'addNode', node: { ...base, id: 'r1', kind: 'reader', title: 'Plan', path: 'C:/docs/plan.md', fromNodeId: 'a', projectId: 'p1' } })
+    store.dispatch({ op: 'patchNode', id: 'r1', patch: { title: 'Plan v2' } })
+    expect(shelf.list('p1')[0]).toEqual({ path: 'C:/docs/plan.md', source: 'doc', at: 500, nodeTitle: 'Planner' })
+    expect(shelf.list('p1')).toHaveLength(2)
+    stop()
+  })
+})

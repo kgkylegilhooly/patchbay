@@ -11,6 +11,8 @@ import { bridge, subscribeOutput } from '../bridge'
 import { ContextMenu } from '../Menu'
 import type { Point } from '../menus'
 import { linkMenu as linkMenuEntries, pathMenu as pathMenuEntries } from '../pathMenu'
+import { isDocPath } from '../../shared/reader'
+import { openDocument } from '../reader/readerUi'
 import { linkKind } from '../terminalPaths'
 import { copyText } from '../clipboard'
 import { noteShared, pinFiles } from '../fileShelfActions'
@@ -116,7 +118,8 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
           report(r)
           const from = useStore.getState().doc?.nodes.find((n) => n.id === nodeId)
           if (r.ok) pinFiles([r.path], { besideId: nodeId }, 'pin', from?.title)
-        })
+        }),
+      ...(isDocPath(target) ? { reader: () => void openDocument(target, { fromNodeId: nodeId }).then(report) } : {})
     }
   }
 

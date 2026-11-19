@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { sanitizeBoard } from '../../shared/board'
 import { recoverTasks, sanitizeTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
+import { withArchiveChecked } from './archiveCheck'
 import { isWhiteboardShape, LIMITS } from '../../shared/whiteboard'
 import {
   isMissingFile,
@@ -65,7 +66,21 @@ function isSchedule(s: unknown): boolean {
   if (!isObject(s)) return false
   if (s.type === 'cron') return isString(s.expr)
   if (s.type === 'interval') return isNumber(s.everyMs)
+  // Event kinds. See src/core/trigger/events.ts.
+  if (s.type === 'agent') return isString(s.nodeId) && (s.on === 'turn' || s.on === 'needs-you' || s.on === 'exit')
+  if (s.type === 'run') return isString(s.nodeId) && typeof s.failedOnly === 'boolean'
+  if (s.type === 'files') return isString(s.folder) && isString(s.glob) && isNumber(s.quietMs)
   return s.type === 'once' && isNumber(s.at)
+}
+
+/** Optional on a trigger, so ones saved before they existed load as they were. */
+function isTriggerExtras(n: Fields): boolean {
+  const p = n.preflight
+  const l = n.limits
+  return (
+    (p === undefined || p === null || (isObject(p) && Array.isArray(p.argv) && p.argv.every(isString) && isString(p.cwd))) &&
+    (l === undefined || (isObject(l) && isNumber(l.gapMs) && isNumber(l.perHour)))
+  )
 }
 
 function isTriggerRun(r: unknown): boolean {
@@ -73,9 +88,12 @@ function isTriggerRun(r: unknown): boolean {
     isObject(r) &&
     isString(r.id) &&
     isNumber(r.at) &&
-    (r.source === 'schedule' || r.source === 'manual') &&
-    (r.outcome === 'delivered' || r.outcome === 'queued' || r.outcome === 'missed' || r.outcome === 'failed') &&
-    (r.detail === undefined || isString(r.detail))
+    (r.source === 'schedule' || r.source === 'manual' || r.source === 'event') &&
+    (r.outcome === 'delivered' || r.outcome === 'queued' || r.outcome === 'missed' || r.outcome === 'failed' || r.outcome === 'skipped') &&
+    (r.detail === undefined || isString(r.detail)) &&
+    (r.event === undefined || isString(r.event)) &&
+    (r.repeats === undefined || isNumber(r.repeats)) &&
+    (r.preflight === undefined || (isObject(r.preflight) && isNumberOrNull(r.preflight.code) && isString(r.preflight.tail)))
   )
 }
 
@@ -122,12 +140,15 @@ function isNode(n: unknown): boolean {
         isNumberOrNull(n.armedAt) &&
         isNumberOrNull(n.nextAt) &&
         Array.isArray(n.runs) &&
-        n.runs.every(isTriggerRun)
+        n.runs.every(isTriggerRun) &&
+        isTriggerExtras(n)
       )
     case 'browser':
       return isString(n.url) && (n.held === undefined || typeof n.held === 'boolean')
     case 'file':
       return isString(n.path) && n.path.length > 0
+    case 'reader':
+      return isString(n.path) && (n.fromNodeId === undefined || isString(n.fromNodeId))
     case 'group':
       return (
         n.worktree === null ||
@@ -220,7 +241,7 @@ function showOpenProject(doc: CanvasDoc): CanvasDoc {
     return showOpenProject({ ...doc, activeProjectId: fallback.id })
   }
   if (isProjectOpen(active)) return doc
-  return { ...doc, projects: doc.projects.map((p) => (p === active ? { ...p, closedAt: undefined } : p)) }
+  return { ...doc, projects: doc.projects.map((p) => (p === active ? { ...p, closedAt: undefined, archivedAt: undefined } : p)) }
 }
 
 /** A node in no known project would be on no tab, looking lost while its session kept running. */
@@ -238,7 +259,8 @@ function rehomeOrphans(doc: CanvasDoc): CanvasDoc {
 export function migrate(input: unknown): CanvasDoc {
   if (!isObject(input)) throw new Error('Save file is not an object')
   const atTwo = input.version === 1 ? fromVersion1(input) : input
-  const raw = atTwo.version === 2 ? fromVersion2(atTwo) : atTwo
+  const atThree = atTwo.version === 2 ? fromVersion2(atTwo) : atTwo
+  const raw: Fields = { ...atThree, projects: withArchiveChecked(atThree.projects) }
   if (raw.version !== CURRENT_VERSION) throw new Error(`Unsupported save file version: ${String(raw.version)}`)
   if (!Array.isArray(raw.projects) || raw.projects.length === 0 || !raw.projects.every(isProject)) {
     throw new Error('Save file has invalid projects')

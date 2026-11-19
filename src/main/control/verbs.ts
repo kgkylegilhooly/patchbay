@@ -24,9 +24,12 @@ import { FILE_NODE_SIZE } from '../../shared/fileShelf'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
+import { archivedRefusal } from './archived'
 import { absoluteRect, placeInGroup, placeNear, projectOf, viewRect } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
 import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agents'
+import type { AgentStops } from '../sessions/agentStops'
+import { restartVerb, stoppedEntry } from './stopVerbs'
 import { profileArg, type ProfileList, type TerminalProfile } from '../../shared/terminalProfiles'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
@@ -209,11 +212,14 @@ export function createVerbs({
   agents = () => ({ enabled: [...AGENT_KINDS], default: defaultAgent() }),
   terminalProfiles,
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
+  stops,
   log,
   onFilePinned
 }: {
   /** An agent put a file on the canvas, for the Files shelf. */
   onFilePinned?: (projectId: string, path: string, by: string) => void
+  /** Agents stopped on StopFailure, such as at a usage limit: see sessions/agentStops.ts. */
+  stops?: Pick<AgentStops, 'get'>
   tasks?: TaskService
   waitTiming?: WaitTiming
   /** How long send waits to see its message in the target's transcript. */
@@ -236,7 +242,7 @@ export function createVerbs({
   terminalProfiles?: () => ProfileList
   github?: GithubRead
   store: CanvasStore
-  runner: Pick<NodeRunner, 'startNode' | 'stopNode'>
+  runner: Pick<NodeRunner, 'startNode' | 'stopNode'> & Partial<Pick<NodeRunner, 'restartNode' | 'errors'>>
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
   host: Pick<SessionHost, 'write' | 'snapshot' | 'isRunning' | 'forget'>
   gate: AfterGate
@@ -339,6 +345,20 @@ export function createVerbs({
 
   const sendQueue = queue ?? createSendQueue({ host, tracker, exists: (id) => !!find(id), timing })
 
+  /** Why a node stopped on StopFailure, such as at a usage limit, while its status is still the `unknown` that left. */
+  const stopEntry = (id: string): { stopped?: ReturnType<typeof stoppedEntry> } => {
+    const stop = tracker.get(id) === 'unknown' && find(id) ? stops?.get(id) : undefined
+    return stop ? { stopped: stoppedEntry(stop) } : {}
+  }
+  /** `stopped` for those of these nodes that are, by id. Nothing when none are. */
+  const stoppedOf = (ids: string[]): { stopped?: Record<string, ReturnType<typeof stoppedEntry>> } => {
+    const entries = ids.flatMap((id) => {
+      const { stopped } = stopEntry(id)
+      return stopped ? [[id, stopped] as const] : []
+    })
+    return entries.length ? { stopped: Object.fromEntries(entries) } : {}
+  }
+
   /**
    * The first line of a message to an agent, saying which node sent it, so the agent can tell a lead from a peer and
    * from the person, whose own messages carry no such line. Only an agent is offered a way to reply.
@@ -377,7 +397,8 @@ export function createVerbs({
     const queued = sendQueue.add(id, { text, from: caller, said: body, onTyped }) === 'queued'
     waited = queued
     onMessage?.(caller, id, body)
-    if (queued) return { delivered: false, queued: true }
+    const { stopped } = stopEntry(id)
+    if (queued) return { delivered: false, queued: true, ...(stopped ? { held: stopped.text } : {}) }
     return check ?? { delivered: true }
   }
 
@@ -423,7 +444,9 @@ export function createVerbs({
     const finished = (id: string, now: number): boolean => {
       const status = tracker.get(id) ?? 'unknown'
       if (!find(id)) return true
-      if (!SETTLED.has(status) || sendQueue.busy(id)) {
+      // Stopped at a usage limit or on an error: finished for now, whatever is waiting for it. The reply says why.
+      const stopped = status === 'unknown' && !!stops?.get(id)
+      if (!stopped && (!SETTLED.has(status) || sendQueue.busy(id))) {
         moved.add(id)
         settledAt.delete(id)
         return false
@@ -445,6 +468,7 @@ export function createVerbs({
           done: over,
           ...(over ? {} : { timedOut: true }),
           nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
+          ...stoppedOf(ids),
           ...(handed.length ? { messages: handed.map((m) => ({ from: m.from, text: m.said ?? m.text })) } : {}),
           waitedSeconds: Math.round((now - started) / 100) / 10
         })
@@ -905,7 +929,7 @@ export function createVerbs({
         parentId: n.parentId,
         openedBy: n.openedBy ?? null,
         access: accessOf(caller, n),
-        ...(n.kind === 'claude' ? { agent: agentOf(n), status: tracker.get(n.id), cwd: n.cwd, after: n.after } : {}),
+        ...(n.kind === 'claude' ? { agent: agentOf(n), status: tracker.get(n.id), cwd: n.cwd, after: n.after, ...stopEntry(n.id) } : {}),
         ...(n.kind === 'terminal' || n.kind === 'run' ? { cwd: n.cwd, running: host.isRunning(n.id) } : {}),
         ...(n.kind === 'group' && n.worktree ? { branch: n.worktree.branch, cwd: n.worktree.path } : {}),
         ...(n.kind === 'browser' ? { url: n.url, held: !!n.held } : {}),
@@ -913,7 +937,7 @@ export function createVerbs({
         ...(n.kind === 'file' ? { path: n.path } : {}),
         // An agent can see what triggers there are. Only the person can arm one, and the prompt stays with read access.
         ...(n.kind === 'trigger'
-          ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
+          ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule, (id) => doc.nodes.find((o) => o.id === id)?.title), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
           : {})
       })),
       edges: doc.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map(({ from, to, kind }) => ({ from, to, kind }))
@@ -946,6 +970,8 @@ export function createVerbs({
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
     const args = withIds(caller, given)
+    const archived = archivedRefusal(store.get(), caller, args)
+    if (archived) refuse(archived)
     if (verb.startsWith('task-')) {
       if (!tasks) refuse('Tasks are not available here.')
       return taskVerb(tasks, caller, verb, args)
@@ -997,6 +1023,11 @@ export function createVerbs({
         return send(callerId, args)
       case 'close':
         return close(callerId, args)
+      case 'restart': {
+        const node = existing(required(args, 'node'))
+        const restartNode = runner.restartNode ?? refuse('Restarting nodes is not available here.')
+        return restartVerb(callerId, node, { status: tracker.get(node.id), running: host.isRunning(node.id), agentOff: (n) => agentOffReason(agentOf(n), agents()), restart: restartNode, error: (id) => runner.errors?.()[id]?.message })
+      }
       case 'issues':
       case 'prs':
         return githubVerb(caller, verb, args)

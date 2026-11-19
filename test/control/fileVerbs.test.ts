@@ -66,3 +66,15 @@ test('pin-file refuses a network share, a relative path and a file that is not t
   await refused(verbs('me', 'pin-file', {}), /--path is required/)
   expect(store.get().nodes.filter((n) => n.kind === 'file')).toEqual([])
 })
+
+test('pin-file is refused from an archived project, like every other verb', async () => {
+  const file = join(dir, 'a.txt')
+  writeFileSync(file, 'x')
+  const { verbs, store } = setup()
+  store.dispatch({ op: 'addProject', project: { id: 'p1', name: 'Old work', folder: dir, viewport: { x: 0, y: 0, zoom: 1 } } })
+  store.dispatch({ op: 'addProject', project: { id: 'p2', name: 'Now', folder: dir, viewport: { x: 0, y: 0, zoom: 1 } } })
+  store.dispatch({ op: 'archiveProject', id: 'p1', at: 1 } as never)
+  expect(store.get().projects.find((p) => p.id === 'p1')?.archivedAt).toBe(1)
+  await refused(verbs('me', 'pin-file', { path: file }), /archived/)
+  expect(store.get().nodes.filter((n) => n.kind === 'file')).toEqual([])
+})

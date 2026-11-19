@@ -52,7 +52,11 @@ import { SearchLayer } from './SearchLayer'
 import { ReviewInboxLayer } from './ReviewInbox'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { ProjectsLayer } from './ProjectsLayer'
 import { SubagentLayer } from './subagents/SubagentLayer'
+import { NeedsYouLayer } from './NeedsYouLayer'
+import { ReaderNode } from './reader/ReaderNode'
+import { ReaderLayer } from './reader/ReaderLayer'
 import { FileNode } from './nodes/FileNode'
 import { dropFileOnWindow, FileShelfLayer } from './FileShelf'
 import { HeaderZoomWatcher } from './useHeaderZoom'
@@ -65,7 +69,7 @@ import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
 
-const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, file: FileNode }
+const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -225,7 +229,7 @@ function Canvas(): React.JSX.Element | null {
       hasWindow: windowId !== null,
       canName: windowKind === 'terminal' || windowKind === 'claude',
       canCloseProject: (current?.projects.filter(isProjectOpen).length ?? 0) > 1,
-      closedProjects: current?.projects.filter((p) => !isProjectOpen(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
+      closedProjects: current?.projects.filter((p) => !isProjectOpen(p) && p.archivedAt === undefined).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
       gitPanel: useStore.getState().gitOpen,
       board: useStore.getState().boardOpen,
       focus: !!useStore.getState().focus
@@ -505,6 +509,9 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <ProjectsLayer commands={commands} />
+        <NeedsYouLayer commands={commands} />
+        <ReaderLayer />
         <HeaderZoomWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}

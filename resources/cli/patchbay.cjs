@@ -38,12 +38,15 @@ const VERBS = {
   draw: { node: 'text', diagram: 'text', 'diagram-file': 'path', replace: 'flag' },
   link: { from: 'text', to: 'text' },
   read: { node: 'text', tail: 'int' },
+  files: { node: 'text', turn: 'flag' },
   send: { node: 'text', text: 'text' },
   wait: { nodes: 'list', node: 'text', timeout: 'int', any: 'flag' },
   close: { node: 'text' },
+  restart: { node: 'text' },
   issues: { state: 'text', limit: 'int', number: 'int' },
   prs: { state: 'text', limit: 'int' },
   'open-browser': { url: 'text', group: 'text', title: 'text' },
+  'open-doc': { path: 'path', title: 'text', group: 'text' },
   recipes: { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list' },
   'run-recipe': { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list', hash: 'text' },
   'browser navigate': { node: 'text', url: 'text' },
@@ -87,14 +90,17 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   pin-file      --path FILE [--title T] [--group ID]   puts a file's icon on the canvas for the person (a reference; nothing is copied)
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
   draw          --node ID (--diagram JSON | --diagram-file FILE|-) [--replace]   draws boxes and arrows on a whiteboard
-  link          --to ID [--from ID]
+  link          --to ID [--from ID]   joins you or a node you opened to another you opened
   read          --node ID [--tail N]
+  files         [--node ID] [--turn]   files an agent edited (itself by default), newest first; --turn: the latest turn only
   send          --node ID --text TEXT
   wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
   close         --node ID
+  restart       --node ID        brings back an agent you opened that has exited, resuming its conversation
   issues        [--state open|closed|all] [--limit N] [--number N]   (read-only)
   prs           [--state open|closed|merged|all] [--limit N]         (read-only)
   open-browser  [--url URL] [--group ID] [--title T]
+  open-doc      --path FILE [--title T] [--group ID]   shows a Markdown file (a plan, a report) to the person in a reader; they comment and send the comments to you
   recipes       [--name N [--source S] [--task T] [--branch B] [--no-worktree] [--cwd DIR]]   lists recipes, or previews one; runs nothing
   run-recipe    --name N [--source built-in|personal|repository] [--task T] [--branch B] [--repo DIR] [--no-worktree] [--cwd DIR] [--skip KEY,KEY] [--hash H]
   browser navigate   --node ID --url URL

@@ -28,6 +28,7 @@ import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startup
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 import { asPaste } from './paste'
+import { ARCHIVED_START, inArchivedProject } from '../../core/canvas/projectOps'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
@@ -63,6 +64,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
   takeMissedHooks?: (id: string) => MissedHook[]
+  /** A StopFailure found among them, when it's how they end: why the agent stopped, such as a usage limit. */
+  onMissedStopFailure?: (id: string, event: Record<string, unknown>) => void
   /** When a session last signalled a tool call ending through a file. See signals.ts. */
   latestSignal?: (id: string) => number | undefined
   /**
@@ -375,6 +378,8 @@ export function createNodeRunner({
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
+    // Covers every way in: the after-gate, triggers, launch, the page and agents.
+    if (inArchivedProject(store.get(), node)) return setError(id, { code: 'spawn-failed', message: ARCHIVED_START })
     setError(id, null)
     const off = node.kind === 'claude' ? agentOff(node) : null
     if (off) {
@@ -408,6 +413,7 @@ export function createNodeRunner({
     if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
     const missed = foldMissedHooks(events)
     tracker.seed(id, missed.status, missed.turns)
+    if (missed.stopFailure) ctx.onMissedStopFailure?.(id, missed.stopFailure)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation
     if (missed.promptSubmitted) {
       const node = nodeById(id)

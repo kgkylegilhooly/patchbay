@@ -4,9 +4,9 @@ import type { FileShelfBridge } from '../shared/fileShelf'
 const call =
   (name: string) =>
   (...args: unknown[]): Promise<never> =>
-    ipcRenderer.invoke(`pb:files:${name}`, ...args) as Promise<never>
+    ipcRenderer.invoke(`pb:shelf:${name}`, ...args) as Promise<never>
 
-/** Every call is one request on `pb:files:<method>`, served in src/main/fileShelf/ipc.ts. */
+/** Every call is one request on `pb:shelf:<method>`, served in src/main/fileShelf/ipc.ts. */
 const files: FileShelfBridge = {
   list: call('list'),
   note: call('note'),
@@ -16,8 +16,8 @@ const files: FileShelfBridge = {
   reveal: call('reveal'),
   onChanged: (cb) => {
     const listener = (_e: unknown, projectId: string): void => cb(projectId)
-    ipcRenderer.on('pb:files:changed', listener)
-    return () => ipcRenderer.removeListener('pb:files:changed', listener)
+    ipcRenderer.on('pb:shelf:changed', listener)
+    return () => ipcRenderer.removeListener('pb:shelf:changed', listener)
   },
   pathForFile: (file) => {
     try {
@@ -29,5 +29,5 @@ const files: FileShelfBridge = {
 }
 
 export function exposeFileShelf(): void {
-  contextBridge.exposeInMainWorld('patchbayFiles', files)
+  contextBridge.exposeInMainWorld('patchbayFileShelf', files)
 }
