@@ -8,7 +8,9 @@ import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
-import { claudeRunsBash, pickDefaultShell } from './sessions/shell'
+import { claudeRunsBash, terminalProfiles } from './sessions/shell'
+import { terminalStartFor } from './sessions/terminalStart'
+import { registerTerminalProfileIpc } from './terminalProfilesIpc'
 import { watchSignals, type SignalWatcher } from './sessions/signals'
 import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
@@ -352,6 +354,7 @@ async function boot(): Promise<void> {
       endpointFile,
       secret,
       settings: currentSettings,
+      typePrefix: (id) => sendGuard.prefixFor(id),
       takeMissedHooks: (id) => takeMissedHooks(journalDir, id)
     }
   })
@@ -388,7 +391,7 @@ async function boot(): Promise<void> {
   const sendGuard = createSendGuard({
     isGitBash: (id) => {
       const node = store.get().nodes.find((n) => n.id === id)
-      return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(pickDefaultShell(currentSettings().shell).file)
+      return node?.kind === 'terminal' && node.sshHost === undefined && isGitBashFile(terminalStartFor({ settings: currentSettings }, node, true).file)
     }
   })
   const sendQueue = createSendQueue({ host, tracker, exists: (id) => store.get().nodes.some((n) => n.id === id), prefix: sendGuard.prefixFor, pasteOn: sendGuard.pasteOn, draft: sendGuard })
@@ -411,7 +414,7 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -536,6 +539,7 @@ async function boot(): Promise<void> {
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
+  registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
   setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))

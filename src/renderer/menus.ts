@@ -5,6 +5,7 @@ import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
+import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
 
 export interface Point {
@@ -44,7 +45,8 @@ export interface Commands {
   deleteProject(id: string): void
   /** Shows a session, switching to its project first if need be. */
   revealNode(id: string): void
-  newTerminal(at?: Point, groupId?: string): void
+  /** With a profile id, a terminal of that profile. Without, the default. */
+  newTerminal(at?: Point, groupId?: string, profileId?: string): void
   newTerminalForm(at?: Point, groupId?: string): void
   newSshForm(at?: Point, groupId?: string): void
   newClaudeForm(at?: Point, groupId?: string): void
@@ -131,6 +133,7 @@ export interface MenuState {
 export function addMenu(c: Commands, at?: Point): MenuEntry[] {
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
@@ -256,6 +259,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   const extensions = canvasExtensions(c, at)
   return [
     { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
     { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
     { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },

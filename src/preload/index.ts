@@ -4,6 +4,7 @@ import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
 import { exposeReview } from './review'
+import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
 
 /**
@@ -135,6 +136,7 @@ exposeWork()
 exposeSearch()
 exposeRecipes()
 exposeReview()
+exposeTerminalProfiles()
 exposeCompare()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,

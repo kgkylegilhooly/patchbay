@@ -5,6 +5,7 @@ import { bridge } from './bridge'
 import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
+import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfilesUi'
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
@@ -47,6 +48,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
   defaultFolder: (groupId?: string) => string
+  /** Where a new terminal of this profile (the default, with none) opens: see terminalFolderFor. */
+  terminalFolder: (groupId?: string, profileId?: string) => string
   fitAll: () => void
 } {
   const flow = useReactFlow<FlowNode, FlowEdge>()
@@ -71,6 +74,10 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       if (isSessionNode(node)) return node.cwd
       return doc().projects.find((p) => p.id === doc().activeProjectId)?.folder || lastFolder.current
     }
+
+    /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
+    const terminalFolder = (groupId?: string, profileId?: string): string =>
+      terminalFolderFor({ worktree: groupFor(groupId)?.worktree?.path, profileCwd: profileFolder(profileId), fallback: defaultFolder(groupId) })
 
     const place = (at?: Point, groupId?: string) => {
       const group = groupFor(groupId)
@@ -153,7 +160,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }
         center(id)
       },
-      newTerminal: (at, groupId) => open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: defaultFolder(groupId) })),
+      newTerminal: (at, groupId, profileId) =>
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) })),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),
@@ -236,7 +244,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string }): void => {
       lastFolder.current = fields.cwd || lastFolder.current
       if (form.editId) {
         // Applies from the next run. Whatever's running now keeps running.
@@ -262,7 +270,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       open(
         form.kind === 'claude' || form.kind === 'codex'
           ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
-          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text })
+          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) })
       )
     }
 
@@ -303,6 +311,6 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       else dispatch({ op: 'addNode', node: newTrigger(place(form.at), crypto.randomUUID(), fields) })
     }
 
-    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, fitAll }
+    return { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder, fitAll }
   }, [flow, prefsRef, selectedRef, setForm, setNodes, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen])
 }

@@ -460,6 +460,7 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
+  ...require('./terminalProfileScenes.cjs').scenes,
   ...require('./compareScenes.cjs').scenes
 }
 
