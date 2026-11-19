@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
 import { gitEnvFrom } from '../../src/core/git/args'
-import { createFilesTouched, type AgentInfo } from '../../src/main/files/service'
-import { diffFile, gitRunner, insideRoot, snapshotTree } from '../../src/main/files/snapshot'
+import { createFilesTouched, diffLabel, type AgentInfo } from '../../src/main/files/service'
+import { diffFile, gitRunner, insideRoot, objectEnv, pruneObjects, snapshotTree, UNTRACKED_MAX_BYTES } from '../../src/main/files/snapshot'
 import { withFilesVerbs } from '../../src/main/files/verbs'
 import { cleanEnv } from '../../src/main/sessions/env'
 import type { CanvasStore } from '../../src/shared/contract'
@@ -37,7 +37,7 @@ function repo(): string {
 describe('snapshots', () => {
   test('a snapshot holds untracked files and leaves the real index and status alone', async () => {
     const root = repo()
-    const tmp = temp()
+    const tmp = { tmpDir: temp(), objectDir: join(temp(), 'objects') }
     writeFileSync(join(root, 'new.ts'), 'brand new\n')
     writeFileSync(join(root, 'a.ts'), 'one\ntwo\n')
     const before = sh(root, 'status', '--porcelain')
@@ -45,18 +45,70 @@ describe('snapshots', () => {
     expect(snap.ok).toBe(true)
     if (!snap.ok) return
     expect(sh(root, 'status', '--porcelain')).toBe(before)
-    expect(sh(root, 'ls-tree', '--name-only', snap.tree).split('\n')).toContain('new.ts')
+    expect(await git(root, ['ls-tree', '--name-only', snap.tree], { env: objectEnv(tmp, snap.objects) }).then((r) => r.stdout.split('\n'))).toContain('new.ts')
     writeFileSync(join(root, 'a.ts'), 'one\ntwo\nthree\n')
     const later = await snapshotTree(git, join(root), tmp)
     if (!later.ok) throw new Error(later.problem)
-    const d = await diffFile(git, root, snap.tree, later.tree, 'a.ts')
+    const d = await diffFile(git, root, snap.tree, later.tree, 'a.ts', objectEnv(tmp, later.objects))
     expect(d.ok && d.text).toMatch(/^\+three$/m)
     expect(d.ok && d.text).not.toMatch(/^\+two$/m)
   })
 
   test('a folder outside git has no snapshot, and says why', async () => {
-    const snap = await snapshotTree(git, temp(), temp())
+    const snap = await snapshotTree(git, temp(), { tmpDir: temp(), objectDir: temp() })
     expect(snap).toMatchObject({ ok: false, root: null })
+  })
+
+  test("a snapshot's objects go to Patchbay's own folder, never the repository's", async () => {
+    const root = repo()
+    const store = { tmpDir: temp(), objectDir: join(temp(), 'objects') }
+    const loose = (dir: string): number => readdirSync(dir).filter((d) => /^[0-9a-f]{2}$/.test(d)).reduce((n, d) => n + readdirSync(join(dir, d)).length, 0)
+    const repoBefore = loose(join(root, '.git', 'objects'))
+    writeFileSync(join(root, 'a.ts'), 'changed\n')
+    writeFileSync(join(root, 'untracked.ts'), 'new file\n')
+    const snap = await snapshotTree(git, root, store)
+    expect(snap.ok).toBe(true)
+    expect(loose(join(root, '.git', 'objects'))).toBe(repoBefore)
+    expect(loose(store.objectDir)).toBeGreaterThan(0)
+    // Without Patchbay's folder, the repository can't see the snapshot at all.
+    if (snap.ok) expect((await git(root, ['cat-file', '-t', snap.tree], {})).code).not.toBe(0)
+  })
+
+  test('untracked files over the size limit are left out, and counted', async () => {
+    const root = repo()
+    writeFileSync(join(root, 'big.bin'), Buffer.alloc(UNTRACKED_MAX_BYTES + 1))
+    writeFileSync(join(root, 'small.ts'), 'x\n')
+    const store = { tmpDir: temp(), objectDir: join(temp(), 'objects') }
+    const snap = await snapshotTree(git, root, store)
+    if (!snap.ok) throw new Error(snap.problem)
+    expect(snap.skipped).toBe(1)
+    const names = (await git(root, ['ls-tree', '--name-only', snap.tree], { env: objectEnv(store, snap.objects) })).stdout.split('\n')
+    expect(names).toContain('small.ts')
+    expect(names).not.toContain('big.bin')
+  })
+
+  test('the object folder loses old objects, then the oldest until it is small enough', async () => {
+    const dir = temp()
+    const now = Date.now()
+    const put = (name: string, ageDays: number, size: number): void => {
+      mkdirSync(join(dir, name.slice(0, 2)), { recursive: true })
+      const file = join(dir, name.slice(0, 2), name.slice(2))
+      writeFileSync(file, Buffer.alloc(size))
+      const t = (now - ageDays * 86400_000) / 1000
+      utimesSync(file, t, t)
+    }
+    put('aa01', 20, 10)
+    put('bb02', 5, 100)
+    put('cc03', 1, 100)
+    expect(await pruneObjects(dir, 10 * 86400_000, 150, now)).toBe(2)
+    expect(readdirSync(dir)).toEqual(['cc'])
+  })
+
+  test("a diff's label warns when the snapshot finished after the turn's first edit, or left files out", () => {
+    const mark = { turn: 3, at: 0, root: null, tree: 't', head: null, doneAt: 500, firstEditAt: 400, skipped: 2 }
+    expect(diffLabel(mark, 'turn', true)).toMatch(/^since turn 3 started\. The snapshot finished after that turn's first edit.*\. 2 untracked files were too big/)
+    expect(diffLabel({ ...mark, firstEditAt: 600, skipped: 0 }, 'turn', true)).toBe('since turn 3 started')
+    expect(diffLabel({ ...mark, firstEditAt: undefined, skipped: 0 }, 'session', false)).toBe('since turn 3 started, the oldest snapshot still kept')
   })
 
   test('only paths inside the checkout can be diffed', () => {
@@ -75,7 +127,7 @@ function world(root: string, ids: string[]) {
   const listeners: Array<(id: string, s: AgentStatus) => void> = []
   const pushed: FilesSummary[] = []
   const file = join(temp(), 'files-touched.json')
-  const tmp = temp()
+  const tmp = { tmpDir: temp(), objectDir: join(temp(), 'objects') }
   const make = () =>
     createFilesTouched({
       agents: () => agents,
@@ -83,6 +135,7 @@ function world(root: string, ids: string[]) {
       onStatus: (cb) => listeners.push(cb),
       snapshot: (cwd) => snapshotTree(git, cwd, tmp),
       git,
+      store: tmp,
       file,
       push: (s) => pushed.push(s),
       pollMs: 60_000,
@@ -195,6 +248,23 @@ describe('the service', () => {
     again.close()
   })
 
+  test('long transcripts seen for the first time are read in pieces, one at a time, and nothing is missed', async () => {
+    const root = repo()
+    const w = world(root, ['a', 'b'])
+    const filler = `${JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'x'.repeat(2000) }] } })}
+`.repeat(1200)
+    for (const id of ['a', 'b']) {
+      appendFileSync(w.transcripts[id], filler)
+      w.edit(id, join(root, `${id}.ts`))
+      appendFileSync(w.transcripts[id], filler)
+    }
+    expect(readFileSync(w.transcripts.a).length).toBeGreaterThan(4 * 1024 * 1024)
+    const [fa, fb] = await Promise.all([w.service.files('a'), w.service.files('b')])
+    expect(fa?.files.map((f) => f.path)).toEqual([join(root, 'a.ts')])
+    expect(fb?.files.map((f) => f.path)).toEqual([join(root, 'b.ts')])
+    w.service.close()
+  })
+
   test('a transcript that changes (a new conversation in the node) is read from its start', async () => {
     const root = repo()
     const w = world(root, ['a'])
@@ -217,7 +287,7 @@ describe('patchbay files', () => {
   const store = { get: () => doc } as unknown as CanvasStore
   const asked: string[] = []
   const service = {
-    files: async (id: string) => (asked.push(id), { nodeId: id, cwd: 'C:\\r', truncated: false, overlaps: { 'C:\\r\\b.ts': [{ nodeId: 'other', title: 'Other' }] }, turns: [{ turn: 2, at: 0, root: 'C:\\r', tree: 't', head: null }], files: [{ path: 'C:\\r\\b.ts', firstAt: 1, lastAt: 2, firstTurn: 2, lastTurn: 2, edits: 1, confirmed: false }, { path: 'C:\\r\\a.ts', firstAt: 0, lastAt: 1, firstTurn: 1, lastTurn: 1, edits: 1, confirmed: true }] })
+    files: async (id: string) => (asked.push(id), { nodeId: id, cwd: 'C:\\r', truncated: false, overlaps: { 'C:\\r\\b.ts': [{ nodeId: 'linked', title: 'Linked' }] }, turns: [{ turn: 2, at: 0, root: 'C:\\r', tree: 't', head: null }], files: [{ path: 'C:\\r\\b.ts', firstAt: 1, lastAt: 2, firstTurn: 2, lastTurn: 2, edits: 1, confirmed: false }, { path: 'C:\\r\\a.ts', firstAt: 0, lastAt: 1, firstTurn: 1, lastTurn: 1, edits: 1, confirmed: true }] })
   } as never
   const passed: string[] = []
   const verbs = withFilesVerbs(async (_c, verb) => (passed.push(verb), {}), { store, service })
@@ -232,12 +302,17 @@ describe('patchbay files', () => {
     await expect(verbs('me', 'files', { node: 'gone' })).rejects.toThrow(/no node/)
   })
 
+  test('another agent that edited the same file is named only if the caller may read it', async () => {
+    const shown = (await verbs('mine', 'files', {})) as { files: Array<{ alsoEditedBy?: string[] }> }
+    expect(shown.files[0].alsoEditedBy).toEqual(["1 other agent you aren't linked to"])
+  })
+
   test('lists newest first, marks unconfirmed and shared files, and --turn keeps the latest turn', async () => {
     const all = (await verbs('me', 'files', {})) as { files: Array<{ path: string; unconfirmed?: string; alsoEditedBy?: string[] }>; turn: number }
     expect(all.turn).toBe(2)
     expect(all.files.map((f) => f.path)).toEqual(['C:\\r\\b.ts', 'C:\\r\\a.ts'])
     expect(all.files[0].unconfirmed).toBeTruthy()
-    expect(all.files[0].alsoEditedBy).toEqual(['Other (other)'])
+    expect(all.files[0].alsoEditedBy).toEqual(['Linked (linked)'])
     const turn = (await verbs('me', 'files', { turn: true })) as { files: Array<{ path: string }> }
     expect(turn.files.map((f) => f.path)).toEqual(['C:\\r\\b.ts'])
   })

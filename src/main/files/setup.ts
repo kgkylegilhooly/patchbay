@@ -19,15 +19,17 @@ export function setupFilesTouched(d: {
   dataDir: string
   log?: (line: string) => void
 }): FilesTouchedService {
-  const tmpDir = join(d.dataDir, 'files-touched')
-  mkdirSync(tmpDir, { recursive: true })
+  // Snapshot objects live here, not in anyone's repository, and are pruned with it. See snapshot.ts.
+  const store = { tmpDir: join(d.dataDir, 'files-touched', 'tmp'), objectDir: join(d.dataDir, 'files-touched', 'objects') }
+  mkdirSync(store.tmpDir, { recursive: true })
   const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})))
   const service = createFilesTouched({
     agents: () => d.store.get().nodes.flatMap((n) => (n.kind === 'claude' ? [{ id: n.id, title: n.title, cwd: n.cwd, transcriptPath: n.transcriptPath }] : [])),
     status: (id) => d.tracker.get(id),
     onStatus: (cb) => d.tracker.onChange(cb),
-    snapshot: (cwd) => snapshotTree(git, cwd, tmpDir),
+    snapshot: (cwd) => snapshotTree(git, cwd, store),
     git,
+    store,
     file: join(d.dataDir, 'files-touched.json'),
     push: (summary) => broadcast('pb:files:summary', summary),
     log: d.log

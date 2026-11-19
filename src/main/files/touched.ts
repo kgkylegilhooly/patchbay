@@ -69,6 +69,8 @@ export function addEdit(rec: SessionRecord, edit: EditSeen, platform: NodeJS.Pla
   const path = normalizePath(rec.cwd, edit.path, platform)
   const key = pathKey(path, platform)
   const turn = turnAt(rec.turns, edit.at)
+  const mark = turn === null ? undefined : rec.turns.find((t) => t.turn === turn)
+  if (mark && (mark.firstEditAt === undefined || edit.at < mark.firstEditAt)) mark.firstEditAt = edit.at
   const file = rec.files.find((f) => pathKey(f.path, platform) === key)
   if (file) {
     // Read again from an earlier offset after a restart: the same file at the same moment is the same edit.
@@ -111,10 +113,21 @@ export function filesInTurn(rec: SessionRecord, turn: number): TouchedFile[] {
   return rec.files.filter((f) => f.lastTurn === turn || f.firstTurn === turn).sort((a, b) => b.lastAt - a.lastAt)
 }
 
-/** The snapshot a diff of this file starts from, or null when there isn't one (the diff is then against HEAD). */
-export function diffBase(rec: SessionRecord, file: TouchedFile, scope: DiffScope): TurnMark | null {
-  const mark = scope === 'turn' ? rec.turns.at(-1) : file.firstTurn === null ? undefined : rec.turns.find((t) => t.turn === file.firstTurn)
-  return mark?.tree ? mark : null
+/**
+ * The snapshot a diff of this file starts from, or null when there isn't one (the diff is then against HEAD). For the
+ * session, that's the turn that first edited it; when that turn has been dropped, the oldest one kept, and `exact` is
+ * false.
+ */
+export function diffBase(rec: SessionRecord, file: TouchedFile, scope: DiffScope): { mark: TurnMark; exact: boolean } | null {
+  if (scope === 'turn') {
+    const mark = rec.turns.at(-1)
+    return mark?.tree ? { mark, exact: true } : null
+  }
+  if (file.firstTurn === null) return null
+  const mark = rec.turns.find((t) => t.turn === file.firstTurn)
+  if (mark) return mark.tree ? { mark, exact: true } : null
+  const oldest = rec.turns.find((t) => t.tree && t.turn > file.firstTurn!)
+  return oldest ? { mark: oldest, exact: false } : null
 }
 
 /**

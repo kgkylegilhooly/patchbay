@@ -89,10 +89,27 @@ describe('edits and turns', () => {
     const two = startTurn(r, 200)
     two.tree = 'tree2'
     const file = r.files[0]
-    expect(diffBase(r, file, 'turn')?.tree).toBe('tree2')
-    expect(diffBase(r, file, 'session')?.tree).toBe('tree1')
+    expect(diffBase(r, file, 'turn')?.mark.tree).toBe('tree2')
+    expect(diffBase(r, file, 'session')).toMatchObject({ mark: { tree: 'tree1' }, exact: true })
     one.tree = null
     expect(diffBase(r, file, 'session')).toBeNull()
+  })
+
+  test("once the turn that first touched a file is dropped, the session diff starts from the oldest one kept, and says so", () => {
+    const r = rec()
+    startTurn(r, 100).tree = 'first'
+    addEdit(r, { path: 'a.ts', at: 150, confirmed: true }, W)
+    for (let i = 0; i < MAX_TURNS; i++) startTurn(r, 200 + i).tree = `t${i}`
+    expect(r.turns[0].turn).toBe(2)
+    expect(diffBase(r, r.files[0], 'session')).toMatchObject({ mark: { turn: 2, tree: 't0' }, exact: false })
+  })
+
+  test("a turn remembers its first edit, to tell whether its snapshot came too late", () => {
+    const r = rec()
+    const mark = startTurn(r, 100)
+    addEdit(r, { path: 'b.ts', at: 180, confirmed: true }, W)
+    addEdit(r, { path: 'a.ts', at: 150, confirmed: true }, W)
+    expect(mark.firstEditAt).toBe(150)
   })
 })
 

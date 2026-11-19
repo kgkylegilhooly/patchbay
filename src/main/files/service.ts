@@ -1,6 +1,6 @@
 import { open, stat } from 'node:fs/promises'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
-import { diffFile, EMPTY_TREE, insideRoot, type RunGit, type Snapshot } from './snapshot'
+import { diffFile, EMPTY_TREE, insideRoot, objectEnv, pruneObjects, type RunGit, type Snapshot, type SnapshotStore } from './snapshot'
 import {
   addEdit,
   createEditCollector,
@@ -16,7 +16,7 @@ import {
   summarize,
   type SessionRecord
 } from './touched'
-import type { DiffScope, FileDiff, FilesSummary, SessionFiles } from '../../shared/filesTouched'
+import type { DiffScope, FileDiff, FilesSummary, SessionFiles, TurnMark } from '../../shared/filesTouched'
 import type { AgentStatus } from '../../shared/model'
 
 /**
@@ -38,6 +38,8 @@ export interface FilesTouchedDeps {
   onStatus(cb: (id: string, status: AgentStatus) => void): void
   snapshot(cwd: string): Promise<Snapshot>
   git: RunGit
+  /** Patchbay's own object folder, which snapshots write to and diffs read from. Without one, the repository's. */
+  store?: SnapshotStore
   /** Where records are saved. None in tests. */
   file?: string
   push?(summary: FilesSummary): void
@@ -64,17 +66,41 @@ export interface FilesTouchedService {
 
 const POLL_MS = 2500
 const SAVE_AFTER_MS = 2000
+/** A moved read offset alone is saved less often: it only saves rereading a little after a restart. */
+const OFFSET_SAVE_AFTER_MS = 15_000
 const PRUNE_EVERY_MS = 3600_000
-/** Read at most this much of a transcript at once, so a long one first seen costs memory in pieces. */
-const CHUNK_BYTES = 4 * 1024 * 1024
+/** Read at most this much of a transcript at once, with a pause for everything else between pieces. */
+const CHUNK_BYTES = 1024 * 1024
+/** A read with more than this to go is a backlog, such as a long conversation seen for the first time. */
+const BACKLOG_BYTES = 1024 * 1024
+/** Snapshot objects older than this are pruned, and the folder is kept under a size. */
+const OBJECTS_MAX_AGE_MS = 10 * 24 * 3600_000
+const OBJECTS_MAX_BYTES = 512 * 1024 * 1024
 /** Snapshots run at most this many at a time: a team starting together would otherwise run git for each at once. */
 const SNAPSHOTS_AT_ONCE = 2
 
 const IN_TURN = new Set<AgentStatus>(['working', 'needs-you'])
 
+/** What a diff is measured from, with warnings when the snapshot may not hold the turn's start exactly. */
+export function diffLabel(base: TurnMark, scope: DiffScope, exact: boolean): string {
+  const since =
+    scope === 'turn'
+      ? `since turn ${base.turn} started`
+      : exact
+        ? `since turn ${base.turn} started, when this session first edited it`
+        : `since turn ${base.turn} started, the oldest snapshot still kept`
+  const late = base.doneAt !== undefined && base.firstEditAt !== undefined && base.firstEditAt < base.doneAt
+  const parts = [since]
+  if (late) parts.push("The snapshot finished after that turn's first edit, so its earliest changes may not show")
+  if (base.skipped) parts.push(`${base.skipped} untracked file${base.skipped === 1 ? ' was' : 's were'} too big or too many to go in that snapshot`)
+  return parts.join('. ')
+}
+
 export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
   const now = d.now ?? Date.now
-  const records = parseRecords(d.file ? readIfPresentSync(d.file) : null)
+  const savedText = d.file ? readIfPresentSync(d.file) : null
+  const records = parseRecords(savedText)
+  if (savedText && records.size === 0 && !/"sessions"\s*:\s*\[\s*\]/.test(savedText)) d.log?.('The record of files sessions touched could not be read, so it starts again empty.')
   const collectors = new Map<string, { path: string; collector: ReturnType<typeof createEditCollector> }>()
   const last = new Map<string, AgentStatus>()
   const scans = new Map<string, Promise<void>>()
@@ -104,16 +130,22 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     return (id) => (titles.has(id) && d.status(id) !== 'exited' ? titles.get(id)! : null)
   }
 
+  let saveDue = Infinity
   const save = async (): Promise<void> => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = null
+    saveDue = Infinity
     if (d.file) await writeAtomic(d.file, serializeRecords(records)).catch((e: unknown) => d.log?.(`Patchbay could not save the files sessions touched: ${String(e)}`))
   }
-  const saveSoon = (): void => {
-    if (d.file && !saveTimer && !closed) {
-      saveTimer = setTimeout(() => void save(), d.saveAfterMs ?? SAVE_AFTER_MS)
-      saveTimer.unref?.()
-    }
+  /** Saves after `ms`, or sooner if a save is already due sooner. */
+  const saveSoon = (ms = d.saveAfterMs ?? SAVE_AFTER_MS): void => {
+    if (!d.file || closed) return
+    const due = Date.now() + ms
+    if (saveTimer && saveDue <= due) return
+    if (saveTimer) clearTimeout(saveTimer)
+    saveDue = due
+    saveTimer = setTimeout(() => void save(), ms)
+    saveTimer.unref?.()
   }
   /** Tells the window when what the chips show has changed. */
   const publish = (): void => {
@@ -158,10 +190,19 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       collectors.set(id, entry)
     }
     let at = rec.offset
-    if (at < size) {
-      const handle = await open(a.transcriptPath, 'r')
+    // A backlog waits behind any other, so a first start with many long conversations doesn't stall the app.
+    const backlog = size - at > BACKLOG_BYTES
+    if (backlog) await takeBacklog()
+    try {
+      if (at < size) await readFrom()
+    } finally {
+      if (backlog) giveBacklog()
+    }
+    async function readFrom(): Promise<void> {
+      const handle = await open(a!.transcriptPath!, 'r')
       try {
         while (at < size) {
+          if (at > rec.offset) await new Promise<void>((r) => setImmediate(r))
           const want = Math.min(CHUNK_BYTES, size - at)
           const buffer = Buffer.alloc(want)
           const { bytesRead } = await handle.read(buffer, 0, want, at)
@@ -176,7 +217,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
           let start = 0
           while (start < end) {
             const nl = bytes.indexOf(0x0a, start)
-            entry.collector.line(bytes.subarray(start, nl).toString('utf8'), at + start)
+            entry!.collector.line(bytes.subarray(start, nl).toString('utf8'), at + start)
             start = nl + 1
           }
           at += end
@@ -190,10 +231,21 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     const offset = entry.collector.safeOffset(at)
     if (offset !== rec.offset) {
       rec.offset = offset
-      // The offset alone is worth saving, but not worth telling the window about.
-      saveSoon()
+      // The offset alone is worth saving, but not soon, and not worth telling the window about.
+      saveSoon(Math.max(d.saveAfterMs ?? SAVE_AFTER_MS, OFFSET_SAVE_AFTER_MS))
     }
     if (any) changed()
+  }
+
+  let backlogBusy = false
+  const backlogQueue: (() => void)[] = []
+  const takeBacklog = async (): Promise<void> => {
+    if (backlogBusy) await new Promise<void>((r) => backlogQueue.push(r))
+    backlogBusy = true
+  }
+  const giveBacklog = (): void => {
+    backlogBusy = false
+    backlogQueue.shift()?.()
   }
 
   const scan = (id: string, turnOver = false): Promise<void> => {
@@ -209,8 +261,9 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
 
   let running = 0
   const waiting: (() => void)[] = []
-  const slot = async <T>(fn: () => Promise<T>): Promise<T> => {
-    if (running >= SNAPSHOTS_AT_ONCE) await new Promise<void>((r) => waiting.push(r))
+  /** A turn's own snapshot goes ahead of ones made for a diff, so it's taken as close to the turn's start as it can be. */
+  const slot = async <T>(fn: () => Promise<T>, first = false): Promise<T> => {
+    if (running >= SNAPSHOTS_AT_ONCE) await new Promise<void>((r) => (first ? waiting.unshift(r) : waiting.push(r)))
     running++
     try {
       return await fn()
@@ -227,16 +280,19 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     const mark = startTurn(rec, now())
     changed()
     void track(
-      slot(() => d.snapshot(a.cwd)).then(
+      slot(() => d.snapshot(a.cwd), true).then(
         (snap) => {
           mark.root = snap.root
+          mark.doneAt = now()
           if (snap.ok) {
             mark.tree = snap.tree
             mark.head = snap.head
+            if (snap.skipped) mark.skipped = snap.skipped
           } else mark.problem = snap.problem
           changed()
         },
         (e: unknown) => {
+          mark.doneAt = now()
           mark.problem = `The snapshot failed: ${String(e)}`
           changed()
         }
@@ -266,7 +322,16 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     for (const id of collectors.keys()) if (!records.has(id)) collectors.delete(id)
   }
   prune()
-  const pruner = setInterval(prune, PRUNE_EVERY_MS)
+  const pruneStore = (): void => {
+    if (d.store) void track(pruneObjects(d.store.objectDir, OBJECTS_MAX_AGE_MS, OBJECTS_MAX_BYTES).catch(() => 0))
+  }
+  // Once things have settled, so it costs start-up nothing.
+  const firstStorePrune = setTimeout(pruneStore, 60_000)
+  firstStorePrune.unref?.()
+  const pruner = setInterval(() => {
+    prune()
+    pruneStore()
+  }, PRUNE_EVERY_MS)
   pruner.unref?.()
 
   const view = (rec: SessionRecord): SessionFiles => {
@@ -299,21 +364,20 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       const file = rec.files.find((f) => pathKey(f.path) === key)
       // Only files the session touched: this is not a way to read any file.
       if (!file) return { ok: false, reason: "That file isn't one this session edited." }
-      const base = diffBase(rec, file, scope)
+      const found = diffBase(rec, file, scope)
+      const base = found?.mark
       const snap = await slot(() => d.snapshot(rec.cwd))
       if (!snap.ok) return { ok: false, reason: snap.problem }
       const rel = insideRoot(snap.root, file.path)
       if (rel === null) return { ok: false, reason: `${file.path} is outside the repository at ${snap.root}.` }
       if (base && base.root && pathKey(base.root) !== pathKey(snap.root)) return { ok: false, reason: 'The session has moved to another repository since that turn.' }
       const from = base?.tree ?? snap.head ?? EMPTY_TREE
-      const label = base
-        ? scope === 'turn'
-          ? `since turn ${base.turn} started`
-          : `since turn ${base.turn} started, when this session first edited it`
+      const label = found
+        ? diffLabel(found.mark, scope, found.exact)
         : snap.head
-          ? 'against HEAD: no snapshot was taken before this session first edited it'
+          ? 'against HEAD: no snapshot is kept from before this session first edited it'
           : 'against an empty repository'
-      const out = await diffFile(d.git, snap.root, from, snap.tree, rel)
+      const out = await diffFile(d.git, snap.root, from, snap.tree, rel, d.store ? objectEnv(d.store, snap.objects) : {})
       return out.ok ? { ...out, base: label } : out
     },
     summary: () => summarize(records.values(), findOverlaps(records.values(), live())),
@@ -324,6 +388,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     flush: save,
     close() {
       closed = true
+      clearTimeout(firstStorePrune)
       clearInterval(poll)
       clearInterval(pruner)
       if (saveTimer) clearTimeout(saveTimer)

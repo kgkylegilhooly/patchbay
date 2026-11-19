@@ -55,7 +55,7 @@ const hook = (name, extra = {}) => {
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
 // "edits=a.ts,b.ts" also keeps one, and runs a turn that edits those files in its folder. See editTurn.
 const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? null
-const chat = /chat/.test(prompt) || !!edits
+const chat = /\bchat\b/.test(prompt) || !!edits
 // "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
 const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
 const transcript = chat || fanout ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''

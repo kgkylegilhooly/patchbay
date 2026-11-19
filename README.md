@@ -147,7 +147,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
-| `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\` holds a snapshot's index copy for the moment it takes |
+| `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\objects\` holds the snapshots' git objects, kept out of your repositories: 10 days, up to 512 MB |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `review-inbox.json` | Review inbox comments, review marks (the newest 20 per task) and chosen base branches. A file that can't be read is moved aside, and one with damaged records copied aside, as `review-inbox.json.bad-*` |
 | `review-objects\` | Snapshots of working trees the review inbox compares with, one git object store per repository |
@@ -320,7 +320,8 @@ when another live agent edited one of the same files in the same checkout. Click
 in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
 
 Each file can open, or show its diff. As each turn starts, Patchbay records a snapshot of the checkout with git, through
-a temporary copy of the index, so your index, branches and stash aren't touched. **This turn** diffs from the latest
+a temporary copy of the index into its own object folder, so your index, branches, stash and repository aren't
+touched. Untracked files over 1 MB are left out of it. **This turn** diffs from the latest
 turn's snapshot, and **Session** from the turn that first edited the file. Other agents' changes to the same file in
 that time show too. A folder outside git has the list but no diff.
 

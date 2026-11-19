@@ -24,6 +24,12 @@ export interface TurnMark {
   head: string | null
   /** Why there's no snapshot, in words. */
   problem?: string
+  /** When the snapshot finished, or failed. */
+  doneAt?: number
+  /** The first edit seen in this turn. Before doneAt means the snapshot may already hold it. */
+  firstEditAt?: number
+  /** Untracked files too big or too many to go in the snapshot. */
+  skipped?: number
 }
 
 export interface OverlapNote {
