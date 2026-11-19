@@ -447,6 +447,26 @@ linked, and setup steps that run before the agents start.
 
 The design is in `docs/plans/recipes.md`.
 
+## Comparing two approaches
+
+**Try another approach…** (canvas menu, an agent's menu, palette) gives one brief to two attempts, each with its own
+agent (Claude Code or Codex, any mix), an optional approach line, and its own new worktree and branch. Both start
+from the commit shown in the dialog, which is recorded.
+
+- If the checkout has uncommitted changes, the dialog lists them, and you must tick to leave them out before Start.
+  They're never copied into an attempt, and never touched.
+- **Comparisons…** (palette) shows the attempts side by side: baseline, branch, folder, the agent's status, commits
+  since the baseline, and the changed files in two lists, committed and uncommitted. Click a file for its diff.
+  Looking only reads git.
+- An optional verification command (an argument list, no shell) runs in each worktree when you ask, one at a time.
+  Each result keeps the command, exit code, time, the commit it ran at and its output, and says when the attempt has
+  changed since.
+- **Choose A** or **B** only records the choice. Merge the branch yourself with Git.
+- **Remove worktree…** stops the sessions in it. Uncommitted changes, or (when also deleting the branch) commits no
+  other branch has, are listed and need a second confirmation for that removal.
+
+The design is in `docs/plans/compare.md`.
+
 ## Browser nodes
 
 Add one from the canvas menu, the File menu or the palette. It has back, forward, reload and an address bar, and reopens
