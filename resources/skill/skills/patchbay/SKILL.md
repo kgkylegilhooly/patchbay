@@ -279,6 +279,8 @@ Read the file for what you're about to do, beside this one, before you start:
   `patchbay draw`.
 - [browser.md](browser.md): open and drive browser nodes, to look at or test a web page.
 - [github.md](github.md): read the project's GitHub issues and pull requests.
+- [recipes.md](recipes.md): list, preview and start saved setups of agents, commands and notes, with `patchbay
+  recipes` and `patchbay run-recipe`.
 
 ## Close
 

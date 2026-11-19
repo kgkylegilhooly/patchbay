@@ -415,6 +415,31 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 and `real-world.cjs` gives seven of them everyday jobs on one canvas, including handing a review to Codex. They spend a
 little quota.
 
+## Recipes
+
+A recipe is a saved setup of nodes: agents with their prompts, run commands, notes, browsers, how they're laid out and
+linked, and setup steps that run before the agents start.
+
+- **New from recipe…**, in the canvas menu, File menu and palette, lists the recipes with where each comes from:
+  built-in, personal (in Patchbay's data folder, `recipes`) or the repository's own (`.patchbay\recipes`). Choosing one
+  only reads it. The preview shows every node it will make, filled in with your task and branch, and every command that
+  runs when you press Start.
+- **Start** makes a group, on a new worktree unless you turn that off, with fresh sessions. Two starts never share a
+  node. Without a worktree the preview warns that the agents share one checkout, which nothing locks.
+- **Setup steps** are a program and its arguments, run with no shell, so nothing is quoted twice. Agents that wait for
+  setup stay queued until every step exits with code 0, show which step they wait for, and don't start if one fails.
+  Run the step again to retry, or press **Start anyway**.
+- **Save selection as recipe…** saves the selected nodes, with folders made relative and the branch made a parameter.
+  Sessions, conversations and output are never saved.
+- The built-in **Implement and review** has a Claude implementer, a Codex reviewer that starts after it, a setup step,
+  a test command and a shared brief. Agents use `patchbay recipes` and `patchbay run-recipe`, but only you can start
+  a repository's own recipe.
+- **Start runs what the preview showed.** A recipe file changed since is refused. A task or branch with characters a
+  shell acts on is refused where the recipe puts it into a terminal or run command, and SSH terminals are listed
+  with what runs.
+
+The design is in `docs/plans/recipes.md`.
+
 ## Browser nodes
 
 Add one from the canvas menu, the File menu or the palette. It has back, forward, reload and an address bar, and reopens

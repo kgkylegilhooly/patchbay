@@ -16,6 +16,11 @@ import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
+import { createWorktree } from '../core/worktree/service'
+import { registerRecipeIpc } from './recipes/ipc'
+import { createRecipeService } from './recipes/service'
+import { createSetupGate } from './recipes/setupGate'
+import { withRecipeVerbs } from './recipes/verbs'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
@@ -391,6 +396,10 @@ async function boot(): Promise<void> {
   ipcMain.handle('pb:getMessages', () => messages.all())
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
   const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
+  const setupGate = createSetupGate({ store, tracker, runner, gate })
+  const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
+  const allVerbs = withRecipeVerbs(verbs, { store, service: recipes })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
@@ -426,7 +435,7 @@ async function boot(): Promise<void> {
       const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
       return { ...((answer as object | undefined) ?? {}), context }
     },
-    onRpc: (caller, verb, args) => verbs(caller, verb, args),
+    onRpc: (caller, verb, args) => allVerbs(caller, verb, args),
     onUsage: (id, report) => usage.report(id, report)
   })
 
@@ -475,6 +484,7 @@ async function boot(): Promise<void> {
     }
     for (const id of plan.claude) await runner.startNode(id)
     gate.evaluate()
+    setupGate.evaluate()
     return [...plan.terminals, ...plan.claude]
   }
 
@@ -508,6 +518,7 @@ async function boot(): Promise<void> {
   })
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
+  registerRecipeIpc({ service: recipes, setupGate })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
 

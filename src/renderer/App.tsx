@@ -48,6 +48,7 @@ import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
+import { RecipeLayer } from './RecipeLayer'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -492,6 +493,7 @@ function Canvas(): React.JSX.Element | null {
         {paletteOpen && <CommandPalette commands={commands} state={menuState()} recent={prefs.recentActions} onRan={(id) => updatePrefs({ recentActions: noteRecent(prefsRef.current.recentActions, id) })} onClose={closePalette} />}
         {recentOpen && <RecentPanel onClose={() => setRecentOpen(false)} />}
         <SearchLayer />
+        <RecipeLayer selected={selected} />
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}
