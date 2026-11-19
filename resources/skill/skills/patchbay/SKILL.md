@@ -204,6 +204,18 @@ When the work is checked, close the members you opened with `patchbay close --no
 fill with finished agents. Closing the last member of a team you spawned removes its empty group too. Leave one open if the person may want to look at its conversation, and say which. A
 note or whiteboard you made can stay, since the person may want it.
 
+## See which files an agent edited
+
+```sh
+patchbay files --node <id> --turn
+```
+
+Lists the files that agent edited with its own edit or patch calls, newest first, with the turn each was last edited
+in. Without `--node` it lists your own. `--turn` keeps the latest turn only. `alsoEditedBy` names another live agent
+that edited the same file in the same checkout, so check before you both change it. `unconfirmed` means the transcript
+never said whether that edit worked. Files changed by shell commands aren't listed. Like `read`, it works for nodes
+you opened or are linked to.
+
 ## Read a node
 
 ```sh

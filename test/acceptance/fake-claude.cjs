@@ -53,10 +53,37 @@ const hook = (name, extra = {}) => {
 }
 
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
-const chat = /\bchat\b/.test(prompt)
+// "edits=a.ts,b.ts" also keeps one, and runs a turn that edits those files in its folder. See editTurn.
+const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? null
+const chat = /\bchat\b/.test(prompt) || !!edits
 const transcript = chat ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
 const say = (type, text) =>
   fs.appendFileSync(transcript, `${JSON.stringify({ type, isSidechain: false, message: { role: type, content: type === 'user' ? text : [{ type: 'text', text }] } })}\n`)
+
+/**
+ * One turn that edits files as Claude's Edit tool would: the file changes, and the transcript records the call and its
+ * result. A name starting with "?" gets no result line, so it stays unconfirmed. Waits first, for the turn's snapshot.
+ */
+async function editTurn(files) {
+  const path = require('node:path')
+  const line = (entry) => fs.appendFileSync(transcript, `${JSON.stringify({ ...entry, timestamp: new Date().toISOString() })}\n`)
+  say('user', `Edit ${files.join(', ')}`)
+  await hook('UserPromptSubmit')
+  await new Promise((r) => setTimeout(r, 2500))
+  files.forEach((name, i) => {
+    const open = name.startsWith('?')
+    const file = path.join(process.cwd(), open ? name.slice(1) : name)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''
+    fs.writeFileSync(file, `${before}// edited by ${process.env.PATCHBAY_NODE_ID}\nexport const changed${i} = true\n`)
+    const id = `toolu_fake_${i}`
+    line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file, old_string: '', new_string: 'x' } }] } })
+    if (!open) line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'The file was updated.' }] } })
+  })
+  await hook('PostToolUse')
+  say('assistant', `Edited ${files.length} files.`)
+  await hook('Stop')
+}
 
 async function main() {
   process.stdout.write(`Pretend Claude. Prompt: ${prompt || '(none)'}\r\n`)
@@ -66,6 +93,7 @@ async function main() {
   if (context && settings.statusLine) {
     await runCommand(settings.statusLine.command, { session_id: sessionId, context_window: { used_percentage: Number(context[1]) } })
   }
+  if (edits) await editTurn(edits)
   if (/\bneeds\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('Notification', { notification_type: 'permission_prompt' })

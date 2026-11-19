@@ -147,6 +147,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
 | `browser-evidence-shots\` | The pictures those checks took, up to 128 MB |
+| `files-touched.json` | Which files each agent session edited, and a git snapshot reference per turn: 300 files and 30 turns per session, dropped 3 days after its node is closed. `files-touched\` holds a snapshot's index copy for the moment it takes |
 | `agent-edits.json` | Agents' changes to notes and whiteboards that you haven't kept or undone yet |
 | `messages.json` | The last 300 messages nodes sent each other with `patchbay send`, shown when you click a cable |
 | `searchindex.json` | The search index: a copy of the text of every conversation, note and message search can find. Saved every few minutes and at quit, and soon after a source is dropped. Safe to delete: it's built again |
@@ -282,6 +283,20 @@ first, then labels, and the text size folds into one button.
   Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
+
+## Files each agent edited
+
+An agent's header and its row in the sidebar show **N files** once it has edited files with its own edit or patch
+calls. They're read from its transcript, so files a shell command changed aren't listed. The chip turns amber with ⚠
+when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
+in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
+
+Each file can open, or show its diff. As each turn starts, Patchbay records a snapshot of the checkout with git, through
+a temporary copy of the index, so your index, branches and stash aren't touched. **This turn** diffs from the latest
+turn's snapshot, and **Session** from the turn that first edited the file. Other agents' changes to the same file in
+that time show too. A folder outside git has the list but no diff.
+
+Agents can list the same with `patchbay files [--node ID] [--turn]`, for themselves or a node they opened or are linked to.
 
 ## Keys
 
