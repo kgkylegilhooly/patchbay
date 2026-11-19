@@ -1,4 +1,5 @@
-import type { AgentKind, CanvasNode, ClaudeNode, Edge, GroupNode } from './model'
+import { AGENT_NAMES, type AgentKind, type CanvasNode, type ClaudeNode, type Edge, type GroupNode } from './model'
+import { AGENT_KINDS, agentNames, agentToStart, type AgentChoice } from './agents'
 
 /**
  * A recipe: the intended configuration of a set of nodes, to make again from scratch. It never holds session ids,
@@ -122,6 +123,8 @@ export interface RecipeParams {
   skip?: string[]
   /** Setup step arguments changed for this start, by key. */
   runs?: Record<string, string[]>
+  /** Agents of a kind turned off in Settings > Agents start as this one instead. Only the person chooses it, in the preview. */
+  useAgent?: AgentKind
 }
 
 // Reading
@@ -414,7 +417,7 @@ export interface RecipePlan {
  * Works out the nodes, connections and holds for one start. A recipe's node references all resolve to the ids made
  * here, so two starts of one recipe never share a node.
  */
-export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => string): RecipePlan {
+export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => string, agents: AgentChoice = { enabled: [...AGENT_KINDS], default: 'claude' }): RecipePlan {
   const skipped = new Set(params.skip ?? [])
   const used = recipe.nodes.filter((n) => !(n.kind === 'setup' && skipped.has(n.key)))
   // Only nodes this start makes get an id. {{node:KEY}} of a step left out stays as written, and is warned about below.
@@ -485,7 +488,12 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
     }
     switch (n.kind) {
       case 'agent': {
-        const node: ClaudeNode = { ...base, kind: 'claude', ...(n.agent === 'codex' ? { agent: 'codex' as const } : {}), cwd: folderOf(n), sessionId: null, transcriptPath: null, after: [] }
+        // Settings > Agents: an agent turned off starts as the one the person chose instead, or Start is refused.
+        const chosen = agentToStart(n.agent, agents, params.useAgent)
+        if (!chosen) problems.push(`"${base.title}" needs ${AGENT_NAMES[n.agent]}, which is turned off in Settings > Agents. Start it with ${agentNames(agents.enabled)} instead, or turn ${AGENT_NAMES[n.agent]} on.`)
+        else if (chosen !== n.agent) warnings.push(`"${base.title}" starts as ${AGENT_NAMES[chosen]}, as you chose, since ${AGENT_NAMES[n.agent]} is turned off.`)
+        const agent = chosen ?? n.agent
+        const node: ClaudeNode = { ...base, kind: 'claude', ...(agent === 'codex' ? { agent: 'codex' as const } : {}), cwd: folderOf(n), sessionId: null, transcriptPath: null, after: [] }
         if (n.prompt) node.prompt = fill(n.prompt)
         nodes.push(node)
         break

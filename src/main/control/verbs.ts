@@ -24,6 +24,7 @@ import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd
 import { RpcRefusal } from './server'
 import { absoluteRect, placeInGroup, placeNear, projectOf, viewRect } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
+import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agents'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -202,6 +203,7 @@ export function createVerbs({
   onBoardEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude',
+  agents = () => ({ enabled: [...AGENT_KINDS], default: defaultAgent() }),
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
   log
 }: {
@@ -221,6 +223,8 @@ export function createVerbs({
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
   defaultAgent?: () => AgentKind
+  /** Settings > Agents, read at each call: the agents Patchbay may open. Every agent when not given. */
+  agents?: () => AgentChoice
   github?: GithubRead
   store: CanvasStore
   runner: Pick<NodeRunner, 'startNode' | 'stopNode'>
@@ -240,6 +244,13 @@ export function createVerbs({
     return node && node.projectId === caller.projectId ? node : refuse(`There is no node "${id}".`)
   }
   const add = (e: Edge): void => store.dispatch({ op: 'addEdge', edge: e })
+
+  /** Refuses an agent turned off in Settings > Agents, naming the setting and the agents still on. */
+  const allowAgent = (agent: AgentKind, who = ''): AgentKind => {
+    const choice = agents()
+    const off = agentOffReason(agent, choice)
+    return off ? refuse(`${who}${off} Name ${choice.enabled.join(' or ')} as the agent instead, or none for the default (${choice.default}).`) : agent
+  }
 
   const linked = (a: string, b: string): boolean =>
     store.get().edges.some((e) => e.kind === 'link' && ((e.from === a && e.to === b) || (e.from === b && e.to === a)))
@@ -467,7 +478,7 @@ export function createVerbs({
     const cwd = cwdFor(args, caller, group)
     const prompt = promptFrom(args)
     const after = list(args, 'after')
-    const agent = agentArg(args, defaultAgent())
+    const agent = allowAgent(agentArg(args, defaultAgent()))
     after.forEach((id) => upstreamClaude(caller, id))
 
     const node: ClaudeNode = {
@@ -573,7 +584,7 @@ export function createVerbs({
         upstreamClaude(caller, ref)
         return ref
       })
-      return { name, id: ids.get(name)!, agent: agentArg(m, defaultAgent()), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
+      return { name, id: ids.get(name)!, agent: allowAgent(agentArg(m, defaultAgent()), `Team member "${name}": `), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
     })
     refuseCycles(plans)
     return plans
@@ -903,7 +914,7 @@ export function createVerbs({
     }
     switch (verb) {
       case 'whoami': {
-        const w = whoami(store.get(), callerId, accessOf, (id) => tracker.get(id))
+        const w = { ...whoami(store.get(), callerId, accessOf, (id) => tracker.get(id)), agents: agents() }
         return { ...w, text: describeWhoAmI(w) }
       }
       case 'list':

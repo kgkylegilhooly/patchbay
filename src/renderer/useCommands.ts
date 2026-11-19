@@ -12,6 +12,7 @@ import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
 import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
+import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, terminalActions } from './terminalRegistry'
 
@@ -257,7 +258,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         const p = place(form.at)
         // The lead is the default agent from Settings. Placed now, so it lands where the form was.
         void bridge.getSettings().then((settings) => {
-          const agent = settings.defaultAgent === 'codex' ? 'codex' : 'claude'
+          const agent = defaultAgentOf(settings)
           const lead = newClaude(p, crypto.randomUUID(), { cwd: fields.cwd, prompt: teamLeadPrompt(fields.text ?? ''), agent })
           open({ ...lead, title: TEAM_LEAD_TITLE })
         })

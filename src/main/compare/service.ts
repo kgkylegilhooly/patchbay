@@ -30,6 +30,7 @@ import { AGENT_NAMES, isSessionNode, type CanvasNode, type ClaudeNode, type Grou
 import type { CompareReads } from './reads'
 import { placeInProject } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
+import { agentsNow } from '../agentsAllowed'
 
 type Worktree = { path: string; branch: string; repo: string }
 
@@ -140,7 +141,7 @@ export function createCompareService(d: CompareServiceDeps) {
     if (frozen()) return frozen()!
     if (!d.store.get().projects.some((p) => p.id === req?.projectId)) return { ok: false, reason: 'That project is gone.' }
     const info = await d.reads.source(String(req.source ?? ''))
-    const problem = startProblem(req, info)
+    const problem = startProblem(req, info, agentsNow())
     if (problem || !info.ok) return { ok: false, reason: problem ?? 'The source checkout could not be read.' }
     if (!(await d.reads.isCommit(info.repo, req.base))) return { ok: false, reason: `The base commit ${req.base.slice(0, 10)} is not in ${info.repo}.` }
     const branches = req.attempts.map((a) => a.branch.trim())

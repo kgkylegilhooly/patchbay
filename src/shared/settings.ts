@@ -9,6 +9,11 @@ export interface Settings {
   claudeCommand?: string
   /** 'codex' makes Codex the agent that new teams and patchbay open-agent use when none is named. Claude otherwise. */
   defaultAgent?: string
+  /**
+   * Agents Patchbay may not start, separated by spaces or commas, as `codex`. Absent means every agent is on. At least
+   * one stays on: see src/shared/agents.ts.
+   */
+  agentsOff?: string
   /** What to run instead of `codex`, the same way as claudeCommand. */
   codexCommand?: string
   /** What Codex may do without asking: '' (Codex's own default), 'never' or 'bypass'. */

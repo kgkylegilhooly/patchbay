@@ -31,6 +31,7 @@ import { createTriggerService } from './triggers/service'
 import { broadcast, registerIpc } from './ipc'
 import { createGithubReader, registerWorkIpc, workServices } from './workIpc'
 import { registerSearchIpc } from './search/ipc'
+import { registerReviewIpc } from './review/ipc'
 import { setupCompare } from './compare/setup'
 import {
   closeAction,
@@ -67,6 +68,7 @@ import { readClaudeAccount, readCodexUsage } from './usage/agentAccounts'
 import { createCodexGate } from './usage/codexGate'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
+import { agentsNow, readAgentsFrom } from './agentsAllowed'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
 import { resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
@@ -224,6 +226,7 @@ async function boot(): Promise<void> {
   })
   const currentSettings = () => parseSettings(readIfPresent(settingsFile))
   setEnvNotPassed(() => currentSettings().envNotPassed)
+  readAgentsFrom(currentSettings)
   ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
 
   let saveErrorShown = false
@@ -409,7 +412,7 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude'), log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, log: (line) => log?.write(line) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -533,6 +536,7 @@ async function boot(): Promise<void> {
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
+  registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
   setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))

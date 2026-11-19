@@ -8,7 +8,7 @@ import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
-import { isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
+import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
 import type { Settings } from '../shared/settings'
 import { createActivityLog } from './activity'
 import type { LiveBrowserDriver } from './browser/driver'
@@ -32,6 +32,7 @@ import type { UsageService } from './usage/usageService'
 import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImage, saveBoardImage } from './boardImages'
+import { agentOffNow } from './agentsAllowed'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
@@ -243,6 +244,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     clearExited(id)
   })
   ipcMain.handle('pb:restartNode', async (_e, id: string) => {
+    // Settings > Agents: refused as a notice the window can dismiss. A session still running keeps running.
+    const agent = find(id)
+    const off = agent?.kind === 'claude' ? agentOffNow(agentOf(agent)) : null
+    if (off) return { ok: false as const, reason: off }
     const refused = await prepareRun(id)
     if (refused) return refused
     const node = find(id)
@@ -456,6 +461,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   })
 
   ipcMain.handle('pb:reopenClosed', async (_e, closedId: string) => {
+    // Settings > Agents: an agent turned off isn't reopened, and its entry stays in the list for later.
+    const entry = store.get().closed.find((c) => c.id === closedId)
+    if (entry && agentOffNow(entry.agent ?? 'claude')) return
     const id = reopenClosed(store, closedId, randomUUID())
     if (id) await runner.startNode(id)
   })

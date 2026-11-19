@@ -10,6 +10,7 @@ import { createWorktree, removeWorktree } from '../../src/core/worktree/service'
 import { reduce } from '../../src/core/canvas/reduce'
 import { createCompareReads } from '../../src/main/compare/reads'
 import { createCompareService, type CompareServiceDeps } from '../../src/main/compare/service'
+import { readAgentsFrom } from '../../src/main/agentsAllowed'
 import type { AttemptState, RemovalCheck, StartComparison } from '../../src/shared/compare'
 import type { CanvasStore } from '../../src/shared/contract'
 import type { CanvasDoc, ClaudeNode, GroupNode } from '../../src/shared/model'
@@ -499,4 +500,21 @@ test("both attempts' groups land side by side where the person is looking, clear
   expect(groups[1].x).toBe(groups[0].x + groups[0].width + 40)
   expect(groups[1].y).toBe(groups[0].y)
   expect(groups[0].x).toBeLessThan(5000)
+})
+
+test('an attempt on an agent turned off in Settings > Agents is refused before anything is made', async () => {
+  readAgentsFrom(() => ({ agentsOff: 'codex' }))
+  try {
+    const w = world()
+    const r = await w.service.start(await startReq())
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/^Attempt B: Codex is turned off in Settings > Agents.*Choose Claude Code for it instead\./) })
+    expect(w.s.get().nodes).toEqual([])
+    expect(worktrees()).toHaveLength(1)
+    expect(branches()).toEqual(['main'])
+    // The person picks the agent that's on, and it starts.
+    const c = await started(w, { attempts: [{ agent: 'claude', approach: '', branch: 'try/count-a' }, { agent: 'claude', approach: '', branch: 'try/count-b' }] })
+    expect(c.attempts.map((a) => a.agent)).toEqual(['claude', 'claude'])
+  } finally {
+    readAgentsFrom(() => ({}))
+  }
 })

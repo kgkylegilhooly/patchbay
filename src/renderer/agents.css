@@ -1,0 +1,19 @@
+/* Settings > Agents: the switch for the last agent still on can't be turned off. */
+.switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Says the default agent is off, so another stands in. */
+.set-note {
+  color: #ffd79a;
+}
+
+/* The recipe preview's explicit choice to start an agent that's off as another. */
+.recipe-use-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 12px;
+}

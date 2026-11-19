@@ -12,6 +12,7 @@ import { isSessionNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type G
 import { cleanEnv } from './sessions/env'
 import { placeInProject } from '../core/canvas/place'
 import { viewSize } from './viewSize'
+import { agentOffNow } from './agentsAllowed'
 
 const key = (p: string): string => resolve(p).toLowerCase()
 
@@ -155,6 +156,9 @@ export function registerWorkIpc(s: { store: CanvasStore; startNode: (id: string)
   })
 
   handle('startIssueAgent', async (a: { projectId: string; number: number; prompt: string; title: string; worktreeBranch?: string }) => {
+    // Settings > Agents: an issue's agent is Claude Code. Refused before any worktree, group or node is made.
+    const off = agentOffNow('claude')
+    if (off) return { ok: false, error: off }
     try {
       const doc = store.get()
       const project = doc.projects.find((p) => p.id === a?.projectId)

@@ -11,6 +11,7 @@ import type { SetupGate } from './setupGate'
 import { placeInProject, projectOf as nodeProject } from '../../core/canvas/place'
 import { spotNear } from '../control/verbs'
 import { viewSize } from '../viewSize'
+import { agentsNow } from '../agentsAllowed'
 
 const MAX_TASK_CHARS = 4000
 
@@ -89,7 +90,7 @@ export function createRecipeService(d: RecipeServiceDeps) {
   /** What starting would make, with the worktree's folder as it will be. Runs nothing. */
   const preview = (entry: RecipeEntry, p: RecipeParams): RecipePlan => {
     const cwd = p.worktree && p.repo && p.branch ? expectedWorktreePath(p.repo, p.branch) : p.cwd
-    return planRecipe(entry.recipe!, { ...p, cwd }, newId)
+    return planRecipe(entry.recipe!, { ...p, cwd }, newId, agentsNow())
   }
 
   /** Beside the opener, or where the person is looking in the project. See core/canvas/place. */
@@ -131,7 +132,7 @@ export function createRecipeService(d: RecipeServiceDeps) {
     }
     let added = 0
     try {
-      const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId)
+      const plan = planRecipe(recipe, { ...params, cwd, repo: worktree?.repo ?? params.repo }, newId, agentsNow())
       // Checked again against the worktree's real folder, which a value in the commands may now include.
       if (plan.problems.length) throw new Error(plan.problems[0])
       return await make(req, entry, plan, worktree, () => added++)
