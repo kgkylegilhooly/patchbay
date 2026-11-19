@@ -50,6 +50,7 @@ import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -496,6 +497,7 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <HeaderZoomWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}

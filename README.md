@@ -264,6 +264,11 @@ first, then labels, and the text size folds into one button.
 - **Name with AI** titles the window from recent output, only when clicked, and spends a little plan quota. It runs
   `claude -p` in an empty folder with no tools, hooks or saved conversation.
 - **Text size** is for that window only and is saved with it. Click the number to go back to the global size.
+- **Zoom to a node:** double-click an empty part of any node's header bar (a window, note, whiteboard, browser, trigger,
+  or a group, which fits the whole group) and the canvas pans and zooms so it fills the view. Nothing moves or resizes.
+  Double-click the header again, or press Esc, to go back to exactly the view from before; pan or zoom by hand in
+  between and that's forgotten. The title still renames and the buttons still work. Esc stays with a terminal that has
+  the keyboard, and with reduced motion turned on in Windows the view jumps instead of gliding.
 - **Maximize** fills the canvas area without changing the saved layout. Esc or the same button restores it. While the
   terminal has the keyboard, Esc stays with the terminal, because that's how Claude is interrupted, so use F11 or the button.
 - **Focus view** (Ctrl+Shift+L, or the grid on the dock) puts windows in split panes filling the app. Split a pane
@@ -285,7 +290,8 @@ any action, warns about conflicts, and resets one or all.
 
 With a terminal in use, it gets ordinary keys, including Ctrl combinations. Patchbay takes only keys with Ctrl+Shift or
 Alt, function keys, `Ctrl+K`, `Ctrl+,`, and keys you bind yourself after a warning. `Ctrl+C`, `Ctrl+V` and `Ctrl+F` stay
-with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard.
+with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard. Esc on the canvas goes back from a
+header zoom (double-click a node's header bar).
 
 ## Search and handoffs
 
