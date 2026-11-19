@@ -1,6 +1,7 @@
 import type { CanvasStore } from '../../shared/contract'
 import type { OverlapNote, SessionFiles } from '../../shared/filesTouched'
 import type { Verbs } from '../control/verbs'
+import { archivedRefusal } from '../control/archived'
 import { RpcRefusal } from '../control/server'
 import type { FilesTouchedService } from './service'
 
@@ -46,6 +47,9 @@ export function withFilesVerbs(verbs: Verbs, { store, service }: { store: Canvas
   return async (callerId, verb, args) => {
     if (!FILES_VERBS.includes(verb)) return verbs(callerId, verb, args)
     const doc = store.get()
+    const caller = doc.nodes.find((n) => n.id === callerId)
+    const archived = caller ? archivedRefusal(doc, caller, args) : null
+    if (archived) refuse(archived)
     const given = args.node
     if (given !== undefined && typeof given !== 'string') refuse('--node must be a node id.')
     const id = (given as string | undefined) ?? callerId

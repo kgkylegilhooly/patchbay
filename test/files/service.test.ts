@@ -321,5 +321,16 @@ describe('patchbay files', () => {
     await verbs('me', 'list', {})
     expect(passed).toEqual(['list'])
   })
+
+  test('refuses a caller in an archived project, or a node named in one', async () => {
+    const archivedDoc = {
+      projects: [{ id: 'p1', name: 'Live', folder: '', viewport: { x: 0, y: 0, zoom: 1 } }, { id: 'p2', name: 'Old', folder: '', viewport: { x: 0, y: 0, zoom: 1 }, closedAt: 1, archivedAt: 1 }],
+      nodes: [node('me'), node('old', { projectId: 'p2', openedBy: 'me' }), node('stale', { projectId: 'p2' })],
+      edges: []
+    } as unknown as CanvasDoc
+    const archivedVerbs = withFilesVerbs(async () => ({}), { store: { get: () => archivedDoc } as unknown as CanvasStore, service })
+    await expect(archivedVerbs('me', 'files', { node: 'old' })).rejects.toThrow(/archived/)
+    await expect(archivedVerbs('stale', 'files', {})).rejects.toThrow(/archived/)
+  })
 })
 
