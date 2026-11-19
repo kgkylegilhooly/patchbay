@@ -72,6 +72,13 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       return doc().projects.find((p) => p.id === doc().activeProjectId)?.folder || lastFolder.current
     }
 
+    /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
+    const terminalFolder = (groupId?: string, profileId?: string): string => {
+      const group = groupFor(groupId)
+      if (group?.worktree) return group.worktree.path
+      return profileFolder(profileId) ?? defaultFolder(groupId)
+    }
+
     const place = (at?: Point, groupId?: string) => {
       const group = groupFor(groupId)
       if (at) return { at: flow.screenToFlowPosition(at), group, doc: doc() }
@@ -154,7 +161,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         center(id)
       },
       newTerminal: (at, groupId, profileId) =>
-        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: profileFolder(profileId) ?? defaultFolder(groupId), profile: pickedProfile(profileId) })),
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) })),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),

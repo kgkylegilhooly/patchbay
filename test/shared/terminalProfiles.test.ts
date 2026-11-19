@@ -1,13 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import { parseSettings, mergeSettings } from '../../src/main/lifecycle'
-import { terminalArgs, terminalLaunch } from '../../src/main/sessions/shell'
+import { detectBuiltInProfiles, terminalArgs, terminalLaunch } from '../../src/main/sessions/shell'
 import {
   argsFromLines,
   builtInProfiles,
+  cmdArgs,
   findProfile,
   GIT_BASH,
   launchLine,
   MIGRATED_ID,
+  migratedSettingsText,
   profileArg,
   profileList,
   readProfileFields,
@@ -122,7 +124,7 @@ test('shell kinds, launch lines, and the text fields', () => {
   expect(shellKind('C:\\Windows\\System32\\bash.exe')).toBe('bash')
   expect(shellKind('pwsh.exe')).toBe('powershell')
   expect(shellKind('C:\\Windows\\System32\\cmd.exe')).toBe('cmd')
-  expect(launchLine('cmd.exe', ['/k', 'C:\\Program Files\\a.bat', ''])).toBe('cmd.exe /k "C:\\Program Files\\a.bat" ""')
+  expect(launchLine('pwsh.exe', ['-File', 'C:\\Program Files\\a.ps1', ''])).toBe('pwsh.exe -File "C:\\Program Files\\a.ps1" ""')
   expect(argsFromLines('/k\n\nC:\\a b.bat\r\n')).toEqual(['/k', 'C:\\a b.bat'])
   expect(startupLines('cd x\n\n  nvm use\x07 \n')).toEqual(['cd x', 'nvm use'])
 })
@@ -142,4 +144,65 @@ describe('--profile', () => {
   test('refuses an unknown one, listing what there is', () => {
     expect(() => profileArg(list, 'Zsh', refuse)).toThrow('No terminal profile is called "Zsh". Available: "Windows PowerShell", "VS prompt", "Command Prompt".')
   })
+})
+
+describe('cmd.exe command lines', () => {
+  // The session host joins cmd's arguments with spaces and hands cmd that line as it is.
+  const line = (args: string[]) => cmdArgs(args).join(' ')
+
+  test('a spaced path after /k is quoted, inside the outer pair cmd takes off', () => {
+    expect(line(['/k', 'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat'])).toBe(
+      '/k ""C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat""'
+    )
+    expect(line(['/k', 'C:\\Program Files (x86)\\Tools\\env.bat', 'x64'])).toBe('/k ""C:\\Program Files (x86)\\Tools\\env.bat" x64"')
+    expect(line(['/K', 'C:\\a&b\\env.bat'])).toBe('/K ""C:\\a&b\\env.bat""')
+  })
+
+  test('arguments already quoted are kept, and plain ones are left bare', () => {
+    expect(line(['/k', '"C:\\Program Files\\x.bat"'])).toBe('/k ""C:\\Program Files\\x.bat""')
+    expect(line(['/k', 'vcvars64.bat'])).toBe('/k vcvars64.bat')
+    expect(line(['/q'])).toBe('/q')
+  })
+
+  test('a profile launches with that line, and its preview shows exactly it', () => {
+    const p: TerminalProfile = { id: 'custom:vs', name: 'VS', program: 'cmd.exe', args: ['/k', 'C:\\Program Files (x86)\\env.bat'] }
+    const launch = terminalLaunch(profileList({ terminalProfiles: [p], defaultTerminalProfile: 'custom:vs' }, noBash), {}, false)
+    expect(launch.args.join(' ')).toBe('/k ""C:\\Program Files (x86)\\env.bat""')
+    expect(launchLine(p.program, p.args)).toBe(`cmd.exe ${launch.args.join(' ')}`)
+  })
+
+  test("a node's own command still goes to /k as the raw text it was", () => {
+    const list = profileList({}, noBash)
+    expect(terminalLaunch(list, { profile: 'builtin:cmd', command: 'echo "a b" & dir' }, false).args).toEqual(['/k', 'echo "a b" & dir'])
+  })
+})
+
+describe('saving an old shell setting as a profile', () => {
+  test('happens once, keeping the shell for run commands, so clearing it later keeps the profile', () => {
+    const text = migratedSettingsText(JSON.stringify({ shell: 'C:\\tools\\nu.exe', sound: 'off' }))!
+    expect(JSON.parse(text)).toEqual({
+      shell: 'C:\\tools\\nu.exe',
+      sound: 'off',
+      terminalProfiles: [{ id: MIGRATED_ID, name: 'nu.exe', program: 'C:\\tools\\nu.exe', args: [] }],
+      defaultTerminalProfile: MIGRATED_ID
+    })
+    expect(migratedSettingsText(text)).toBeNull()
+    const cleared = parseSettings(JSON.stringify({ ...JSON.parse(text), shell: '' }))
+    const after = profileList(cleared, withBash)
+    expect(after.defaultId).toBe(MIGRATED_ID)
+    expect(after.profiles[0].program).toBe('C:\\tools\\nu.exe')
+  })
+
+  test('does nothing with no shell, saved profiles, or a broken file', () => {
+    expect(migratedSettingsText(JSON.stringify({ sound: 'off' }))).toBeNull()
+    expect(migratedSettingsText(JSON.stringify({ shell: 'cmd.exe', terminalProfiles: [] }))).toBeNull()
+    expect(migratedSettingsText('{ nope')).toBeNull()
+    expect(migratedSettingsText(null)).toBeNull()
+  })
+})
+
+test('PowerShell 7 from the Store or winget is found in WindowsApps', () => {
+  const store = 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe'
+  const found = detectBuiltInProfiles({ LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, (p) => p === store)
+  expect(found.find((p) => p.id === 'builtin:pwsh')?.program).toBe(store)
 })

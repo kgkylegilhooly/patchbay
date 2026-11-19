@@ -150,9 +150,30 @@ export function profileForNode(list: ProfileList, recorded: unknown): { profile:
   return found ? { profile: found } : { profile: fallback, missing: recorded }
 }
 
-/** How a launch is shown: the program and its arguments, quoted as Windows would need them. */
+/** Characters cmd.exe treats specially outside quotes. */
+const CMD_SPECIAL = /[\s&()^|<>,;=]/
+const quotedAlready = (a: string): boolean => a.length >= 2 && a.startsWith('"') && a.endsWith('"')
+const cmdQuote = (a: string): string => (a === '' ? '""' : quotedAlready(a) || !CMD_SPECIAL.test(a) ? a : `"${a}"`)
+
+/**
+ * A cmd.exe profile's arguments as the command line cmd will read. cmd doesn't split its command line by the argv rules
+ * other programs use, and the session host passes cmd's arguments as one line, joined with spaces. So each argument
+ * with a space or one of cmd's special characters is quoted here, unless the person quoted it already, and what follows
+ * /k or /c is wrapped in one more pair of quotes, which cmd takes off again before running it: `/k ""C:\a b\x.bat" arg"`.
+ */
+export function cmdArgs(args: string[]): string[] {
+  const at = args.findIndex((a) => /^\/[kc]$/i.test(a))
+  if (at === -1) return args.map(cmdQuote)
+  const head = args.slice(0, at + 1).map(cmdQuote)
+  const tail = args.slice(at + 1).map(cmdQuote).join(' ')
+  if (!tail) return head
+  return [...head, tail.includes('"') ? `"${tail}"` : tail]
+}
+
+/** How a launch is shown: the program and its arguments, quoted as they will reach it. */
 export function launchLine(program: string, args: string[]): string {
   const quote = (a: string): string => (a === '' ? '""' : /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)
+  if (shellKind(program) === 'cmd') return [quote(program), ...cmdArgs(args)].join(' ')
   return [program, ...args].map(quote).join(' ')
 }
 
@@ -206,4 +227,26 @@ export function profileArg(list: (() => ProfileList) | undefined, given: string 
   if (!list) return refuse('Terminal profiles are not available here.')
   const profiles = list()
   return findProfile(profiles, given) ?? refuse(unknownProfile(profiles, given))
+}
+
+/**
+ * settings.json's new text with an old `shell` saved as a profile, once: from then on "Shell for run commands" and the
+ * terminal profiles are separate settings, so clearing or changing one leaves the other alone. Null when there's
+ * nothing to do, or the file can't be read as settings.
+ */
+export function migratedSettingsText(text: string | null): string | null {
+  if (text === null || !text.trim()) return null
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const fields = raw as Record<string, unknown>
+  if (fields.terminalProfiles !== undefined) return null
+  const shell = typeof fields.shell === 'string' ? fields.shell : undefined
+  const custom = customProfiles({ shell })
+  if (!custom.length) return null
+  return withProfiles(text, custom, typeof fields.defaultTerminalProfile === 'string' ? fields.defaultTerminalProfile : MIGRATED_ID)
 }

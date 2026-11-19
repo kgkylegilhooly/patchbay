@@ -19,8 +19,8 @@ import { SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
-import { createStartupTyper, missingProfileNotice, terminalStartFor } from './terminalStart'
-import { shellKind, type TerminalProfile } from '../../shared/terminalProfiles'
+import { createStartupTyper, missingProfileNotice, STARTUP_WAITING, startupSkipped, terminalStartFor } from './terminalStart'
+import type { TerminalProfile } from '../../shared/terminalProfiles'
 import { findSsh, sshArgs } from './ssh'
 import { sshHostProblem } from '../../core/ssh/config'
 import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startupQuestion'
@@ -197,7 +197,17 @@ export function createNodeRunner({
   })
 
   // A terminal profile's startup command, typed once at the shell's first prompt. See terminalStart.ts.
-  const startupTyper = createStartupTyper({ host, prefix: ctx.typePrefix })
+  const startupTyper = createStartupTyper({
+    host,
+    prefix: ctx.typePrefix,
+    events: {
+      waiting: (id) => setError(id, { code: 'spawn-failed', message: STARTUP_WAITING }),
+      typed: (id) => {
+        if (errors.get(id)?.message === STARTUP_WAITING) setError(id, null)
+      },
+      skipped: (id, lines) => setError(id, { code: 'spawn-failed', message: startupSkipped(lines) })
+    }
+  })
   host.onOutput((id, data) => startupTyper.output(id, data))
 
   host.onExit((id, code) => {
@@ -301,10 +311,12 @@ export function createNodeRunner({
       args: launch.args,
       cwd: node.cwd,
       env: sessionEnv(node.id, tokenFor(ctx.secret, node.id), ctx),
-      initialScrollback: launch.missing ? `${initialScrollback ?? ''}${missingProfileNotice(launch.profile.name)}` : initialScrollback,
+      initialScrollback,
       saveScrollback: true
     })
-    startupTyper.arm(node.id, launch.typed, { promptSignOnly: shellKind(launch.file) === 'git-bash' })
+    // Shown on the node rather than written into its output, which is saved and would gather a copy at every restart.
+    if (launch.missing) setError(node.id, { code: 'spawn-failed', message: missingProfileNotice(launch.profile.name) })
+    startupTyper.arm(node.id, launch.typed, launch.waitFor)
   }
 
   /** ssh straight to the host, with no shell to read the name. Coming back from a restart connects again. */
@@ -472,6 +484,7 @@ export function createNodeRunner({
     },
 
     noteInput(id, data) {
+      startupTyper.input(id, data)
       if (runResults.get(id)?.running && data.includes('\x03')) stoppingRuns.add(id)
       if (!runs.has(id)) return
       if (data !== '\x1b' && !data.includes('\x03')) return

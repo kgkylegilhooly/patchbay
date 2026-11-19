@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { builtInProfiles, GIT_BASH, GIT_BASH_ARGS, profileForNode, profileList, shellKind, startupLines, type ProfileList, type ProfileSettings, type TerminalProfile } from '../../shared/terminalProfiles'
+import { builtInProfiles, cmdArgs, GIT_BASH, GIT_BASH_ARGS, profileForNode, profileList, shellKind, startupLines, type ProfileList, type ProfileSettings, type TerminalProfile } from '../../shared/terminalProfiles'
 
 /**
  * Whether Claude Code will run hook and status line commands through Git Bash, as it does on Windows wherever it finds
@@ -23,8 +23,10 @@ export function pickDefaultShell(settingsShell?: string): { file: string; args: 
 export function detectBuiltInProfiles(env: NodeJS.ProcessEnv = process.env, exists: (p: string) => boolean = existsSync): TerminalProfile[] {
   const programFiles = env.ProgramFiles ?? 'C:\\Program Files'
   const system = join(env.SystemRoot ?? 'C:\\Windows', 'System32')
-  const pwsh = join(programFiles, 'PowerShell', '7', 'pwsh.exe')
-  return builtInProfiles({ gitBash: exists(GIT_BASH), pwsh: exists(pwsh) ? pwsh : null, wsl: exists(join(system, 'wsl.exe')) })
+  // The installer's place, then the Store's and winget's, which put a launcher in WindowsApps.
+  const pwshAt = [join(programFiles, 'PowerShell', '7', 'pwsh.exe'), ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe')] : [])]
+  const pwsh = pwshAt.find((p) => exists(p)) ?? null
+  return builtInProfiles({ gitBash: exists(GIT_BASH), pwsh, wsl: exists(join(system, 'wsl.exe')) })
 }
 
 /** Every terminal profile, the default first. */
@@ -47,9 +49,22 @@ export interface TerminalLaunch {
   args: string[]
   /** Lines to type at the shell's first prompt, in order. */
   typed: string[]
+  /**
+   * How to tell the shell is at its prompt: 'sign' waits for bash's own sign (Git Bash, and WSL's Linux bash), 'prompt'
+   * for output that goes quiet on a line that looks like a prompt.
+   */
+  waitFor: PromptWait
   profile: TerminalProfile
   /** The id the node recorded, when that profile has since been deleted. */
   missing?: string
+}
+
+export type PromptWait = 'sign' | 'prompt'
+
+/** Bash says when its line editor is ready for a command. Other shells are judged by what their last line looks like. */
+export function promptWaitFor(program: string): PromptWait {
+  const kind = shellKind(program)
+  return kind === 'git-bash' || kind === 'bash' || kind === 'wsl' ? 'sign' : 'prompt'
 }
 
 const sameArgs = (a: string[], b: string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i])
@@ -72,7 +87,9 @@ function plain(p: TerminalProfile): boolean {
 export function terminalLaunch(list: ProfileList, node: { profile?: unknown; command?: string }, restored: boolean): TerminalLaunch {
   const { profile, missing } = profileForNode(list, node.profile)
   const command = !restored && node.command ? node.command : undefined
-  const base = { profile, ...(missing ? { missing } : {}) }
+  const base = { profile, waitFor: promptWaitFor(profile.program), ...(missing ? { missing } : {}) }
+  // A node's command stays the raw text it always was for cmd's /k. Only a profile's own arguments are quoted for cmd.
   if (command && plain(profile)) return { ...base, file: profile.program, args: terminalArgs(profile.program, command), typed: [] }
-  return { ...base, file: profile.program, args: [...profile.args], typed: [...startupLines(profile.startupCommand), ...(command ? startupLines(command) : [])] }
+  const args = shellKind(profile.program) === 'cmd' ? cmdArgs(profile.args) : [...profile.args]
+  return { ...base, file: profile.program, args, typed: [...startupLines(profile.startupCommand), ...(command ? startupLines(command) : [])] }
 }

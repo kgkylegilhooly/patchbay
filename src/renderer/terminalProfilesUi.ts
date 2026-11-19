@@ -41,16 +41,17 @@ export function useTerminalProfiles(): ProfileList | null {
   const [list, setList] = useState(current)
   useEffect(() => {
     listeners.add(setList)
-    if (!current) void refreshTerminalProfiles()
-    else setList(current)
+    if (current) setList(current)
+    // Read again each time a page that shows them opens, so a hand edit of settings.json shows up.
+    void refreshTerminalProfiles()
     return () => void listeners.delete(setList)
   }, [])
   return list
 }
 
-/** A profile's folder, when it has one, for a new terminal opened with no folder chosen. */
+/** A profile's folder, when it has one, for a new terminal opened with no folder chosen. With no id, the default's. */
 export function profileFolder(id: string | undefined): string | undefined {
-  return id ? current?.profiles.find((p) => p.id === id)?.cwd : undefined
+  return (id ? current?.profiles.find((p) => p.id === id) : current?.profiles[0])?.cwd
 }
 
 /** The profiles other than the default, which plain New terminal already opens. */
@@ -60,6 +61,8 @@ export function otherProfiles(): TerminalProfile[] {
 
 /** Menu items for opening a terminal with each profile other than the default. */
 export function terminalProfileItems(open: (profileId: string) => void): Array<{ id: string; label: string; icon: 'terminal'; run: () => void }> {
+  // Menus are built as they open and can't wait, so this one shows the last list read, and the next one the fresh one.
+  void refreshTerminalProfiles()
   return otherProfiles().map((p) => ({ id: `new-terminal-profile:${p.id}`, label: `New terminal: ${p.name}`, icon: 'terminal' as const, run: () => open(p.id) }))
 }
 

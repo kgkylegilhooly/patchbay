@@ -22,7 +22,7 @@ import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
-import { profileArg, type ProfileList } from '../../shared/terminalProfiles'
+import { profileArg, type ProfileList, type TerminalProfile } from '../../shared/terminalProfiles'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -284,6 +284,22 @@ export function createVerbs({
     return node
   }
 
+  /**
+   * A terminal profile's folder, after --cwd and a group's worktree but before the caller's folder. The named profile's,
+   * or the default's: a missing folder is refused for one named with --profile, and passed over for the default.
+   */
+  const profileCwd = (args: Args, group: GroupNode | null, named: TerminalProfile | undefined): string | undefined => {
+    if (optional(args, 'cwd') !== undefined || group?.worktree) return undefined
+    const path = (named ?? terminalProfiles?.().profiles[0])?.cwd
+    if (!path) return undefined
+    if (named) return folder(path)
+    try {
+      return isAbsolute(path) && statSync(path).isDirectory() ? path : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   const cwdFor = (args: Args, caller: CanvasNode, group: GroupNode | null): string => {
     const given = optional(args, 'cwd')
     if (given !== undefined) return folder(given)
@@ -511,7 +527,7 @@ export function createVerbs({
     if (args.after !== undefined) refuse('--after only works on Claude nodes, not terminals.')
     const group = groupFor(caller, args)
     const profile = profileArg(terminalProfiles, optional(args, 'profile'), refuse)
-    const cwd = profile?.cwd && optional(args, 'cwd') === undefined ? profile.cwd : cwdFor(args, caller, group)
+    const cwd = profileCwd(args, group, profile) ?? cwdFor(args, caller, group)
     const command = optional(args, 'command')
     const node: TerminalNode = {
       ...placement(caller, group, SIZES.terminal),
