@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { branchFor, expectedWorktreePath, planRecipe, showArgv, toArgv, type RecipeEntry, type RecipeParams, type RecipePlan } from '../shared/recipe'
 import { bridge } from './bridge'
 import { recipes } from './recipeBridge'
+import { useAgentChoice } from './agentChoice'
+import { agentNames } from '../shared/agents'
+import { AGENT_NAMES, type AgentKind } from '../shared/model'
 
 type Listing = { entries: RecipeEntry[]; repo: string | null; folder: string }
 
@@ -43,6 +46,9 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
   const [edits, setEdits] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  // Settings > Agents: agents turned off start as the default instead only when the person ticks it here.
+  const agents = useAgentChoice()
+  const [useAgent, setUseAgent] = useState<AgentKind | undefined>(undefined)
   const taskRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -63,6 +69,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
     setWorktree(recipe.worktree !== false && !!listing?.repo)
     setSkip([])
     setEdits({})
+    setUseAgent(undefined)
     setProblem(null)
     taskRef.current?.focus()
   }, [recipe, listing?.repo])
@@ -75,16 +82,17 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
     if (argv) runs[key] = argv
     else badEdits.push(key)
   }
-  const params: RecipeParams = { task, branch: effectiveBranch, repo, cwd, worktree, skip, runs }
+  const params: RecipeParams = { task, branch: effectiveBranch, repo, cwd, worktree, skip, runs, ...(useAgent ? { useAgent } : {}) }
+  const agentsOff = [...new Set(recipe?.nodes.flatMap((n) => (n.kind === 'agent' && !agents.enabled.includes(n.agent) ? [n.agent] : [])) ?? [])]
   const shownCwd = worktree ? expectedWorktreePath(repo || '…', effectiveBranch || '‹branch›') : cwd
   /** A folder as shown: relative to the working directory, whose full path is shown once above. */
   const where = (folder: string): string => (folder === shownCwd ? (worktree ? 'the new worktree' : 'the working directory') : folder.startsWith(`${shownCwd}\\`) ? folder.slice(shownCwd.length + 1) : folder)
   const plan = useMemo(() => {
     if (!recipe) return null
     let n = 0
-    return planRecipe(recipe, { ...params, cwd: shownCwd }, () => `new-node-${++n}-${Math.random().toString(36).slice(2, 8)}`)
+    return planRecipe(recipe, { ...params, cwd: shownCwd }, () => `new-node-${++n}-${Math.random().toString(36).slice(2, 8)}`, agents)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipe, task, effectiveBranch, repo, cwd, worktree, skip.join(','), JSON.stringify(runs)])
+  }, [recipe, task, effectiveBranch, repo, cwd, worktree, skip.join(','), JSON.stringify(runs), useAgent, agents])
 
   const setupNodes = recipe?.nodes.filter((n) => n.kind === 'setup') ?? []
   const missing = worktree ? (!effectiveBranch ? 'Enter a branch for the new worktree.' : !repo ? 'Choose the repository.' : null) : !cwd ? 'Choose a working directory.' : null
@@ -203,6 +211,11 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
               )}
             </div>
 
+            {agentsOff.length > 0 && (
+              <label className="recipe-use-agent" data-recipe-use-agent>
+                <input type="checkbox" checked={!!useAgent} onChange={(e) => setUseAgent(e.target.checked ? agents.default : undefined)} /> Start its {agentNames(agentsOff)} agents with {AGENT_NAMES[agents.default]} instead
+              </label>
+            )}
             {plan.problems.map((p) => (
               <p key={p} className="field-problem" role="alert" data-recipe-problem>
                 {p}

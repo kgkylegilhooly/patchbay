@@ -105,6 +105,9 @@ patchbay open-agent --prompt "Review the tests" --after <id>,<id>
 patchbay open-agent --agent codex --prompt "Review the parser changes" --title "Codex review"
 ```
 
+- The person can turn an agent off in Settings > Agents. `patchbay whoami` says which agents Patchbay may open: check
+  it before opening an agent of another kind than yours. Opening one that's off is refused. With no `--agent` you get
+  the default, which is always on.
 - A node starts in your folder unless you pass `--cwd`. In a group bound to a git worktree, it starts
   in that worktree.
 - New nodes appear connected to yours and are linked to you, so you can read and message them.

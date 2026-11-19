@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { armRefusal, canonicalSpec, isArmed, isTriggerTarget } from '../../core/trigger/arming'
 import { nextRun, slotsUpTo } from '../../core/trigger/schedule'
 import type { CanvasStore, SessionHost } from '../../shared/contract'
-import { DISARMED, type TriggerNode, type TriggerRun, type TriggerState } from '../../shared/model'
+import { agentOf, DISARMED, type TriggerNode, type TriggerRun, type TriggerState } from '../../shared/model'
 import { plainText, type SendQueue } from '../control/sendQueue'
 import type { StatusTracker } from '../sessions/statusTracker'
+import { agentOffNow } from '../agentsAllowed'
 
 /** Later than this, a slot counts as missed rather than run late, as after the PC wakes from sleep. */
 export const LATE_LIMIT_MS = 60_000
@@ -89,6 +90,9 @@ export function createTriggerService({
     const target = store.get().nodes.find((n) => n.id === node.targetId)
     const result = ((): TriggerRun => {
       if (!isTriggerTarget(target)) return run('missed', 'What it sends to is gone.')
+      // Settings > Agents: nothing goes to an agent turned off, even one still running.
+      const off = target.kind === 'claude' ? agentOffNow(agentOf(target)) : null
+      if (off) return run('failed', host.isRunning(target.id) ? `${off} "${target.title}" is still running, but nothing was sent to it.` : off)
       if (!host.isRunning(target.id) || (target.kind === 'claude' && tracker.get(target.id) === 'exited')) {
         return run('missed', `"${target.title}" wasn't running. A trigger never starts a session.`)
       }
