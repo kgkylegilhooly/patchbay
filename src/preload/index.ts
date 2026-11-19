@@ -3,6 +3,7 @@ import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
 import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
+import { exposeReview } from './review'
 import { exposeCompare } from './compare'
 
 /**
@@ -133,6 +134,7 @@ contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
 exposeSearch()
 exposeRecipes()
+exposeReview()
 exposeCompare()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
