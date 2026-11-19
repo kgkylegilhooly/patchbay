@@ -224,6 +224,17 @@ const scenes = {
     if (!/Sent to Planner|Queued for Planner/.test(said)) throw new Error(`Send said: ${said}`)
     const unsent = await page.$$eval(`${READER} .reader-c-sent`, (s) => s.filter((e) => e.textContent === 'Not sent yet').length)
     if (unsent) throw new Error(`${unsent} comments still unsent`)
+    // What the agent received, byte for byte, once any second Enter has gone too. The fake's own screen echoes
+    // input on top of the console's, so its terminal shows a message twice; the bytes are what count.
+    await sleep(2500)
+    const got = fs.readFileSync(process.env.FAKE_INPUT_LOG, 'utf8')
+    const pastes = got.split('\x1b[200~').length - 1
+    if (pastes !== 1) throw new Error(`The agent got ${pastes} pastes: ${JSON.stringify(got)}`)
+    if ((got.match(/Comments on "/g) ?? []).length !== 1) throw new Error(`The message arrived more than once: ${JSON.stringify(got)}`)
+    for (const line of ['\n\n1. On the whole document:\n   Looks right', '\n2. In "Billing migration plan > Rollout > Phase 2: switch reads", on: "every customer at once"\n   Do this', '\n3. In "Billing migration plan > Risks"']) {
+      if (!got.includes(line)) throw new Error(`Line breaks were lost; missing ${JSON.stringify(line)} in ${JSON.stringify(got)}`)
+    }
+    console.log(`reader-sent: one paste of ${got.length} bytes, line breaks intact`)
     await sleep(300)
   },
   // Opens the planner's plan from its menu.
@@ -233,7 +244,7 @@ const scenes = {
     const since = Date.now() - 60_000
     let transcript = null
     for (let i = 0; i < 50 && !transcript; i++) {
-      const fresh = fs.readdirSync(os.tmpdir()).filter((n) => /^pb-fake-.*.jsonl$/.test(n)).map((n) => path.join(os.tmpdir(), n)).filter((p) => fs.statSync(p).mtimeMs >= since)
+      const fresh = fs.readdirSync(os.tmpdir()).filter((n) => /^pb-fake-.*\.jsonl$/.test(n)).map((n) => path.join(os.tmpdir(), n)).filter((p) => fs.statSync(p).mtimeMs >= since)
       transcript = fresh.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] ?? null
       if (!transcript) await sleep(200)
     }
@@ -259,7 +270,12 @@ const seeds = {
   reader: seedReader,
   'reader-live': seedReader,
   'reader-paper': seedReader,
-  'reader-sent': seedReader,
+  // The fake agent logs every byte typed into it there. Set before the app starts, so its sessions inherit it.
+  'reader-sent': (doc) => {
+    seedReader(doc)
+    doc.nodes.find((n) => n.id === 'idle').prompt = 'idle context=12 paste'
+    process.env.FAKE_INPUT_LOG = path.join(doc.projects[0].folder, 'planner-input.log')
+  },
   'reader-before': seedBefore,
   'reader-open-plan': seedOpenPlan
 }

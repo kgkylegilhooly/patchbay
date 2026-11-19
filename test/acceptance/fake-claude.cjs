@@ -81,9 +81,17 @@ async function main() {
   } else if (/\bexit\b/.test(prompt)) {
     process.exit(0)
   }
+  // With "paste" in the prompt it reads input as Claude Code does: raw, with bracketed paste on. Otherwise the console
+  // reads it a line at a time, echoing it itself and dropping paste markers and line breaks inside a message.
+  if (/\bpaste\b/.test(prompt) && process.stdin.isTTY) {
+    process.stdin.setRawMode(true)
+    process.stdout.write('\x1b[?2004h')
+  }
   // Left idle otherwise, and it stays open, echoing what's typed, like a program waiting for input.
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (d) => process.stdout.write(d))
+  // Every byte typed into it, for a check of exactly what a send delivered.
+  if (process.env.FAKE_INPUT_LOG) process.stdin.on('data', (d) => fs.appendFileSync(process.env.FAKE_INPUT_LOG, d))
   // With "turns" in the prompt, each submitted line is a turn: "busy" starts one and leaves it running, "done" ends
   // it, and anything else is a prompt it reports, then finishes a moment later. That's what idle gating needs.
   if (/\bturns\b/.test(prompt)) {
