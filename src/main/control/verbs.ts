@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { taskVerb } from '../tasks/verbs'
+import type { TaskService } from '../tasks/service'
 import { readFileSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { lastLines, readTranscriptAsync, stripAnsi } from '../../core/transcript/read'
@@ -196,6 +198,7 @@ function refuseCycles(members: MemberPlan[]): void {
 }
 
 export function createVerbs({
+  tasks,
   store,
   runner,
   tracker,
@@ -212,6 +215,7 @@ export function createVerbs({
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude'
 }: {
+  tasks?: TaskService
   waitTiming?: WaitTiming
   /** A node sent another a message, so the canvas can show it travel down the cable between them, and keep it. */
   onMessage?: (from: string, to: string, text: string) => void
@@ -864,6 +868,10 @@ export function createVerbs({
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
     const args = withIds(caller, given)
+    if (verb.startsWith('task-')) {
+      if (!tasks) refuse('Tasks are not available here.')
+      return taskVerb(tasks, caller, verb, args)
+    }
     if (BROWSER_VERBS.includes(verb)) {
       if (!browserVerb) refuse('Browser nodes are not available here.')
       return browserVerb(callerId, verb, args)

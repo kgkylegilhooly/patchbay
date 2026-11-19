@@ -323,6 +323,8 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
     case 'patchProject':
       if (!doc.projects.some((p) => p.id === op.id)) return doc
       return { ...doc, projects: doc.projects.map((p) => (p.id === op.id ? { ...p, ...op.patch } : p)) }
+    case 'setTasks':
+      return { ...doc, projects: doc.projects.map((p) => p.id === op.projectId ? { ...p, tasks: op.tasks } : p) }
     case 'setBoard': {
       const board = sanitizeBoard(op.board)
       if (!board || !doc.projects.some((p) => p.id === op.projectId)) return doc

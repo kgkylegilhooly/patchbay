@@ -160,6 +160,8 @@ export interface ClosedSession {
 export type Viewport = { x: number; y: number; zoom: number }
 
 export interface Project {
+  /** Explicit outcomes, independent of session status. Absent in older projects. */
+  tasks?: import('./task').TaskRecords
   id: string
   name: string
   /** Where new sessions start. Empty means the home folder. */
@@ -213,6 +215,7 @@ export interface LayoutRestore {
 }
 
 export type CanvasOp =
+  | { op: 'setTasks'; projectId: string; tasks: import('./task').TaskRecords }
   | { op: 'addNode'; node: CanvasNode }
   | { op: 'patchNode'; id: string; patch: Partial<CanvasNode> }
   | { op: 'removeNodes'; ids: string[]; at: number }

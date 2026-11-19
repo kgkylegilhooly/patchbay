@@ -8,6 +8,12 @@ const REQUEST_TIMEOUT_MS = 30000
 
 // How each flag is read: text, list (commas or repeats), int, or path (resolved against this folder).
 const VERBS = {
+  'task create': { brief: 'text', criteria: 'list', sessions: 'list', cwd: 'path', checks: 'text', 'depends-on': 'list' },
+  'task list': {},
+  'task show': { task: 'text' },
+  'task submit': { task: 'text', summary: 'text' },
+  'task verify': { task: 'text', check: 'text', command: 'text', cwd: 'path' },
+  'task state': { task: 'text', state: 'text' },
   whoami: {},
   list: {},
   'open-terminal': { cwd: 'path', group: 'text', title: 'text', command: 'text', after: 'list' },
@@ -50,6 +56,13 @@ const VERBS = {
 
 const USAGE = `Usage: patchbay <verb> [--flag value]
 
+  task create   --brief TEXT --criteria TEXT [--sessions ID,ID] [--cwd DIR] [--checks JSON] [--depends-on ID,ID]
+  task list
+  task show     --task ID
+  task submit   --task ID --summary TEXT
+  task verify   --task ID --check NAME [--command CMD] [--cwd DIR]   starts a recorded command; task show reads its result
+  task state    --task ID --state planned|running|blocked|cancelled
+
   guide         prints how to use Patchbay, with every rule
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
@@ -88,8 +101,8 @@ function usageOf(verb) {
   const picked = []
   for (let i = 0; i < lines.length; i++) {
     const words = lines[i].trim().split(/\s+/)
-    const name = words[0] === 'browser' ? `browser ${words[1]}` : words[0]
-    const match = verb === 'browser' ? words[0] === 'browser' : name === verb || (words[0] === 'browser' && words[1].split('|').includes(verb.slice(8)))
+    const name = words[0] === 'browser' || words[0] === 'task' ? `${words[0]} ${words[1]}` : words[0]
+    const match = verb === 'browser' || verb === 'task' ? words[0] === verb : name === verb || (words[0] === 'browser' && words[1].split('|').includes(verb.slice(8)))
     if (!match) continue
     picked.push(lines[i])
     // A verb's own detail is indented further on the lines below it.
@@ -299,14 +312,14 @@ function finish(verb, status, text) {
 function main() {
   const [first, ...rest] = process.argv.slice(2)
   // `browser read` is one verb of two words. On the wire it's browser-read.
-  const verb = first === 'browser' ? `browser ${rest[0] ?? ''}` : first
-  const words = first === 'browser' ? rest.slice(1) : rest
+  const verb = first === 'browser' || first === 'task' ? `${first} ${rest[0] ?? ''}` : first
+  const words = first === 'browser' || first === 'task' ? rest.slice(1) : rest
   if (!verb || verb === '--help' || verb === '-h' || verb === 'help') {
     process.stdout.write(USAGE)
     return
   }
-  if (first === 'browser' && ['', '--help', '-h', 'help'].includes(rest[0] ?? '')) {
-    process.stdout.write(usageOf('browser'))
+  if ((first === 'browser' || first === 'task') && ['', '--help', '-h', 'help'].includes(rest[0] ?? '')) {
+    process.stdout.write(usageOf(first))
     return
   }
   if (words[0] === '-h') {

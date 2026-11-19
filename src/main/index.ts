@@ -16,6 +16,7 @@ import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
+import { createTaskService } from './tasks/service'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
@@ -388,8 +389,17 @@ async function boot(): Promise<void> {
     if (e.sender === mainWindow?.webContents && typeof id === 'string') agentEdits.settle(id)
   })
   ipcMain.handle('pb:getMessages', () => messages.all())
+  const tasks = createTaskService(store, dataDir, () => docStore.flush())
+  ipcMain.handle('pb:taskShow', (e, projectId: string, taskId: string) => {
+    if (e.sender !== mainWindow?.webContents || e.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Tasks are available only in the application UI')
+    return tasks.show(projectId, taskId)
+  })
+  ipcMain.handle('pb:taskAccept', (e, projectId: string, taskId: string, submissionId: string) => {
+    if (e.sender !== mainWindow?.webContents || e.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Only the application UI can accept tasks')
+    return tasks.accept(projectId, taskId, submissionId)
+  })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => (currentSettings().defaultAgent === 'codex' ? 'codex' : 'claude') })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.

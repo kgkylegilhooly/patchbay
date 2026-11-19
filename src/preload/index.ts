@@ -23,6 +23,8 @@ function listen<A extends unknown[]>(method: string, cb: (...args: A) => void): 
 }
 
 const bridge: PatchbayBridge = {
+  taskShow: (projectId, taskId) => invoke('taskShow', projectId, taskId),
+  taskAccept: (projectId, taskId, submissionId) => invoke('taskAccept', projectId, taskId, submissionId),
   browserAttached: (nodeId, contentsId) => invoke('browserAttached', nodeId, contentsId),
   browserNavigate: (nodeId, address) => invoke('browserNavigate', nodeId, address),
   browserStep: (nodeId, step) => invoke('browserStep', nodeId, step),

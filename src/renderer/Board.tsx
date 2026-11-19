@@ -11,6 +11,7 @@ import { dispatch, useStore } from './store'
 import { contextLabel } from './usageView'
 import { work } from './workBridge'
 import './work.css'
+import { SessionTaskOutcomes, TaskOutcomes } from './tasks/TaskOutcomes'
 
 type Drag = { key: string; x: number; y: number; over: string | null }
 type IssueAsk = { issue: GithubIssue; kind: 'close' | 'reopen' | 'comment'; body: string }
@@ -49,6 +50,7 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
         {context && <span className={`session-context usage-${context.level}`}>{context.text}</span>}
       </span>
       <span className="card-where">{node.cwd || 'Home folder'}</span>
+      <SessionTaskOutcomes sessionId={node.id} />
     </>
   )
 }
@@ -278,6 +280,7 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
           <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button>
         </p>
       )}
+      <TaskOutcomes records={project.tasks} />
       <div className="board-columns">
         {board.columns.map((col, i) => (
           <div key={col.id} className={`board-column${drag?.over === col.id ? ' board-column-over' : ''}`} data-column={col.id}>

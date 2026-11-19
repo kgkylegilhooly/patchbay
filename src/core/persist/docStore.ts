@@ -2,6 +2,7 @@ import { existsSync, renameSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sanitizeBoard } from '../../shared/board'
+import { isTaskRecords, recoverTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
 import { isWhiteboardShape, LIMITS } from '../../shared/whiteboard'
 import {
@@ -171,7 +172,8 @@ function isProject(p: unknown): boolean {
     isString(p.name) &&
     isString(p.folder) &&
     isViewport(p.viewport) &&
-    (p.closedAt === undefined || isNumber(p.closedAt))
+    (p.closedAt === undefined || isNumber(p.closedAt)) &&
+    (p.tasks === undefined || isTaskRecords(p.tasks))
   )
 }
 
@@ -247,7 +249,8 @@ export function migrate(input: unknown): CanvasDoc {
     throw new Error('Save file has an invalid closed list')
   }
   if (!isViewport(raw.viewport)) throw new Error('Save file has an invalid viewport')
-  return rehomeOrphans(showOpenProject(checkBoards(raw as unknown as CanvasDoc)))
+  const doc = rehomeOrphans(showOpenProject(checkBoards(raw as unknown as CanvasDoc)))
+  return { ...doc, projects: doc.projects.map((p) => p.tasks ? { ...p, tasks: recoverTasks(p.tasks) } : p) }
 }
 
 function parseDoc(text: string): CanvasDoc | null {
