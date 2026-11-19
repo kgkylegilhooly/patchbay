@@ -1,4 +1,4 @@
-import { ipcMain, session } from 'electron'
+import { ipcMain, session, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import { fileNameFor } from '../../core/persist/scrollbackStore'
 import { AGENT_PARTITION, BROWSER_PARTITIONS, PERSON_PARTITION } from '../../shared/browserPolicy'
@@ -7,6 +7,7 @@ import type { ArchiveOptions, StorageReport } from '../../shared/projects'
 import { createProjectArchiver } from './archive'
 import { fileInfo, folderBytes, measureProjects } from './storage'
 
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : [])
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 const partitionDir = (dataDir: string, partition: string): string => join(dataDir, 'Partitions', partition.replace(/^persist:/, ''))
 
@@ -20,7 +21,9 @@ export function setupProjects({
   isRunning,
   stopNode,
   disarmTrigger,
-  forgetOutput
+  forgetOutput,
+  markSeen,
+  isAppUi
 }: {
   dataDir: string
   store: CanvasStore
@@ -29,6 +32,10 @@ export function setupProjects({
   disarmTrigger(id: string): void
   /** Stops saving the node's output, drops what the host holds of it and removes its saved file. */
   forgetOutput(id: string): Promise<void>
+  /** Takes a node off the attention list, so a stopped agent in an archived project isn't waiting to be looked at. */
+  markSeen(id: string): void
+  /** Only the app's own window may ask: archiving stops sessions and clearing removes data. */
+  isAppUi(e: IpcMainInvokeEvent): boolean
 }): void {
   const scrollbackPath = (id: string): string => join(dataDir, 'scrollback', fileNameFor(id))
   // Sizes are read when the preview is built, which is shown before archiving, so a cached copy is fine there.
@@ -37,6 +44,7 @@ export function setupProjects({
     store,
     isRunning,
     stopNode,
+    markSeen,
     disarmTrigger,
     scrollbackBytes: (id) => sizes.get(id) ?? 0,
     forgetOutput,
@@ -55,7 +63,8 @@ export function setupProjects({
   }
 
   const handle = (name: string, fn: (...args: never[]) => unknown): void => {
-    ipcMain.handle(`pb:projects:${name}`, async (_e, ...args: unknown[]) => {
+    ipcMain.handle(`pb:projects:${name}`, async (e, ...args: unknown[]) => {
+      if (!isAppUi(e)) return { ok: false, reason: 'Only the Patchbay window can do this.' }
       try {
         return await (fn as (...a: unknown[]) => unknown)(...args)
       } catch (e) {
@@ -94,8 +103,8 @@ export function setupProjects({
   handle('archive', async (id: string, options: Partial<ArchiveOptions> | undefined) => {
     await readSizes(String(id))
     return archiver.archive(String(id), {
-      clearScrollback: options?.clearScrollback === true,
-      clearSites: options?.clearSites === true
+      clearScrollback: strings(options?.clearScrollback),
+      clearSites: strings(options?.clearSites)
     })
   })
   handle('clearBrowserCache', async () => {

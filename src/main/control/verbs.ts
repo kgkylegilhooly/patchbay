@@ -23,6 +23,10 @@ import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type S
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
 import { archivedRefusal } from './archived'
+import { absoluteRect, placeInGroup, placeNear, projectOf, viewRect } from '../../core/canvas/place'
+import { viewSize } from '../viewSize'
+import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agents'
+import { profileArg, type ProfileList, type TerminalProfile } from '../../shared/terminalProfiles'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -142,25 +146,10 @@ function absolute(doc: CanvasDoc, node: CanvasNode): { x: number; y: number } {
   return { x, y }
 }
 
-/** Beside the opener, moving down until nothing top-level is in the way. */
+/** The nearest free spot beside the opener, in view when the window's size is known. See core/canvas/place. */
 export function spotNear(doc: CanvasDoc, opener: CanvasNode, size: { width: number; height: number }): { x: number; y: number } {
-  const from = absolute(doc, opener)
-  const x = from.x + opener.width + GAP
-  let y = from.y
-  const clash = (): CanvasNode | undefined =>
-    doc.nodes.find(
-      (n) => !n.parentId && x < n.x + n.width && n.x < x + size.width && y < n.y + n.height && n.y < y + size.height
-    )
-  for (let hit = clash(); hit; hit = clash()) y = hit.y + hit.height + GAP
-  return { x, y }
-}
-
-function belowChildren(doc: CanvasDoc, groupId: string): { x: number; y: number } {
-  const inside = doc.nodes.filter((n) => n.parentId === groupId)
-  return {
-    x: GROUP_PADDING,
-    y: inside.length ? Math.max(...inside.map((n) => n.y + n.height)) + GROUP_PADDING : GROUP_TOP
-  }
+  const projectId = projectOf(doc, opener)
+  return placeNear(doc, { beside: absoluteRect(doc, opener), size, projectId, view: viewRect(doc, projectId, viewSize()) })
 }
 
 const edge = (from: string, to: string, kind: Edge['kind']): Edge => ({ id: randomUUID(), from, to, kind })
@@ -216,6 +205,8 @@ export function createVerbs({
   onBoardEdit,
   waitTiming = DEFAULT_WAIT_TIMING,
   defaultAgent = () => 'claude',
+  agents = () => ({ enabled: [...AGENT_KINDS], default: defaultAgent() }),
+  terminalProfiles,
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
   log
 }: {
@@ -235,6 +226,10 @@ export function createVerbs({
   whiteboards?: WhiteboardExporter
   /** Settings > Default agent, read at each call. */
   defaultAgent?: () => AgentKind
+  /** Settings > Agents, read at each call: the agents Patchbay may open. Every agent when not given. */
+  agents?: () => AgentChoice
+  /** Every terminal profile, the default first, for open-terminal --profile. */
+  terminalProfiles?: () => ProfileList
   github?: GithubRead
   store: CanvasStore
   runner: Pick<NodeRunner, 'startNode' | 'stopNode'>
@@ -254,6 +249,13 @@ export function createVerbs({
     return node && node.projectId === caller.projectId ? node : refuse(`There is no node "${id}".`)
   }
   const add = (e: Edge): void => store.dispatch({ op: 'addEdge', edge: e })
+
+  /** Refuses an agent turned off in Settings > Agents, naming the setting and the agents still on. */
+  const allowAgent = (agent: AgentKind, who = ''): AgentKind => {
+    const choice = agents()
+    const off = agentOffReason(agent, choice)
+    return off ? refuse(`${who}${off} Name ${choice.enabled.join(' or ')} as the agent instead, or none for the default (${choice.default}).`) : agent
+  }
 
   const linked = (a: string, b: string): boolean =>
     store.get().edges.some((e) => e.kind === 'link' && ((e.from === a && e.to === b) || (e.from === b && e.to === a)))
@@ -281,6 +283,22 @@ export function createVerbs({
     return node
   }
 
+  /**
+   * A terminal profile's folder, after --cwd and a group's worktree but before the caller's folder. The named profile's,
+   * or the default's: a missing folder is refused for one named with --profile, and passed over for the default.
+   */
+  const profileCwd = (args: Args, group: GroupNode | null, named: TerminalProfile | undefined): string | undefined => {
+    if (optional(args, 'cwd') !== undefined || group?.worktree) return undefined
+    const path = (named ?? terminalProfiles?.().profiles[0])?.cwd
+    if (!path) return undefined
+    if (named) return folder(path)
+    try {
+      return isAbsolute(path) && statSync(path).isDirectory() ? path : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   const cwdFor = (args: Args, caller: CanvasNode, group: GroupNode | null): string => {
     const given = optional(args, 'cwd')
     if (given !== undefined) return folder(given)
@@ -291,7 +309,7 @@ export function createVerbs({
 
   const placement = (caller: CanvasNode, group: GroupNode | null, size: { width: number; height: number }) => ({
     ...size,
-    ...(group ? belowChildren(store.get(), group.id) : spotNear(store.get(), caller, size)),
+    ...(group ? placeInGroup(store.get(), group.id, size) : spotNear(store.get(), caller, size)),
     parentId: group?.id ?? null,
     openedBy: caller.id
   })
@@ -481,7 +499,7 @@ export function createVerbs({
     const cwd = cwdFor(args, caller, group)
     const prompt = promptFrom(args)
     const after = list(args, 'after')
-    const agent = agentArg(args, defaultAgent())
+    const agent = allowAgent(agentArg(args, defaultAgent()))
     after.forEach((id) => upstreamClaude(caller, id))
 
     const node: ClaudeNode = {
@@ -507,7 +525,8 @@ export function createVerbs({
   const openTerminal = async (caller: CanvasNode, args: Args): Promise<unknown> => {
     if (args.after !== undefined) refuse('--after only works on Claude nodes, not terminals.')
     const group = groupFor(caller, args)
-    const cwd = cwdFor(args, caller, group)
+    const profile = profileArg(terminalProfiles, optional(args, 'profile'), refuse)
+    const cwd = profileCwd(args, group, profile) ?? cwdFor(args, caller, group)
     const command = optional(args, 'command')
     const node: TerminalNode = {
       ...placement(caller, group, SIZES.terminal),
@@ -517,6 +536,7 @@ export function createVerbs({
       cwd
     }
     if (command) node.command = command
+    if (profile) node.profile = profile.id
     store.dispatch({ op: 'addNode', node })
     connect(caller.id, node.id)
     await runner.startNode(node.id)
@@ -587,7 +607,7 @@ export function createVerbs({
         upstreamClaude(caller, ref)
         return ref
       })
-      return { name, id: ids.get(name)!, agent: agentArg(m, defaultAgent()), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
+      return { name, id: ids.get(name)!, agent: allowAgent(agentArg(m, defaultAgent()), `Team member "${name}": `), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
     })
     refuseCycles(plans)
     return plans
@@ -599,8 +619,10 @@ export function createVerbs({
     const color = optional(args, 'color')
     const plans = planMembers(caller, args.members)
 
+    // Sized for its members before it's placed, so the spot found is clear for the whole row.
+    const teamSize = { width: 2 * GROUP_PADDING + plans.length * (SIZES.claude.width + GAP) - GAP, height: GROUP_TOP + SIZES.claude.height + GROUP_PADDING }
     const group: GroupNode = {
-      ...placement(caller, null, SIZES.group),
+      ...placement(caller, null, plans.length ? teamSize : SIZES.group),
       id: randomUUID(),
       kind: 'group',
       title: label,
@@ -917,7 +939,7 @@ export function createVerbs({
     }
     switch (verb) {
       case 'whoami': {
-        const w = whoami(store.get(), callerId, accessOf, (id) => tracker.get(id))
+        const w = { ...whoami(store.get(), callerId, accessOf, (id) => tracker.get(id)), agents: agents() }
         return { ...w, text: describeWhoAmI(w) }
       }
       case 'list':

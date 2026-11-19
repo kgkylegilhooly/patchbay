@@ -38,9 +38,12 @@ export type ArchivePreview =
     }
   | { ok: false; reason: string }
 
+/** What the confirmation showed and the person ticked: only these are cleared. Empty lists clear nothing. */
 export interface ArchiveOptions {
-  clearScrollback: boolean
-  clearSites: boolean
+  /** Session node ids whose saved output to clear. */
+  clearScrollback: string[]
+  /** Site origins whose data to clear, skipping any another project shows by then. */
+  clearSites: string[]
 }
 
 export type ArchiveResult =

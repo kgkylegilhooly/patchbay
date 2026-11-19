@@ -4,6 +4,8 @@ import { ClaudeIcon, CodexIcon, Icon, type IconName } from './icons'
 import { MenuPanel } from './Menu'
 import { addMenu, type Commands } from './menus'
 import { useStore } from './store'
+import { useAgentChoice } from './agentChoice'
+import { commandAllowed } from '../shared/agents'
 
 function DockButton({
   cmd,
@@ -40,6 +42,7 @@ function DockView({
   const board = useStore((s) => s.boardOpen)
   const focus = useStore((s) => !!s.focus)
   const git = useStore((s) => s.gitOpen)
+  const agents = useAgentChoice()
   const [adding, setAdding] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -67,12 +70,16 @@ function DockView({
       >
         <Icon name="plus" />
       </button>
+      {commandAllowed('new-claude', agents) && (
       <button type="button" className="dock-btn" data-cmd="new-claude" aria-label="New Claude Code" title="New Claude Code" onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newClaudeForm()}>
         <ClaudeIcon size={18} />
       </button>
+      )}
+      {commandAllowed('new-codex', agents) && (
       <button type="button" className="dock-btn" data-cmd="new-codex" aria-label="New Codex" title="New Codex" onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newCodexForm()}>
         <CodexIcon size={18} />
       </button>
+      )}
       <span className="dock-sep" />
       <DockButton cmd="group" label={groupLabel} icon="group" onClick={() => commands.group()} />
       <DockButton cmd="fit-view" label="Fit view" icon="fit" onClick={commands.fitView} />

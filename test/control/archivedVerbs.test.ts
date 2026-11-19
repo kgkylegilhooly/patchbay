@@ -152,7 +152,7 @@ test('archiving stops what runs, disarms triggers, keeps agents resumable, and c
     { origin: 'https://github.com', store: 'person', sharedWith: ['Live work'] }
   ])
 
-  const result = await archiver.archive('old', { clearScrollback: true, clearSites: true })
+  const result = await archiver.archive('old', { clearScrollback: ['old', 'shell'], clearSites: ['https://docs.example.com', 'https://github.com'] })
   expect(result).toEqual({
     ok: true,
     stopped: 2,
@@ -185,7 +185,7 @@ test('without the options, nothing is cleared', async () => {
     forgetOutput: async (id) => void cleared.push(id),
     clearSite: async (_w, origin) => void cleared.push(origin)
   })
-  expect(await archiver.archive('old', { clearScrollback: false, clearSites: false })).toMatchObject({ ok: true, freedBytes: 0, clearedSites: [] })
+  expect(await archiver.archive('old', { clearScrollback: [], clearSites: [] })).toMatchObject({ ok: true, freedBytes: 0, clearedSites: [] })
   expect(cleared).toEqual([])
 })
 
@@ -201,7 +201,7 @@ test('archiving the last project that is not archived is refused before anything
     forgetOutput: async () => {},
     clearSite: async () => {}
   })
-  expect(await archiver.archive('live', { clearScrollback: false, clearSites: false })).toEqual({
+  expect(await archiver.archive('live', { clearScrollback: [], clearSites: [] })).toEqual({
     ok: false,
     reason: expect.stringMatching(/only project that isn't archived/)
   })
@@ -211,4 +211,74 @@ test('archiving the last project that is not archived is refused before anything
 test("agents' pages are a separate store from the person's", () => {
   const { store } = setup([page('mine', 'old', 'https://a.test'), page('theirs', 'live', 'https://a.test', 'peer')])
   expect(sitesOf(store.get(), 'old')).toEqual([{ origin: 'https://a.test', store: 'person', sharedWith: [] }])
+})
+
+const quietArchiver = (store: ReturnType<typeof setup>['store'], running: Set<string>, extra: Partial<Parameters<typeof createProjectArchiver>[0]> = {}) =>
+  createProjectArchiver({
+    store,
+    isRunning: (id) => running.has(id),
+    stopNode: async (id) => void running.delete(id),
+    disarmTrigger: () => {},
+    scrollbackBytes: () => 0,
+    forgetOutput: async () => {},
+    clearSite: async () => {},
+    ...extra
+  })
+
+test('the project is archived before anything stops, and a session that starts during the stops is stopped too', async () => {
+  const { store } = setup()
+  const running = new Set(['old'])
+  let archivedWhenStopping = false
+  const archiver = quietArchiver(store, running, {
+    stopNode: async (id) => {
+      archivedWhenStopping ||= store.get().projects.find((p) => p.id === 'old')?.archivedAt !== undefined
+      running.delete(id)
+      // A start that was already under way lands now: a new terminal in the project, running.
+      if (id === 'old') {
+        store.dispatch({ op: 'addNode', node: terminalNode('late', { projectId: 'old' }) })
+        running.add('late')
+      }
+    }
+  })
+  const result = await archiver.archive('old', { clearScrollback: [], clearSites: [] })
+  expect(archivedWhenStopping).toBe(true)
+  expect(running.size).toBe(0)
+  expect(result).toMatchObject({ ok: true, stopped: 2, stillRunning: [] })
+})
+
+test('a refused archive stops nothing', async () => {
+  const { store } = setup()
+  store.dispatch({ op: 'archiveProject', id: 'old', at: 1 })
+  const running = new Set(['me'])
+  expect(await quietArchiver(store, running).archive('live', { clearScrollback: [], clearSites: [] })).toMatchObject({ ok: false })
+  expect(running.has('me')).toBe(true)
+})
+
+test('only the output and sites the confirmation showed are cleared', async () => {
+  const { store } = setup([page('docs', 'old', 'https://docs.example.com')])
+  const cleared: string[] = []
+  const archiver = quietArchiver(store, new Set(), {
+    forgetOutput: async (id) => void cleared.push(id),
+    clearSite: async (_w, origin) => void cleared.push(origin)
+  })
+  // A page and a terminal arrive after the confirmation was drawn.
+  store.dispatch({ op: 'addNode', node: page('late-page', 'old', 'https://bank.example') })
+  store.dispatch({ op: 'addNode', node: terminalNode('late-term', { projectId: 'old' }) })
+  const result = await archiver.archive('old', { clearScrollback: ['shell'], clearSites: ['https://docs.example.com'] })
+  expect(cleared).toEqual(['shell', 'https://docs.example.com'])
+  expect(result).toMatchObject({ clearedSites: ['https://docs.example.com'] })
+})
+
+test("archived nodes are taken off the attention list", async () => {
+  const { store } = setup()
+  const seen: string[] = []
+  await quietArchiver(store, new Set(), { markSeen: (id) => void seen.push(id) }).archive('old', { clearScrollback: [], clearSites: [] })
+  expect(seen.sort()).toEqual(['old', 'shell'])
+})
+
+test("a team member can't be told to wait on a node in an archived project", async () => {
+  const { store, verbs } = setup()
+  store.dispatch({ op: 'archiveProject', id: 'old', at: 1 })
+  const message = await refusal(verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a', prompt: 'x', after: ['old'] }] }))
+  expect(message).toMatch(/doesn't exist|archived/)
 })

@@ -105,6 +105,16 @@
   align-items: baseline;
 }
 
+.projects-notice {
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--cable-trigger);
+  background: color-mix(in srgb, var(--cable-trigger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cable-trigger) 40%, transparent);
+  border-radius: 8px;
+}
+
 .projects-close {
   margin-left: auto;
 }

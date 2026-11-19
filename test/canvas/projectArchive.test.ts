@@ -214,3 +214,11 @@ describe('loading', () => {
     expect(loaded.projects[0].closedAt).toBeUndefined()
   })
 })
+
+test('Next needing you skips an archived project', async () => {
+  const { needsYouQueue } = await import('../../src/renderer/needsYou')
+  const d = doc([project('a'), project('arch', { closedAt: 1, archivedAt: 1 }), project('shut', { closedAt: 1 })], [agent('here', 'a'), agent('gone', 'arch'), agent('closed', 'shut')])
+  const statuses = { here: 'needs-you', gone: 'needs-you', closed: 'exited' } as const
+  const queue = needsYouQueue(d, { ...statuses }, ['gone', 'closed'], {}, true)
+  expect(queue.map((e) => e.id)).toEqual(['here', 'closed'])
+})

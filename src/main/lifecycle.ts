@@ -1,6 +1,7 @@
 import type { HostInfo } from '../shared/contract'
 import { isProjectArchived, isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 import type { Settings } from '../shared/settings'
+import { readProfileFields } from '../shared/terminalProfiles'
 
 export interface RestorePlan {
   /** Claude nodes to launch now. One with a session resumes it. */
@@ -187,7 +188,7 @@ export function decideInstance(gotLock: boolean, exiting: ExitingMark | null = n
 }
 
 const SETTING_KEYS = ['shell', 'permissionMode', 'claudeTerminal', 'claudeCommand', 'codexCommand', 'codexApproval', 'defaultAgent', 'updateFeed', 'updateCheck', 'envNotPassed', 'notifications',
-  'sound', 'keepAwake'] as const
+  'sound', 'keepAwake', 'agentsOff'] as const
 
 /** A settings file that can't be read means defaults: it must never stop the canvas from opening. */
 export function parseSettings(text: string | null): Settings {
@@ -204,6 +205,8 @@ export function parseSettings(text: string | null): Settings {
     const value = fields[key]
     if (typeof value === 'string' && value.trim()) settings[key] = value.trim()
   }
+  // Saved through their own channel, so mergeSettings leaves them as they are. See main/terminalProfilesIpc.ts.
+  Object.assign(settings, readProfileFields(fields))
   return settings
 }
 

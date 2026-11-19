@@ -6,6 +6,7 @@ import { currentKey } from './keys'
 import type { Commands, MenuState } from './menus'
 import { placeItem, rankPalette, type PaletteItem } from './palette'
 import { useStore } from './store'
+import { terminalProfileItems } from './terminalProfilesUi'
 
 interface Entry extends PaletteItem {
   icon: IconName
@@ -67,7 +68,9 @@ export function CommandPalette({
       kind: 'Project',
       run: () => commands.reopenProject(p.id)
     }))
-    return [...actions, ...sessions, ...places, ...closed]
+    // A terminal of each profile other than the default, which New terminal opens.
+    const profiles = terminalProfileItems((profile) => commands.newTerminal(undefined, undefined, profile)).map((item): Entry => ({ ...item, keywords: ['shell', 'profile'], kind: 'Action' }))
+    return [...actions, ...profiles, ...sessions, ...places, ...closed]
   }, [commands, doc, overrides, state])
 
   const shown = useMemo(() => rankPalette(query, entries, recent), [entries, query, recent])

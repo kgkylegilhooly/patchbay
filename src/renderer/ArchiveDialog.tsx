@@ -20,7 +20,14 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
 
   const archive = async (): Promise<void> => {
     setBusy(true)
-    setResult(await projectsBridge.archive(projectId, { clearScrollback, clearSites }))
+    // Only what was shown here: anything that turned up since was never agreed to.
+    const shown = preview?.ok ? preview : null
+    setResult(
+      await projectsBridge.archive(projectId, {
+        clearScrollback: clearScrollback && shown ? shown.sessions.map((s) => s.id) : [],
+        clearSites: clearSites && shown ? shown.sites.filter((s) => !s.sharedWith.length).map((s) => s.origin) : []
+      })
+    )
     setBusy(false)
   }
 
@@ -45,7 +52,7 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
                 </li>
               )}
               {clearScrollback && <li>Cleared {formatBytes(result.freedBytes)} of saved terminal output.</li>}
-              {result.clearedSites.length > 0 && <li>Cleared site data for {result.clearedSites.join(', ')}.</li>}
+              {result.clearedSites.length > 0 && <li>Cleared storage and cookies for {result.clearedSites.join(', ')}. Sign-ins set for a wider domain may remain.</li>}
               {result.keptSites.length > 0 && <li>Left alone, since another project shows them: {result.keptSites.join(', ')}.</li>}
               {result.problem && <li className="archive-warn">{result.problem}</li>}
             </ul>
@@ -115,7 +122,7 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
           <span>
             Also clear site data for this project's pages
             <span className="archive-size">
-              {clearable.length ? `${clearable.map((s) => s.origin).join(', ')}: sign-ins and storage, usually a few KB` : 'every site is shared'}
+              {clearable.length ? `${clearable.map((s) => s.origin).join(', ')}: their cookies and storage, usually a few KB` : 'every site is shared'}
             </span>
             {shared.length > 0 && (
               <span className="archive-size">

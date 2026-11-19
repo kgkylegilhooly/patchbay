@@ -175,6 +175,7 @@ function Row({
 export function ProjectsManager({ commands, onClose }: { commands: Commands; onClose: () => void }): React.JSX.Element | null {
   const doc = useStore((s) => s.doc)
   const archiving = useProjectsUi((s) => s.archive)
+  const notice = useProjectsUi((s) => s.notice)
   const [report, setReport] = useState<StorageReport | null>(null)
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({
     key: 'order',
@@ -232,6 +233,11 @@ export function ProjectsManager({ commands, onClose }: { commands: Commands; onC
           Close
         </button>
       </div>
+      {notice && (
+        <p className="projects-notice" role="status">
+          {notice}
+        </p>
+      )}
       <div className="projects-table-wrap">
         <table className="projects-table">
           <thead>

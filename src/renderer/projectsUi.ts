@@ -4,10 +4,12 @@ import { create } from 'zustand'
 export const useProjectsUi = create<{
   manager: boolean
   archive: string | null
-}>(() => ({ manager: false, archive: null }))
+  /** Why the manager opened, such as a jump to a node in an archived project. */
+  notice: string | null
+}>(() => ({ manager: false, archive: null, notice: null }))
 
-export const openProjects = (): void => useProjectsUi.setState({ manager: true })
-export const closeProjects = (): void => useProjectsUi.setState({ manager: false, archive: null })
+export const openProjects = (notice: string | null = null): void => useProjectsUi.setState({ manager: true, notice })
+export const closeProjects = (): void => useProjectsUi.setState({ manager: false, archive: null, notice: null })
 /** The confirmation that says what archiving this project does. Main does the archiving. */
 export const askArchive = (id: string): void => useProjectsUi.setState({ archive: id })
 export const closeArchive = (): void => useProjectsUi.setState({ archive: null })

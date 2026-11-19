@@ -17,6 +17,8 @@ export interface ArchiverDeps {
   forgetOutput(id: string): Promise<void>
   /** Clears one site's cookies and storage in one browser store. */
   clearSite(store: 'person' | 'agent', origin: string): Promise<void>
+  /** Takes a node off the attention list. */
+  markSeen?(id: string): void
   now?: () => number
 }
 
@@ -98,58 +100,63 @@ export function createProjectArchiver(deps: ArchiverDeps): {
   }
 
   const archive = async (id: string, options: ArchiveOptions): Promise<ArchiveResult> => {
-    const before = preview(id)
-    if (!before.ok) return before
-    const sessions = deps.store.get().nodes.filter((n) => n.projectId === id && isSessionNode(n))
-    // Disarmed first, so none fires into a session as it stops.
-    for (const t of before.triggers) deps.disarmTrigger(t.id)
-    const running = sessions.filter((n) => deps.isRunning(n.id))
-    await Promise.all(running.map((n) => deps.stopNode(n.id).catch(() => {})))
-    const stillRunning = running.filter((n) => deps.isRunning(n.id))
+    const refusal = archiveRefusal(deps.store.get(), id)
+    if (refusal) return { ok: false, reason: refusal }
+    const inProject = () => deps.store.get().nodes.filter((n) => n.projectId === id)
+    // Marked first. From here on nothing in it can start, from an agent, the after-gate or a trigger, so nothing can
+    // slip in while the stops below are under way. The mark refuses nothing it hasn't already checked.
     deps.store.dispatch({ op: 'archiveProject', id, at: now() })
-    // Checked again rather than assumed: the reducer refuses an archive that would leave nothing to show.
-    if (!isProjectArchived(deps.store.get().projects.find((p) => p.id === id))) {
-      return {
-        ok: false,
-        reason: 'The project could not be archived. Its sessions were stopped; start them again from its tab.'
-      }
+    if (!isProjectArchived(deps.store.get().projects.find((p) => p.id === id))) return { ok: false, reason: 'The project could not be archived. Nothing was stopped.' }
+
+    for (const n of inProject()) if (n.kind === 'trigger' && isArmed(n)) deps.disarmTrigger(n.id)
+    // Read again after each round: a start already under way when the mark landed can still finish.
+    const stopped = new Set<string>()
+    for (let round = 0; round < 3; round++) {
+      const running = inProject().filter((n) => isSessionNode(n) && deps.isRunning(n.id) && !stopped.has(n.id))
+      if (running.length === 0) break
+      for (const n of running) stopped.add(n.id)
+      await Promise.all(running.map((n) => deps.stopNode(n.id).catch(() => {})))
     }
+    const stillRunning = inProject().filter((n) => isSessionNode(n) && deps.isRunning(n.id))
+    // A stopped agent would otherwise sit in Unread, pointing at a project nobody can open until it's unarchived.
+    for (const n of inProject()) deps.markSeen?.(n.id)
 
     let freedBytes = 0
     const clearedSites: string[] = []
     const keptSites: string[] = []
     const problems: string[] = []
-    if (options.clearScrollback) {
-      for (const n of sessions) {
-        // A session that didn't stop is still writing, so its output stays.
-        if (deps.isRunning(n.id)) continue
-        const bytes = deps.scrollbackBytes(n.id)
-        try {
-          await deps.forgetOutput(n.id)
-          freedBytes += bytes
-        } catch (e) {
-          problems.push(`Could not clear the saved output of ${n.title}: ${(e as Error).message}`)
-        }
+    // Only what the confirmation showed: a node or site that arrived after it was never agreed to.
+    const shownOutput = new Set(options.clearScrollback)
+    for (const n of inProject()) {
+      if (!isSessionNode(n) || !shownOutput.has(n.id)) continue
+      // A session that didn't stop is still writing, so its output stays.
+      if (deps.isRunning(n.id)) continue
+      const bytes = deps.scrollbackBytes(n.id)
+      try {
+        await deps.forgetOutput(n.id)
+        freedBytes += bytes
+      } catch (e) {
+        problems.push(`Could not clear the saved output of ${n.title}: ${(e as Error).message}`)
       }
     }
-    if (options.clearSites) {
-      // Worked out again now: another project may have opened the same site since the preview.
-      for (const site of sitesOf(deps.store.get(), id)) {
-        if (site.sharedWith.length) {
-          keptSites.push(site.origin)
-          continue
-        }
-        try {
-          await deps.clearSite(site.store, site.origin)
-          clearedSites.push(site.origin)
-        } catch (e) {
-          problems.push(`Could not clear site data for ${site.origin}: ${(e as Error).message}`)
-        }
+    const shownSites = new Set(options.clearSites)
+    // Worked out again now, so a site another project has opened since is kept.
+    for (const site of sitesOf(deps.store.get(), id)) {
+      if (!shownSites.has(site.origin)) continue
+      if (site.sharedWith.length) {
+        keptSites.push(site.origin)
+        continue
+      }
+      try {
+        await deps.clearSite(site.store, site.origin)
+        clearedSites.push(site.origin)
+      } catch (e) {
+        problems.push(`Could not clear site data for ${site.origin}: ${(e as Error).message}`)
       }
     }
     return {
       ok: true,
-      stopped: running.length - stillRunning.length,
+      stopped: [...stopped].filter((n) => !deps.isRunning(n)).length,
       stillRunning: stillRunning.map((n) => n.title),
       freedBytes,
       clearedSites,
