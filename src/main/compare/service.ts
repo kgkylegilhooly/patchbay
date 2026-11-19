@@ -28,6 +28,8 @@ import {
 } from '../../shared/compare'
 import { AGENT_NAMES, isSessionNode, type CanvasNode, type ClaudeNode, type GroupNode } from '../../shared/model'
 import type { CompareReads } from './reads'
+import { placeInProject } from '../../core/canvas/place'
+import { viewSize } from '../viewSize'
 
 type Worktree = { path: string; branch: string; repo: string }
 
@@ -111,11 +113,9 @@ export function createCompareService(d: CompareServiceDeps) {
   const patchAttempt = (id: string, key: AttemptKey, patch: Partial<Attempt>): Comparison | null =>
     update(id, (c) => ({ ...c, attempts: c.attempts.map((a) => (a.key === key ? { ...a, ...patch } : a)) }))
 
-  /** To the right of everything in the project, as a team or an issue's agent goes. */
-  const spot = (projectId: string): { x: number; y: number } => {
-    const top = d.store.get().nodes.filter((n) => n.projectId === projectId && !n.parentId)
-    return top.length ? { x: Math.max(...top.map((n) => n.x + n.width)) + GAP, y: Math.min(...top.map((n) => n.y)) } : { x: 0, y: 0 }
-  }
+  /** Where the person is looking in the project, with room for both attempts' groups side by side. See core/canvas/place. */
+  const spot = (projectId: string): { x: number; y: number } =>
+    placeInProject(d.store.get(), projectId, { width: 2 * GROUP.width + GAP, height: GROUP.height }, viewSize())
 
   /** One attempt's worktree group and its agent, started on the brief. */
   async function makeAttempt(req: StartComparison, key: AttemptKey, wt: Worktree, at: { x: number; y: number }, title: string): Promise<Attempt> {

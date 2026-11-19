@@ -481,3 +481,22 @@ test("comparisons of a deleted project are still listed, after the project's own
   const listed = w.service.list('q')
   expect(listed.map((x) => x.id)).toEqual([c.id])
 })
+
+test("both attempts' groups land side by side where the person is looking, clear of what's there", async () => {
+  const w = world()
+  const sticky = (id: string, x: number, y: number) =>
+    w.s.dispatch({ op: 'addNode', node: { id, kind: 'sticky', title: id, text: '', x, y, width: 280, height: 220, parentId: null, projectId: 'p' } })
+  // One note where the view starts, one far off to the right, where "right of everything" used to put them.
+  sticky('here', 80, 80)
+  sticky('far', 5000, 0)
+  await started(w)
+  const tops = w.s.get().nodes.filter((n) => !n.parentId)
+  const groups = tops.filter((n): n is GroupNode => n.kind === 'group')
+  expect(groups).toHaveLength(2)
+  const covers = (a: GroupNode, b: { x: number; y: number; width: number; height: number }) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  for (const g of groups) for (const n of tops) if (n.id !== g.id) expect(covers(g, n)).toBe(false)
+  expect(groups[1].x).toBe(groups[0].x + groups[0].width + 40)
+  expect(groups[1].y).toBe(groups[0].y)
+  expect(groups[0].x).toBeLessThan(5000)
+})
