@@ -6,6 +6,7 @@ import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
 import { offerCommand } from './agentChoice'
 import { openComparisons, openTryApproach } from './compareUi'
+import { openProjects } from './projectsUi'
 import { jumpToNext } from './needsYouUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
@@ -86,6 +87,9 @@ export const ACTIONS: Action[] = [
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
+  { id: 'manage-projects', section: 'App', label: 'Manage projects…', icon: 'project', keywords: ['archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
+  { id: 'move-project-left', section: 'App', label: "Move this project's tab left", icon: 'arrow-left', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(-1) },
+  { id: 'move-project-right', section: 'App', label: "Move this project's tab right", icon: 'arrow-right', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(1) },
   // Sessions live in the background host, so quitting leaves them running. Ending them is its own, separate choice.
   { id: 'quit', section: 'App', label: 'Quit (sessions keep running)', icon: 'quit', keywords: ['exit', 'close', 'leave running', 'background'], run: (c) => c.quit() },
   { id: 'stop-all-quit', section: 'App', label: 'Stop all sessions and quit', icon: 'quit', keywords: ['exit', 'end', 'kill', 'terminate', 'host'], run: (c) => c.stopAllAndQuit() }

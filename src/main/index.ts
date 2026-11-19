@@ -39,6 +39,7 @@ import { registerReviewIpc } from './review/ipc'
 import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { withFilesVerbs } from './files/verbs'
+import { setupProjects } from './projects/ipc'
 import { setupSubagents } from './subagents/setup'
 import {
   closeAction,
@@ -551,6 +552,17 @@ async function boot(): Promise<void> {
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
   setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
+  // The projects manager, and archiving, which stops a project's sessions first. See src/main/projects.
+  setupProjects({
+    dataDir, store, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id), disarmTrigger: (id) => triggers.disarm(id),
+    forgetOutput: async (id) => {
+      saver.forget(id)
+      host.forget?.(id)
+      await scrollback.remove(id)
+    },
+    markSeen: (id) => notifier.markSeen(id),
+    isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame
+  })
   // Live cards for a Claude window's subagents, kept in memory only. See src/main/subagents.
   setupSubagents({ store, tracker, broadcast, log: (line) => log?.write(line) })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))

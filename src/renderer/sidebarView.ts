@@ -1,4 +1,4 @@
-import { isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
+import { isProjectArchived, isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
 import { matchesSession, sessionTree, type Session, type SessionTree } from './sessionTree'
 
 export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' | 'starting' | 'stopped' | 'plain'
@@ -64,6 +64,8 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
     const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id))
     const hidden = node.projectId !== undefined && open.get(node.projectId) === false
     if (hidden && bucket !== 'needs-you' && bucket !== 'unread') continue
+    // An archived project's sessions were stopped on purpose, and can't be shown until it's unarchived.
+    if (hidden && isProjectArchived(doc.projects.find((p) => p.id === node.projectId))) continue
     sections.get(bucket)!.push(node)
   }
   return BUCKETS.filter((b) => b.always || sections.get(b.id)!.length > 0).map((b) => ({ id: b.id, label: b.label, help: b.help, sessions: sections.get(b.id)! }))
@@ -88,7 +90,7 @@ export function projectSections(doc: CanvasDoc, query: string): ProjectSection[]
 
 /** Closed projects, the most recently closed first. */
 export function closedProjects(doc: CanvasDoc): Project[] {
-  return doc.projects.filter((p) => !isProjectOpen(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
+  return doc.projects.filter((p) => !isProjectOpen(p) && !isProjectArchived(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
 }
 
 /** The same history the Recent conversations panel shows, the newest first. */

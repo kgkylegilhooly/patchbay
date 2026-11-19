@@ -22,6 +22,7 @@ import { BROWSER_VERBS, createBrowserVerbs } from './browserVerbs'
 import { createSendQueue, DEFAULT_SEND_TIMING, plainText, type SendQueue, type SendTiming } from './sendQueue'
 import { confirmDelivery, DEFAULT_DELIVERY_TIMING, reportDelivery, transcriptEnd, type DeliveryReport, type DeliveryTiming } from './deliveryCheck'
 import { RpcRefusal } from './server'
+import { archivedRefusal } from './archived'
 import { absoluteRect, placeInGroup, placeNear, projectOf, viewRect } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
 import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agents'
@@ -926,6 +927,8 @@ export function createVerbs({
     const caller = find(callerId)
     if (!caller) refuse(`Node "${callerId}" is no longer on the canvas.`)
     const args = withIds(caller, given)
+    const archived = archivedRefusal(store.get(), caller, args)
+    if (archived) refuse(archived)
     if (verb.startsWith('task-')) {
       if (!tasks) refuse('Tasks are not available here.')
       return taskVerb(tasks, caller, verb, args)

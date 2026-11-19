@@ -1,4 +1,4 @@
-import type { AgentStatus, CanvasDoc } from '../shared/model'
+import { isProjectArchived, type AgentStatus, type CanvasDoc } from '../shared/model'
 import type { PendingTool, WaitSince } from '../shared/needsYouBridge'
 import { bucketOf } from './sidebarView'
 
@@ -20,8 +20,10 @@ export interface QueueEntry {
 export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], waits: Record<string, WaitSince>, includeUnread: boolean): QueueEntry[] {
   const unread = new Set(attention)
   const entries: (QueueEntry & { order: number })[] = []
+  // An archived project can't be shown until it's unarchived, so nothing in it is gone to.
+  const archived = new Set(doc.projects.filter(isProjectArchived).map((p) => p.id))
   doc.nodes.forEach((node, order) => {
-    if (node.kind !== 'claude') return
+    if (node.kind !== 'claude' || (node.projectId && archived.has(node.projectId))) return
     const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id))
     if (bucket === 'needs-you' || (includeUnread && bucket === 'unread')) entries.push({ id: node.id, bucket, since: waits[node.id]?.at ?? null, order })
   })

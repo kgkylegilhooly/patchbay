@@ -28,6 +28,7 @@ import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startup
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 import { asPaste } from './paste'
+import { ARCHIVED_START, inArchivedProject } from '../../core/canvas/projectOps'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
@@ -375,6 +376,8 @@ export function createNodeRunner({
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
+    // Covers every way in: the after-gate, triggers, launch, the page and agents.
+    if (inArchivedProject(store.get(), node)) return setError(id, { code: 'spawn-failed', message: ARCHIVED_START })
     setError(id, null)
     const off = node.kind === 'claude' ? agentOff(node) : null
     if (off) {

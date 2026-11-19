@@ -37,6 +37,7 @@ import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPa
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
 import type { SignalWatcher } from './sessions/signals'
+import { removeRefusal } from '../core/canvas/projectOps'
 
 export interface IpcServices {
   dataDir: string
@@ -188,10 +189,11 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
   ipcMain.handle('pb:getDoc', () => store.get())
   ipcMain.handle('pb:dispatch', async (_e, op: CanvasOp) => {
     // Arming goes through armTrigger, which checks what was shown. The page can't set a trigger's state itself.
-    if (op.op === 'setTriggerState' || op.op === 'setTasks') return
+    // Archiving stops the project's sessions first, so it goes through pb:projects:archive. See src/main/projects.
+    if (op.op === 'setTriggerState' || op.op === 'setTasks' || op.op === 'archiveProject') return
     if (op.op === 'removeProject') {
-      // The last project stays, so its sessions must too.
-      if (store.get().projects.length < 2) return
+      // The last project stays, so its sessions must too. So does the last one that isn't archived.
+      if (removeRefusal(store.get(), op.id)) return
       await stopSessions(store.get().nodes.filter((n) => n.projectId === op.id).map((n) => n.id))
       return store.dispatch({ ...op, at: Date.now() })
     }

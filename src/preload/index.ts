@@ -8,6 +8,7 @@ import { exposeReview } from './review'
 import { exposeTerminalProfiles } from './terminalProfiles'
 import { exposeCompare } from './compare'
 import { exposeFiles } from './files'
+import { exposeProjects } from './projects'
 import { exposeView } from './view'
 import { exposeSubagents } from './subagents'
 
@@ -144,6 +145,7 @@ exposeReview()
 exposeTerminalProfiles()
 exposeCompare()
 exposeFiles()
+exposeProjects()
 exposeView()
 exposeSubagents()
 

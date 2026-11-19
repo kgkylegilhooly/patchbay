@@ -6,6 +6,7 @@ import { ClaudeIcon, CodexIcon, Icon } from './icons'
 import { closeSearch, markedParts, matchPage, openHandoff, RANGES, rangeStart, searchBridge, turnPage, useSearchUi, type DateRange } from './searchUi'
 import { useStore } from './store'
 import { useAgentOff } from './agentChoice'
+import { openProjects } from './projectsUi'
 import './search.css'
 
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -209,6 +210,12 @@ export function SearchPanel(): React.JSX.Element {
     const doc = useStore.getState().doc
     const node = doc?.nodes.find((n) => n.id === id)
     if (!doc || !node) return false
+    const archivedIn = doc.projects.find((p) => p.id === node.projectId && p.archivedAt !== undefined)
+    if (archivedIn) {
+      closeSearch()
+      openProjects(`"${node.title}" is in the archived project "${archivedIn.name}". Unarchive it to open it.`)
+      return true
+    }
     const switching = !!node.projectId && node.projectId !== doc.activeProjectId
     if (switching) void bridge.dispatch({ op: 'switchProject', id: node.projectId! })
     const center = (): void => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
