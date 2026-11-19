@@ -57,6 +57,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
   takeMissedHooks?: (id: string) => MissedHook[]
+  /** A StopFailure found among them, when it's how they end: why the agent stopped, such as a usage limit. */
+  onMissedStopFailure?: (id: string, event: Record<string, unknown>) => void
   /** When a session last signalled a tool call ending through a file. See signals.ts. */
   latestSignal?: (id: string) => number | undefined
   /**
@@ -391,6 +393,7 @@ export function createNodeRunner({
     if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
     const missed = foldMissedHooks(events)
     tracker.seed(id, missed.status, missed.turns)
+    if (missed.stopFailure) ctx.onMissedStopFailure?.(id, missed.stopFailure)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation
     if (missed.promptSubmitted) {
       const node = nodeById(id)

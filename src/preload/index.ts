@@ -5,6 +5,7 @@ import { exposeSearch } from './search'
 import { exposeRecipes } from './recipes'
 import { exposeReview } from './review'
 import { exposeCompare } from './compare'
+import { exposeAgentStops } from './agentStops'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -136,6 +137,7 @@ exposeSearch()
 exposeRecipes()
 exposeReview()
 exposeCompare()
+exposeAgentStops()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.

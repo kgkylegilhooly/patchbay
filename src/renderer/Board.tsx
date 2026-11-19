@@ -42,12 +42,12 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
   return (
     <>
       <span className="card-top">
-        <StatusDot status={node.kind === 'run' ? runDot(run) : status} />
+        <StatusDot status={node.kind === 'run' ? runDot(run) : status} nodeId={node.id} />
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <span className="card-title">{node.title}</span>
       </span>
       <span className="card-meta">
-        {status && <StatusBadge status={status} />}
+        {status && <StatusBadge status={status} nodeId={node.id} />}
         {node.kind === 'run' && <span className="run-label">{runLabel(run)}</span>}
         {context && <span className={`session-context usage-${context.level}`}>{context.text}</span>}
       </span>

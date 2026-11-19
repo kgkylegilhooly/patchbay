@@ -460,6 +460,7 @@ const scenes = {
     await sleep(300)
   },
   ...require('./searchScenes.cjs').scenes,
+  ...require('./stopScenes.cjs').scenes,
   ...require('./compareScenes.cjs').scenes
 }
 
@@ -534,6 +535,7 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   ...require('./searchScenes.cjs').seeds,
+  ...require('./stopScenes.cjs').seeds,
   ...require('./compareScenes.cjs').seeds
 }
 

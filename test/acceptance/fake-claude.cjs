@@ -75,6 +75,13 @@ async function main() {
     void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND } })
   } else if (/\bworking\b/.test(prompt)) {
     await hook('UserPromptSubmit')
+  } else if (/\blimit\b/.test(prompt)) {
+    // Ends its turn on the usage limit, as Claude does with StopFailure.
+    await hook('UserPromptSubmit')
+    await hook('StopFailure', { error: 'rate_limit', last_assistant_message: "You've hit your 5-hour limit · resets 12:30am" })
+  } else if (/\bloginfail\b/.test(prompt)) {
+    await hook('UserPromptSubmit')
+    await hook('StopFailure', { error: 'authentication_failed', last_assistant_message: 'Invalid API key · Please run /login' })
   } else if (/\bunknown\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('StopFailure')

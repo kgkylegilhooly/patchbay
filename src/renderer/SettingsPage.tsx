@@ -454,6 +454,9 @@ export function SettingsPage({
                 <Row title="Keep the PC awake while agents work" help="Stops Windows sleeping while any session is starting or working. The screen can still turn off. It lets go once every agent is idle or waiting on you." htmlFor="set-keep-awake">
                   <Toggle id="set-keep-awake" checked={draft.keepAwake !== 'off'} onChange={() => set('keepAwake', draft.keepAwake === 'off' ? '' : 'off')} />
                 </Row>
+                <Row title="Continue after a usage limit resets" help={'When an agent stopped at its usage limit, it gets "continue" once at the reset time, unless a message is already waiting for it. Its badge says so beforehand. Never sent to an idle agent.'} htmlFor="set-continue-at-reset">
+                  <Toggle id="set-continue-at-reset" checked={draft.continueAtReset === 'on'} onChange={() => set('continueAtReset', draft.continueAtReset === 'on' ? '' : 'on')} />
+                </Row>
               </div>
             )}
             <HostSection />

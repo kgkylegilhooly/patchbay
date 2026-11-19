@@ -40,8 +40,11 @@ export function createTriggerService({
   tracker,
   host,
   queue,
+  held,
   now = Date.now
 }: {
+  /** Why a target's prompts are held now, as at a usage limit until its reset (see sessions/agentStops.ts). */
+  held?: (targetId: string) => string | undefined
   store: CanvasStore
   tracker: Pick<StatusTracker, 'get' | 'onChange'>
   host: Pick<SessionHost, 'isRunning'>
@@ -107,7 +110,8 @@ export function createTriggerService({
       }
       if (pending.has(node.id)) return run('missed', `The last prompt is still waiting for "${target.title}" to be idle.`)
       const spec = node.armedSpec!
-      const first = run('queued', `Waiting for "${target.title}" to be idle.`)
+      const holding = held?.(target.id)
+      const first = run('queued', holding ? `Held: "${target.title}" stopped (${holding})` : `Waiting for "${target.title}" to be idle.`)
       const item = {
         text,
         stillWanted: () => stillWanted(node.id, spec),
