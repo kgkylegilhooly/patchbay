@@ -1,5 +1,6 @@
 import type { TriggerSchedule } from '../../shared/model'
 import { nextCron, parseCron } from './cron'
+import { describeEvent, eventShapeError } from './events'
 
 /** Anything faster would only pile prompts onto a session. */
 export const MIN_INTERVAL_MS = 5000
@@ -19,6 +20,8 @@ export function scheduleError(s: TriggerSchedule): string | null {
       return s.everyMs < MIN_INTERVAL_MS ? `The interval must be at least ${MIN_INTERVAL_MS / 1000} seconds.` : null
     case 'once':
       return Number.isFinite(s.at) ? null : 'Give a date and time.'
+    default:
+      return eventShapeError(s)
   }
 }
 
@@ -37,6 +40,9 @@ export function nextRun(s: TriggerSchedule, after: number, anchor: number): numb
       return after < anchor ? anchor + s.everyMs : anchor + (Math.floor((after - anchor) / s.everyMs) + 1) * s.everyMs
     case 'once':
       return s.at > after ? s.at : null
+    default:
+      // An event has no times: it fires when it happens.
+      return null
   }
 }
 
@@ -82,8 +88,8 @@ export function describeInterval(ms: number): string {
   return n === 1 ? `Every ${unit}` : `Every ${plural(Math.round(n * 10) / 10, unit)}`
 }
 
-/** Says exactly what the schedule is, not a loose reading of it. */
-export function describeSchedule(s: TriggerSchedule): string {
+/** Says exactly what the schedule is, not a loose reading of it. `name` gives a node's title, for an event from a node. */
+export function describeSchedule(s: TriggerSchedule, name?: (id: string) => string | undefined): string {
   switch (s.type) {
     case 'cron':
       return `Cron: ${s.expr.trim().replace(/\s+/g, ' ')} (local time)`
@@ -91,5 +97,7 @@ export function describeSchedule(s: TriggerSchedule): string {
       return describeInterval(s.everyMs)
     case 'once':
       return `Once, at ${new Date(s.at).toLocaleString()}`
+    default:
+      return describeEvent(s, name)
   }
 }

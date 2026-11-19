@@ -894,7 +894,7 @@ export function createVerbs({
         ...(n.kind === 'whiteboard' ? { shapes: n.shapes.length } : {}),
         // An agent can see what triggers there are. Only the person can arm one, and the prompt stays with read access.
         ...(n.kind === 'trigger'
-          ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
+          ? { trigger: { armed: isArmed(n), schedule: describeSchedule(n.schedule, (id) => doc.nodes.find((o) => o.id === id)?.title), target: n.targetId, nextAt: n.nextAt, lastRun: n.runs[0] ? { at: n.runs[0].at, outcome: n.runs[0].outcome } : null } }
           : {})
       })),
       edges: doc.edges.filter((e) => ids.has(e.from) && ids.has(e.to)).map(({ from, to, kind }) => ({ from, to, kind }))

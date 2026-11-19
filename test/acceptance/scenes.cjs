@@ -161,6 +161,46 @@ const scenes = {
     await page.select('form[aria-label="New trigger"] [name="target"]', 'idle')
     await sleep(200)
   },
+  // Event triggers: see src/core/trigger/events.ts.
+  'trigger-events-form': async (page) => {
+    await rightClickCanvas(page)
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="new-trigger"]')
+    await sleep(200)
+    const form = 'form[aria-label="New trigger"]'
+    await page.select(`${form} [name="scheduleType"]`, 'agent')
+    await page.select(`${form} [name="agent"]`, 'work')
+    await page.type(`${form} [name="prompt"]`, '{{node}} {{event}}. Review its changes and list any problems.')
+    await page.select(`${form} [name="target"]`, 'idle')
+    await page.type(`${form} [name="preflight"]`, 'npm test')
+    await sleep(200)
+  },
+  'trigger-events': async (page) => {
+    await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      const cwd = doc.projects[0].folder
+      const prompt = 'echo {{node}} {{event}}'
+      await window.patchbay.dispatch({
+        op: 'addNode',
+        node: {
+          id: 'trig', kind: 'trigger', title: 'When tests finish', x: 1240, y: 680, width: 380, height: 460, parentId: null, projectId: 'p1',
+          schedule: { type: 'run', nodeId: 'run', failedOnly: false }, prompt, targetId: 'term', preflight: { argv: ['node', '--version'], cwd },
+          limits: { gapMs: 60000, perHour: 10 }, armedSpec: null, armedAt: null, nextAt: null, runs: []
+        }
+      })
+      const spec = JSON.stringify([['run', 'run', false], prompt, 'term', { preflight: [['node', '--version'], cwd], limits: [60000, 10] }])
+      const r = await window.patchbay.armTrigger('trig', spec)
+      if (!r.ok) throw new Error(r.reason)
+      await window.patchbay.startNode('run')
+    })
+    // The run ends, its check runs, and it fires. A second run inside the cool-down is skipped.
+    await page.waitForSelector('.react-flow__node[data-id="trig"] [data-outcome="delivered"]', { timeout: 20000 })
+    await page.evaluate(() => window.patchbay.startNode('run'))
+    await page.waitForSelector('.react-flow__node[data-id="trig"] [data-outcome="skipped"]', { timeout: 20000 })
+    await page.click('[data-cmd="toggle-sidebar"]')
+    await sleep(300)
+    await fitAll(page)
+  },
   'run-config': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)
