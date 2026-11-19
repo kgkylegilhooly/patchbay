@@ -6,7 +6,9 @@ import type { FlowEdge, FlowNode } from './flowMapping'
 import type { Commands, Point } from './menus'
 import type { LaunchChoice } from './LaunchForm'
 import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfilesUi'
-import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, SIZES } from './newNodes'
+import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
+import type { Rect } from '../core/canvas/place'
+import { visibleArea } from './viewArea'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
@@ -54,7 +56,6 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
 } {
   const flow = useReactFlow<FlowNode, FlowEdge>()
   const lastFolder = useRef('')
-  const opened = useRef(0)
 
   return useMemo(() => {
     const doc = () => useStore.getState().doc!
@@ -75,21 +76,30 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       return doc().projects.find((p) => p.id === doc().activeProjectId)?.folder || lastFolder.current
     }
 
+    /** The canvas on screen, in canvas coordinates, less what the sidebar and dock cover. */
+    const visible = (): Rect | null => {
+      const area = visibleArea(prefsRef.current.sidebar)
+      const vp = flow.getViewport()
+      return area && vp.zoom > 0 ? { x: (area.x - vp.x) / vp.zoom, y: (area.y - vp.y) / vp.zoom, width: area.width / vp.zoom, height: area.height / vp.zoom } : null
+    }
+
     /** A group's worktree first, then the terminal profile's folder (the default's, with none picked), then as above. */
     const terminalFolder = (groupId?: string, profileId?: string): string =>
       terminalFolderFor({ worktree: groupFor(groupId)?.worktree?.path, profileCwd: profileFolder(profileId), fallback: defaultFolder(groupId) })
 
-    const place = (at?: Point, groupId?: string) => {
+    /**
+     * Where a new node goes: at the given screen point, else beside the one selected node if it's on screen, else in
+     * the middle of the view. Placement keeps it clear of other nodes (see newNodes' placed).
+     */
+    const place = (at?: Point, groupId?: string): Place => {
       const group = groupFor(groupId)
-      if (at) return { at: flow.screenToFlowPosition(at), group, doc: doc() }
-      const bounds = document.querySelector('.react-flow')?.getBoundingClientRect()
-      const center = flow.screenToFlowPosition({
-        x: (bounds?.left ?? 0) + (bounds?.width ?? 800) / 2 - 200,
-        y: (bounds?.top ?? 0) + (bounds?.height ?? 600) / 2 - 150
-      })
-      // Each new node steps down and across, so a run of them doesn't stack exactly.
-      const step = (opened.current++ % 6) * 28
-      return { at: { x: center.x + step, y: center.y + step }, group, doc: doc() }
+      const view = visible()
+      if (at) return { at: flow.screenToFlowPosition(at), group, doc: doc(), view }
+      const selected = selectedRef.current.length === 1 ? doc().nodes.find((n) => n.id === selectedRef.current[0]) : undefined
+      const shown = selected && view && inActiveProject(doc(), selected) ? absolutePosition(doc(), selected) : null
+      const onScreen =
+        shown && view && shown.x < view.x + view.width && view.x < shown.x + selected!.width && shown.y < view.y + view.height && view.y < shown.y + selected!.height
+      return { ...(onScreen ? { beside: selected } : {}), group, doc: doc(), view }
     }
 
     const open = (node: CanvasNode): void => {
@@ -185,7 +195,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         const members = groupMembers(doc(), selectedRef.current)
         const id = crypto.randomUUID()
         undoable('group', [
-          { op: 'addNode', node: newGroup(doc(), place(at).at, id, members) },
+          { op: 'addNode', node: newGroup(doc(), placed({ ...place(at), group: null }, SIZES.group), id, members) },
           ...(members.length ? [{ op: 'setParent' as const, ids: members.map((m) => m.id), parentId: id }] : [])
         ])
       },
@@ -285,22 +295,19 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         open(newLaunchRun(place(form.at, form.groupId), crypto.randomUUID(), { folder, name: item.name }))
         return
       }
-      const at = place(form.at).at
       const gap = 24
+      const size = { width: gap + item.members.length * (SIZES.run.width + gap), height: 64 + SIZES.run.height + gap }
       const group: GroupNode = {
         id: crypto.randomUUID(),
         kind: 'group',
         title: item.name,
-        x: at.x,
-        y: at.y,
-        width: gap + item.members.length * (SIZES.run.width + gap),
-        height: 64 + SIZES.run.height + gap,
+        ...placed({ ...place(form.at), group: null }, size),
         parentId: null,
         worktree: null
       }
       dispatch({ op: 'addNode', node: group })
       item.members.forEach((name, i) => {
-        const member = newLaunchRun({ at, group, doc: doc() }, crypto.randomUUID(), { folder, name })
+        const member = newLaunchRun({ group, doc: doc() }, crypto.randomUUID(), { folder, name })
         open({ ...member, x: gap + i * (SIZES.run.width + gap), y: 64 })
       })
     }

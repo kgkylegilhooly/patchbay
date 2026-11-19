@@ -3,6 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { readTranscript } from '../core/transcript/read'
+import { placeInProject } from '../core/canvas/place'
+import { viewSize } from './viewSize'
 import type { CanvasStore } from '../shared/contract'
 import type { CanvasDoc, ClaudeNode } from '../shared/model'
 
@@ -156,15 +158,15 @@ export function reopenClosed(store: CanvasStore, closedId: string, newId: string
   const doc = store.get()
   const entry = doc.closed.find((c) => c.id === closedId)
   if (!entry) return null
-  const { x, y, zoom } = doc.viewport
+  // In the middle of what's on screen now (its top left when the window's size isn't known), clear of what's there.
+  const { x, y } = placeInProject(doc, doc.activeProjectId, { width: 620, height: 420 }, viewSize())
   const node: ClaudeNode = {
     id: newId,
     kind: 'claude',
     ...(entry.agent ? { agent: entry.agent } : {}),
     title: entry.title,
-    // Near the top left of what's on screen now.
-    x: (80 - x) / zoom,
-    y: (80 - y) / zoom,
+    x,
+    y,
     width: 620,
     height: 420,
     parentId: null,

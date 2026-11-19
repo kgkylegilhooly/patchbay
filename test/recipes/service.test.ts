@@ -141,3 +141,16 @@ test('saving writes a personal recipe file, and won\'t replace one unless asked'
   const listed = (await w.service.list('p1')).entries.find((e) => e.source === 'personal')
   expect(listed?.name).toBe('My setup')
 })
+
+test('a spot asked for is kept when free, and moved clear when a node is there', async () => {
+  const w = recipeWorld([{ id: 'there', kind: 'sticky', title: 'Note', text: '', x: 0, y: 0, width: 280, height: 220, parentId: null, projectId: 'p1' }])
+  const p = params({ worktree: false, cwd: process.cwd(), skip: ['setup'] })
+  const free = await w.service.start({ projectId: 'p1', ref: 'Implement and review', params: p, at: { x: 3000, y: 3000 } })
+  if (!free.ok) throw new Error(free.reason)
+  expect(w.node(free.group)).toMatchObject({ x: 3000, y: 3000 })
+  const onNote = await w.service.start({ projectId: 'p1', ref: 'Implement and review', params: p, at: { x: 10, y: 10 } })
+  if (!onNote.ok) throw new Error(onNote.reason)
+  const g = w.node(onNote.group)!
+  const note = w.node('there')!
+  expect(g.x >= note.x + note.width || g.y >= note.y + note.height || g.x + g.width <= note.x || g.y + g.height <= note.y).toBe(true)
+})

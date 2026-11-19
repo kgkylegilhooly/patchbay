@@ -18,6 +18,8 @@ import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
+import { reportViewSize } from './viewSize'
+import { registerViewIpc } from './viewIpc'
 import { createWorktree } from '../core/worktree/service'
 import { registerRecipeIpc } from './recipes/ipc'
 import { createRecipeService } from './recipes/service'
@@ -702,6 +704,8 @@ async function boot(): Promise<void> {
   })
   const windowIcon = join(resourceDir, 'icon.png')
   mainWindow = createWindow(onWindowClose, windowIcon)
+  reportViewSize(() => (mainWindow ? { width: mainWindow.getContentSize()[0], height: mainWindow.getContentSize()[1] } : null))
+  registerViewIpc((sender) => sender === mainWindow?.webContents)
   mainWindow.on('focus', () => notifier.windowFocused())
   app.on('activate', () => {
     if (!mainWindow) mainWindow = createWindow(onWindowClose, windowIcon)

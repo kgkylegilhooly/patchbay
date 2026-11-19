@@ -1,4 +1,5 @@
 import { BLANK } from '../shared/browserPolicy'
+import { absoluteRect, placeInGroup, placeInProject, placeNear, type Rect } from '../core/canvas/place'
 import { DISARMED, type AgentKind, type BrowserNode, type CanvasDoc, type CanvasNode, type ClaudeNode, type GroupNode, type RunNode, type StickyNode, type TerminalNode, type TriggerNode, type WhiteboardNode } from '../shared/model'
 
 export const SIZES = {
@@ -26,20 +27,31 @@ export function absolutePosition(doc: CanvasDoc, node: CanvasNode): { x: number;
   return { x, y }
 }
 
-interface Place {
-  /** Where the top-left corner goes on the canvas. */
-  at: { x: number; y: number }
+export interface Place {
+  /** Where the top-left corner should go, such as where the person clicked. Moved only as far as it takes to keep clear of other nodes. */
+  at?: { x: number; y: number }
+  /** The node it belongs next to, such as the selected one, when no spot was given. */
+  beside?: CanvasNode
+  /** The canvas on screen, in canvas coordinates. Without a spot or a node, the new one goes in its middle. */
+  view?: Rect | null
   /** Group to open inside, if one is selected. */
   group: GroupNode | null
   doc: CanvasDoc
 }
 
-function placed(p: Place, size: { width: number; height: number }): Pick<CanvasNode, 'x' | 'y' | 'parentId'> & typeof size {
-  if (!p.group) return { ...size, x: p.at.x, y: p.at.y, parentId: null }
-  // Opening in a group goes below whatever is already inside it.
-  const inside = p.doc.nodes.filter((n) => n.parentId === p.group!.id)
-  const y = inside.length ? Math.max(...inside.map((n) => n.y + n.height)) + 24 : 64
-  return { ...size, x: 24, y, parentId: p.group.id }
+/** Where a new node of this size goes: inside the group in its next free cell, or the nearest free spot on the canvas. */
+export function placed(p: Place, size: { width: number; height: number }): Pick<CanvasNode, 'x' | 'y' | 'parentId'> & typeof size {
+  if (p.group) return { ...size, ...placeInGroup(p.doc, p.group.id, size), parentId: p.group.id }
+  const projectId = p.doc.activeProjectId
+  const view = p.view ?? null
+  const spot = p.at
+    ? placeNear(p.doc, { at: p.at, size, projectId, view })
+    : p.beside
+      ? placeNear(p.doc, { beside: absoluteRect(p.doc, p.beside), size, projectId, view })
+      : view
+        ? placeNear(p.doc, { at: { x: view.x + (view.width - size.width) / 2, y: view.y + (view.height - size.height) / 2 }, size, projectId, view })
+        : placeInProject(p.doc, projectId, size)
+  return { ...size, ...spot, parentId: null }
 }
 
 export function newTerminal(p: Place, id: string, fields: { cwd: string; command?: string; profile?: { id: string; name: string } }): TerminalNode {
