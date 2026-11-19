@@ -108,24 +108,43 @@ test('a Codex too old for the flag is left without it, so it still starts', () =
   expect(buildCodexLaunch(node(), ctx({ noDaemon: false })).args).not.toContain(CODEX_NO_DAEMON)
 })
 
-test('a custom Codex command gets the flag, and its line carries it', () => {
-  const launch = buildCodexLaunch(node(), ctx({ codex: undefined, noDaemon: undefined, codexCommand: `"${process.execPath}" codex.js` }))
-  expect(launch.args.join(' ')).toContain(CODEX_NO_DAEMON)
+
+test('without an answer the launch keeps the flag', () => {
+  expect(buildCodexLaunch(node(), ctx({ noDaemon: undefined }))).toBeDefined()
+  expect(buildCodexLaunch(node(), ctx({ noDaemon: undefined })).args).toContain(CODEX_NO_DAEMON)
 })
 
-test("whether Codex knows the flag is asked once per program, and an unanswerable question keeps the flag", () => {
+const NEW_HELP = '      --no-daemon\n          Run without the shared background server'
+
+test('whether Codex knows the flag is asked once per program, even when several nodes start at once', async () => {
   let asked = 0
-  const knows = (file: string, args: string[]): string => {
+  const ask = async (file: string, args: string[]): Promise<string> => {
     asked++
     expect(args).toEqual(['--help'])
-    return file.includes('old') ? 'Usage: codex [OPTIONS]' : '      --no-daemon\n          Run without the shared background server'
+    return file.includes('old') ? 'Usage: codex [OPTIONS]' : NEW_HELP
   }
-  expect(codexKnowsNoDaemon({ file: 'C:\new\codex.exe', prefixArgs: [] }, knows)).toBe(true)
-  expect(codexKnowsNoDaemon({ file: 'C:\new\codex.exe', prefixArgs: [] }, knows)).toBe(true)
+  const fresh = { file: 'C:\\fresh\\codex.exe', prefixArgs: [] }
+  const answers = await Promise.all([codexKnowsNoDaemon({ codex: fresh }, ask), codexKnowsNoDaemon({ codex: fresh }, ask)])
+  expect(answers).toEqual([true, true])
+  expect(await codexKnowsNoDaemon({ codex: fresh }, ask)).toBe(true)
   expect(asked).toBe(1)
-  expect(codexKnowsNoDaemon({ file: 'C:\old\codex.exe', prefixArgs: [] }, knows)).toBe(false)
-  const broken = (): string => {
+  expect(await codexKnowsNoDaemon({ codex: { file: 'C:\\old\\codex.exe', prefixArgs: [] } }, ask)).toBe(false)
+})
+
+test("a Codex that can't be asked keeps the flag", async () => {
+  const broken = async (): Promise<string> => {
     throw new Error('ENOENT')
   }
-  expect(codexKnowsNoDaemon({ file: 'C:\gone\codex.exe', prefixArgs: [] }, broken)).toBe(true)
+  expect(await codexKnowsNoDaemon({ codex: { file: 'C:\\gone\\codex.exe', prefixArgs: [] } }, broken)).toBe(true)
+})
+
+test('a custom Codex command is asked the way it is launched', async () => {
+  const seen: string[][] = []
+  const ask = async (file: string, args: string[]): Promise<string> => {
+    seen.push([file, ...args])
+    return 'Usage: codex [OPTIONS]'
+  }
+  const command = `"${process.execPath}" older-codex.js`
+  expect(await codexKnowsNoDaemon({ codexCommand: command }, ask)).toBe(false)
+  expect(seen).toEqual([[process.execPath, 'older-codex.js', '--help']])
 })

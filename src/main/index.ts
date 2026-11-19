@@ -16,7 +16,7 @@ import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
 import { loadOrCreateSecret, RpcRefusal, startControlServer, type ControlServer } from './control/server'
-import { hookFromAnotherNode } from './control/hookIdentity'
+import { hookFromAnotherNode, refusalLog } from './control/hookIdentity'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { reportViewSize } from './viewSize'
@@ -370,7 +370,9 @@ async function boot(): Promise<void> {
       secret,
       settings: currentSettings,
       typePrefix: (id) => sendGuard.prefixFor(id),
-      takeMissedHooks: (id) => takeMissedHooks(journalDir, id),
+      // Journalled while Patchbay was closed, so checked here as onHook checks live ones.
+      takeMissedHooks: (id) =>
+        takeMissedHooks(journalDir, id).filter((e) => !hookFromAnotherNode(id, { session_id: e.session_id }, store.get().nodes, (n) => host.isRunning(n))),
       onMissedStopFailure: (id, event) => stops.noteHook(id, event)
     }
   })
@@ -472,13 +474,14 @@ async function boot(): Promise<void> {
   // A node at its usage limit before the app restarted still is, if its session came back.
   stops.retain(adopted)
 
+  const noteRefusal = refusalLog((line) => log?.write(line))
   const server: ControlServer = await startControlServer({
     secret,
     endpointFile,
     onHook: async (id, payload, signal) => {
-      const owner = hookFromAnotherNode(id, payload, store.get().nodes)
+      const owner = hookFromAnotherNode(id, payload, store.get().nodes, (n) => host.isRunning(n))
       if (owner) {
-        log?.write(`Refused a ${String(payload.hook_event_name)} hook sent as ${id} for a session of ${owner}.`)
+        noteRefusal(id, owner, payload.hook_event_name)
         throw new RpcRefusal("This hook came from another node's session.")
       }
       signals?.heardHook(id)
