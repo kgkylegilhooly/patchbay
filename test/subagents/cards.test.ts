@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { toFlow } from '../../src/renderer/flowMapping'
 import { CARD, cardSpots } from '../../src/renderer/subagents/placement'
-import { loadHidden, saveHidden, toggleHidden } from '../../src/renderer/subagents/subagentUi'
+import { loadHidden, pruneHidden, saveHidden, toggleHidden } from '../../src/renderer/subagents/subagentUi'
 import { CARD_CAP, elapsed, FADE_MS, LINGER_MS, tokenLabel, visibleCards, type SubagentCard } from '../../src/shared/subagents'
 import type { CanvasDoc } from '../../src/shared/model'
 
@@ -56,6 +56,8 @@ test('the Eye button hides a window’s cards and shows them again, remembered p
   hidden = toggleHidden(loadHidden(storage), 'n1')
   saveHidden(hidden, storage)
   expect(loadHidden(storage)).toEqual({ n2: true })
+  // Closed windows drop out of the list.
+  expect(pruneHidden({ n1: true, gone: true }, ['n1', 'n3'])).toEqual({ n1: true })
   // Broken or blocked storage hides nothing and throws nothing.
   expect(loadHidden({ getItem: () => '{oops', setItem: () => {} })).toEqual({})
   expect(() => saveHidden({ n1: true }, { getItem: () => null, setItem: () => { throw new Error('full') } })).not.toThrow()

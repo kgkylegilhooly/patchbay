@@ -1,3 +1,4 @@
+import { useStore } from '../store'
 import { toggleSubagentCards, useSubagentUi } from './subagentUi'
 
 /**
@@ -18,7 +19,7 @@ export function SubagentEye({ nodeId }: { nodeId: string }): React.JSX.Element |
       aria-label={`${hidden ? 'Show' : 'Hide'} subagent cards. ${what}.`}
       title={`${what}. Click to ${hidden ? 'show' : 'hide'} their cards.`}
       data-subagent-eye={nodeId}
-      onClick={() => toggleSubagentCards(nodeId)}
+      onClick={() => toggleSubagentCards(nodeId, useStore.getState().doc?.nodes.map((n) => n.id))}
     >
       <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden>
         <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />

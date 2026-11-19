@@ -198,3 +198,61 @@ test('the transcript viewer reads only what was added since it last looked', asy
   appendFileSync(file, line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Found it' }, { type: 'tool_use', name: 'Read', input: { file_path: 'a.ts' } }] } }) + '{"partial')
   expect(await readSubagentTranscript(file)).toBe('[prompt]\nLook around\nmore\n\n[assistant]\nFound it\n\n[Read] a.ts\n')
 })
+
+test('a line longer than one read (an image in a tool result) is passed over, and what follows is read', async () => {
+  const w = start()
+  spawnAgent('a1')
+  toolCall('a1', 'Read', 100)
+  await w.tick()
+  // About 5 MB on one line, more than the watcher reads in one go.
+  appendFileSync(join(dir, 'agent-a1.jsonl'), line({ type: 'user', message: { content: [{ type: 'tool_result', content: 'x'.repeat(5 * 1024 * 1024) }] } }))
+  toolCall('a1', 'Grep', 200)
+  toolCall('a1', 'Bash', 300)
+  for (let i = 0; i < 4; i++) await w.tick()
+  expect(w.snapshot().n1.cards[0]).toMatchObject({ tools: 3, tokens: 300 })
+})
+
+test('past the read limit every running agent still gets read, and finished ones end', async () => {
+  const w = start()
+  await w.tick()
+  for (let i = 0; i < 30; i++) spawnAgent(`a${String(i).padStart(2, '0')}`)
+  await w.tick()
+  await w.tick()
+  // Only the last six get a tool call; with the first 24 unchanged they're read at once.
+  for (let i = 24; i < 30; i++) toolCall(`a${i}`, 'Read', 10)
+  finish('a29')
+  await w.tick()
+  const cards = Object.fromEntries(w.snapshot().n1.cards.map((c) => [c.id, c]))
+  for (let i = 24; i < 29; i++) expect(cards[`a${i}`].tools).toBe(1)
+  expect(cards.a29.status).toBe('done')
+})
+
+test('an agent that goes quiet with its window idle is settled, and comes back if it writes again', async () => {
+  let clock = Date.now()
+  const w = start(() => clock)
+  await w.tick()
+  spawnAgent('a1')
+  await w.tick()
+  parent.busy = false
+  clock += 12 * 60_000
+  await w.tick()
+  expect(w.snapshot().n1.cards[0]).toMatchObject({ status: 'failed', failure: 'No longer running' })
+  // Nothing running, so an idle window costs nothing more.
+  parent.busy = true
+  toolCall('a1', 'Read', 50)
+  await w.tick()
+  expect(w.snapshot().n1.cards[0]).toMatchObject({ status: 'running', tools: 1 })
+})
+
+test('an agent whose transcript is deleted fails once, without logging every second', async () => {
+  const logged: string[] = []
+  watcher = createSubagentWatcher({ parents: () => [parent], push: () => {}, everyMs: 0, log: (m) => logged.push(m) })
+  await watcher.tick()
+  spawnAgent('a1')
+  await watcher.tick()
+  rmSync(join(dir, 'agent-a1.jsonl'))
+  await watcher.tick()
+  await watcher.tick()
+  expect(watcher.snapshot().n1.cards[0]).toMatchObject({ status: 'failed', failure: 'Its transcript is gone' })
+  expect(logged).toEqual([])
+})

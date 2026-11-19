@@ -11,6 +11,8 @@ import { CARD, cardSpots, type Side } from './placement'
 import { closeSubagentView, followSubagents, useSubagentUi, viewSubagent } from './subagentUi'
 import './subagents.css'
 
+const NONE: Rect[] = []
+
 const STATUS_TEXT: Record<SubagentCard['status'], string> = { running: 'Running', done: 'Done', failed: 'Failed' }
 
 /** The current time, every second while anything shown is counting. */
@@ -71,11 +73,11 @@ function cableTo(parent: Rect, card: Rect, side: Side): string {
   return `M ${parent.x + parent.width / 2} ${parent.y + parent.height} L ${card.x + card.width / 2} ${card.y}`
 }
 
-const ParentCards = memo(function ParentCards({ parentId, cards, now, doc }: { parentId: string; cards: SubagentCard[]; now: number; doc: CanvasDoc }) {
+const ParentCards = memo(function ParentCards({ parentId, cards, now, doc, taken }: { parentId: string; cards: SubagentCard[]; now: number; doc: CanvasDoc; taken: Rect[] }) {
   const internal = useInternalNode(parentId)
   const node = doc.nodes.find((n) => n.id === parentId)
   const { shown, more } = visibleCards(cards, now)
-  const others = useMemo(() => othersOf(doc, parentId), [doc, parentId])
+  const others = useMemo(() => [...othersOf(doc, parentId), ...taken], [doc, parentId, taken])
   if (!node || shown.length === 0) return null
   // Live while the window is dragged; the saved place otherwise.
   const at = internal?.internals.positionAbsolute ?? absolutePosition(doc, node)
@@ -112,7 +114,8 @@ function SubagentTranscript(): React.JSX.Element | null {
     let live = true
     const load = (): void =>
       void bridge.transcript(viewing.nodeId, viewing.agentId).then((r) => {
-        if (live) setRead(r.ok ? { text: r.text, missing: null } : { text: null, missing: r.reason })
+        // Set only when it changed, so a refresh doesn't redraw the text under the reader.
+        if (live) setRead((old) => (r.ok ? (old.text === r.text ? old : { text: r.text, missing: null }) : old.missing === r.reason ? old : { text: null, missing: r.reason }))
       })
     load()
     const timer = running ? setInterval(load, 2000) : undefined
@@ -144,12 +147,28 @@ export function SubagentLayer(): React.JSX.Element | null {
   // Counts only while a card is running or fading out.
   const ticking = shown.some(([, g]) => g.cards.some((c) => c.status === 'running' || (c.endedAt ?? 0) + LINGER_MS > Date.now()))
   const now = useNow(ticking)
+  // Each window's cards keep clear of the cards placed before them, so two busy windows side by side don't stack theirs.
+  const taken = useMemo(() => {
+    const before: Record<string, Rect[]> = {}
+    if (!doc) return before
+    const placed: Rect[] = []
+    for (const [id, g] of shown) {
+      before[id] = [...placed]
+      const node = doc.nodes.find((n) => n.id === id)!
+      const { shown: cards, more } = visibleCards(g.cards, now)
+      if (cards.length === 0) continue
+      const parent = { ...absolutePosition(doc, node), width: node.width, height: node.height }
+      placed.push(...cardSpots(parent, cards.length + (more ? 1 : 0), [...othersOf(doc, id), ...placed]).spots)
+    }
+    return before
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, groups, hidden, now])
   if (!doc) return null
   return (
     <>
       <ViewportPortal>
         {shown.map(([id, g]) => (
-          <ParentCards key={id} parentId={id} cards={g.cards} now={now} doc={doc} />
+          <ParentCards key={id} parentId={id} cards={g.cards} now={now} doc={doc} taken={taken[id] ?? NONE} />
         ))}
       </ViewportPortal>
       <SubagentTranscript />

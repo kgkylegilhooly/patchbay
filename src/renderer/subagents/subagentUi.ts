@@ -47,6 +47,12 @@ export function toggleHidden(hidden: Record<string, true>, nodeId: string): Reco
   return next
 }
 
+/** Only the windows still on the canvas. */
+export function pruneHidden(hidden: Record<string, true>, liveIds: string[]): Record<string, true> {
+  const live = new Set(liveIds)
+  return Object.fromEntries(Object.keys(hidden).filter((id) => live.has(id)).map((id) => [id, true as const]))
+}
+
 export function saveHidden(hidden: Record<string, true>, to: Storage | null = storage()): void {
   try {
     to?.setItem(HIDDEN_KEY, JSON.stringify(Object.keys(hidden)))
@@ -57,8 +63,10 @@ export function saveHidden(hidden: Record<string, true>, to: Storage | null = st
 
 export const useSubagentUi = create<SubagentUi>(() => ({ groups: {}, hidden: loadHidden(), viewing: null }))
 
-export const toggleSubagentCards = (nodeId: string): void => {
-  const hidden = toggleHidden(useSubagentUi.getState().hidden, nodeId)
+/** `liveIds`, the windows on the canvas, drops closed ones from the list as it's saved. */
+export const toggleSubagentCards = (nodeId: string, liveIds?: string[]): void => {
+  let hidden = toggleHidden(useSubagentUi.getState().hidden, nodeId)
+  if (liveIds) hidden = pruneHidden(hidden, liveIds)
   saveHidden(hidden)
   useSubagentUi.setState({ hidden })
 }

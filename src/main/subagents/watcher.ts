@@ -49,6 +49,12 @@ interface Agent {
   endedAt?: number
   /** The parent's turn it counts in: the one it started in, or the latest one it was still running at. */
   turn: number
+  /** Partway through a line longer than a read, which is passed over to its end. */
+  skipping?: boolean
+  /** Settled because it went quiet with its window idle. It runs again if its transcript grows. */
+  stale?: boolean
+  /** The tick it was last read in, so the least recently read go first when there are too many. */
+  readTick: number
 }
 
 interface Parent {
@@ -65,6 +71,11 @@ const READS_PER_TICK = 24
 const SENT_CAP = 50
 /** An unfinished agent whose transcript hasn't changed in this long, from before the turn, was left by a crash. */
 const ORPHAN_MS = 10 * 60_000
+/**
+ * A running agent whose transcript has been quiet this long while its window is idle has gone without saying so (a
+ * crash, a killed process). Longer than the longest tool call Claude Code allows, ten minutes, so a long Bash isn't it.
+ */
+const STALE_MS = 11 * 60_000
 /** The most read from one transcript in one go. The rest is read on later ticks. */
 const MAX_READ = 4 * 1024 * 1024
 
@@ -97,7 +108,10 @@ export function createSubagentWatcher(opts: {
   let ticking = false
   let closed = false
 
+  let tickCount = 0
+
   const settle = (a: Agent, at: number): void => {
+    a.stale = false
     const stopped = a.meta?.stoppedByUser
     a.status = a.progress.error || stopped ? 'failed' : 'done'
     a.failure = stopped ? 'Stopped' : a.progress.error
@@ -109,12 +123,32 @@ export function createSubagentWatcher(opts: {
     if (size < a.offset) {
       a.offset = 0 // Replaced, so read afresh.
       a.progress = emptyProgress()
+      a.skipping = false
     }
     if (size === a.offset) return
     const bytes = await readFrom(join(p.dir, `agent-${a.id}.jsonl`), a.offset, size)
+    let start = 0
+    if (a.skipping) {
+      const nl = bytes.indexOf(0x0a)
+      if (nl === -1) {
+        a.offset += bytes.length
+        return
+      }
+      start = nl + 1
+      a.skipping = false
+    }
     const end = bytes.lastIndexOf(0x0a) + 1
-    if (end === 0) return
-    a.progress = foldLines(a.progress, bytes.subarray(0, end).toString('utf8'))
+    if (end <= start) {
+      a.offset += start
+      // A whole read with no line end is one line too long to wait for, such as a tool result holding an image. It
+      // tells a card nothing, so it's passed over rather than read again every second.
+      if (start === 0 && bytes.length === MAX_READ) {
+        a.skipping = true
+        a.offset += bytes.length
+      }
+      return
+    }
+    a.progress = foldLines(a.progress, bytes.subarray(start, end).toString('utf8'))
     a.offset += end
     if (a.progress.startedAt !== undefined) a.startedAt = a.progress.startedAt
   }
@@ -147,13 +181,16 @@ export function createSubagentWatcher(opts: {
       p.dirMtime = dirStat.mtimeMs
       for (const name of await readdir(p.dir).catch(() => [] as string[])) {
         const id = agentIdOf(name)
-        if (id && !p.agents.has(id)) p.agents.set(id, { id, meta: null, metaMtime: -1, offset: 0, progress: emptyProgress(), old: false, status: 'running', startedAt: now(), turn: p.turn })
+        if (id && !p.agents.has(id)) p.agents.set(id, { id, meta: null, metaMtime: -1, offset: 0, progress: emptyProgress(), old: false, status: 'running', startedAt: now(), turn: p.turn, readTick: 0 })
       }
     }
 
     let reads = 0
-    for (const a of p.agents.values()) {
-      if (a.old || a.status !== 'running') continue
+    const tick = ++tickCount
+    // The least recently read first, so with more running than can be read in one tick, every one gets its turn.
+    const live = [...p.agents.values()].filter((a) => !a.old && (a.status === 'running' || a.stale)).sort((x, y) => x.readTick - y.readTick)
+    for (const a of live) {
+      const jsonl = join(p.dir, `agent-${a.id}.jsonl`)
       try {
         const metaFile = join(p.dir, `agent-${a.id}.meta.json`)
         const metaStat = await stat(metaFile).catch(() => null)
@@ -165,7 +202,23 @@ export function createSubagentWatcher(opts: {
             a.metaMtime = metaStat.mtimeMs
           }
         }
-        const file = await stat(join(p.dir, `agent-${a.id}.jsonl`))
+        let file
+        try {
+          file = await stat(jsonl)
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
+          settle(a, now())
+          a.status = 'failed'
+          a.failure = 'Its transcript is gone'
+          continue
+        }
+        if (a.stale) {
+          if (file.size === a.offset) continue
+          a.stale = false
+          a.status = 'running'
+          a.endedAt = undefined
+          a.failure = undefined
+        }
         const fresh = a.offset === 0 && a.progress.startedAt === undefined
         if (fresh) {
           a.startedAt = file.birthtimeMs || file.mtimeMs
@@ -176,10 +229,21 @@ export function createSubagentWatcher(opts: {
             continue
           }
         }
-        if (reads >= READS_PER_TICK) continue
-        reads++
-        await follow(p, a, file.size)
-        if (a.meta?.finished || a.meta?.stoppedByUser) settle(a, file.mtimeMs)
+        const done = a.meta?.finished || a.meta?.stoppedByUser
+        if (file.size !== a.offset) {
+          // Only reads count against the limit. A finished agent left unread waits a tick, so its card ends right.
+          if (reads >= READS_PER_TICK) continue
+          reads++
+          a.readTick = tick
+          await follow(p, a, file.size)
+        }
+        if (done) settle(a, file.mtimeMs)
+        else if (!w.busy && now() - file.mtimeMs > STALE_MS) {
+          settle(a, file.mtimeMs)
+          a.status = 'failed'
+          a.failure = 'No longer running'
+          a.stale = true
+        }
       } catch (e) {
         opts.log?.(`Subagent ${a.id} couldn't be read: ${(e as Error).message}`)
       }
