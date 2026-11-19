@@ -192,7 +192,8 @@ Settings > Agents has a switch for each agent, Claude Code and Codex, for when o
 it used. One stays on. With an agent off, nothing new of it starts: it leaves the menus, the dock and the palette,
 restarting or resuming one of its windows is refused, a trigger aimed at one records a failed run, and `patchbay
 open-agent` and `spawn-team` refuse it. Windows already running keep running. If the default agent is off, the other
-stands in. A recipe that needs it says so, and starts only if you choose to use the other agent instead. In
+stands in. A recipe that needs it says so, and starts only if you choose to use the other agent instead. Try another
+approach offers only agents that are on, and won't start an attempt left on one that's off. In
 `settings.json` it's `agentsOff`, the agents turned off:
 
 ```json

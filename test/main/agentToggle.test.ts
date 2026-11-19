@@ -12,6 +12,7 @@ import { createNodeRunner } from '../../src/main/sessions/nodeRunner'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import { createTriggerService } from '../../src/main/triggers/service'
 import { agentChoice } from '../../src/shared/agents'
+import { startProblem, type SourceInfo, type StartComparison } from '../../src/shared/compare'
 import type { SessionSpec } from '../../src/shared/contract'
 import type { CanvasNode, ClaudeNode, TriggerNode } from '../../src/shared/model'
 import { planRecipe, type RecipeParams } from '../../src/shared/recipe'
@@ -203,5 +204,17 @@ describe('recipes', () => {
     const ok = await w.service.start({ projectId: 'p1', ref: 'Implement and review', params: params({ useAgent: 'claude' }) })
     if (!ok.ok) throw new Error(ok.reason)
     expect(w.agent(ok.ids.reviewer).agent).toBeUndefined()
+  })
+})
+
+describe('comparisons', () => {
+  test('the start dialog says an attempt needs an agent that is off, until the person picks one that is on', () => {
+    const SHA = 'a'.repeat(40)
+    const source: SourceInfo = { ok: true, repo: 'C:/r', source: 'C:/r', commit: SHA, branch: 'main', subject: 's', uncommitted: [], uncommittedMore: 0 }
+    const req = (b: 'claude' | 'codex'): StartComparison => ({ projectId: 'p', source: 'C:/r', brief: 'Fix it', base: SHA, leaveOutUncommitted: false, attempts: [{ agent: 'claude', approach: '', branch: 'try/a' }, { agent: b, approach: '', branch: 'try/b' }], verify: '' })
+    const off = agentChoice(CODEX_OFF)
+    expect(startProblem(req('codex'), source, off)).toBe("Attempt B: Codex is turned off in Settings > Agents, so Patchbay won't start it. Patchbay may use Claude Code. Choose Claude Code for it instead.")
+    expect(startProblem(req('claude'), source, off)).toBeNull()
+    expect(startProblem(req('codex'), source, agentChoice({}))).toBeNull()
   })
 })
