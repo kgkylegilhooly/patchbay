@@ -10,7 +10,7 @@ import { createAgentStops } from '../../src/main/sessions/agentStops'
 import { CODEX_HOOK_EVENTS, codexHookArgs } from '../../src/main/sessions/codexLaunch'
 import { createCodexStops } from '../../src/main/sessions/codexStops'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
-import { createCodexCards } from '../../src/main/subagents/codexCards'
+import { allowedChildRollout, createCodexCards } from '../../src/main/subagents/codexCards'
 import { parseResetTime, stopFromHook, stopLabel } from '../../src/shared/agentStop'
 
 /*
@@ -262,5 +262,49 @@ describe('Codex subagent cards', () => {
 
   test("a child's rollout folds into a card's progress", () => {
     expect(foldCodexChild(emptyProgress(), CHILD.join('\n'))).toMatchObject({ tools: 2, tokens: 18719, prompt: 'Find every caller of slugify', startedAt: T0 + 5000, lastAt: T0 + 8000 })
+  })
+})
+
+describe('only a turn-ending error stops a Codex node (review M2, L2, L3)', () => {
+  test('an error the turn went on from is no failure; nor is one between turns', () => {
+    const went = fold(STARTED(0), ev(1, { type: 'error', message: 'apply failed', codex_error_info: 'other' }), ev(2, { type: 'agent_message', message: 'Trying again' }), COMPLETE(3))
+    expect(went.failure).toBeNull()
+    const answered = fold(STARTED(0), ev(1, { type: 'error', message: 'x', codex_error_info: 'other' }), JSON.stringify({ timestamp: at(2), type: 'response_item', payload: { type: 'message', role: 'assistant', content: [] } }), COMPLETE(3))
+    expect(answered.failure).toBeNull()
+    expect(fold(STARTED(0), COMPLETE(1), ev(5, { type: 'error', message: 'resume failed', codex_error_info: 'other' })).failure).toBeNull()
+    // A limit update after the error doesn't undo it: the turn still ended on it.
+    expect(fold(STARTED(0), USAGE_ERROR(1), TOKEN_COUNT(1), COMPLETE(1)).failure).not.toBeNull()
+  })
+
+  test('the Stop after a turn that recovered from an error stays a Stop, and an idle node is never stopped by a stray error', async () => {
+    const w = codexWorld()
+    w.hook({ hook_event_name: 'UserPromptSubmit' })
+    await w.watcher.tick()
+    w.write(STARTED(0), ev(1, { type: 'error', message: 'x', codex_error_info: 'other' }), ev(2, { type: 'agent_message', message: 'ok' }), COMPLETE(3))
+    expect((await w.watcher.translate('c', { hook_event_name: 'Stop' })).payload).toEqual({ hook_event_name: 'Stop' })
+    w.hook({ hook_event_name: 'Stop' })
+    w.write(ev(10, { type: 'error', message: "You've hit your usage limit.", codex_error_info: 'usage_limit_exceeded' }))
+    await w.watcher.tick()
+    expect(w.tracker.get('c')).toBe('idle')
+    expect(w.stops.get('c')).toBeUndefined()
+  })
+
+  test("a child's Stop or Interrupt, from another session, is ignored for the window", async () => {
+    const rollout = join(temp(), 'r.jsonl')
+    writeFileSync(rollout, '')
+    const watcher = createCodexStops({ nodes: () => [{ id: 'c', transcriptPath: rollout, sessionId: 'parent' }], status: () => 'working', apply: async () => {}, everyMs: 0 })
+    expect(await watcher.translate('c', { hook_event_name: 'Interrupt', session_id: 'child' })).toMatchObject({ ignore: true })
+    expect(await watcher.translate('c', { hook_event_name: 'Stop', session_id: 'child' })).toMatchObject({ ignore: true })
+    expect((await watcher.translate('c', { hook_event_name: 'Interrupt', session_id: 'parent' })).ignore).toBeUndefined()
+    expect((await watcher.translate('c', { hook_event_name: 'Stop' })).ignore).toBeUndefined()
+  })
+
+  test("a subagent rollout is read only from under the parent's Codex sessions folder", () => {
+    const parent = 'C:/Users/me/.codex/sessions/2026/11/20/rollout-p.jsonl'
+    expect(allowedChildRollout(parent, 'C:/Users/me/.codex/sessions/2026/11/21/rollout-c.jsonl')).toBe(true)
+    expect(allowedChildRollout(parent, 'C:/Users/me/.ssh/id_rsa')).toBe(false)
+    expect(allowedChildRollout(parent, 'C:/Users/me/.codex/auth.jsonl')).toBe(false)
+    expect(allowedChildRollout(parent, 'C:/Users/me/.codex/sessions/2026/11/20/notes.txt')).toBe(false)
+    expect(allowedChildRollout(null, 'C:/Users/me/.codex/sessions/x.jsonl')).toBe(false)
   })
 })

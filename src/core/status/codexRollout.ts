@@ -86,8 +86,23 @@ function planFrom(rateLimits: unknown, at: number): PlanUsage | null {
   return { ...(fiveHour ? { fiveHour } : {}), ...(sevenDay ? { sevenDay } : {}), at }
 }
 
-/** Folds one rollout line into the state. Lines that aren't events, or don't parse, change nothing. */
+/** Events after an error that mean the turn went on: the model spoke or worked again, so that error didn't end it. */
+const WENT_ON = new Set(['agent_message', 'agent_reasoning', 'item_completed', 'item_started', 'exec_command_begin', 'patch_apply_begin', 'mcp_tool_call_begin'])
+
+/**
+ * Folds one rollout line into the state. Lines that aren't events, or don't parse, change nothing. A failure counts
+ * only for an `error` inside a turn with nothing after it but the turn's end (and limit updates): an error the turn
+ * went on from, or one between turns (a failed command or resume), is no failed turn.
+ */
 export function foldCodexLine(state: CodexTurnState, text: string): CodexTurnState {
+  if (state.failure && state.inTurn && text.includes('"response_item"')) {
+    // The model answered after the error: the turn went on.
+    try {
+      if (obj(JSON.parse(text))?.type === 'response_item') return { ...state, failure: null }
+    } catch {
+      // Not a line: nothing changes.
+    }
+  }
   if (!text.includes('"event_msg"')) return state
   let line: Record<string, unknown> | null
   try {
@@ -96,6 +111,8 @@ export function foldCodexLine(state: CodexTurnState, text: string): CodexTurnSta
     return state
   }
   if (line?.type !== 'event_msg') return state
+  const type = obj(line.payload)?.type
+  if (state.failure && state.inTurn && typeof type === 'string' && WENT_ON.has(type)) state = { ...state, failure: null }
   const p = obj(line.payload)
   if (!p) return state
   const at = typeof line.timestamp === 'string' && !Number.isNaN(Date.parse(line.timestamp)) ? Date.parse(line.timestamp) : null
@@ -107,6 +124,7 @@ export function foldCodexLine(state: CodexTurnState, text: string): CodexTurnSta
     case 'turn_aborted':
       return { ...state, inTurn: false, ended: true, aborted: { reason: typeof p.reason === 'string' ? p.reason : 'unknown', at } }
     case 'error': {
+      if (!state.inTurn) return state
       const message = typeof p.message === 'string' ? p.message : ''
       const codexError = codexErrorName(p.codex_error_info)
       return { ...state, failure: { error: claudeErrorFor(codexError, message), codexError, message, at } }

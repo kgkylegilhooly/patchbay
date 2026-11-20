@@ -42,12 +42,15 @@ export function visibleFiles(data: SessionFiles, onlyTurn: boolean): TouchedFile
 }
 
 /** The chip's words. */
-export function chipLabel(count: number, overlap: number): { text: string; title: string } {
+export function chipLabel(count: number, overlap: number, changed = 0): { text: string; title: string } {
   const files = `${count} file${count === 1 ? '' : 's'}`
-  if (!overlap) return { text: files, title: `This session edited ${files}. Click to see them` }
+  // Files a command changed are counted apart, never as edited.
+  const extra = changed ? ` +${changed} by commands` : ''
+  const extraTitle = changed ? ` ${changed} more changed during its turns by a command or another process, not by its own edits.` : ''
+  if (!overlap) return { text: `${files}${extra}`, title: `This session edited ${files}.${extraTitle} Click to see them` }
   return {
-    text: `${files} · ${overlap} shared`,
-    title: `This session edited ${files}. Another live agent also edited ${overlap} of them in the same checkout. Click to see which`
+    text: `${files}${extra} · ${overlap} shared`,
+    title: `This session edited ${files}. Another live agent also edited ${overlap} of them in the same checkout.${extraTitle} Click to see which`
   }
 }
 

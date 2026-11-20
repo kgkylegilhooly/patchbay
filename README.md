@@ -330,7 +330,7 @@ An agent's header and its row in the sidebar show **N files** once it has edited
 calls, read from its transcript. A Claude agent's subagents' edits count too, labelled **by a subagent**. As a turn
 ends, Patchbay compares the checkout with the snapshot taken when the turn started: a file that changed with no such
 edit is listed as **changed during this turn (by a command or another process)**, never as the agent's own edit. That
-check is skipped, and the list says why, when another window works in the same checkout. The chip turns amber with ⚠
+check is skipped, and the list says why, when another agent works in the same checkout. The chip turns amber with ⚠
 when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
 in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
 

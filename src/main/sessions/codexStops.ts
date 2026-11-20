@@ -14,6 +14,8 @@ import type { PlanUsage } from '../../shared/usage'
 export interface CodexNodeInfo {
   id: string
   transcriptPath: string
+  /** The window's own Codex session, once SessionStart has said it. */
+  sessionId?: string | null
 }
 
 export interface CodexStops {
@@ -21,7 +23,7 @@ export interface CodexStops {
    * For a Codex node's Stop hook: reads its rollout first, and when the turn failed, gives the StopFailure it stands
    * for instead, with Codex's own limits for the reset time. Anything else comes back as it was.
    */
-  translate(id: string, payload: Record<string, unknown>): Promise<{ payload: Record<string, unknown>; limits?: PlanUsage | null }>
+  translate(id: string, payload: Record<string, unknown>): Promise<{ payload: Record<string, unknown>; limits?: PlanUsage | null; ignore?: true }>
   /** Looks once. Runs by itself on a timer as well. */
   tick(): Promise<void>
   close(): void
@@ -118,7 +120,8 @@ export function createCodexStops(d: {
     if (status === 'exited' || status === 'starting' || status === 'queued') return
     const fk = failureKey(f.turn)
     if (fk && !f.done.has(fk)) {
-      const ended = f.turn.ended || (status === 'working' && now() - f.grewAt >= QUIET_AFTER_ERROR_MS) || status === 'idle'
+      // The turn ended on it (an error it went on from was already dropped from the state), or nothing followed it.
+      const ended = f.turn.ended || (status === 'working' && now() - f.grewAt >= QUIET_AFTER_ERROR_MS)
       if (ended) {
         f.done.add(fk)
         await d.apply(node.id, codexStopFailure(f.turn)!, f.turn.plan)
@@ -155,9 +158,15 @@ export function createCodexStops(d: {
 
   return {
     async translate(id, payload) {
-      if (payload.hook_event_name !== 'Stop') return { payload }
+      const name = payload.hook_event_name
+      if (name !== 'Stop' && name !== 'Interrupt') return { payload }
       const node = d.nodes().find((n) => n.id === id)
       if (!node) return { payload }
+      // A subagent is a thread in the same process, so its hooks carry this window's node. A Stop or Interrupt of
+      // another session than the window's own is a child's, and says nothing about the window.
+      const session = typeof payload.session_id === 'string' ? payload.session_id : null
+      if (session && node.sessionId && session !== node.sessionId) return { payload, ignore: true }
+      if (name !== 'Stop') return { payload }
       await read(node)
       const f = followed.get(id)
       const fk = f && failureKey(f.turn)

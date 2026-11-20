@@ -4,7 +4,7 @@ import { app, ipcMain } from 'electron'
 import { gitEnvFrom } from '../../core/git/args'
 import { gitRunner, snapshotTree } from './snapshot'
 import type { CanvasStore } from '../../shared/contract'
-import { isSessionNode, type AgentStatus } from '../../shared/model'
+import type { AgentStatus } from '../../shared/model'
 import { pathKey } from './touched'
 import { broadcast } from '../ipc'
 import { cleanEnv } from '../sessions/env'
@@ -33,13 +33,16 @@ export function setupFilesTouched(d: {
     tops.set(cwd, { at: Date.now(), top })
     return top
   }
-  /** Other live windows, agents or terminals, whose folder is in this same checkout (a worktree inside it is not). */
+  /**
+   * Other live agents whose folder is in this same checkout (a worktree inside it is not). Terminals don't count: one
+   * kept open beside the agent is the usual setup, and would turn the check off for every turn.
+   */
   const sharing = async (nodeId: string, root: string): Promise<string[]> => {
     const inside = (folder: string): boolean => {
       const rel = relative(root, folder)
       return !rel.startsWith('..') && !isAbsolute(rel)
     }
-    const others = d.store.get().nodes.filter((n) => isSessionNode(n) && n.id !== nodeId && !!n.cwd && inside(n.cwd) && d.tracker.get(n.id) !== 'exited')
+    const others = d.store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== nodeId && !!n.cwd && inside(n.cwd) && d.tracker.get(n.id) !== 'exited')
     const found = await Promise.all(
       others.map(async (n) => {
         const top = await toplevel((n as { cwd: string }).cwd)

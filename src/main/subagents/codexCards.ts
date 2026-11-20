@@ -1,5 +1,5 @@
 import { open, readdir, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { foldCodexChild } from '../../core/subagents/codexChild'
 import { emptyProgress, type Progress } from '../../core/subagents/parse'
 import { AGENT_ID, type SubagentCard, type SubagentSnapshot } from '../../shared/subagents'
@@ -34,6 +34,21 @@ interface Card {
 const STALE_MS = 11 * 60_000
 const MAX_READ = 4 * 1024 * 1024
 const PER_PARENT = 50
+
+/**
+ * Whether a subagent rollout a hook names may be read and shown: a .jsonl file under the parent rollout's Codex
+ * sessions folder (`sessions/YYYY/MM/DD/` above it), or beside it when the parent isn't in such a tree. Anything
+ * holding the window's hook environment could name another file, so nothing else is read.
+ */
+export function allowedChildRollout(parentTranscript: string | null, path: string): boolean {
+  if (!parentTranscript || !isAbsolute(path) || !/\.jsonl$/i.test(path)) return false
+  const day = dirname(resolve(parentTranscript))
+  const parts = day.split(/[\\/]/)
+  const dated = parts.length > 3 && /^\d{4}$/.test(parts.at(-3)!) && /^\d{2}$/.test(parts.at(-2)!) && /^\d{2}$/.test(parts.at(-1)!)
+  const root = dated ? dirname(dirname(dirname(day))) : day
+  const rel = relative(root, resolve(path))
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
+}
 
 export interface CodexCards {
   /** A Codex window's hook. Only SubagentStart and SubagentStop do anything. */
@@ -112,7 +127,7 @@ export function createCodexCards(opts: { now?: () => number; log?(line: string):
       }
       if (name === 'SubagentStop') {
         const path = text(payload.agent_transcript_path)
-        if (path) card.transcript = path
+        if (path && allowedChildRollout(parentTranscript ?? parentTranscripts.get(nodeId) ?? null, path)) card.transcript = path
         card.status = 'done'
         card.endedAt = now()
       }

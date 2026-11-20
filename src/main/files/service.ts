@@ -50,7 +50,7 @@ export interface FilesTouchedDeps {
   saveAfterMs?: number
   log?(line: string): void
   /**
-   * The other live windows (agents or terminals) whose folder is in this checkout, by title. With any, a turn's
+   * The other live agents whose folder is in this checkout, by title. With any, a turn's
    * changes can't be told apart from theirs, so the end-of-turn look is skipped and says why. None in tests by default.
    */
   sharing?(nodeId: string, root: string): Promise<string[]>

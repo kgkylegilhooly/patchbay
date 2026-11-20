@@ -38,7 +38,7 @@ export function describeFiles(files: SessionFiles, onlyTurn: boolean, mayRead: (
       ...(files.overlaps[f.path] ? { alsoEditedBy: alsoEditedBy(files.overlaps[f.path], mayRead) } : {})
     })),
     ...(files.truncated ? { truncated: 'Older files were dropped from this list.' } : {}),
-    note: "From the session's own Edit, Write and patch calls, and its subagents' (bySubagents). changedDuringTurns: the checkout changed there during that turn with no such edit, so a shell command or another process changed it. Not checked while another window works in the same checkout."
+    note: "From the session's own Edit, Write and patch calls, and its subagents' (bySubagents). changedDuringTurns: the checkout changed there during that turn with no such edit, so a shell command or another process changed it. Not checked while another agent works in the same checkout."
   }
 }
 

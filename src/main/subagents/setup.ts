@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { join } from 'node:path'
+import { stat } from 'node:fs/promises'
 import type { CanvasStore } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import { AGENT_ID } from '../../shared/subagents'
@@ -64,6 +65,9 @@ export function setupSubagents(d: {
       // Only a rollout a hook or the search beside the parent named for this card: never a path the page gives.
       const rollout = codex.transcriptOf(node.id, agentId)
       if (!rollout) return { ok: false, reason: "Codex hasn't said where this subagent's conversation is yet. It does when the subagent stops." }
+      const size = await stat(rollout).then((s) => s.size, () => -1)
+      if (size < 0) return { ok: false, reason: 'This subagent left no transcript.' }
+      if (size > 64 * 1024 * 1024) return { ok: false, reason: "This subagent's transcript is too large to show here." }
       return readTranscriptAsync(rollout).then((text) => ({ ok: true as const, text }), (e: unknown) => ({ ok: false as const, reason: `The transcript couldn't be read: ${(e as Error).message}` }))
     }
     try {

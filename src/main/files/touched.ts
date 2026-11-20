@@ -198,6 +198,8 @@ export function findOverlaps(records: Iterable<SessionRecord>, live: (nodeId: st
     const title = live(rec.nodeId)
     if (title === null) continue
     for (const f of rec.files) {
+      // Only edits count: a file a command changed during a turn is not the session's edit, so it warns nobody.
+      if (f.edits === 0) continue
       const key = pathKey(f.path, platform)
       const list = byPath.get(key) ?? []
       list.push({ path: f.path, nodeId: rec.nodeId, title })
@@ -221,7 +223,9 @@ export function summarize(records: Iterable<SessionRecord>, overlaps: Map<string
   const out: FilesSummary = {}
   for (const rec of records) {
     if (rec.files.length === 0) continue
-    out[rec.nodeId] = { count: rec.files.length, overlap: Object.keys(overlaps.get(rec.nodeId) ?? {}).length }
+    const edited = rec.files.filter((f) => f.edits > 0).length
+    const changed = rec.files.length - edited
+    out[rec.nodeId] = { count: edited, overlap: Object.keys(overlaps.get(rec.nodeId) ?? {}).length, ...(changed ? { changed } : {}) }
   }
   return out
 }

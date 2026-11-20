@@ -217,3 +217,24 @@ describe('the record', () => {
     expect(rec.files[0].changedInTurns).toBeUndefined()
   })
 })
+
+describe('what counts as edited', () => {
+  test("a file only a command changed isn't counted as edited in the chip, nor warns another agent", async () => {
+    const { findOverlaps, summarize } = await import('../../src/main/files/touched')
+    const { chipLabel } = await import('../../src/renderer/filesView')
+    const a = emptyRecord('a', 'C:/r', 0)
+    startTurn(a, 10)
+    addEdit(a, { path: 'C:/r/own.ts', at: 20, confirmed: true }, 'win32')
+    addTurnChanges(a, 1, ['shared.ts', 'package-lock.json'], 30, 'C:/r', 'win32')
+    const b = emptyRecord('b', 'C:/r', 0)
+    addEdit(b, { path: 'C:/r/shared.ts', at: 40, confirmed: true }, 'win32')
+    const live = (id: string): string | null => `Agent ${id}`
+    const overlaps = findOverlaps([a, b], live, 'win32')
+    expect(overlaps.size).toBe(0)
+    const summary = summarize([a, b], overlaps)
+    expect(summary.a).toEqual({ count: 1, overlap: 0, changed: 2 })
+    expect(summary.b).toEqual({ count: 1, overlap: 0 })
+    expect(chipLabel(1, 0, 2)).toMatchObject({ text: '1 file +2 by commands' })
+    expect(chipLabel(1, 0, 2).title).toMatch(/^This session edited 1 file\. 2 more changed during its turns by a command/)
+  })
+})

@@ -13,7 +13,7 @@ export function setupCodexStops(d: {
 }): CodexStops {
   return createCodexStops({
     nodes: () =>
-      d.store.get().nodes.flatMap((n) => (n.kind === 'claude' && agentOf(n) === 'codex' && n.transcriptPath ? [{ id: n.id, transcriptPath: n.transcriptPath }] : [])),
+      d.store.get().nodes.flatMap((n) => (n.kind === 'claude' && agentOf(n) === 'codex' && n.transcriptPath ? [{ id: n.id, transcriptPath: n.transcriptPath, sessionId: n.sessionId }] : [])),
     status: (id) => d.tracker.get(id),
     apply: async (id, payload, limits) => {
       await d.runner.handleHook(id, payload)

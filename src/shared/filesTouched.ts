@@ -71,8 +71,11 @@ export type FileDiff =
 
 /** What a chip shows without asking for the list. */
 export interface FilesBadge {
+  /** Files the session edited: its own edit calls or its subagents'. */
   count: number
   overlap: number
+  /** Files only changed during its turns by a command or another process. Never counted as edited. */
+  changed?: number
 }
 
 export type FilesSummary = Record<string, FilesBadge>

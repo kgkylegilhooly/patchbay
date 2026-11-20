@@ -481,7 +481,8 @@ async function boot(): Promise<void> {
     onHook: async (id, payload, signal) => {
       signals?.heardHook(id)
       // A Codex turn that failed ends on Stop; it's taken as the StopFailure Claude would have sent.
-      const { payload: heard, limits } = await codexStops.translate(id, payload)
+      const { payload: heard, limits, ignore } = await codexStops.translate(id, payload)
+      if (ignore) return {}
       const answer = await runner.handleHook(id, heard, signal)
       stops.noteHook(id, heard, limits)
       const hooked = store.get().nodes.find((n) => n.id === id)
