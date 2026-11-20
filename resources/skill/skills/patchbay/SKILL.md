@@ -250,6 +250,11 @@ you merge them one by one, checking tests after each. Inside the project folder,
 project's `node_modules`. Tell members to put new code in new files and keep edits to shared files small, so merges
 stay easy. Say in the brief which paths git ignores or excludes, so nobody force-adds them.
 
+Tell members not to install packages or link folders into a worktree. On Windows, removing a folder that holds a
+junction or symlink, such as with `git worktree remove --force` or `rm -rf`, can delete through the link and empty
+what it points to, such as the project's `node_modules`. Before removing a worktree, check it for links and remove
+each one alone first (`cmd /c rmdir <link>` removes just the link).
+
 A member that stops partway, such as at a usage limit, leaves its changes uncommitted. Before handing its work to
 another member, commit it on its branch as work in progress, so nothing is lost.
 
