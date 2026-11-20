@@ -123,6 +123,9 @@ patchbay open-agent --agent codex --prompt "Review the parser changes" --title "
 - `--after` holds an agent until every listed Claude node finishes a turn. If one exits without finishing,
   the agent stays held until the person presses Start now. If one is closed, it stops being waited on,
   and the agent can start without that node's work. `--after` doesn't work on terminals.
+- `patchbay pin-file --path <file>` puts a file's icon on the canvas for the person: a report, a screenshot, a build
+  output. It points at the file and copies nothing. The path must be a full path on a drive, to a file that's there;
+  network shares are refused.
 - `patchbay open-doc --path plan.md` shows a Markdown file to the person in a reader beside you: a plan,
   a report, a design. They can comment on parts of it and send the comments to you as one message. Read the
   comments any time with `patchbay read --node <reader id>`. The reader never edits the file; you do.
@@ -265,8 +268,10 @@ patchbay files --node <id> --turn
 Lists the files that agent edited with its own edit or patch calls, newest first, with the turn each was last edited
 in. Without `--node` it lists your own. `--turn` keeps the latest turn only. `alsoEditedBy` names another live agent
 that edited the same file in the same checkout, so check before you both change it. `unconfirmed` means the transcript
-never said whether that edit worked. Files changed by shell commands aren't listed. Like `read`, it works for nodes
-you opened or are linked to.
+never said whether that edit worked. `bySubagents` counts edits its subagents made. `changedDuringTurns` means the
+checkout changed there during that turn with no edit call, so a shell command or another process changed it; that
+check is skipped (`turnEndCheck` says why) when another agent works in the same checkout. Like `read`, it works for
+nodes you opened or are linked to.
 
 ## Read a node
 
@@ -278,6 +283,7 @@ A Claude node gives its conversation, and `--tail` counts messages. It leaves ou
 A terminal or a run node gives its recent output with colors removed, and `--tail` counts lines. A full-screen
 program's output will look jumbled. A sticky note gives its text, and a trigger gives the prompt it sends. A
 whiteboard gives the words written on it and points you at `patchbay whiteboard`, which shows you the drawing.
+A file icon gives its path and whether the file is there; read the file with your own tools.
 A reader gives its file and the person's open comments on it.
 
 ## Send a message
@@ -333,6 +339,8 @@ patchbay wait --nodes <id>,<id> --any --timeout 100
 ```sh
 patchbay group --ids <id>,<id> --label "Backend" --color "#3b6"
 patchbay arrange --ids <id>,<id>,<id> --layout grid --gap 40
+patchbay arrange --layout tidy             # your project: cabled nodes together, nothing overlapping
+patchbay arrange --layout tidy --group <group id> --status   # inside a group, agents that need the person first
 patchbay rename --node <id> --title "Parser tests"
 patchbay sticky --text "## Decisions so far" --title "Notes" --group <group id>
 patchbay note --node <note id> --append "- Parser: tests pass (Tester)"

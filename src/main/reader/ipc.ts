@@ -7,6 +7,7 @@ import type { CanvasStore } from '../../shared/contract'
 import type { CanvasDoc, CanvasNode } from '../../shared/model'
 import { DOC_EXTENSIONS, type DocsBridge } from '../../shared/reader'
 import { createCommentStore, type CommentStore } from './commentStore'
+import { createImageReader } from './images'
 import { createDocsService, type DocsService, type DocsWatcher } from './service'
 
 /** How often a watched file is looked at. Cheap: one stat per open reader. */
@@ -77,7 +78,8 @@ export function registerDocsIpc(s: {
     openPlan: (agentId) => service.openPlan(agentId),
     comments: (nodeId) => service.comments(nodeId),
     saveComments: (nodeId, list) => service.saveComments(nodeId, list),
-    openLink: (nodeId, href) => service.openLink(nodeId, href)
+    openLink: (nodeId, href) => service.openLink(nodeId, href),
+    image: createImageReader({ store: s.store, home: homedir() })
   }
   for (const [name, handler] of Object.entries(handlers)) {
     ipcMain.handle(`pb:docs:${name}`, (_e, ...args: unknown[]) => (handler as (...a: unknown[]) => unknown)(...args))

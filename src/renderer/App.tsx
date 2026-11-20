@@ -54,9 +54,12 @@ import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
 import { ProjectsLayer } from './ProjectsLayer'
 import { SubagentLayer } from './subagents/SubagentLayer'
+import { TidyLayer } from './TidyLayer'
 import { NeedsYouLayer } from './NeedsYouLayer'
 import { ReaderNode } from './reader/ReaderNode'
 import { ReaderLayer } from './reader/ReaderLayer'
+import { FileNode } from './nodes/FileNode'
+import { dropFileOnWindow, FileShelfLayer } from './FileShelf'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
@@ -67,7 +70,7 @@ import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
 
-const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode }
+const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -387,7 +390,7 @@ function Canvas(): React.JSX.Element | null {
           maxZoom={2}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onNodeDragStop={(_e, _n, dragged) => finishDrag(dragged)}
+          onNodeDragStop={(e, n, dragged) => (dragged.length === 1 && dropFileOnWindow(e, n, (id, position) => flow.updateNode(id, { position }))) || finishDrag(dragged)}
           onSelectionDragStop={(_e, dragged) => finishDrag(dragged)}
           onConnect={onConnect}
           onMove={onMove}
@@ -411,6 +414,7 @@ function Canvas(): React.JSX.Element | null {
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <SubagentLayer />
+          <TidyLayer sidebar={prefs.sidebar} />
           {prefs.minimap && (
             <MiniMap<FlowNode>
               pannable
@@ -515,6 +519,7 @@ function Canvas(): React.JSX.Element | null {
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}
         <ReviewInboxLayer />
+        <FileShelfLayer />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

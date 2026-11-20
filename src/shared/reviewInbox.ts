@@ -224,7 +224,7 @@ export function reviewEvidence(view: TaskView): Evidence[] {
   const submission = view.attempts.find((a) => a.id === view.task.submissionId && a.kind === 'agent-report')
   if (submission?.kind === 'agent-report') out.push({ source: 'agent-report', label: "Agent's report (written by the agent, not checked)", summary: submission.summary, at: submission.startedAt })
   for (const check of view.task.requiredChecks) {
-    const run = view.attempts.filter((a): a is TaskVerification => a.kind === 'command' && a.checkId === check.id).at(-1)
+    const run = view.attempts.filter((a): a is TaskVerification => a.kind === 'command' && !a.comparison && a.checkId === check.id).at(-1)
     const said = view.readiness.reasons.filter((r) => r.startsWith(`${check.id}:`)).map((r) => r.slice(check.id.length + 1).trim())
     const base = { source: 'command' as const, label: 'Command run recorded by Patchbay', checkId: check.id, command: check.command }
     if (!run) out.push({ ...base, state: 'not run', detail: 'No run recorded.' })

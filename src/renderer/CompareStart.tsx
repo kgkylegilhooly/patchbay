@@ -3,6 +3,8 @@ import { ATTEMPT_KEYS, attemptLabel, startProblem, suggestBranches, type Attempt
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { compare } from './compareBridge'
 import { useAgentChoice } from './agentChoice'
+import { useStore } from './store'
+import { taskComparisonBrief } from '../shared/taskCompare'
 
 const SHOWN_FILES = 8
 
@@ -10,9 +12,13 @@ const SHOWN_FILES = 8
  * "Try another approach": one brief, two attempts, each in its own new worktree from the one commit shown here. Only
  * reads until Start. Uncommitted changes in the source checkout are never copied or dropped without the person's tick.
  */
-export function CompareStart({ projectId, source, brief: initialBrief, onStarted, onCancel }: { projectId: string; source: string; brief?: string; onStarted: (c: Comparison, problem?: string) => void; onCancel: () => void }): React.JSX.Element {
+export function CompareStart({ projectId, source, brief: initialBrief, taskId: initialTask, onStarted, onCancel }: { projectId: string; source: string; brief?: string; taskId?: string; onStarted: (c: Comparison, problem?: string) => void; onCancel: () => void }): React.JSX.Element {
   const [info, setInfo] = useState<SourceInfo | null>(null)
   const [brief, setBrief] = useState(initialBrief ?? '')
+  // A P1 task this comparison is for: its attempts, runs and the choice are recorded on it. Accepting stays the person's.
+  const [taskId, setTaskId] = useState(initialTask ?? '')
+  const projectTasks = useStore((s) => s.doc?.projects.find((p) => p.id === projectId)?.tasks?.tasks)
+  const openTasks = (projectTasks ?? []).filter((t) => t.state !== 'cancelled' && t.state !== 'accepted')
   const [attempts, setAttempts] = useState<Record<AttemptKey, AttemptRequest>>({ a: { agent: 'claude', approach: '', branch: '' }, b: { agent: 'codex', approach: '', branch: '' } })
   const [branchEdited, setBranchEdited] = useState(false)
   const [leaveOut, setLeaveOut] = useState(false)
@@ -36,7 +42,7 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
   const set = (k: AttemptKey, patch: Partial<AttemptRequest>): void => setAttempts((s) => ({ ...s, [k]: { ...s[k], ...patch } }))
 
   const req: StartComparison | null = info?.ok
-    ? { projectId, source, brief, base: info.commit, leaveOutUncommitted: leaveOut, attempts: ATTEMPT_KEYS.map((k) => ({ ...attempts[k], branch: branchOf(k) })), verify }
+    ? { projectId, source, brief, base: info.commit, leaveOutUncommitted: leaveOut, attempts: ATTEMPT_KEYS.map((k) => ({ ...attempts[k], branch: branchOf(k) })), verify, ...(taskId ? { taskId } : {}) }
     : null
   const blocked = info ? (req ? startProblem(req, info, agents) : info.ok ? null : info.reason) : 'Reading the checkout…'
 
@@ -112,6 +118,30 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
           </div>
         )}
       </section>
+
+      {(openTasks.length > 0 || taskId) && (
+        <label className="field">
+          <span className="field-label">For task (optional): its attempts, runs and your choice are recorded on it</span>
+          <select
+            data-compare-task
+            value={taskId}
+            onChange={(e) => {
+              const id = e.target.value
+              setTaskId(id)
+              const task = openTasks.find((t) => t.id === id)
+              if (task && !brief.trim()) setBrief(taskComparisonBrief(task))
+            }}
+          >
+            <option value="">No task</option>
+            {taskId && !openTasks.some((t) => t.id === taskId) && <option value={taskId}>A task that is closed or gone</option>}
+            {openTasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.brief.length > 70 ? `${t.brief.slice(0, 69)}…` : t.brief}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="field">
         <span className="field-label">Brief, the same for both</span>

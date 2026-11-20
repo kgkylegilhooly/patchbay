@@ -28,11 +28,12 @@ const VERBS = {
   },
   'spawn-team': { label: 'text', color: 'text', members: 'text', 'members-file': 'path' },
   group: { ids: 'list', label: 'text', color: 'text' },
-  arrange: { ids: 'list', layout: 'text', gap: 'int' },
+  arrange: { ids: 'list', layout: 'text', gap: 'int', group: 'text', status: 'flag' },
   rename: { node: 'text', title: 'text' },
   sticky: { text: 'text', title: 'text', group: 'text' },
   note: { node: 'text', text: 'text', append: 'text' },
   'open-whiteboard': { title: 'text', group: 'text' },
+  'pin-file': { path: 'path', title: 'text', group: 'text' },
   whiteboard: { node: 'text' },
   draw: { node: 'text', diagram: 'text', 'diagram-file': 'path', replace: 'flag' },
   link: { from: 'text', to: 'text' },
@@ -82,10 +83,12 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
                   members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]
   group         --ids ID,ID --label L [--color C]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
+  arrange       --layout tidy [--ids ID,ID | --group ID] [--status]   keeps related nodes together, needs-you first with --status
   rename        --node ID --title T
   sticky        --text MARKDOWN [--title T] [--group ID]
   note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened
   open-whiteboard [--title T] [--group ID]
+  pin-file      --path FILE [--title T] [--group ID]   puts a file's icon on the canvas for the person (a reference; nothing is copied)
   whiteboard    --node ID        saves a whiteboard as a PNG and prints its path
   draw          --node ID (--diagram JSON | --diagram-file FILE|-) [--replace]   draws boxes and arrows on a whiteboard
   link          --to ID [--from ID]   joins you or a node you opened to another you opened

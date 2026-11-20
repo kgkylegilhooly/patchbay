@@ -7,6 +7,7 @@ import { archived, archiveRefusal, moveProjectBefore, nearestUnarchived, orderPr
 const PADDING = 24
 const HEADER = 40
 const CLOSED_LIMIT = 200
+const MOVE_LIMIT = 10_000_000
 
 type ById = Map<string, CanvasNode>
 
@@ -248,6 +249,25 @@ function arrange(doc: CanvasDoc, ids: string[], layout: 'grid' | 'row' | 'column
   return { ...doc, nodes: fitAll(nodes, targets.map((n) => n.parentId)) }
 }
 
+/** Positions are relative to each node's parent. A move that isn't a finite number is left out. */
+function moveNodes(doc: CanvasDoc, moves: { id: string; x: number; y: number }[]): CanvasDoc {
+  // Far enough out to hold any real canvas, near enough that a stray number can't lose a node.
+  const clamp = (v: number): number => Math.max(-MOVE_LIMIT, Math.min(MOVE_LIMIT, v))
+  const to = new Map(
+    (Array.isArray(moves) ? moves : []).filter((m) => Number.isFinite(m?.x) && Number.isFinite(m?.y)).map((m) => [m.id, { x: clamp(m.x), y: clamp(m.y) }])
+  )
+  const parents = new Set<string | null>()
+  let changed = false
+  const nodes = doc.nodes.map((n) => {
+    const m = to.get(n.id)
+    if (!m || (m.x === n.x && m.y === n.y)) return n
+    changed = true
+    parents.add(n.parentId)
+    return { ...n, x: m.x, y: m.y }
+  })
+  return changed ? { ...doc, nodes: fitAll(nodes, parents) } : doc
+}
+
 /** Keeps the current view with the project being left, and brings back the view of the one being shown. */
 function showProject(doc: CanvasDoc, id: string): CanvasDoc {
   const target = doc.projects.find((p) => p.id === id)
@@ -303,7 +323,8 @@ function unarchiveProject(doc: CanvasDoc, id: string, open: boolean): CanvasDoc 
   return open ? showProject(back, id) : back
 }
 
-const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'
+// A file icon is layout too: it only points at a file.
+const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader' || n.kind === 'file'
 
 /**
  * Removing comes before the patches, so what they say wins over any refitting the removal did. A node whose old
@@ -399,6 +420,8 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
       return { ...doc, viewport: op.viewport }
     case 'arrange':
       return arrange(doc, op.ids, op.layout, op.gap)
+    case 'moveNodes':
+      return moveNodes(doc, op.moves)
   }
 }
 

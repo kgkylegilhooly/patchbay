@@ -22,7 +22,10 @@ type LinkResult = { ok: true } | { ok: false; reason: string }
 
 /** Anything Windows would run, or hand to an interpreter, when opened. Clicking only reveals these. */
 const RUNNABLE = new Set(
-  'exe com scr msi msp pif cpl hta jar bat cmd ps1 psm1 psd1 vbs vbe js jse wsf wsh sh bash py pyw rb pl reg lnk url scf inf application appref-ms msc gadget'
+  ('exe com scr msi msp pif cpl hta jar bat cmd ps1 psm1 psd1 vbs vbe js jse wsf wsh sh bash py pyw rb pl reg lnk url scf inf application appref-ms msc gadget ' +
+    // Help that runs script, files that make Windows connect out (and send credentials), installers, disk images that
+    // skip download warnings, a sandbox config, an Excel add-in, and their kin.
+    'chm library-ms search-ms searchconnector-ms settingcontent-ms rdp appinstaller appx appxbundle msix msixbundle iso img vhd vhdx wsb xll diagcab theme themepack website jnlp ps1xml psc1 mht mhtml')
     .split(' ')
 )
 
@@ -76,7 +79,7 @@ export function localPaths(cwd: string, target: string, home: string): Local {
   return { ok: true, paths: [...new Set(paths)] }
 }
 
-function isRunnable(path: string): boolean {
+export function isRunnable(path: string): boolean {
   // Windows ignores trailing dots and spaces, and anything after a colon names a stream of the file.
   const name = basename(path).split(':')[0].replace(/[. ]+$/, '')
   const dot = name.lastIndexOf('.')

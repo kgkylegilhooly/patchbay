@@ -3,6 +3,7 @@ import { MenuPanel } from './Menu'
 import { editMenu, fileMenu, settingsMenu, viewMenu, type Commands, type MenuEntry, type MenuState } from './menus'
 import { ProjectTabs } from './ProjectTabs'
 import { UsagePill } from './UsagePill'
+import { FilesButton } from './FileShelf'
 
 const NAMES = ['File', 'Edit', 'View', 'Settings'] as const
 type Name = (typeof NAMES)[number]
@@ -69,6 +70,7 @@ function TopBarView({ commands, state }: { commands: Commands; state: () => Menu
         ))}
       </nav>
       <ProjectTabs commands={commands} />
+      <FilesButton />
       <UsagePill />
     </header>
   )

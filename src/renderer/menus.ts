@@ -9,6 +9,7 @@ import { terminalProfileItems } from './terminalProfilesUi'
 import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
 import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
+import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
 
 export interface Point {
   x: number
@@ -245,6 +246,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-focus', label: 'Focus view', icon: 'grid', checked: !!s.focus, run: () => c.toggleFocus() },
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
+    { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
     { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
@@ -293,7 +295,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     'separator',
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
-    { id: 'tidy', label: 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
+    { id: 'tidy', label: s.selectedCount > 1 ? 'Tidy selection' : 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
     'separator',
     { id: 'recent', label: 'Recent conversations', icon: 'recent', run: c.toggleRecent }
   ]
@@ -314,6 +316,7 @@ export function nodeMenu(
     run: () => c.closeNode(node.id)
   })
   if (node.kind === 'sticky') return [close('Delete note')]
+  if (node.kind === 'file') return fileNodeMenu(node, close('Remove from canvas'))
   if (node.kind === 'whiteboard') return [close('Delete whiteboard')]
   if (node.kind === 'reader') return readerMenu(node, { rename: () => c.renameNode(node.id), close: close('Close reader') })
   if (node.kind === 'trigger') {
@@ -349,6 +352,7 @@ export function nodeMenu(
       'separator',
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
+      { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')
     ]
   }

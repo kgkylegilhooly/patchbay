@@ -167,6 +167,12 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
+/** A file on the canvas, like an icon on a desktop. It points at the file and never copies it. See shared/fileShelf.ts. */
+export interface FileNode extends Base {
+  kind: 'file'
+  path: string
+}
+
 /**
  * A Markdown file, shown read-only with comments for an agent. The file itself is never written. See src/shared/reader.ts.
  */
@@ -178,7 +184,7 @@ export interface ReaderNode extends Base {
   fromNodeId?: string
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode | FileNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {
@@ -292,6 +298,8 @@ export type CanvasOp =
   | { op: 'setParent'; ids: string[]; parentId: string | null }
   | { op: 'setViewport'; viewport: CanvasDoc['viewport'] }
   | { op: 'arrange'; ids: string[]; layout: 'grid' | 'row' | 'column'; gap?: number }
+  /** Puts each node at a position relative to its parent and fits its group round it. Tidy sends this. */
+  | { op: 'moveNodes'; moves: { id: string; x: number; y: number }[] }
   /** Adds it and puts it on screen. */
   | { op: 'addProject'; project: Project }
   | { op: 'patchProject'; id: string; patch: Partial<Pick<Project, 'name' | 'folder'>> }

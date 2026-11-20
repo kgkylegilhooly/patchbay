@@ -27,6 +27,8 @@ export interface Settings {
   codexCommand?: string
   /** What Codex may do without asking: '' (Codex's own default), 'never' or 'bypass'. */
   codexApproval?: string
+  /** 'on' lets Claude nodes message other Claude sessions on this PC by Claude's own means. Off otherwise. */
+  claudeNativeMessaging?: string
   /** Where updates come from: github:owner/repo, or an https address holding latest.yml. Empty means no updates. */
   updateFeed?: string
   /** 'off' stops the check at start and every few hours. Check now still works. */

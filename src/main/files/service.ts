@@ -1,8 +1,10 @@
-import { open, stat } from 'node:fs/promises'
+import { open, readdir, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
 import { diffFile, EMPTY_TREE, insideRoot, objectEnv, pruneObjects, type RunGit, type Snapshot, type SnapshotStore } from './snapshot'
 import {
   addEdit,
+  addTurnChanges,
   createEditCollector,
   diffBase,
   emptyRecord,
@@ -47,6 +49,11 @@ export interface FilesTouchedDeps {
   pollMs?: number
   saveAfterMs?: number
   log?(line: string): void
+  /**
+   * The other live agents whose folder is in this checkout, by title. With any, a turn's
+   * changes can't be told apart from theirs, so the end-of-turn look is skipped and says why. None in tests by default.
+   */
+  sharing?(nodeId: string, root: string): Promise<string[]>
 }
 
 export interface FilesTouchedService {
@@ -80,6 +87,48 @@ const OBJECTS_MAX_BYTES = 512 * 1024 * 1024
 const SNAPSHOTS_AT_ONCE = 2
 
 const IN_TURN = new Set<AgentStatus>(['working', 'needs-you'])
+/** Subagent transcripts followed per session at most. The newest are kept. */
+const MAX_SUBAGENT_FILES = 200
+
+/** Where Claude Code writes a session's subagent transcripts: beside its own, in a folder named after it. */
+export function subagentFolder(transcriptPath: string): string {
+  return join(dirname(transcriptPath), basename(transcriptPath).replace(/\.jsonl$/i, ''), 'subagents')
+}
+const SUBAGENT_FILE = /^agent-[A-Za-z0-9_-]{1,80}\.jsonl$/
+
+/**
+ * Reads complete lines of a file from `from` up to `size`, a piece at a time with a pause between pieces. Returns
+ * where it stopped: the end of the last complete line. A line longer than a piece is skipped, not stuck on.
+ */
+async function readLines(path: string, from: number, size: number, onLine: (text: string, start: number) => void): Promise<number> {
+  let at = from
+  const handle = await open(path, 'r')
+  try {
+    while (at < size) {
+      if (at > from) await new Promise<void>((r) => setImmediate(r))
+      const want = Math.min(CHUNK_BYTES, size - at)
+      const buffer = Buffer.alloc(want)
+      const { bytesRead } = await handle.read(buffer, 0, want, at)
+      if (bytesRead === 0) break
+      const bytes = buffer.subarray(0, bytesRead)
+      const end = bytes.lastIndexOf(0x0a) + 1
+      if (end === 0) {
+        if (bytesRead === CHUNK_BYTES) at += bytesRead
+        break
+      }
+      let start = 0
+      while (start < end) {
+        const nl = bytes.indexOf(0x0a, start)
+        onLine(bytes.subarray(start, nl).toString('utf8'), at + start)
+        start = nl + 1
+      }
+      at += end
+    }
+  } finally {
+    await handle.close()
+  }
+  return at
+}
 
 /** What a diff is measured from, with warnings when the snapshot may not hold the turn's start exactly. */
 export function diffLabel(base: TurnMark, scope: DiffScope, exact: boolean): string {
@@ -102,6 +151,8 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
   const records = parseRecords(savedText)
   if (savedText && records.size === 0 && !/"sessions"\s*:\s*\[\s*\]/.test(savedText)) d.log?.('The record of files sessions touched could not be read, so it starts again empty.')
   const collectors = new Map<string, { path: string; collector: ReturnType<typeof createEditCollector> }>()
+  /** Per node: its subagent folder's last seen time, and a collector per subagent transcript. Memory only. */
+  const subagentState = new Map<string, { dir: string; mtime: number; names: string[]; collectors: Map<string, ReturnType<typeof createEditCollector>> }>()
   const last = new Map<string, AgentStatus>()
   const scans = new Map<string, Promise<void>>()
   const work = new Set<Promise<unknown>>()
@@ -171,6 +222,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       // Another conversation in the same node, after /clear or a fresh start: read from its beginning.
       rec.transcriptPath = a.transcriptPath
       rec.offset = 0
+      delete rec.subagents
       entry = undefined
     }
     if (!entry || entry.path !== a.transcriptPath) {
@@ -194,40 +246,13 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     const backlog = size - at > BACKLOG_BYTES
     if (backlog) await takeBacklog()
     try {
-      if (at < size) await readFrom()
+      if (at < size) at = await readLines(a.transcriptPath, at, size, (text, start) => entry!.collector.line(text, start))
     } finally {
       if (backlog) giveBacklog()
     }
-    async function readFrom(): Promise<void> {
-      const handle = await open(a!.transcriptPath!, 'r')
-      try {
-        while (at < size) {
-          if (at > rec.offset) await new Promise<void>((r) => setImmediate(r))
-          const want = Math.min(CHUNK_BYTES, size - at)
-          const buffer = Buffer.alloc(want)
-          const { bytesRead } = await handle.read(buffer, 0, want, at)
-          if (bytesRead === 0) break
-          const bytes = buffer.subarray(0, bytesRead)
-          const end = bytes.lastIndexOf(0x0a) + 1
-          if (end === 0) {
-            // One line longer than a chunk, or a line still being written. A huge line is skipped, not stuck on.
-            if (bytesRead === CHUNK_BYTES) at += bytesRead
-            break
-          }
-          let start = 0
-          while (start < end) {
-            const nl = bytes.indexOf(0x0a, start)
-            entry!.collector.line(bytes.subarray(start, nl).toString('utf8'), at + start)
-            start = nl + 1
-          }
-          at += end
-        }
-      } finally {
-        await handle.close()
-      }
-    }
     let any = false
     for (const edit of entry.collector.take(turnOver, now())) any = addEdit(rec, edit) || any
+    any = (await readSubagents(id, a.transcriptPath, rec, turnOver)) || any
     const offset = entry.collector.safeOffset(at)
     if (offset !== rec.offset) {
       rec.offset = offset
@@ -235,6 +260,60 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       saveSoon(Math.max(d.saveAfterMs ?? SAVE_AFTER_MS, OFFSET_SAVE_AFTER_MS))
     }
     if (any) changed()
+  }
+
+  /**
+   * Edits the session's subagents made, from their own transcripts (Claude Code's `<session>/subagents/agent-*.jsonl`).
+   * The folder is listed only when it changed; each transcript is read from where the last read stopped.
+   */
+  const readSubagents = async (id: string, transcriptPath: string, rec: SessionRecord, turnOver: boolean): Promise<boolean> => {
+    const dir = subagentFolder(transcriptPath)
+    let st = subagentState.get(id)
+    if (!st || st.dir !== dir) {
+      st = { dir, mtime: -1, names: [], collectors: new Map() }
+      subagentState.set(id, st)
+    }
+    let dirStat
+    try {
+      dirStat = await stat(dir)
+    } catch {
+      return false // No subagents.
+    }
+    if (dirStat.mtimeMs !== st.mtime) {
+      st.mtime = dirStat.mtimeMs
+      st.names = (await readdir(dir).catch(() => [] as string[])).filter((n) => SUBAGENT_FILE.test(n))
+    }
+    const offsets = (rec.subagents ??= {})
+    let any = false
+    let moved = false
+    const sized: { name: string; size: number; mtime: number }[] = []
+    for (const name of st.names) {
+      const s = await stat(join(dir, name)).catch(() => null)
+      if (s) sized.push({ name, size: s.size, mtime: s.mtimeMs })
+    }
+    // Bounded: the most recently written ones, and their offsets, are the ones kept.
+    sized.sort((x, y) => y.mtime - x.mtime)
+    const kept = sized.slice(0, MAX_SUBAGENT_FILES)
+    for (const name of Object.keys(offsets)) if (!kept.some((k) => k.name === name)) delete offsets[name]
+    for (const { name, size } of kept) {
+      let collector = st.collectors.get(name)
+      let from = offsets[name] ?? 0
+      if (size < from) from = 0 // Replaced.
+      if (!collector) {
+        collector = createEditCollector()
+        st.collectors.set(name, collector)
+      }
+      const read = size > from ? await readLines(join(dir, name), from, size, (text, start) => collector!.line(text, start)).catch(() => from) : from
+      for (const edit of collector.take(turnOver, now())) any = addEdit(rec, { ...edit, subagent: true }) || any
+      // Where reading again finds every edit not yet handed back. Taken after handing back, so it moves on.
+      const safe = collector.safeOffset(read)
+      if (safe !== offsets[name]) {
+        offsets[name] = safe
+        moved = true
+      }
+    }
+    if (moved) saveSoon(Math.max(d.saveAfterMs ?? SAVE_AFTER_MS, OFFSET_SAVE_AFTER_MS))
+    return any
   }
 
   let backlogBusy = false
@@ -279,15 +358,17 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     const rec = ensure(a)
     const mark = startTurn(rec, now())
     changed()
-    void track(
+    const snapshotting = track(
       slot(() => d.snapshot(a.cwd), true).then(
-        (snap) => {
+        async (snap) => {
           mark.root = snap.root
           mark.doneAt = now()
           if (snap.ok) {
             mark.tree = snap.tree
             mark.head = snap.head
             if (snap.skipped) mark.skipped = snap.skipped
+            const others = (await d.sharing?.(id, snap.root).catch(() => [])) ?? []
+            if (others.length) mark.shared = others
           } else mark.problem = snap.problem
           changed()
         },
@@ -298,6 +379,51 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
         }
       )
     )
+    starting.set(id, snapshotting)
+    void snapshotting.finally(() => { if (starting.get(id) === snapshotting) starting.delete(id) })
+  }
+
+  /** Turns whose snapshot is still being taken, so the end of a short turn waits for its start. */
+  const starting = new Map<string, Promise<unknown>>()
+
+  /**
+   * As a turn ends: what changed in the checkout since its snapshot that no transcript edit explains, recorded as
+   * changed during the turn. Skipped, with the reason kept, when another window works in the same checkout.
+   */
+  const endTurn = async (id: string): Promise<void> => {
+    const a = agent(id)
+    const rec = records.get(id)
+    const mark = rec?.turns.at(-1)
+    if (!a || !rec || !mark || mark.endCheck) return
+    await starting.get(id)
+    await scan(id, true)
+    if (!mark.tree || !mark.root) {
+      mark.endCheck = { at: now(), changed: 0, problem: mark.problem ?? 'There is no snapshot from the start of this turn.' }
+      return changed()
+    }
+    const others = [...new Set([...(mark.shared ?? []), ...((await d.sharing?.(id, mark.root).catch(() => [])) ?? [])])]
+    if (others.length) {
+      mark.endCheck = { at: now(), changed: 0, problem: `Changes made by commands aren't counted for this turn: ${others.join(', ')} also ${others.length === 1 ? 'works' : 'work'} in this checkout, so they can't be told apart.` }
+      return changed()
+    }
+    const snap = await slot(() => d.snapshot(rec.cwd))
+    if (!snap.ok) {
+      mark.endCheck = { at: now(), changed: 0, problem: snap.problem }
+      return changed()
+    }
+    if (pathKey(snap.root) !== pathKey(mark.root)) {
+      mark.endCheck = { at: now(), changed: 0, problem: 'The session moved to another repository during the turn.' }
+      return changed()
+    }
+    const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', mark.tree, snap.tree, '--'], { env: d.store ? objectEnv(d.store, snap.objects) : {}, maxBytes: 4 * 1024 * 1024 })
+    if (out.code !== 0) {
+      mark.endCheck = { at: now(), changed: 0, problem: `git couldn't compare the snapshots: ${(out.stderr || out.stdout).trim().split('\n')[0]}` }
+      return changed()
+    }
+    const at = now()
+    const { taken, more } = addTurnChanges(rec, mark.turn, out.stdout.split('\0').filter(Boolean), at, snap.root)
+    mark.endCheck = { at, changed: taken, ...(more ? { problem: `${more} more changed files weren't listed.` } : {}) }
+    changed()
   }
 
   d.onStatus((id, status) => {
@@ -307,6 +433,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     if (!agent(id)) return
     // Without a status before, this is a session Patchbay found already running, partway through whatever it was doing.
     if (status === 'working' && before !== undefined && !IN_TURN.has(before)) beginTurn(id)
+    if (before !== undefined && IN_TURN.has(before) && !IN_TURN.has(status)) void track(endTurn(id).catch((e: unknown) => d.log?.(`Looking at what changed in ${id}'s turn failed: ${String(e)}`)))
     void scan(id, !IN_TURN.has(status))
     // A node exiting, or coming back, changes whose edits count as live.
     publish()
@@ -320,6 +447,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
   const prune = (): void => {
     if (pruneRecords(records, new Set(d.agents().map((a) => a.id)), now()).length) changed()
     for (const id of collectors.keys()) if (!records.has(id)) collectors.delete(id)
+    for (const id of subagentState.keys()) if (!records.has(id)) subagentState.delete(id)
   }
   prune()
   const pruneStore = (): void => {

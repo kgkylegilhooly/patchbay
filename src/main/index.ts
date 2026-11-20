@@ -15,7 +15,8 @@ import { watchSignals, type SignalWatcher } from './sessions/signals'
 import { parseUsageReport } from '../shared/usage'
 import { createBrowserDriver } from './browser/driver'
 import { createAfterGate } from './control/after'
-import { loadOrCreateSecret, startControlServer, type ControlServer } from './control/server'
+import { loadOrCreateSecret, RpcRefusal, startControlServer, type ControlServer } from './control/server'
+import { hookFromAnotherNode, refusalLog } from './control/hookIdentity'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { reportViewSize } from './viewSize'
@@ -83,11 +84,15 @@ import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
 import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
 import { registerAgentStopIpc } from './agentStopsIpc'
+import { setupCodexStops } from './sessions/codexStopsSetup'
+import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
 import { resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
 import { resolveCodex } from './sessions/codexLaunch'
+import { noteFromNode, registerFileShelfIpc } from './fileShelf/ipc'
+import { noteReaders } from './fileShelf/readers'
 
 /** How often Codex's limits and the accounts are asked for again. */
 const AGENT_USAGE_EVERY_MS = 5 * 60_000
@@ -369,7 +374,9 @@ async function boot(): Promise<void> {
       secret,
       settings: currentSettings,
       typePrefix: (id) => sendGuard.prefixFor(id),
-      takeMissedHooks: (id) => takeMissedHooks(journalDir, id),
+      // Journalled while Patchbay was closed, so checked here as onHook checks live ones.
+      takeMissedHooks: (id) =>
+        takeMissedHooks(journalDir, id).filter((e) => !hookFromAnotherNode(id, { session_id: e.session_id }, store.get().nodes, (n) => host.isRunning(n))),
       onMissedStopFailure: (id, event) => stops.noteHook(id, event)
     }
   })
@@ -377,6 +384,8 @@ async function boot(): Promise<void> {
   // Why agents stopped on StopFailure, such as a usage limit, and holding what's sent to them until it resets.
   const stops = createAgentStops({ tracker, plan: () => usage.state().plan, continueEnabled: () => currentSettings().continueAtReset === 'on', store: stopFile(join(dataDir, 'agent-stops.json'), (line) => log?.write(line)) })
   registerAgentStopIpc(stops)
+  // Codex's limits, failures and interrupts, from its rollout files, as the same stops and statuses.
+  const codexStops = setupCodexStops({ store, tracker, runner, stops, log: (line) => log?.write(line) })
   if (signalDir) {
     signals = watchSignals({
       dir: signalDir,
@@ -400,7 +409,11 @@ async function boot(): Promise<void> {
     setBudget: (b) => usage.setBudget(b)
   })
   const gate = createAfterGate({ store, tracker, runner })
-  const browser = createBrowserDriver({ dataDir, store, push: (id, state) => broadcast('pb:onBrowserState', id, state) })
+  // The Files shelf: references to the files shared in each project. See src/main/fileShelf.
+  const fileShelf = registerFileShelfIpc({ dataDir, store, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, windows: () => (mainWindow ? [mainWindow.webContents] : []), log: (line) => log?.write(line) })
+  // Documents opened in a Reader go on the shelf too.
+  noteReaders(store, fileShelf)
+  const browser = createBrowserDriver({ dataDir, store, push: (id, state) => broadcast('pb:onBrowserState', id, state), onShot: (id, path) => noteFromNode(fileShelf, store, id, path, 'evidence') })
   browser.install()
   const work = workServices()
   const github = createGithubReader(store, work.git, work.gh)
@@ -433,7 +446,7 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), stops, log: (line) => log?.write(line) })
+  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), stops, log: (line) => log?.write(line), onFilePinned: (projectId, path, by) => fileShelf.note(projectId, { path, source: 'agent', at: Date.now(), nodeTitle: by }) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -471,13 +484,24 @@ async function boot(): Promise<void> {
   // A node at its usage limit before the app restarted still is, if its session came back.
   stops.retain(adopted)
 
+  const noteRefusal = refusalLog((line) => log?.write(line))
   const server: ControlServer = await startControlServer({
     secret,
     endpointFile,
     onHook: async (id, payload, signal) => {
+      const owner = hookFromAnotherNode(id, payload, store.get().nodes, (n) => host.isRunning(n))
+      if (owner) {
+        noteRefusal(id, owner, payload.hook_event_name)
+        throw new RpcRefusal("This hook came from another node's session.")
+      }
       signals?.heardHook(id)
-      const answer = await runner.handleHook(id, payload, signal)
-      stops.noteHook(id, payload)
+      // A Codex turn that failed ends on Stop; it's taken as the StopFailure Claude would have sent.
+      const { payload: heard, limits, ignore } = await codexStops.translate(id, payload)
+      if (ignore) return {}
+      const answer = await runner.handleHook(id, heard, signal)
+      stops.noteHook(id, heard, limits)
+      const hooked = store.get().nodes.find((n) => n.id === id)
+      noteSubagentHook(id, heard, hooked?.kind === 'claude' ? hooked.transcriptPath : null)
       if (payload.hook_event_name !== 'SessionStart') return answer
       // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
       const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
@@ -571,7 +595,7 @@ async function boot(): Promise<void> {
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
-  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
+  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), persist: () => docStore.flush() })
   // The projects manager, and archiving, which stops a project's sessions first. See src/main/projects.
   setupProjects({
     dataDir, store, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id), disarmTrigger: (id) => triggers.disarm(id),
@@ -638,6 +662,7 @@ async function boot(): Promise<void> {
       await messages.flush()
       await agentEdits.flush()
       await search.stop()
+      await fileShelf.flush()
       // A verification left running would outlive the record it reports to. On next launch its attempt reads interrupted.
       tasks.stopAll()
     }

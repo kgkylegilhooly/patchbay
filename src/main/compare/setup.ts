@@ -9,6 +9,7 @@ import { registerCompareIpc } from './ipc'
 import { createCompareReads } from './reads'
 import { createCompareService } from './service'
 import { createVerifyRunner } from './verifyRunner'
+import { createCompareTaskLink } from './taskLink'
 
 /** Comparisons of two attempts in separate worktrees. One call from src/main/index.ts. See docs/plans/compare.md. */
 export function setupCompare(d: {
@@ -17,6 +18,8 @@ export function setupCompare(d: {
   git: GitService
   dataDir: string
   launcher: string
+  /** Saves the canvas document, where task records live, after a comparison writes to a task. */
+  persist?: () => Promise<void>
 }): void {
   const git = systemGit(gitEnvFrom(cleanEnv(process.env, {})))
   const reads = createCompareReads(git, d.git)
@@ -29,6 +32,7 @@ export function setupCompare(d: {
     removeWorktree,
     git: (cwd, args) => git(cwd, args, LIMITS.write),
     // Electron's own binary, run as Node, so no separate Node install is needed.
+    tasks: createCompareTaskLink({ store: d.store, dataDir: d.dataDir, persist: d.persist }),
     runVerify: createVerifyRunner({ launcher: d.launcher, planDir: join(d.dataDir, 'compare'), node: process.execPath, env: { ...cleanEnv(process.env, {}), ELECTRON_RUN_AS_NODE: '1' } })
   })
   // As with the git panel: only folders the canvas itself names can be read or worked from.

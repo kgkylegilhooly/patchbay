@@ -1,10 +1,11 @@
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { gitEnvFrom } from '../../core/git/args'
 import { gitRunner, snapshotTree } from './snapshot'
 import type { CanvasStore } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
+import { pathKey } from './touched'
 import { broadcast } from '../ipc'
 import { cleanEnv } from '../sessions/env'
 import { createFilesTouched, type FilesTouchedService } from './service'
@@ -23,6 +24,33 @@ export function setupFilesTouched(d: {
   const store = { tmpDir: join(d.dataDir, 'files-touched', 'tmp'), objectDir: join(d.dataDir, 'files-touched', 'objects') }
   mkdirSync(store.tmpDir, { recursive: true })
   const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})))
+  // Which checkout each window's folder is in, looked up again after a while: a folder can become a worktree.
+  const tops = new Map<string, { at: number; top: Promise<string | null> }>()
+  const toplevel = (cwd: string): Promise<string | null> => {
+    const hit = tops.get(cwd)
+    if (hit && Date.now() - hit.at < 60_000) return hit.top
+    const top = git(cwd, ['rev-parse', '--show-toplevel'], {}).then((r) => (r.code === 0 ? resolve(r.stdout.trim()) : null), () => null)
+    tops.set(cwd, { at: Date.now(), top })
+    return top
+  }
+  /**
+   * Other live agents whose folder is in this same checkout (a worktree inside it is not). Terminals don't count: one
+   * kept open beside the agent is the usual setup, and would turn the check off for every turn.
+   */
+  const sharing = async (nodeId: string, root: string): Promise<string[]> => {
+    const inside = (folder: string): boolean => {
+      const rel = relative(root, folder)
+      return !rel.startsWith('..') && !isAbsolute(rel)
+    }
+    const others = d.store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== nodeId && !!n.cwd && inside(n.cwd) && d.tracker.get(n.id) !== 'exited')
+    const found = await Promise.all(
+      others.map(async (n) => {
+        const top = await toplevel((n as { cwd: string }).cwd)
+        return top && pathKey(top) === pathKey(resolve(root)) ? n.title : null
+      })
+    )
+    return found.filter((t): t is string => t !== null)
+  }
   const service = createFilesTouched({
     agents: () => d.store.get().nodes.flatMap((n) => (n.kind === 'claude' ? [{ id: n.id, title: n.title, cwd: n.cwd, transcriptPath: n.transcriptPath }] : [])),
     status: (id) => d.tracker.get(id),
@@ -32,7 +60,8 @@ export function setupFilesTouched(d: {
     store,
     file: join(d.dataDir, 'files-touched.json'),
     push: (summary) => broadcast('pb:files:summary', summary),
-    log: d.log
+    log: d.log,
+    sharing
   })
   const text = (v: unknown): string => (typeof v === 'string' ? v : '')
   ipcMain.handle('pb:files:get', (_e, nodeId: unknown) => service.files(text(nodeId)))

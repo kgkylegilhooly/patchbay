@@ -22,12 +22,14 @@ export function pathMenu(act: {
   copy: () => void
   reveal: () => void
   reader?: () => void
+  pin?: () => void
   /** Profiles other than the default. */
   profiles?: Array<{ id: string; name: string }>
 }): MenuEntry[] {
   return [
     ...(act.reader ? [{ id: 'path-reader', label: 'Open in Reader', icon: 'note' as const, run: act.reader }] : []),
     { id: 'path-open', label: 'Open', icon: 'arrow-right', run: act.open },
+    ...(act.pin ? [{ id: 'path-pin', label: 'Pin to canvas', icon: 'pin' as const, run: act.pin }] : []),
     'separator',
     { id: 'path-new-terminal', label: 'New terminal here', icon: 'terminal', run: () => act.newTerminal() },
     ...(act.profiles ?? []).map((p) => ({ id: `path-new-terminal:${p.id}`, label: `New terminal here: ${p.name}`, icon: 'terminal' as const, run: () => act.newTerminal(p.id) })),

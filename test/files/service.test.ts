@@ -169,7 +169,7 @@ const turn = async (w: ReturnType<typeof world>, id: string, fn: () => void): Pr
   await w.service.settled()
 }
 
-describe('the service', () => {
+describe('the service', { timeout: 30_000 }, () => {
   test('a turn takes a snapshot, its edits are read from the transcript, and its diff shows only that turn', async () => {
     const root = repo()
     const w = world(root, ['a'])

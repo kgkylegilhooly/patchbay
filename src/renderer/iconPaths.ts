@@ -72,6 +72,7 @@ export const PATHS = {
   text: 'M5 6V4.5h14V6M12 4.5v15M9 19.5h6',
   whiteboard: 'M3.5 4.5h17v12h-17zM8 20.5l2-4M16 20.5l-2-4M7 12.5c1.5-2.5 3-3.5 4-2s2 1.5 3.5-1 2.5-1.5 2.5-1.5',
   image: 'M4 5h16v14H4zM4 16l4.5-4.5 4 4 2.5-2.5L20 18M15.5 8.5h.01',
+  file: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
   archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4'
 } as const
 
