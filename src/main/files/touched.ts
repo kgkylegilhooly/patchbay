@@ -26,6 +26,8 @@ export interface SessionRecord {
   truncated: boolean
   /** The last time its node was on the canvas. */
   seenAt: number
+  /** Bytes read of each subagent transcript (by file name) of the current conversation, as `offset` is for its own. */
+  subagents?: Record<string, number>
 }
 
 export function emptyRecord(nodeId: string, cwd: string, now: number): SessionRecord {
@@ -62,6 +64,8 @@ export interface EditSeen {
   path: string
   at: number
   confirmed: boolean
+  /** Made by one of the session's subagents, read from its own transcript. */
+  subagent?: boolean
 }
 
 /** Adds an edit to a record. Returns false when it changed nothing: the same edit read twice. */
@@ -74,10 +78,21 @@ export function addEdit(rec: SessionRecord, edit: EditSeen, platform: NodeJS.Pla
   const file = rec.files.find((f) => pathKey(f.path, platform) === key)
   if (file) {
     // Read again from an earlier offset after a restart: the same file at the same moment is the same edit.
-    if (edit.at === file.lastAt || edit.at === file.firstAt) {
+    if (file.edits > 0 && (edit.at === file.lastAt || edit.at === file.firstAt)) {
       if (!edit.confirmed || file.confirmed) return false
       file.confirmed = true
       return true
+    }
+    // An edit read late, after the turn's end found the change: it was the session's own after all.
+    if (turn !== null && file.changedInTurns?.includes(turn)) {
+      file.changedInTurns = file.changedInTurns.filter((t) => t !== turn)
+      if (!file.changedInTurns.length) delete file.changedInTurns
+    }
+    if (file.edits === 0) {
+      // Known so far only as changed during a turn: this is its first edit of its own.
+      file.firstAt = edit.at
+      file.firstTurn = turn
+      file.confirmed = edit.confirmed
     }
     if (edit.at < file.firstAt) {
       file.firstAt = edit.at
@@ -88,16 +103,59 @@ export function addEdit(rec: SessionRecord, edit: EditSeen, platform: NodeJS.Pla
       file.lastTurn = turn
     }
     file.edits += 1
+    if (edit.subagent) file.bySubagent = (file.bySubagent ?? 0) + 1
     file.confirmed ||= edit.confirmed
     return true
   }
-  rec.files.push({ path, firstAt: edit.at, lastAt: edit.at, firstTurn: turn, lastTurn: turn, edits: 1, confirmed: edit.confirmed })
+  rec.files.push({ path, firstAt: edit.at, lastAt: edit.at, firstTurn: turn, lastTurn: turn, edits: 1, confirmed: edit.confirmed, ...(edit.subagent ? { bySubagent: 1 } : {}) })
+  bound(rec)
+  return true
+}
+
+function bound(rec: SessionRecord): void {
   if (rec.files.length > MAX_FILES) {
     rec.files.sort((a, b) => b.lastAt - a.lastAt)
     rec.files.length = MAX_FILES
     rec.truncated = true
   }
-  return true
+}
+
+/** At most this many files are taken from one turn's end check, so one big generated folder can't fill the list. */
+export const MAX_TURN_CHANGES = 100
+
+/**
+ * Files that differ between a turn's snapshot and the checkout as the turn ended, with no edit of them in that turn's
+ * transcripts (the session's own or its subagents'). A shell command it ran, or another process, changed them. They
+ * are recorded as changed during the turn, never as the agent's edits. Returns how many were taken, and how many more
+ * there were.
+ */
+export function addTurnChanges(rec: SessionRecord, turn: number, paths: string[], at: number, root: string, platform: NodeJS.Platform = process.platform): { taken: number; more: number } {
+  let taken = 0
+  let more = 0
+  for (const rel of paths) {
+    const path = normalizePath(root, rel, platform)
+    const key = pathKey(path, platform)
+    const file = rec.files.find((f) => pathKey(f.path, platform) === key)
+    // Edited in this very turn according to the transcripts: the change is explained.
+    if (file && file.edits > 0 && (file.lastTurn === turn || file.firstTurn === turn) && !file.changedInTurns?.includes(turn)) continue
+    if (file?.changedInTurns?.includes(turn)) continue
+    if (taken >= MAX_TURN_CHANGES) {
+      more++
+      continue
+    }
+    taken++
+    if (file) {
+      file.changedInTurns = [...(file.changedInTurns ?? []), turn].slice(-MAX_TURNS)
+      if (at > file.lastAt) {
+        file.lastAt = at
+        file.lastTurn = turn
+      }
+    } else {
+      rec.files.push({ path, firstAt: at, lastAt: at, firstTurn: turn, lastTurn: turn, edits: 0, confirmed: true, changedInTurns: [turn] })
+    }
+  }
+  bound(rec)
+  return { taken, more }
 }
 
 /** Marks a turn as started. Its snapshot is filled in once git has made it. */
@@ -253,7 +311,8 @@ export function parseRecords(text: string | null): Map<string, SessionRecord> {
       files: Array.isArray(r.files) ? r.files.filter(isFile).map((f) => ({ ...f, firstTurn: f.firstTurn ?? null, lastTurn: f.lastTurn ?? null })).slice(0, MAX_FILES) : [],
       turns: Array.isArray(r.turns) ? r.turns.filter(isTurn).map((t) => ({ ...t, root: t.root ?? null, tree: t.tree ?? null, head: t.head ?? null })).slice(-MAX_TURNS) : [],
       truncated: r.truncated === true,
-      seenAt: typeof r.seenAt === 'number' ? r.seenAt : Date.now()
+      seenAt: typeof r.seenAt === 'number' ? r.seenAt : Date.now(),
+      ...(r.subagents && typeof r.subagents === 'object' ? { subagents: Object.fromEntries(Object.entries(r.subagents).filter((e): e is [string, number] => /^agent-[A-Za-z0-9_-]{1,80}\.jsonl$/.test(e[0]) && typeof e[1] === 'number' && e[1] >= 0)) } : {})
     })
   }
   return out

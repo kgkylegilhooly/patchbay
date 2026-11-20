@@ -26,16 +26,19 @@ export function describeFiles(files: SessionFiles, onlyTurn: boolean, mayRead: (
     node: files.nodeId,
     cwd: files.cwd,
     ...(latest ? { turn: latest.turn, turnStarted: new Date(latest.at).toISOString(), ...(latest.tree ? { snapshot: latest.tree } : latest.problem ? { snapshotProblem: latest.problem } : {}) } : {}),
+    ...(latest?.endCheck?.problem ? { turnEndCheck: latest.endCheck.problem } : {}),
     files: shown.map((f) => ({
       path: f.path,
       lastEdited: new Date(f.lastAt).toISOString(),
       turn: f.lastTurn,
       edits: f.edits,
       ...(f.confirmed ? {} : { unconfirmed: 'the transcript never said whether this edit succeeded' }),
+      ...(f.bySubagent ? { bySubagents: f.bySubagent } : {}),
+      ...(f.changedInTurns?.length ? { changedDuringTurns: f.changedInTurns, changedBy: "a command or another process, not an edit of the agent's own" } : {}),
       ...(files.overlaps[f.path] ? { alsoEditedBy: alsoEditedBy(files.overlaps[f.path], mayRead) } : {})
     })),
     ...(files.truncated ? { truncated: 'Older files were dropped from this list.' } : {}),
-    note: 'From the session\'s own Edit, Write and patch calls. Files changed by shell commands are not listed.'
+    note: "From the session's own Edit, Write and patch calls, and its subagents' (bySubagents). changedDuringTurns: the checkout changed there during that turn with no such edit, so a shell command or another process changed it. Not checked while another window works in the same checkout."
   }
 }
 

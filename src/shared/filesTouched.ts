@@ -12,6 +12,14 @@ export interface TouchedFile {
   edits: number
   /** False when no edit of it was seen to succeed: the transcript never said how it went. */
   confirmed: boolean
+  /** How many of `edits` this session's subagents made (Claude's Task tool), read from their own transcripts. */
+  bySubagent?: number
+  /**
+   * Turns in which the file changed with no edit of it in the transcripts: the turn's snapshot and the checkout at the
+   * end of the turn differ there. A shell command the agent ran, or another process, changed it. Never counted as
+   * the agent's own edits; `edits` stays 0 for a file known only this way.
+   */
+  changedInTurns?: number[]
 }
 
 export interface TurnMark {
@@ -30,6 +38,13 @@ export interface TurnMark {
   firstEditAt?: number
   /** Untracked files too big or too many to go in the snapshot. */
   skipped?: number
+  /** Other windows working in the same checkout when the turn started, by title. */
+  shared?: string[]
+  /**
+   * The look at the checkout as the turn ended, for changes the transcripts don't explain. `changed` counts files
+   * found that way; `problem` says why it wasn't done, or what it left out.
+   */
+  endCheck?: { at: number; changed: number; problem?: string }
 }
 
 export interface OverlapNote {

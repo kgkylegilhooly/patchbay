@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { DiffScope, FileDiff, SessionFiles, TouchedFile } from '../shared/filesTouched'
 import { bridge } from './bridge'
-import { chipLabel, files, listenForFiles, splitPath, useFilesSummary, visibleFiles } from './filesView'
+import { chipLabel, endCheckNote, files, listenForFiles, originTags, splitPath, useFilesSummary, visibleFiles } from './filesView'
 import { relativeTime } from './sidebarView'
 import './files.css'
 
@@ -54,6 +54,11 @@ function FileRow({ nodeId, data, file, now }: { nodeId: string; data: SessionFil
             unconfirmed
           </span>
         )}
+        {originTags(file).map((t) => (
+          <span key={t.kind} className={`files-tag files-tag-${t.kind}`} data-origin={t.kind} title={t.title}>
+            {t.text}
+          </span>
+        ))}
         {others && (
           <span className="files-tag files-tag-shared" title="Another live agent edited this file too, in the same checkout">
             ⚠ also {others.map((o) => o.title).join(', ')}
@@ -159,6 +164,7 @@ function FilesPopover({ nodeId, at, onClose }: { nodeId: string; at: { x: number
         <p className="files-note">
           Turn {latest.turn} started {relativeTime(latest.at, now)}.{' '}
           {latest.tree ? 'A snapshot was taken then, so its diff shows only what changed since.' : latest.problem ? `No snapshot: ${latest.problem}` : 'Taking a snapshot…'}
+          {endCheckNote(latest) && <> {endCheckNote(latest)}</>}
         </p>
       )}
       {data === undefined && <p className="files-note">Reading…</p>}
@@ -172,7 +178,7 @@ function FilesPopover({ nodeId, at, onClose }: { nodeId: string; at: { x: number
         </ul>
       )}
       {data?.truncated && <p className="files-note">Older files were dropped from this list.</p>}
-      <p className="files-note files-foot">From the agent's own edit and patch calls. Files changed by shell commands aren't listed.</p>
+      <p className="files-note files-foot">From the agent's own edit and patch calls and its subagents' (labelled). At the end of each turn, files that changed with no such edit are listed as changed by a command or another process, never as the agent's edits; not when another window shares the checkout.</p>
     </div>
   )
 }

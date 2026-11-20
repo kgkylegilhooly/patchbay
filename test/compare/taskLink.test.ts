@@ -95,7 +95,7 @@ test('a comparison for a task that is gone, cancelled or accepted is refused bef
     [{ tasks: [task({ state: 'cancelled' })], attempts: [] }, /cancelled/],
     [{ tasks: [task({ state: 'accepted' })], attempts: [] }, /already accepted/]
   ] as const) {
-    const w = world(records as TaskRecords)
+    const w = world(records as unknown as TaskRecords)
     const r = await w.service.start(await startReq())
     expect(r.ok).toBe(false)
     expect(!r.ok && r.reason).toMatch(words)
