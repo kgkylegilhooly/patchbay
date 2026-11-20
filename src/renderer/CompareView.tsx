@@ -3,6 +3,7 @@ import { attemptLabel, changedByRun, describeLoss, verifyStanding, type Attempt,
 import { AGENT_NAMES, type AgentStatus } from '../shared/model'
 import { compare } from './compareBridge'
 import { parseDiff } from './reviewNotes'
+import { shortPath } from './shortPath'
 import { useStore } from './store'
 
 const REFRESH_MS = 5000
@@ -226,7 +227,7 @@ function AttemptColumn({ c, a, state, running, onRun, onChanged, onShow }: { c: 
         <dt>Folder</dt>
         <dd>
           <code className="compare-path" title={a.path}>
-            {a.path}
+            {shortPath(a.path)}
           </code>
         </dd>
         <dt>Now at</dt>

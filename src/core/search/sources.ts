@@ -12,7 +12,17 @@ function closedOf(closed: ClosedSession[], nodeId: string): ClosedSession | unde
 }
 
 /** A note's text as searched: its title too, unless that's only the default. */
-const noteText = (title: string, text: string): string => (title && title !== 'Note' ? `${title}\n${text}` : text)
+const noteText = (title: string, text: string): string => (title && title !== 'Note' ? `${title}\n${plainLines(text)}` : plainLines(text))
+
+/**
+ * Markdown line marks taken off a note's lines (headings, quotes, bullets, numbers, task boxes), so a result reads
+ * "Plan Fix login" rather than "## Plan - Fix login". The words, and so what search finds, stay the same.
+ */
+export const plainLines = (text: string): string =>
+  text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:#{1,6}\s+|>\s*)?(?:(?:[-*+]|\d+[.)])\s+)?(?:\[[ xX]\]\s+)?/, ''))
+    .join('\n')
 
 /**
  * Everything search can find, from the canvas and the retained messages. Agent windows and closed conversations are

@@ -52,6 +52,8 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
   }
 
   const dirty = info?.ok ? info.uncommitted.length + info.uncommittedMore : 0
+  // The amber box above already asks about uncommitted changes, so that one reason isn't repeated in red down here.
+  const shownBlocked = req && info?.ok && dirty > 0 && !leaveOut ? startProblem({ ...req, leaveOutUncommitted: true }, info, agents) : blocked
 
   return (
     <form
@@ -70,6 +72,8 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
         <p className="compare-dim">Two attempts at one brief. Each gets its own worktree, branch and agent, from the same commit.</p>
       </header>
 
+      {/* Only the middle scrolls: the title and Start both stay in view on a short screen. */}
+      <div className="compare-start-body">
       <section className="compare-base" aria-label="Base">
         <span className="field-label">Base</span>
         {!info && <p className="compare-dim">Reading {source}…</p>}
@@ -157,9 +161,10 @@ export function CompareStart({ projectId, source, brief: initialBrief, onStarted
         <span className="field-label">Verification command (optional, run in each worktree when you ask, with no shell)</span>
         <input value={verify} spellCheck={false} placeholder="npm test" onChange={(e) => setVerify(e.target.value)} />
       </label>
+      </div>
 
-      {(problem || (blocked && info)) && <p className="field-problem">{problem ?? blocked}</p>}
-      <div className="pop-actions">
+      {(problem || (shownBlocked && info)) && <p className="field-problem compare-start-problem">{problem ?? shownBlocked}</p>}
+      <div className="pop-actions compare-start-foot">
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>

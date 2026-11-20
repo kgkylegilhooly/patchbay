@@ -9,6 +9,8 @@ import { unarchiveProject } from './projectActions'
 import { askArchive, readSuggestDays, saveSuggestDays, SUGGEST_CHOICES, useProjectsUi } from './projectsUi'
 import { daysAgo, projectRows, sortRows, type ProjectRow, type SortKey } from './projectsView'
 import { projectBadge } from './sidebarView'
+import { shortPath } from './shortPath'
+import { Icon } from './icons'
 import { useStore } from './store'
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
@@ -74,7 +76,7 @@ function Row({
               <span className="projects-name">{project.name}</span>
             )}
             <span className="projects-folder" title={project.folder || 'Home folder'}>
-              {project.folder || 'Home folder'}
+              {project.folder ? shortPath(project.folder) : 'Home folder'}
             </span>
           </span>
         </div>
@@ -131,7 +133,7 @@ function Row({
                   disabled={!refusals.close}
                   title={refusals.close ? 'Takes it off the tabs. Its sessions keep running.' : 'The last open project stays open.'}
                 >
-                  Close
+                  Close project
                 </button>
               )}
               <button
@@ -229,8 +231,8 @@ export function ProjectsManager({ commands, onClose }: { commands: Commands; onC
         <p className="compare-dim">
           {counts.open} open · {counts.closed} closed · {counts.archived} archived
         </p>
-        <button type="button" className="btn compare-small projects-close" aria-label="Close projects" autoFocus onClick={onClose}>
-          Close
+        <button type="button" className="icon-btn projects-close" aria-label="Close projects" title="Close (Esc)" onClick={onClose}>
+          <Icon name="close" size={16} />
         </button>
       </div>
       {notice && (
@@ -238,7 +240,8 @@ export function ProjectsManager({ commands, onClose }: { commands: Commands; onC
           {notice}
         </p>
       )}
-      <div className="projects-table-wrap">
+      {/* Focus starts on the table, so Enter or a stray key never closes the manager by surprise. */}
+      <div className="projects-table-wrap" role="region" aria-label="All projects" tabIndex={0} autoFocus>
         <table className="projects-table">
           <thead>
             <tr>
