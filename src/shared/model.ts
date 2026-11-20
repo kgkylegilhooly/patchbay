@@ -167,6 +167,12 @@ export interface BrowserNode extends Base {
   held?: boolean
 }
 
+/** A file on the canvas, like an icon on a desktop. It points at the file and never copies it. See shared/fileShelf.ts. */
+export interface FileNode extends Base {
+  kind: 'file'
+  path: string
+}
+
 /**
  * A Markdown file, shown read-only with comments for an agent. The file itself is never written. See src/shared/reader.ts.
  */
@@ -178,7 +184,7 @@ export interface ReaderNode extends Base {
   fromNodeId?: string
 }
 
-export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode
+export type CanvasNode = TerminalNode | ClaudeNode | RunNode | StickyNode | WhiteboardNode | GroupNode | BrowserNode | TriggerNode | ReaderNode | FileNode
 export type SessionNode = TerminalNode | ClaudeNode | RunNode
 
 export function isSessionNode(n: CanvasNode | undefined): n is SessionNode {

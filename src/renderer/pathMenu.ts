@@ -12,10 +12,11 @@ export function linkMenu(act: { open: () => void; copy: () => void }): MenuEntry
 }
 
 /** What clicking a path in a terminal offers. A Markdown file can also open in a reader on the canvas. */
-export function pathMenu(act: { open: () => void; newTerminal: () => void; copy: () => void; reveal: () => void; reader?: () => void }): MenuEntry[] {
+export function pathMenu(act: { open: () => void; newTerminal: () => void; copy: () => void; reveal: () => void; reader?: () => void; pin?: () => void }): MenuEntry[] {
   return [
     ...(act.reader ? [{ id: 'path-reader', label: 'Open in Reader', icon: 'note' as const, run: act.reader }] : []),
     { id: 'path-open', label: 'Open', icon: 'arrow-right', run: act.open },
+    ...(act.pin ? [{ id: 'path-pin', label: 'Pin to canvas', icon: 'pin' as const, run: act.pin }] : []),
     'separator',
     { id: 'path-new-terminal', label: 'New terminal here', icon: 'terminal', run: act.newTerminal },
     'separator',

@@ -33,7 +33,8 @@ const KIND_NAMES: Record<CanvasNode['kind'], string> = {
   group: 'group',
   browser: 'browser',
   trigger: 'trigger',
-  reader: 'reader'
+  reader: 'reader',
+  file: 'file'
 }
 
 function brief(n: CanvasNode, status: (id: string) => AgentStatus | undefined): NodeBrief {

@@ -323,7 +323,8 @@ function unarchiveProject(doc: CanvasDoc, id: string, open: boolean): CanvasDoc 
   return open ? showProject(back, id) : back
 }
 
-const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'
+// A file icon is layout too: it only points at a file.
+const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader' || n.kind === 'file'
 
 /**
  * Removing comes before the patches, so what they say wins over any refitting the removal did. A node whose old

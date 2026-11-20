@@ -29,6 +29,8 @@ export class BrowserEvidenceStore {
   writeProblem: string | null = null
   /** An attempt started or ended, for a task it's evidence for. Not called for each row recorded in between. */
   lifecycle: (attempt: BrowserAttempt) => void = () => {}
+  /** A picture was kept as evidence, for the Files shelf. */
+  shot: (nodeId: string, path: string) => void = () => {}
   readonly shotsDir: string
   private attempts: BrowserAttempt[] = []
   private recent = new Map<string, BrowserDiagnostic[]>()
@@ -255,6 +257,7 @@ export class BrowserEvidenceStore {
     const reason = capture.reason ?? 'Screenshot unavailable.'
     if (capture.state !== 'available' && !a.gaps.includes(reason)) a.gaps.push(reason)
     if (capture.path) this.pruneShots()
+    if (capture.path) this.shot(id, capture.path)
     this.save(id)
   }
 
