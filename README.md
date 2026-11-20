@@ -272,10 +272,12 @@ and spends a little quota.
 ## Sessions sidebar
 
 - **Project** lists sessions under each open project, across all of them. Headers fold, and stay folded after a restart.
-- **Status** sorts every session by what it's doing: Need attention, Unread, Running, Idle and Unknown. Only a session
+  A row shows its folder only when it isn't the project's folder.
+- **Status** sorts every session by what it's doing: Need attention, Unread, Running, Idle and No status yet. Only a session
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
+  Empty sections are left out, except Need attention, which says "All clear."
 - **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
   its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
   It goes under Need attention. The reset time comes from Claude's status line, or from its message.
@@ -286,7 +288,7 @@ and spends a little quota.
   in any project, and opens its peek. Press it again for the next. With "Also unread" ticked, Unread sessions follow.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
-- **Recently closed** reopens a closed Claude conversation, the same as Recent conversations.
+- **Closed conversations** reopens a closed Claude conversation, the same as the Closed conversations panel.
 
 ## Session windows
 
@@ -654,7 +656,7 @@ its page on the next launch.
 - **Recorded checks.** `patchbay browser verify --phase start|step|finish` records an attempt: the URL, viewport,
   actions, a picture at each phase, and console errors and failed requests with the page and time. `browser viewport
   --preset desktop|mobile` sets the page size first, and finish, Take control or `--preset node` set it back. The
-  node's **Evidence** panel shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
+  node's **Checks** panel (hidden until there's one) shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
   labels the agent's passed or failed as its claim, not proof. Only the agent that started an attempt can finish it.
   One left alone for 10 minutes is marked abandoned. With `--task-id`, the task's card lists the attempt too, and it
   never makes the task ready. Console text, headers, request bodies and typed text are never kept, and evidence

@@ -85,7 +85,7 @@ function DockView({
       <DockButton cmd="fit-view" label="Fit view" icon="fit" onClick={commands.fitView} />
       <DockButton cmd="tidy" label="Tidy canvas" icon="tidy" onClick={() => commands.tidy()} />
       <DockButton cmd="toggle-sidebar" label="Sessions sidebar" icon="sidebar" pressed={sidebar} onClick={() => commands.togglePref('sidebar')} />
-      <DockButton cmd="recent" label="Recent conversations" icon="recent" pressed={recent} onClick={commands.toggleRecent} />
+      <DockButton cmd="recent" label="Closed conversations" icon="recent" pressed={recent} onClick={commands.toggleRecent} />
       <DockButton cmd="toggle-board" label="Board view" icon="board" pressed={board} onClick={commands.toggleBoard} />
       <DockButton cmd="toggle-focus" label="Focus view" icon="grid" pressed={focus} onClick={() => commands.toggleFocus()} />
       <DockButton cmd="toggle-git" label="Git panel" icon="branch" pressed={git} onClick={() => commands.toggleGit()} />

@@ -87,3 +87,12 @@ export function followSubagents(bridge: SubagentBridge | undefined = window.patc
     stop()
   }
 }
+
+const AGENT_TYPE_NAMES: Record<string, string> = { 'general-purpose': 'General' }
+
+/** A subagent's type as people read it: "general-purpose" is General, and the rest start with a capital. */
+export function agentTypeLabel(agentType: string): string {
+  const named = AGENT_TYPE_NAMES[agentType]
+  if (named) return named
+  return agentType ? agentType[0].toUpperCase() + agentType.slice(1) : 'Subagent'
+}

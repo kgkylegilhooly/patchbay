@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { bucketOf, closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, statusSections, type BucketId } from '../../src/renderer/sidebarView'
+import { bucketOf, closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, rowShowsWhere, sameFolder, statusSections, type BucketId } from '../../src/renderer/sidebarView'
 import type { AgentStatus, CanvasDoc, CanvasNode, Project } from '../../src/shared/model'
 
 const viewport = { x: 0, y: 0, zoom: 1 }
@@ -57,10 +57,16 @@ describe('status buckets', () => {
 })
 
 describe('the Status tab', () => {
-  test('the five main sections always show, in order, and the others only when they hold something', () => {
-    expect(statusSections(docOf([]), {}, [], '').map((s) => s.id)).toEqual(['needs-you', 'unread', 'running', 'idle', 'unknown'])
-    const doc = docOf([claude('q'), terminal('t'), claude('x')])
-    expect(statusSections(doc, { q: 'queued', x: 'exited' }, [], '').map((s) => s.id)).toEqual(['needs-you', 'unread', 'running', 'idle', 'unknown', 'starting', 'stopped', 'plain'])
+  test('Need attention always shows, and the others, in order, only when they hold something', () => {
+    expect(statusSections(docOf([]), {}, [], '').map((s) => s.id)).toEqual(['needs-you'])
+    const doc = docOf([claude('q'), terminal('t'), claude('x'), claude('w'), claude('i'), claude('u'), claude('n')])
+    const statuses: Record<string, AgentStatus> = { q: 'queued', x: 'exited', w: 'working', i: 'idle', n: 'idle' }
+    expect(statusSections(doc, statuses, ['n'], '').map((s) => s.id)).toEqual(['needs-you', 'unread', 'running', 'idle', 'unknown', 'starting', 'stopped', 'plain'])
+    expect(statusSections(docOf([claude('w')]), { w: 'working' }, [], '').map((s) => s.id)).toEqual(['needs-you', 'running'])
+  })
+
+  test('a session with no status yet is under No status yet, not Unknown', () => {
+    expect(statusSections(docOf([claude('u')]), {}, [], '').find((s) => s.id === 'unknown')?.label).toBe('No status yet')
   })
 
   test('lists sessions across projects, each exactly once', () => {
@@ -93,8 +99,30 @@ describe('the Status tab', () => {
     const byId = sectionsById(doc, { needs: 'needs-you', done: 'idle', busy: 'working' }, ['done'])
     expect(byId['needs-you']).toEqual(['needs'])
     expect(byId.unread).toEqual(['done'])
-    expect(byId.running).toEqual([])
+    expect(byId.running).toBeUndefined()
     expect(byId.plain).toBeUndefined()
+  })
+})
+
+describe('the folder line on a row', () => {
+  test('the same folder however it is written', () => {
+    expect(sameFolder('C:\\Repo\\', 'c:/repo')).toBe(true)
+    expect(sameFolder('', '')).toBe(true)
+    expect(sameFolder('C:\\repo', 'C:\\repo\\sub')).toBe(false)
+  })
+
+  test("under its project, a row in the project's folder leaves it out; one elsewhere shows it", () => {
+    const p = project('a', { folder: 'C:\\repo' })
+    expect(rowShowsWhere('C:\\repo\\', p, 'project')).toBe(false)
+    expect(rowShowsWhere('C:\\other', p, 'project')).toBe(true)
+    expect(rowShowsWhere('ssh build-box', p, 'project')).toBe(true)
+    // A home-folder project and a session in the home folder.
+    expect(rowShowsWhere('', project('h'), 'project')).toBe(false)
+    expect(rowShowsWhere('C:\\repo', undefined, 'project')).toBe(true)
+  })
+
+  test('the Status tab always shows it, as it names the project there', () => {
+    expect(rowShowsWhere('C:\\repo', project('a', { folder: 'C:\\repo' }), 'status')).toBe(true)
   })
 })
 

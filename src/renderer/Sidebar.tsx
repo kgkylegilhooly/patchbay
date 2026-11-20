@@ -11,7 +11,7 @@ import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
 import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
-import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, statusSections } from './sidebarView'
+import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, rowShowsWhere, statusSections } from './sidebarView'
 import { useStore } from './store'
 import { contextLabel } from './usageView'
 import { useAgentOff } from './agentChoice'
@@ -49,13 +49,16 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   // Its section says Need attention, so the row says why.
   const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined)
   const peekable = inStatus && session.kind === 'claude'
+  // Under its own project's heading the badge and the project's folder would only repeat the heading.
+  const where = whereShown(session)
+  const showWhere = rowShowsWhere(where, project, tab)
   return (
     <li>
       <button
         type="button"
-        className="session"
+        className={`session${inStatus ? '' : ' session-in-project'}`}
         data-session={session.id}
-        title={whereShown(session)}
+        title={where || 'Home folder'}
         onClick={() => onReveal(session.id)}
         onKeyDown={(e) => {
           // Space peeks, as in Claude's agent view. Enter still goes to the window.
@@ -66,7 +69,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
       >
         <span className="session-top">
           <StatusDot status={session.kind === 'run' ? runDot(run) : status} nodeId={session.id} />
-          <Badge project={project} />
+          {inStatus && <Badge project={project} />}
           <KindIcon kind={session.kind} agent={session.kind === 'claude' ? session.agent : undefined} />
           <span className="session-title">{session.title}</span>
           {unseen && <span className="session-unseen" role="img" aria-label="Not looked at yet" title="Finished while you were elsewhere" />}
@@ -78,14 +81,16 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
           {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} />}
           {session.kind === 'run' && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
         </span>
-        <span className="session-where-row">
-          <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : whereShown(session) || 'Home folder'}</span>
-          {inStatus && at !== undefined && (
-            <time className="session-time" dateTime={new Date(at).toISOString()} title="Last activity">
-              {relativeTime(at, now)}
-            </time>
-          )}
-        </span>
+        {showWhere && (
+          <span className="session-where-row">
+            <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : where || 'Home folder'}</span>
+            {inStatus && at !== undefined && (
+              <time className="session-time" dateTime={new Date(at).toISOString()} title="Last activity">
+                {relativeTime(at, now)}
+              </time>
+            )}
+          </span>
+        )}
         <PortChips nodeId={session.id} />
         {session.kind === 'claude' && <FilesChip nodeId={session.id} />}
       </button>
@@ -152,8 +157,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
           >
             <Icon name={prefs.sidebarPinned ? 'pin' : 'pin-off'} size={15} />
           </button>
-          <button type="button" className="icon-btn" aria-label="Hide sessions" title="Hide sessions" onClick={onClose}>
-            ×
+          <button type="button" className="icon-btn tool-btn" aria-label="Hide sessions" title="Hide sessions" onClick={onClose}>
+            <Icon name="close" size={15} />
           </button>
         </span>
       </div>
@@ -204,6 +209,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
               <section key={section.id} data-status-section={section.id}>
                 <SectionHead id={id} label={section.label} count={section.sessions.length} help={section.help} open={isOpen(id)} onToggle={() => toggle(id)} />
                 {isOpen(id) && section.sessions.length > 0 && <ul className="sidebar-body">{section.sessions.map(row)}</ul>}
+                {isOpen(id) && section.sessions.length === 0 && section.id === 'needs-you' && !filtering && <p className="sidebar-empty">All clear.</p>}
               </section>
             )
           })}
@@ -237,7 +243,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
         )}
         {(recent.length > 0 || !filtering) && (
           <section data-recently-closed>
-            <SectionHead id="recent" label="Recently closed" count={recent.length} open={isOpen('recent', false)} onToggle={() => toggle('recent', false)} help="Claude conversations you closed. Click one to reopen it" />
+            <SectionHead id="recent" label="Closed conversations" count={recent.length} open={isOpen('recent', false)} onToggle={() => toggle('recent', false)} help="Claude conversations you closed. Click one to reopen it" />
             {isOpen('recent', false) && (
               <ul className="sidebar-body">
                 {recent.length === 0 && <li className="sidebar-empty">Close a Claude or Codex session and its conversation appears here.</li>}

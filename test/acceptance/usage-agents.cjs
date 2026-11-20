@@ -13,7 +13,7 @@ async function main() {
   try {
     const pill = await L.waitFor('the usage pill', () => page.$('.usage-pill'), 40000).catch(() => null)
     const text = pill ? await page.$eval('.usage-pill', (p) => p.textContent) : null
-    c.check('The pill shows Codex', /\d+% Codex/.test(text ?? ''), text)
+    c.check('The pill shows Codex', /Codex \d+% (used|left)/.test(text ?? ''), text)
     await page.hover('.usage-pill')
     await page.waitForSelector('.usage-panel', { timeout: 5000 })
     const sections = await page.$$eval('.usage-section', (ss) => ss.map((s) => ({ agent: s.dataset.agent, rows: [...s.querySelectorAll('.usage-row-title')].map((r) => r.textContent), account: !!s.querySelector('.usage-account-email') })))

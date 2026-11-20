@@ -18,7 +18,7 @@ test('nothing known is no pill', () => {
 
 test('plan limits read as written, and are ok below 70', () => {
   const p = pillText(state({ plan: plan(48, 20) }), NOW)
-  expect(p?.text).toBe('48% 5h · 20% wk')
+  expect(p?.text).toBe('5h 48% · wk 20% used')
   expect(p?.level).toBe('ok')
   expect(p?.stale).toBe(false)
 })
@@ -33,12 +33,12 @@ test.each([
 })
 
 test('only one window present shows only that one', () => {
-  expect(pillText(state({ plan: plan(undefined, 20) }), NOW)?.text).toBe('20% wk')
+  expect(pillText(state({ plan: plan(undefined, 20) }), NOW)?.text).toBe('wk 20% used')
 })
 
 test('a window past its reset is not shown, even before main next says so', () => {
   const s = state({ plan: { fiveHour: { percent: 95, resetsAt: 500 }, sevenDay: { percent: 20, resetsAt: FUTURE }, at: NOW } })
-  expect(pillText(s, NOW)?.text).toBe('20% wk')
+  expect(pillText(s, NOW)?.text).toBe('wk 20% used')
   expect(pillText(s, NOW)?.level).toBe('ok')
 })
 
@@ -113,7 +113,7 @@ test('with the source turned off there is no pill, whatever is known', () => {
 
 test('in left mode the numbers and the bar show what remains, while the colour still follows real use', () => {
   const p = pillText(state({ plan: plan(85, 20) }), NOW, 'left')
-  expect(p?.text).toBe('15% 5h · 80% wk')
+  expect(p?.text).toBe('5h 15% · wk 80% left')
   expect(p?.level).toBe('high')
   expect(p?.barPercent).toBe(15)
 })
@@ -153,14 +153,14 @@ const codex = (percent: number, minutes = 43200, over: Partial<NonNullable<Usage
 
 test('Codex joins the pill after Claude, and the left mode reads as the share left', () => {
   const p = pillText(state({ plan: plan(17, 72), codex: codex(13) }), NOW, 'left')
-  expect(p?.text).toBe('83% 5h · 28% wk · 87% Codex')
+  expect(p?.text).toBe('5h 83% · wk 28% · Codex 87% left')
   expect(p?.codex?.rows).toEqual([{ label: 'Monthly limit', percentText: '87% left', barPercent: 87, level: 'ok', resets: expect.any(String) }])
   expect(p?.codex?.account).toEqual({ email: 'me@example.com', detail: 'Free plan' })
 })
 
 test('Codex alone is enough for a pill, and its closest limit sets the level', () => {
   const p = pillText(state({ codex: { ...codex(30, 300)!, windows: [{ percent: 30, minutes: 300, resetsAt: FUTURE }, { percent: 85, minutes: 10080, resetsAt: FUTURE }] } }), NOW)
-  expect(p?.text).toBe('85% Codex')
+  expect(p?.text).toBe('Codex 85% used')
   expect(p?.level).toBe('high')
   expect(p?.codex?.rows.map((r) => r.label)).toEqual(['5-hour limit', 'Weekly limit'])
   expect(p?.rows).toEqual([])

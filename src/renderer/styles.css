@@ -67,15 +67,47 @@ body {
   overflow: hidden;
 }
 
+/* An empty project: the first step as buttons, centred on the canvas. Clicks pass through around it. */
 .stage-empty {
   position: absolute;
-  inset: 40% 0 auto;
+  inset: 38% 16px auto;
+  width: fit-content;
+  max-width: calc(100% - 32px);
   margin: 0 auto;
-  max-width: 34ch;
+  padding: 18px 22px 16px;
   text-align: center;
-  font-size: 16px;
   color: var(--ink-dim);
-  pointer-events: none;
+  background: var(--face);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+}
+
+.stage-empty h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.stage-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.stage-empty-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+}
+
+.stage-empty p {
+  margin: 14px 0 0;
+  font-size: 12px;
 }
 
 /* Controls */
@@ -470,11 +502,20 @@ select {
 
 .session-title {
   flex: 1;
-  min-width: 0;
+  min-width: 8ch;
   overflow: hidden;
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A long status word, such as a usage limit's, gives way before the title does. Its full text is in its tooltip. */
+.session-top .badge:not(:has(.led)) {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-where {
@@ -810,8 +851,14 @@ select {
   color: var(--led-needs);
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+}
+
+/* The word, not the dot: a filled pill, so it stands out in sentence case like the other statuses. */
+.badge-needs-you:not(:has(.led)) {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--led-needs);
+  color: #1f0c0a;
 }
 
 .badge-needs-you .led {
@@ -3188,6 +3235,11 @@ circle.wb-eraser {
   flex: 1;
   min-width: 0;
   margin-left: 50px;
+}
+
+/* Under its project's heading a row has no project badge, so its folder lines up with the title without it. */
+.session-in-project .session-where-row .session-where {
+  margin-left: 27px;
 }
 
 .session-project {

@@ -3,6 +3,7 @@ import { isSessionNode } from '../shared/model'
 import type { SessionPeek } from '../shared/needsYouBridge'
 import { actionById } from './actions'
 import { bridge } from './bridge'
+import { Icon } from './icons'
 import { currentKey } from './keys'
 import type { Commands } from './menus'
 import { StatusBadge, StatusDot } from './nodes/StatusBadge'
@@ -141,13 +142,13 @@ export function PeekCard({ id, place, commands }: { id: string; place: PeekPlace
       }}
     >
       <div className="peek-head">
-        <StatusDot status={status} />
+        <StatusDot status={status} nodeId={id} />
         <span className="peek-title" title={node.title}>
           {node.title}
         </span>
-        {status && <StatusBadge status={status} />}
-        <button type="button" className="icon-btn" aria-label="Close peek" title="Close (Esc)" onClick={closePeek}>
-          ×
+        {status && <StatusBadge status={status} nodeId={id} />}
+        <button type="button" className="icon-btn tool-btn" aria-label="Close peek" title="Close (Esc)" onClick={closePeek}>
+          <Icon name="close" size={15} />
         </button>
       </div>
       <div className="peek-meta">

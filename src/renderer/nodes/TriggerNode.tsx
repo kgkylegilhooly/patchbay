@@ -5,7 +5,7 @@ import { describeLimits, limitsOf, preflightText, sourceNodeId } from '../../cor
 import type { TriggerNode as TriggerModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
-import { KindIcon } from '../icons'
+import { Icon, KindIcon } from '../icons'
 import { closeNodes, useStore } from '../store'
 import { nextLabel, OUTCOME_LABELS, STATE_LABELS, triggerState } from '../triggerView'
 import { EditableTitle, Resizer } from './NodeChrome'
@@ -53,8 +53,8 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
         <KindIcon kind="trigger" />
         <EditableTitle node={node} />
         <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>
-        <button className="icon-btn nodrag" aria-label={`Delete ${node.title}`} title="Delete trigger" onClick={() => closeNodes([node.id])}>
-          ×
+        <button className="icon-btn tool-btn nodrag" aria-label={`Delete ${node.title}`} title="Delete trigger" onClick={() => closeNodes([node.id])}>
+          <Icon name="close" size={15} />
         </button>
       </header>
       <div className="trigger-body nodrag nowheel">

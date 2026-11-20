@@ -8,7 +8,7 @@ import { absolutePosition } from '../newNodes'
 import { useStore } from '../store'
 import { TranscriptViewer } from '../TranscriptViewer'
 import { CARD, cardSpots, type Side } from './placement'
-import { closeSubagentView, followSubagents, useSubagentUi, viewSubagent } from './subagentUi'
+import { agentTypeLabel, closeSubagentView, followSubagents, useSubagentUi, viewSubagent } from './subagentUi'
 import './subagents.css'
 
 const NONE: Rect[] = []
@@ -37,7 +37,8 @@ function othersOf(doc: CanvasDoc, parentId: string): Rect[] {
 function Card({ card, rect, fading, now }: { card: SubagentCard; rect: Rect; fading: boolean; now: number }): React.JSX.Element {
   const tokens = tokenLabel(card)
   const time = elapsed((card.endedAt ?? now) - card.startedAt)
-  const title = `${card.agentType}: ${card.description}`
+  const type = agentTypeLabel(card.agentType)
+  const title = `${type}: ${card.description}`
   return (
     <button
       type="button"
@@ -51,7 +52,7 @@ function Card({ card, rect, fading, now }: { card: SubagentCard; rect: Rect; fad
       <span className="sa-top">
         <span className="sa-dot" aria-hidden />
         <span className="sa-type">
-          {card.agentType}
+          {type}
           {card.depth > 1 ? ' (nested)' : ''}
         </span>
         <span className="sa-time">{time}</span>

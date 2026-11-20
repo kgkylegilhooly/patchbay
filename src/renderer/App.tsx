@@ -66,6 +66,10 @@ import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
 import { focusedTerminal, terminalActions } from './terminalRegistry'
 import { TopBar } from './TopBar'
+import { ledTokens, statusMapColor } from './minimapColors'
+import { useAgentStops } from './agentStops'
+import type { AgentStop } from '../shared/agentStop'
+import { EmptyCanvas } from './EmptyCanvas'
 import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
@@ -73,22 +77,12 @@ import './styles.css'
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 
-const STATUS_COLORS: Record<string, string> = {
-  working: '#ffb938',
-  idle: '#62dc8a',
-  'needs-you': '#ff5b4e',
-  queued: '#8fb4ff',
-  starting: '#8fb4ff',
-  exited: '#6d7790',
-  unknown: '#a3abbd'
-}
-
-function miniMapColor(node: FlowNode): string {
+function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>): string {
   if (node.data.node.kind === 'group') return 'transparent'
   if (node.data.node.kind === 'sticky') return '#a89a2b'
   if (node.data.node.kind === 'whiteboard') return '#d8d8d2'
   if (node.data.node.kind === 'trigger') return '#e7b53f'
-  return node.data.status ? (STATUS_COLORS[node.data.status] ?? '#a3abbd') : '#a3abbd'
+  return statusMapColor(node.data.status, stops[node.id], ledTokens())
 }
 
 function miniMapStroke(node: FlowNode): string {
@@ -110,6 +104,8 @@ function Canvas(): React.JSX.Element | null {
   const statuses = useStore((s) => s.statuses)
   const gitOpen = useStore((s) => s.gitOpen)
   const boardOpen = useStore((s) => s.boardOpen)
+  const stops = useAgentStops((s) => s.stops)
+  const mapColor = useCallback((node: FlowNode) => miniMapColor(node, stops), [stops])
   const flow = useReactFlow<FlowNode, FlowEdge>()
   const [nodes, setNodes] = useState<FlowNode[]>([])
   const [edges, setEdges] = useState<FlowEdge[]>([])
@@ -415,12 +411,12 @@ function Canvas(): React.JSX.Element | null {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <SubagentLayer />
           <TidyLayer sidebar={prefs.sidebar} />
-          {prefs.minimap && (
+          {prefs.minimap && nodes.length > 0 && (
             <MiniMap<FlowNode>
               pannable
               zoomable
               onClick={onMapClick}
-              nodeColor={miniMapColor}
+              nodeColor={mapColor}
               nodeStrokeColor={miniMapStroke}
               nodeStrokeWidth={6}
               nodeBorderRadius={0}
@@ -429,7 +425,7 @@ function Canvas(): React.JSX.Element | null {
             />
           )}
         </ReactFlow>
-        {nodes.length === 0 && <p className="stage-empty">Right-click the canvas to open a terminal, a Claude session or a Codex session.</p>}
+        {nodes.length === 0 && <EmptyCanvas commands={commands} />}
         {prefs.legend && (
           <ul className="legend" aria-label="What the links mean">
             <li className="legend-opened">Opened</li>
