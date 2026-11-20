@@ -87,7 +87,15 @@ export function WindowTools({ node }: { node: CanvasNode }): React.JSX.Element |
       <Tool tool="find" icon="find" label="Find in this window" onClick={() => terminalActions(node.id)?.find()} />
       {nameable && <Tool tool="name" icon="sparkle" busy={naming} disabled={naming} label={naming ? 'Asking Claude for a name…' : 'Name with AI, from recent output. Uses a little plan quota'} onClick={() => void nameWithAi(node.id)} />}
       <FontTools node={node} />
-      <Tool tool="maximize" icon={maximized ? 'restore' : 'maximize'} pressed={maximized} label={maximized ? 'Restore (Esc when the terminal is not in use, or F11)' : 'Maximize'} onClick={() => toggleMaximize(node.id)} />
+      {/* Maximized, the header draws it after Close instead. */}
+      {!maximized && <MaximizeTool node={node} />}
     </span>
   )
+}
+
+/** Maximize, or Restore when the window is maximized. */
+export function MaximizeTool({ node }: { node: CanvasNode }): React.JSX.Element | null {
+  const maximized = useStore((s) => s.maximized === node.id)
+  if (!isSessionNode(node)) return null
+  return <Tool tool="maximize" icon={maximized ? 'restore' : 'maximize'} pressed={maximized} label={maximized ? 'Restore (Esc when the terminal is not in use, or F11)' : 'Maximize'} onClick={() => toggleMaximize(node.id)} />
 }

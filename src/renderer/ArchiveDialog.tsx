@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { formatBytes, type ArchivePreview, type ArchiveResult } from '../shared/projects'
 import { projectsBridge } from './projectsBridge'
 import { archiveLines, plural } from './projectsView'
+import { archivedToast } from './archiveToast'
+import { showArchived } from './projectsUi'
 
 export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClose: () => void }): React.JSX.Element {
   const [preview, setPreview] = useState<ArchivePreview | null>(null)
@@ -22,13 +24,16 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
     setBusy(true)
     // Only what was shown here: anything that turned up since was never agreed to.
     const shown = preview?.ok ? preview : null
-    setResult(
-      await projectsBridge.archive(projectId, {
-        clearScrollback: clearScrollback && shown ? shown.sessions.map((s) => s.id) : [],
-        clearSites: clearSites && shown ? shown.sites.filter((s) => !s.sharedWith.length).map((s) => s.origin) : []
-      })
-    )
+    const result = await projectsBridge.archive(projectId, {
+      clearScrollback: clearScrollback && shown ? shown.sessions.map((s) => s.id) : [],
+      clearSites: clearSites && shown ? shown.sites.filter((s) => !s.sharedWith.length).map((s) => s.origin) : []
+    })
     setBusy(false)
+    // Done: a toast says so, with Unarchive, instead of a dialog to dismiss. A refusal stays here to be read.
+    if (result.ok && shown) {
+      showArchived(archivedToast(projectId, shown.name, result, clearScrollback))
+      onClose()
+    } else setResult(result)
   }
 
   const keys = (e: React.KeyboardEvent): void => {

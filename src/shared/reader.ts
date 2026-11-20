@@ -33,6 +33,9 @@ export type ReadResult =
 
 export type Refusal = { ok: false; reason: string }
 
+/** A picture the document shows, read by main and checked, as a data: URL. `remote` for one on the web, never loaded. */
+export type ImageResult = { ok: true; url: string; path: string } | { ok: false; reason: string; remote?: boolean }
+
 /** What `open` takes: a path the person chose, and where to put the node. */
 export interface OpenDoc {
   path: string
@@ -57,6 +60,8 @@ export interface DocsBridge {
   saveComments(nodeId: string, comments: ReaderComment[]): Promise<{ ok: true } | Refusal>
   /** A link in the document, resolved against its folder and opened the safe way terminal links are. */
   openLink(nodeId: string, href: string): Promise<{ ok: true } | Refusal>
+  /** A local picture the document names, within the folders it may show from (see src/main/reader/images.ts). */
+  image(nodeId: string, href: string): Promise<ImageResult>
 }
 
 /** What a reader can open. Plain text is allowed so a .txt plan reads too. */

@@ -28,6 +28,17 @@ export function queryTerms(text: string): string[] {
 
 const flat = (text: string): string => text.replace(/\s+/g, ' ')
 
+/**
+ * Markdown line marks taken off a note's lines (headings, quotes, bullets, list numbers, task boxes), for its snippet
+ * only, so a result reads "Plan Fix login" rather than "## Plan - Fix login". The index keeps the text as written, so
+ * "12. Q3 budget" can still be found by "12".
+ */
+export const plainLines = (text: string): string =>
+  text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:#{1,6}\s+|>\s*)?(?:(?:[-*+]|\d{1,3}[.)])\s+)?(?:\[[ xX]\]\s+)?/, ''))
+    .join('\n')
+
 /** Text around the first match, with every term marked in it. Whitespace runs become single spaces. */
 export function snippetOf(text: string, terms: string[]): { snippet: string; marks: Array<[number, number]> } {
   const plain = flat(text)
@@ -211,7 +222,9 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
         // A conversation found by its title, when no one message has every word.
         if (!best && inRange(doc.at) && terms.every((t) => doc.title.toLowerCase().includes(t))) best = { text: doc.title, at: doc.at }
         if (!best) continue
-        const { snippet, marks } = snippetOf(best.text, terms)
+        // A note's snippet without its markdown marks, unless a mark was the very thing searched for.
+        const plain = doc.kind === 'note' ? plainLines(best.text) : best.text
+        const { snippet, marks } = snippetOf(terms.some((t) => plain.toLowerCase().includes(t)) ? plain : best.text, terms)
         const name = doc.projectId ? projects[doc.projectId] : undefined
         hits.push({
           key: doc.key,

@@ -19,6 +19,8 @@ const MAX_JOURNAL_BYTES = 256 * 1024
 
 /** The fields Patchbay uses. Tool responses can be huge and could push the event past the server's limit. */
 const FORWARDED = ['hook_event_name', 'session_id', 'transcript_path', 'cwd', 'notification_type', 'reason', 'source']
+/** Codex's SubagentStart and SubagentStop: which subagent, of what kind, and where its own transcript is. */
+const SUBAGENT_FIELDS = ['agent_id', 'agent_type', 'agent_transcript_path', 'turn_id']
 /** A turn that ended on an API error says why, such as a usage limit and when it resets. Capped, as it's only for a label. */
 const STOP_FAILURE_FIELDS = ['error', 'error_details', 'last_assistant_message']
 const MAX_STOP_TEXT_CHARS = 1000
@@ -80,6 +82,9 @@ function pick(raw) {
   if (!out.hook_event_name) out.hook_event_name = process.argv[2]
   if (out.hook_event_name === 'StopFailure') {
     for (const key of STOP_FAILURE_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, MAX_STOP_TEXT_CHARS)
+  }
+  if (out.hook_event_name === 'SubagentStart' || out.hook_event_name === 'SubagentStop') {
+    for (const key of SUBAGENT_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, 1000)
   }
   if (out.hook_event_name === 'PermissionRequest') {
     out.tool_name = event.tool_name

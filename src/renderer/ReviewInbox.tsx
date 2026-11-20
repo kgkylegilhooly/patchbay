@@ -18,6 +18,7 @@ import { Icon } from './icons'
 import { noteTarget, parseDiff, type DiffLine } from './reviewNotes'
 import { ago, closeReviewInbox, commentsByLine, reviewBridge, useReviewInbox } from './reviewInboxUi'
 import { useStore } from './store'
+import { TaskComparisons } from './tasks/TaskComparisons'
 import './reviewInbox.css'
 
 const short = (oid: string | null | undefined): string => (oid ? oid.slice(0, 7) : '—')
@@ -67,10 +68,17 @@ function ReviewInbox(): React.JSX.Element {
         <button className="icon-btn" aria-label="Close the review inbox" onClick={closeReviewInbox}><Icon name="close" size={16} /></button>
       </header>
       <div className="rvi-body">
+        {/* Empty: one message across the whole view, not a sentence in the queue beside a blank pane. */}
+        {items?.length === 0 && !error ? (
+          <div className="rvi-empty">
+            <h3>Nothing is waiting for review</h3>
+            <p>When an agent finishes a task, its changes and checks land here for you to accept or send back for fixes.</p>
+            <p className="rvi-dim">Agents submit with <code>patchbay task submit</code>.</p>
+          </div>
+        ) : (<>
         <nav className="rvi-queue" aria-label="Waiting for review">
           {error && <p className="rvi-error" role="alert">{error}</p>}
           {items === null && !error && <p className="drawer-empty">Loading…</p>}
-          {items?.length === 0 && <p className="drawer-empty">Nothing is waiting for review. Work shows here once an agent submits a task with <code>patchbay task submit</code>.</p>}
           {items?.map((item) => {
             const t = item.view.task
             return (
@@ -88,6 +96,7 @@ function ReviewInbox(): React.JSX.Element {
           })}
         </nav>
         {selected ? <ReviewItem key={selected.view.task.id} item={selected} onChanged={load} /> : <div className="rvi-detail" />}
+        </>)}
       </div>
     </div>
   )
@@ -245,6 +254,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
         {item.view.readiness.warnings.length > 0 && <p className="rvi-dim">{item.view.readiness.warnings.join('; ')}</p>}
       </section>
       <Evidence item={item} />
+      {item.view.attempts.some((a) => a.kind === 'comparison') && <section className="rvi-section" aria-label="Comparisons"><TaskComparisons attempts={item.view.attempts} /></section>}
       <section className="rvi-section rvi-changes" aria-label="Changes">
         <div className="rvi-toolbar">
           <div className="rvi-modes" role="tablist">
@@ -327,7 +337,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
             <button className="git-btn git-btn-main" data-review="accept-anyway" disabled={busy} onClick={() => void accept(true)}>Accept anyway</button>
           </span>
         ) : (
-          <button className="git-btn git-btn-main" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? 'Accept this submission (P1 checks it again first)' : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
+          <button className="git-btn git-btn-main" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? "Before accepting, Patchbay checks the files haven't changed since the required checks passed." : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
         )}
       </footer>
       {result && <p className={result.ok ? 'rvi-result' : 'rvi-result rvi-result-bad'} role="status">{result.text} <button className="git-mini" aria-label="Dismiss" onClick={() => setResult(null)}>×</button></p>}

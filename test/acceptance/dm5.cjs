@@ -76,7 +76,7 @@ async function main() {
     console.log('screenshot:', await L.shot(page, 'dm5-worktree'))
 
     // The real confirmation, drawn where it can be read.
-    await page.evaluate(() => [...document.querySelectorAll('.wt-bound .btn')].find((b) => b.textContent === 'Remove worktree').click())
+    await page.evaluate(() => [...document.querySelectorAll('.wt-bound .btn')].find((b) => b.textContent === 'Remove worktree…').click())
     await page.waitForSelector('.wt-confirm', { timeout: 3000 })
     console.log('screenshot:', await L.shot(page, 'dm5-remove-confirm'))
     await page.evaluate(() => [...document.querySelectorAll('.wt-confirm .btn')].find((b) => b.textContent === 'Keep').click())

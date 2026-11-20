@@ -29,6 +29,9 @@ function afterHook(cur: AgentStatus, ev: Extract<StatusEvent, { type: 'hook' }>)
       return 'idle'
     case 'StopFailure':
       return 'unknown'
+    // Codex: Esc ended the turn and it's back at its prompt. Claude fires no such hook.
+    case 'Interrupt':
+      return 'idle'
     case 'PermissionRequest':
       return 'needs-you'
     case 'Notification':

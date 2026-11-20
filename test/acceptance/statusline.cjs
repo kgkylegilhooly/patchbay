@@ -35,9 +35,9 @@ async function main() {
     if (shots) await page.screenshot({ path: path.join(shots, 'statusline.png') })
     if (await page.$('.usage-pill')) {
       const pill = await page.$eval('.usage-pill', (p) => p.textContent)
-      check('The title bar shows plan limits, as percentage left', /\d+% 5h · \d+% wk/.test(pill), pill)
+      check('The title bar shows plan limits, as percentage left', /5h \d+% · wk \d+%.* left$/.test(pill), pill)
       const state = await page.evaluate(() => window.patchbay.getUsage())
-      check('The number is what remains', pill.startsWith(`${100 - state.plan.fiveHour.percent}% 5h`), { pill, used: state.plan.fiveHour.percent })
+      check('The number is what remains', pill.startsWith(`5h ${100 - state.plan.fiveHour.percent}%`), { pill, used: state.plan.fiveHour.percent })
       await page.hover('.usage-pill')
       await page.waitForSelector('.usage-panel', { timeout: 3000 })
       const panel = await page.$eval('.usage-panel', (p) => p.innerText)

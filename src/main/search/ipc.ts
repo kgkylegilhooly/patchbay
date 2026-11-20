@@ -1,9 +1,12 @@
+import { writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { ipcMain } from 'electron'
+import { app, dialog, ipcMain } from 'electron'
 import type { GitService } from '../../core/git/service'
 import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import type { SearchBridge } from '../../shared/searchBridge'
+import { createHandoffSaver } from './saveHandoff'
 import { createSearchService, workerBackend } from './service'
 
 /** The repository a folder is in, and its uncommitted files, from the same git the git panel uses. */
@@ -46,10 +49,22 @@ export function registerSearchIpc(s: {
     startNode: s.startNode,
     backend: workerBackend(workerScript(s.mainDir), join(s.dataDir, 'search', 'index.json'), (line) => (s.log ?? console.error)(line))
   })
-  const methods: (keyof SearchBridge)[] = ['search', 'stats', 'readSource', 'rebuild', 'prepareHandoff', 'startHandoff']
+  const methods: (keyof typeof service)[] = ['search', 'stats', 'readSource', 'rebuild', 'prepareHandoff', 'startHandoff']
   for (const name of methods) {
     ipcMain.handle(`pb:search:${name}`, (_e, ...args: unknown[]) => (service[name] as (...a: unknown[]) => unknown)(...args))
   }
+  const saveHandoff = createHandoffSaver({
+    store: s.store,
+    home: homedir(),
+    writeFile: (p, text, exclusive) => writeFile(p, text, { encoding: 'utf8', flag: exclusive ? 'wx' : 'w' }),
+    async pickFile(defaultPath) {
+      // Screenshot scenes answer the dialog this way (see test/acceptance/readerPictureScenes.cjs). Never when installed.
+      if (!app.isPackaged && process.env.PB_SCENE_SAVE_AS) return process.env.PB_SCENE_SAVE_AS
+      const r = await dialog.showSaveDialog({ title: 'Save the handoff', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+      return r.canceled || !r.filePath ? null : r.filePath
+    }
+  })
+  ipcMain.handle('pb:search:saveHandoff', (_e, a: unknown) => saveHandoff(a as never))
   service.start()
   return { stop: () => service.stop() }
 }

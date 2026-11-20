@@ -5,6 +5,7 @@ import type { Evidence, HandoffDraft, HandoffSection, HandoffSource } from '../c
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { bridge } from './bridge'
 import { ClaudeIcon, CodexIcon } from './icons'
+import { docsBridge } from './reader/readerBridge'
 import { closeHandoff, closeSearch, searchBridge } from './searchUi'
 import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
@@ -34,6 +35,9 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
   const [cwd, setCwd] = useState('')
   const [starting, setStarting] = useState(false)
   const [copied, setCopied] = useState(false)
+  /** The file the handoff was last saved to, and what it held, so Open in Reader is offered only while they match. */
+  const [saved, setSaved] = useState<{ path: string; text: string } | null>(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -74,11 +78,34 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
     setTimeout(() => void flow.fitView({ nodes: [{ id: r.nodeId }], padding: 0.2, maxZoom: 1, duration: 260 }), 300)
   }
 
+  const markdown = draft ? handoffMarkdown(draft.sourceTitle, sections) : ''
+  const savedNow = saved !== null && saved.text === markdown
+
   const copy = async (): Promise<void> => {
     if (!draft) return
-    await bridge.writeClipboard(handoffMarkdown(draft.sourceTitle, sections))
+    await bridge.writeClipboard(markdown)
     setCopied(true)
     setTimeout(() => setCopied(false), 1600)
+  }
+
+  const save = async (): Promise<void> => {
+    if (!draft) return
+    setSaving(true)
+    setProblem(null)
+    const text = markdown
+    const r = await searchBridge().saveHandoff({ text, title: `Handoff ${draft.sourceTitle}`, ...(draft.projectId ? { projectId: draft.projectId } : {}) })
+    setSaving(false)
+    if (r.ok) setSaved({ path: r.path, text })
+    else if (!('cancelled' in r)) setProblem(r.reason)
+  }
+
+  /** The saved file in a reader on the canvas. The file holds everything here, so the editor closes. */
+  const openSaved = async (): Promise<void> => {
+    if (!saved) return
+    const r = await docsBridge().open({ path: saved.path })
+    if (!r.ok) return setProblem(r.reason)
+    closeHandoff()
+    closeSearch()
   }
 
   return (
@@ -118,6 +145,16 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
           ))}
         </div>
         {problem && <p className="search-problem">{problem}</p>}
+        {saved && (
+          <p className="handoff-saved" role="status">
+            {savedNow ? 'Saved to' : 'Edited since it was saved to'} <span title={saved.path}>{saved.path}</span>
+            {savedNow && (
+              <button className="btn" onClick={() => void openSaved()}>
+                Open in Reader
+              </button>
+            )}
+          </p>
+        )}
         <footer className="handoff-foot">
           <div className="handoff-start">
             <div className="handoff-agents" role="radiogroup" aria-label="Start with">
@@ -147,6 +184,9 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
             </span>
             <button className="btn" disabled={!draft} onClick={() => void copy()}>
               {copied ? 'Copied' : 'Copy as Markdown'}
+            </button>
+            <button className="btn" disabled={!draft || saving} title="Save the handoff as a Markdown file" onClick={() => void save()}>
+              {saving ? 'Saving…' : 'Save as file…'}
             </button>
             <button className="btn" onClick={closeHandoff}>
               Cancel

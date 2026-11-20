@@ -69,6 +69,7 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
         void save(false)
       }}
     >
+      <h2>Save as recipe</h2>
       <label className="field">
         <span className="field-label">Recipe name</span>
         <input autoFocus value={name} placeholder="Implement and review" onChange={(e) => (setName(e.target.value), setExists(false))} />

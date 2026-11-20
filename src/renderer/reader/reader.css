@@ -415,11 +415,65 @@
   border-radius: 4px;
 }
 
+a.reader-img-remote {
+  color: var(--r-dim);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.reader-img-remote::after {
+  content: ' · from the web, not loaded';
+  opacity: 0.8;
+}
+
+a.reader-img-remote:hover {
+  color: var(--r-accent);
+  border-color: currentColor;
+}
+
+.reader-img-loading {
+  opacity: 0.7;
+}
+
+.reader-img-failed {
+  text-decoration: line-through;
+  text-decoration-color: var(--r-rule);
+}
+
+.reader-img-failed::after {
+  content: ' · not shown';
+  text-decoration: none;
+}
+
+/* A local picture, read by main. It takes the width it has and no more. */
+.reader-img.reader-img-shown {
+  display: inline;
+  padding: 0;
+  border: 0;
+}
+
+.reader-pic {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+.reader-img-alt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .reader-doc .code-head {
   user-select: none;
 }
 
-.reader-paper .code-block {
+.reader-paper .reader-doc .code-block {
   --tok-comment: #8a877c;
   --tok-string: #2f7d32;
   --tok-number: #b35c00;
@@ -434,12 +488,12 @@
   border-color: #e2dfd5;
 }
 
-.reader-paper .code-block .code-head {
+.reader-paper .reader-doc .code-block .code-head {
   background: #ece9e0;
   border-bottom-color: #e2dfd5;
 }
 
-.reader-paper .code-block pre {
+.reader-paper .reader-doc .code-block pre {
   color: #2a2925;
 }
 

@@ -84,6 +84,8 @@ import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
 import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
 import { registerAgentStopIpc } from './agentStopsIpc'
+import { setupCodexStops } from './sessions/codexStopsSetup'
+import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
@@ -382,6 +384,8 @@ async function boot(): Promise<void> {
   // Why agents stopped on StopFailure, such as a usage limit, and holding what's sent to them until it resets.
   const stops = createAgentStops({ tracker, plan: () => usage.state().plan, continueEnabled: () => currentSettings().continueAtReset === 'on', store: stopFile(join(dataDir, 'agent-stops.json'), (line) => log?.write(line)) })
   registerAgentStopIpc(stops)
+  // Codex's limits, failures and interrupts, from its rollout files, as the same stops and statuses.
+  const codexStops = setupCodexStops({ store, tracker, runner, stops, log: (line) => log?.write(line) })
   if (signalDir) {
     signals = watchSignals({
       dir: signalDir,
@@ -491,8 +495,13 @@ async function boot(): Promise<void> {
         throw new RpcRefusal("This hook came from another node's session.")
       }
       signals?.heardHook(id)
-      const answer = await runner.handleHook(id, payload, signal)
-      stops.noteHook(id, payload)
+      // A Codex turn that failed ends on Stop; it's taken as the StopFailure Claude would have sent.
+      const { payload: heard, limits, ignore } = await codexStops.translate(id, payload)
+      if (ignore) return {}
+      const answer = await runner.handleHook(id, heard, signal)
+      stops.noteHook(id, heard, limits)
+      const hooked = store.get().nodes.find((n) => n.id === id)
+      noteSubagentHook(id, heard, hooked?.kind === 'claude' ? hooked.transcriptPath : null)
       if (payload.hook_event_name !== 'SessionStart') return answer
       // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
       const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
@@ -586,7 +595,7 @@ async function boot(): Promise<void> {
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
-  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
+  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), persist: () => docStore.flush() })
   // The projects manager, and archiving, which stops a project's sessions first. See src/main/projects.
   setupProjects({
     dataDir, store, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id), disarmTrigger: (id) => triggers.disarm(id),

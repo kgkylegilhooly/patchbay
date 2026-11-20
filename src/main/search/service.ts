@@ -107,7 +107,7 @@ const SYNC_EVERY_MS = 60_000
 
 const failure = (e: unknown): { ok: false; reason: string } => ({ ok: false, reason: `Search is unavailable: ${e instanceof Error ? e.message : String(e)}` })
 
-export function createSearchService(d: SearchServiceDeps): SearchBridge & { start(): void; stop(): Promise<void> } {
+export function createSearchService(d: SearchServiceDeps): Omit<SearchBridge, 'saveHandoff'> & { start(): void; stop(): Promise<void> } {
   const now = d.now ?? Date.now
   const input = (): ReturnType<typeof searchSources> => {
     const extra: SourceSpec[] = []

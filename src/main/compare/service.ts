@@ -31,6 +31,7 @@ import type { CompareReads } from './reads'
 import { placeInProject } from '../../core/canvas/place'
 import { viewSize } from '../viewSize'
 import { agentsNow } from '../agentsAllowed'
+import type { CompareTaskLink } from './taskLink'
 
 type Worktree = { path: string; branch: string; repo: string }
 
@@ -49,6 +50,8 @@ export interface CompareServiceDeps {
   runVerify(argv: string[], cwd: string): Promise<RunResult>
   now?: () => number
   newId?: () => string
+  /** P1 tasks: a comparison started for one records its attempts, runs and choice there. src/main/compare/taskLink.ts. */
+  tasks?: CompareTaskLink
 }
 
 export type CompareService = ReturnType<typeof createCompareService>
@@ -143,6 +146,11 @@ export function createCompareService(d: CompareServiceDeps) {
     const info = await d.reads.source(String(req.source ?? ''))
     const problem = startProblem(req, info, agentsNow())
     if (problem || !info.ok) return { ok: false, reason: problem ?? 'The source checkout could not be read.' }
+    if (req.taskId !== undefined) {
+      if (typeof req.taskId !== 'string' || !req.taskId) return { ok: false, reason: 'No such task.' }
+      const refused = d.tasks ? d.tasks.refusal(req.projectId, req.taskId) : 'Tasks are not available here.'
+      if (refused) return { ok: false, reason: refused }
+    }
     if (!(await d.reads.isCommit(info.repo, req.base))) return { ok: false, reason: `The base commit ${req.base.slice(0, 10)} is not in ${info.repo}.` }
     const branches = req.attempts.map((a) => a.branch.trim())
     for (const b of branches) if (await d.reads.branchExists(info.repo, b)) return { ok: false, reason: `A branch named "${b}" already exists.` }
@@ -164,7 +172,9 @@ export function createCompareService(d: CompareServiceDeps) {
       let made: Worktree | null = null
       try {
         made = await d.createWorktree({ repo: info.repo, branch: branches[i], base: req.base })
-        comparison.attempts.push(await makeAttempt(req, key, made, { x: at.x + i * (GROUP.width + GAP), y: at.y }, title))
+        const attempt = await makeAttempt(req, key, made, { x: at.x + i * (GROUP.width + GAP), y: at.y }, title)
+        comparison.attempts.push(attempt)
+        d.tasks?.started(comparison, attempt)
       } catch (e) {
         // Nothing is taken back: a worktree may already hold work. What's left is said, and attempts made are recorded.
         const left = [
@@ -204,6 +214,8 @@ export function createCompareService(d: CompareServiceDeps) {
     try {
       const before = await d.reads.attempt(a.path, c.base.commit)
       if (!before.ok) return { ok: false, reason: before.reason }
+      // For the task's evidence: the worktree's identity as tasks read it, before the command can change anything.
+      const taskBefore = c.taskId && d.tasks ? await d.tasks.revision(a.path) : null
       const startedAt = now()
       const r = await d.runVerify(c.verify, a.path)
       const durationMs = Math.max(0, now() - startedAt)
@@ -218,6 +230,7 @@ export function createCompareService(d: CompareServiceDeps) {
         ...(after.ok && (after.head !== before.head || after.changes !== before.changes) ? { after: { head: after.head, changes: after.changes } } : {})
       }
       const next = patchAttempt(id, key, { verify: result })
+      if (next && taskBefore && d.tasks) await d.tasks.verified(next, a, result, taskBefore).catch(() => undefined)
       return next ? { ok: true, comparison: next } : { ok: false, reason: 'That comparison is gone.' }
     } finally {
       verifying.delete(runKey)
@@ -231,13 +244,17 @@ export function createCompareService(d: CompareServiceDeps) {
     if (!c) return { ok: false, reason: 'That comparison is gone.' }
     if (key === null) {
       const next = update(id, ({ chosen: _gone, ...rest }) => rest)!
+      d.tasks?.chosen(next, null)
       return { ok: true, comparison: next }
     }
     const a = c.attempts.find((x) => x.key === key)
     if (!a) return { ok: false, reason: `This comparison has no attempt ${attemptLabel(key)}.` }
     const state = a.removed ? null : await d.reads.attempt(a.path, c.base.commit)
     const head = state?.ok ? state.head : null
-    return { ok: true, comparison: update(id, (x) => ({ ...x, chosen: { key, at: now(), head } }))! }
+    const next = update(id, (x) => ({ ...x, chosen: { key, at: now(), head } }))!
+    // On the task too, as a record. Accepting it stays the person's own step on the board or in the review inbox.
+    d.tasks?.chosen(next, next.chosen!)
+    return { ok: true, comparison: next }
   }
 
   /**

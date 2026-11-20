@@ -125,7 +125,7 @@ async function main() {
     const opened = doc.edges.filter((e) => e.from === 'lead' && e.kind === 'opened').map((e) => e.to)
     const closedMembers = doc.closed.map((x) => x.title)
     // The agents the lead opened, whether still on the canvas or closed. A team's group is opened by the lead too, but isn't one.
-    // Recently closed keeps a conversation under an id of its own, so a closed teammate is known by its messages.
+    // Closed conversations keeps a conversation under an id of its own, so a closed teammate is known by its messages.
     const agents = new Set([...doc.nodes.filter((n) => n.kind === 'claude').map((n) => n.id), ...messages.flatMap((m) => [m.from, m.to]), ...opened.filter((id) => !doc.nodes.some((n) => n.id === id && n.kind === 'group'))])
     const memberIds = [...new Set([...seenMembers, ...opened, ...messages.flatMap((m) => [m.from, m.to])])].filter((id) => id !== 'lead' && (agents.has(id) || seenMembers.has(id)))
     const groups = opened.filter((id) => !agents.has(id))
@@ -153,7 +153,7 @@ async function main() {
     c.check('The lead waited with patchbay wait', commands.some((x) => /^patchbay wait/.test(x)))
     c.check('It didn\'t poll patchbay list over and over', commands.filter((x) => /^patchbay list/.test(x)).length <= 2, commands.filter((x) => /^patchbay list/.test(x)).length)
     c.check('The teammate reported back to the lead with patchbay send', messages.some((m) => m.to === 'lead' && memberIds.includes(m.from)))
-    // A closed teammate's conversation is still listed under Recently closed, with its transcript.
+    // A closed teammate's conversation is still listed under Closed conversations, with its transcript.
     const member = doc.nodes.find((n) => memberIds.includes(n.id)) ?? doc.closed.find((x) => x.title !== 'Team lead') ?? null
     const memberText = member?.transcriptPath && fs.existsSync(member.transcriptPath) ? fs.readFileSync(member.transcriptPath, 'utf8') : ''
     c.check('The teammate was told where it is when its session started', memberText.includes('on the Patchbay canvas'), member ? member.transcriptPath : 'no teammate found')

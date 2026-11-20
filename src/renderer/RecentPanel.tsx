@@ -47,9 +47,9 @@ export function RecentPanel({ onClose }: { onClose: () => void }): React.JSX.Ele
 
   return (
     <>
-      <aside className="drawer" aria-label="Recent conversations">
+      <aside className="drawer" aria-label="Closed conversations">
         <header className="drawer-head">
-          <h2>Recent conversations</h2>
+          <h2>Closed conversations</h2>
           <button className="icon-btn" aria-label="Close recent conversations" onClick={onClose}>
             ×
           </button>
