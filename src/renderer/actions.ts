@@ -42,7 +42,7 @@ export const ACTIONS: Action[] = [
   { id: 'new-browser', section: 'New', label: 'New browser', icon: 'browser', keywords: ['web', 'page', 'url', 'site', 'localhost'], run: (c) => c.newBrowser() },
   { id: 'new-sticky', section: 'New', label: 'New note', icon: 'note', key: 'Ctrl+Shift+N', keywords: ['sticky', 'text'], run: (c) => c.newSticky() },
   { id: 'new-whiteboard', section: 'New', label: 'New whiteboard', icon: 'whiteboard', key: 'Ctrl+Shift+D', keywords: ['draw', 'sketch', 'paint', 'diagram', 'canvas'], run: (c) => c.newWhiteboard() },
-  { id: 'spawn-team', section: 'New', label: 'Spawn a team…', icon: 'team', keywords: ['agents', 'lead', 'workstreams', 'parallel'], run: (c) => c.spawnTeamForm() },
+  { id: 'spawn-team', section: 'New', label: 'New team…', icon: 'team', keywords: ['spawn', 'agents', 'lead', 'workstreams', 'parallel'], run: (c) => c.spawnTeamForm() },
   { id: 'new-from-recipe', section: 'New', label: 'New from recipe…', icon: 'team', keywords: ['template', 'recipe', 'worktree', 'implement', 'review', 'setup'], run: () => openRecipePicker() },
   { id: 'try-approach', section: 'New', label: 'Try another approach…', icon: 'branch', keywords: ['compare', 'attempt', 'race', 'alternative', 'worktree', 'variant'], run: () => openTryApproach() },
   { id: 'comparisons', section: 'View', label: 'Comparisons…', icon: 'branch', keywords: ['compare', 'attempts', 'approach', 'winner', 'diff', 'verification'], run: () => openComparisons() },
@@ -50,7 +50,7 @@ export const ACTIONS: Action[] = [
   { id: 'new-project', section: 'New', label: 'New project…', icon: 'project', keywords: ['tab', 'workspace'], run: (c) => c.newProject() },
 
   { id: 'group', section: 'Canvas', label: 'Group selection, or new group', icon: 'group', key: 'Ctrl+Shift+G', run: (c) => c.group() },
-  { id: 'select-all', section: 'Canvas', label: 'Select all nodes', icon: 'select-all', key: 'Ctrl+A', run: (c) => c.selectAll() },
+  { id: 'select-all', section: 'Canvas', label: 'Select all', icon: 'select-all', key: 'Ctrl+A', run: (c) => c.selectAll() },
   { id: 'close-selected', section: 'Canvas', label: 'Close selected', icon: 'close', keywords: ['delete', 'remove'], ready: hasSelection, run: (c) => c.closeSelected() },
   { id: 'tidy', section: 'Canvas', label: 'Tidy canvas', icon: 'tidy', keywords: ['arrange', 'layout', 'grid'], run: (c) => c.tidy() },
   { id: 'save-recipe', section: 'Canvas', label: 'Save selection as recipe…', icon: 'note', keywords: ['template', 'recipe', 'reuse'], ready: hasSelection, run: () => openRecipeSave() },
@@ -91,7 +91,7 @@ export const ACTIONS: Action[] = [
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
-  { id: 'manage-projects', section: 'App', label: 'Manage projects…', icon: 'project', keywords: ['archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
+  { id: 'manage-projects', section: 'App', label: 'Projects…', icon: 'project', keywords: ['manage', 'archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
   { id: 'move-project-left', section: 'App', label: "Move this project's tab left", icon: 'arrow-left', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(-1) },
   { id: 'move-project-right', section: 'App', label: "Move this project's tab right", icon: 'arrow-right', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(1) },
   // Sessions live in the background host, so quitting leaves them running. Ending them is its own, separate choice.

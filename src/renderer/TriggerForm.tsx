@@ -4,8 +4,10 @@ import { describeLimits, folderProblem, isEventSchedule, limitsError, limitsOf, 
 import { describeSchedule, nextRuns, scheduleError } from '../core/trigger/schedule'
 import type { TriggerLimits, TriggerNode, TriggerPreflight, TriggerSchedule } from '../shared/model'
 import { bridge } from './bridge'
+import { PopTitle, popKeys, SubmitHint } from './popForm'
 import { useStore } from './store'
 import { draftOf, extrasDraftOf, extrasOf, scheduleOf, type ExtrasDraft, type IntervalUnit, type ScheduleDraft } from './triggerView'
+import { upcomingText } from './upcomingText'
 import './triggerEvents.css'
 
 export interface TriggerFields {
@@ -20,7 +22,7 @@ function Upcoming({ schedule }: { schedule: TriggerSchedule }): React.JSX.Elemen
   const now = Date.now()
   const times = nextRuns(schedule, now, now, 3)
   if (!times.length) return null
-  return <p className="pop-note">Next: {times.map((t) => new Date(t).toLocaleString()).join(' · ')}</p>
+  return <p className="pop-note">Next: {upcomingText(times, now)}</p>
 }
 
 /** Making or editing a trigger. It never arms: saving a change disarms it, and arming has its own step. */
@@ -44,6 +46,8 @@ export function TriggerForm({
   const [extras, setExtras] = useState<ExtrasDraft>(() => extrasDraftOf(editing, projectFolder))
   const [prompt, setPrompt] = useState(editing?.prompt ?? '')
   const [targetId, setTargetId] = useState<string | null>(editing?.targetId ?? null)
+  /** What's missing from "When" shows once Create has been tried, not as soon as a kind is picked. */
+  const [tried, setTried] = useState(false)
   const schedule = useMemo(() => scheduleOf(draft), [draft])
   const { preflight, limits, problem: commandProblem } = extrasOf(extras, schedule)
   const event = isEventSchedule(schedule)
@@ -53,21 +57,22 @@ export function TriggerForm({
   const limitsProblem = limitsError(limits)
   const promptProblem = placeholderProblem(prompt, schedule) ?? (prompt.length > MAX_TRIGGER_PROMPT ? 'The prompt is too long.' : null)
   const problem = whenProblem ?? promptProblem ?? checkProblem ?? limitsProblem
+  const title = editing ? 'Edit trigger' : 'New trigger'
   const set = (patch: Partial<ScheduleDraft>): void => setDraft((d) => ({ ...d, ...patch }))
   const setX = (patch: Partial<ExtrasDraft>): void => setExtras((d) => ({ ...d, ...patch }))
 
   return (
     <form
       className="pop pop-trigger"
-      aria-label={editing ? 'Edit trigger' : 'New trigger'}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+      aria-label={title}
+      onKeyDown={popKeys(onCancel)}
       onSubmit={(e) => {
         e.preventDefault()
+        setTried(true)
         if (!problem) onSave({ schedule, prompt, targetId, preflight, limits })
       }}
     >
+      <PopTitle icon="trigger">{title}</PopTitle>
       <p className="pop-note">
         {editing ? 'Saving a change disarms it, so it fires only after you arm it again.' : 'It starts disarmed. Nothing is sent until you arm it.'} It runs only while Patchbay is open.
       </p>
@@ -139,11 +144,11 @@ export function TriggerForm({
             <p className="pop-note">.git and node_modules are never watched. A pattern without / matches file names at any depth.</p>
           </div>
         )}
-        {whenProblem ? <p className="field-problem">{whenProblem}</p> : event ? null : <Upcoming schedule={schedule} />}
+        {whenProblem ? tried && <p className="field-problem">{whenProblem}</p> : event ? null : <Upcoming schedule={schedule} />}
       </div>
       <label className="field">
         <span className="field-label">Prompt to send</span>
-        <textarea name="prompt" rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <textarea name="prompt" rows={4} autoFocus={!editing} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         {isEventSchedule(schedule) && (
           <span className="pop-note" data-trigger="placeholders">
             Can use {PLACEHOLDERS[schedule.type].map((p) => `{{${p}}}`).join(' ')}. Write \{'{{'} for a literal {'{{'}.
@@ -172,7 +177,12 @@ export function TriggerForm({
         <div className="trigger-when">
           <input name="preflight" aria-label="Check command" spellCheck={false} placeholder="npm test" value={extras.command} onChange={(e) => setX({ command: e.target.value })} />
         </div>
-        {extras.command.trim() && <input name="preflightCwd" aria-label="Folder the check runs in" spellCheck={false} value={extras.cwd} onChange={(e) => setX({ cwd: e.target.value })} />}
+        {extras.command.trim() && (
+          <label className="trigger-when">
+            <span className="trigger-unit">Runs in</span>
+            <input name="preflightCwd" aria-label="Folder the check runs in" spellCheck={false} value={extras.cwd} onChange={(e) => setX({ cwd: e.target.value })} />
+          </label>
+        )}
         {checkProblem ? <p className="field-problem">{checkProblem}</p> : <span className="pop-note">Runs without a shell before each firing. It fires only if this exits 0.</span>}
       </div>
       {event && (
@@ -181,19 +191,20 @@ export function TriggerForm({
           <div className="trigger-when">
             <span className="trigger-unit">At most once every</span>
             <input name="gap" className="trigger-num" inputMode="decimal" aria-label="Seconds between firings" value={extras.gapSeconds} onChange={(e) => setX({ gapSeconds: e.target.value })} />
-            <span className="trigger-unit">s, and</span>
+            <span className="trigger-unit">seconds and</span>
             <input name="perHour" className="trigger-num" inputMode="numeric" aria-label="Firings per hour" value={extras.perHour} onChange={(e) => setX({ perHour: e.target.value })} />
-            <span className="trigger-unit">an hour</span>
+            <span className="trigger-unit">times an hour</span>
           </div>
           {limitsProblem && <p className="field-problem">{limitsProblem}</p>}
         </div>
       )}
       <div className="pop-actions">
+        <SubmitHint />
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
-        <button className="btn btn-solid" disabled={!!problem}>
-          {editing ? 'Save' : 'Add trigger'}
+        <button className="btn btn-solid" disabled={!!problem && (tried || !whenProblem)}>
+          {editing ? 'Save' : 'Create trigger'}
         </button>
       </div>
     </form>
@@ -213,20 +224,19 @@ export function ArmReview({ node, target, onClose }: { node: TriggerNode; target
     <form
       className="pop pop-trigger"
       aria-label="Arm trigger"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
+      onKeyDown={popKeys(onClose)}
       onSubmit={(e) => {
         e.preventDefault()
         void bridge.armTrigger(node.id, shown).then((r) => (r.ok ? onClose() : setProblem(r.reason)))
       }}
     >
+      <PopTitle icon="trigger">Arm trigger</PopTitle>
       <p className="pop-note">Arming lets this trigger type into another session by itself, while Patchbay is open. Check each part.</p>
       <dl className="arm-review">
         <dt>When</dt>
         <dd data-arm="schedule">
           {describeSchedule(node.schedule, name)}
-          {upcoming.length > 0 && <span className="arm-next">Next: {upcoming.map((t) => new Date(t).toLocaleString()).join(' · ')}</span>}
+          {upcoming.length > 0 && <span className="arm-next">Next: {upcomingText(upcoming, now)}</span>}
         </dd>
         {node.preflight && (
           <>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { LaunchListing } from '../shared/contract'
 import type { LaunchItem } from '../shared/launch'
 import { bridge } from './bridge'
+import { PopTitle, popKeys } from './popForm'
 
 export type LaunchChoice = { folder: string; item: LaunchItem }
 
@@ -14,8 +15,13 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
   const [listing, setListing] = useState<LaunchListing | { ok: false; reason: string } | null>(null)
   const [chosen, setChosen] = useState<string | null>(null)
   const chooseRef = useRef<HTMLButtonElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
 
   useEffect(() => chooseRef.current?.focus(), [])
+  // Once the folder is read, the next thing to do is pick a configuration, so focus goes to the first that can run.
+  useEffect(() => {
+    if (listing?.ok) listRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus()
+  }, [listing])
   useEffect(() => {
     setListing(null)
     setChosen(null)
@@ -30,14 +36,13 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
     <form
       className="pop pop-terminal pop-launch"
       aria-label="New run configuration"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+      onKeyDown={popKeys(onCancel)}
       onSubmit={(e) => {
         e.preventDefault()
         if (picked) onRun({ folder, item: picked })
       }}
     >
+      <PopTitle icon="launch">New run configuration</PopTitle>
       <div className="field">
         <span className="field-label">Folder with .vscode\launch.json</span>
         <div className="folder-row">
@@ -52,7 +57,7 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
       {listing && !listing.ok && <p className="field-problem">{listing.reason}</p>}
       {listing?.ok && items.length === 0 && <p className="field-problem">launch.json has no configurations.</p>}
       {items.length > 0 && (
-        <ul className="launch-list" role="listbox" aria-label="Configurations">
+        <ul ref={listRef} className="launch-list" role="listbox" aria-label="Configurations">
           {items.map((i) => (
             <li key={key(i)}>
               <label className={`launch-item${i.problem ? ' launch-item-off' : ''}`} data-launch={i.name} data-runnable={i.problem ? 'no' : 'yes'}>
@@ -77,7 +82,7 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
           Cancel
         </button>
         <button className="btn btn-solid" disabled={!picked}>
-          Run
+          Start run
         </button>
       </div>
     </form>

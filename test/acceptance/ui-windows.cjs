@@ -228,10 +228,10 @@ async function main() {
       c.check('It offers Spawn a team and a new trigger', items.some((i) => i.id === 'spawn-team') && items.some((i) => i.id === 'new-trigger'))
       const count = (await L.doc(page)).nodes.length
       await page.click('.menu-panel [data-cmd="spawn-team"]')
-      await L.waitFor('the form', () => page.$('form[aria-label="Spawn a team"]'), 3000, 50)
-      c.check('With no task it cannot start', await page.$eval('form[aria-label="Spawn a team"] .btn-solid', (b) => b.disabled))
+      await L.waitFor('the form', () => page.$('form[aria-label="New team"]'), 3000, 50)
+      c.check('With no task it cannot start', await page.$eval('form[aria-label="New team"] .btn-solid', (b) => b.disabled))
       await page.type('[name="task"]', 'Tidy the docs folder')
-      await page.click('form[aria-label="Spawn a team"] .btn-solid')
+      await page.click('form[aria-label="New team"] .btn-solid')
       const lead = await L.waitFor('the lead', async () => (await L.doc(page)).nodes.find((n) => n.title === 'Team lead'), 8000)
       c.check('It opens exactly one lead Claude', lead.kind === 'claude' && (await L.doc(page)).nodes.length === count + 1)
       const screen = await L.waitFor('the prompt to arrive', async () => {

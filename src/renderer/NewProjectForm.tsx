@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { bridge } from './bridge'
+import { PopTitle, popKeys } from './popForm'
 
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).pop() ?? ''
 
@@ -11,15 +12,14 @@ export function NewProjectForm({ onCancel, onCreate }: { onCancel: () => void; o
     <form
       className="pop"
       aria-label="New project"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+      onKeyDown={popKeys(onCancel)}
       onSubmit={(e) => {
         e.preventDefault()
         const chosen = name.trim() || lastPart(folder)
         if (chosen) onCreate({ name: chosen, folder })
       }}
     >
+      <PopTitle icon="project">New project</PopTitle>
       <div className="field">
         <span className="field-label">Folder</span>
         <div className="folder-row">

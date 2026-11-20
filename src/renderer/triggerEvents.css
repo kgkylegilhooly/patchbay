@@ -5,6 +5,16 @@
   overflow: auto;
 }
 
+/* On a short screen the form scrolls, and its buttons stay in view at the bottom. */
+.pop-trigger .pop-actions {
+  position: sticky;
+  bottom: -14px;
+  margin: 0 -14px -14px;
+  padding: 10px 14px 14px;
+  background: inherit;
+  border-top: 1px solid var(--line);
+}
+
 .trigger-when select {
   min-width: 0;
 }

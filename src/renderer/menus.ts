@@ -146,7 +146,7 @@ export function addMenu(c: Commands, at?: Point): MenuEntry[] {
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
-    { id: 'spawn-team', label: 'Spawn a team…', icon: 'team', run: () => c.spawnTeamForm(at) },
+    { id: 'spawn-team', label: 'New team…', icon: 'team', run: () => c.spawnTeamForm(at) },
     { id: 'new-trigger', label: 'New trigger…', icon: 'trigger', run: () => c.newTriggerForm(at) },
     { id: 'new-from-recipe', label: 'New from recipe…', icon: 'team', run: () => openRecipePicker(at) },
     { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
@@ -184,7 +184,7 @@ export function projectMenu(
     'separator',
     { id: 'close-project', label: 'Close project, leaving its sessions running', icon: 'folder-closed', disabled: !ctx.canClose, run: () => c.closeProject(id) },
     { id: 'archive-project', label: 'Archive project, stopping its sessions…', icon: 'archive', disabled: !!ctx.archiveRefusal, run: () => askArchive(id) },
-    { id: 'manage-projects', label: 'All projects…', icon: 'project', run: () => openProjects() },
+    { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
     { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
   ]
 }
@@ -226,14 +226,13 @@ export function editMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'paste', label: 'Paste', icon: 'paste', disabled: !s.canFind, run: () => c.paste() },
     { id: 'find', label: 'Find in terminal', icon: 'find', disabled: !s.canFind, run: () => c.find() },
     'separator',
-    { id: 'select-all', label: 'Select all nodes', icon: 'select-all', run: c.selectAll }
+    { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll }
   ]
 }
 
 export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
   return [
     { id: 'open-palette', label: 'Command palette…', icon: 'palette', run: c.openPalette },
-    { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
     'separator',
     { id: 'zoom-in', label: 'Zoom in', icon: 'plus', run: c.zoomIn },
     { id: 'zoom-out', label: 'Zoom out', icon: 'minus', run: c.zoomOut },
@@ -285,7 +284,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
-    { id: 'spawn-team', label: 'Spawn a team…', icon: 'team', run: () => c.spawnTeamForm(at) },
+    { id: 'spawn-team', label: 'New team…', icon: 'team', run: () => c.spawnTeamForm(at) },
     ...extensions,
     'separator',
     { id: 'new-sticky', label: 'New note', icon: 'note', run: () => c.newSticky(at) },
@@ -378,14 +377,18 @@ export function nodeMenu(
 
 const MARGIN = 8
 
-/** Keeps a menu on screen, preferring to stay against the point that opened it. */
+/**
+ * Keeps a menu on screen, preferring to stay against the point that opened it. A menu taller than the window is
+ * capped at the window's height less the margins (its CSS max-height) and scrolls, so it's placed at that height.
+ */
 export function clampToViewport(
   at: Point,
   size: { width: number; height: number },
   view: { width: number; height: number }
 ): Point {
+  const height = Math.min(size.height, view.height - 2 * MARGIN)
   return {
     x: Math.max(MARGIN, Math.min(at.x, view.width - size.width - MARGIN)),
-    y: Math.max(MARGIN, Math.min(at.y, view.height - size.height - MARGIN))
+    y: Math.max(MARGIN, Math.min(at.y, view.height - height - MARGIN))
   }
 }

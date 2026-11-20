@@ -135,6 +135,6 @@ export function archiveLines(p: Ready): string[] {
     p.kept.board ? 'its board' : ''
   ].filter(Boolean)
   lines.push(`Keeps every node${kept.length ? `, ${kept.join(', ')}` : ''} and the layout, as they are.`)
-  lines.push('It leaves the tabs and the closed list. Projects (in the View menu) lists it, to unarchive.')
+  lines.push('It leaves the tabs and the closed list. Projects… in the File menu lists it, to unarchive.')
   return lines
 }

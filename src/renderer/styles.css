@@ -9,6 +9,8 @@
   --face-raised: #2c2c30;
   --well: #161618;
   --line: #3a3a3e;
+  /* Input borders: --line is too faint against a field (1.45:1). */
+  --line-input: #4a4a50;
   --ink: #ececee;
   --ink-dim: #98989e;
   --tape: #38340f;
@@ -187,7 +189,7 @@ select {
   color-scheme: dark;
   color: var(--ink);
   background: var(--well);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-input);
   border-radius: 6px;
   padding: 3px 6px;
 }
@@ -239,6 +241,8 @@ select {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
+  /* Below the 40px title bar, so all of a long menu fits a short window. */
+  max-height: calc(100vh - 56px);
 }
 
 .menu-panel {
@@ -248,12 +252,20 @@ select {
   width: max-content;
   min-width: 210px;
   max-width: 340px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   background: #242427;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: 0 14px 38px rgb(0 0 0 / 0.6);
   -webkit-app-region: no-drag;
+}
+
+/* A menu taller than the window scrolls, rather than squashing its rows. */
+.menu-panel > * {
+  flex-shrink: 0;
 }
 
 .menu-item {
@@ -634,7 +646,28 @@ select {
 .pop-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 6px;
+}
+
+/* A small form's name, so it's clear which one opened. */
+.pop-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pop-title svg {
+  flex: none;
+}
+
+.pop-hint {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--ink-dim);
 }
 
 /* Project tabs */
@@ -2674,6 +2707,16 @@ circle.wb-eraser {
   border-radius: var(--radius);
 }
 
+/* A heading over the groups below it, as for the agents' advanced settings. */
+.set-group-title {
+  max-width: 760px;
+  margin: 24px auto 8px;
+  padding-inline: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
 .set-row {
   display: flex;
   flex-wrap: wrap;
@@ -2719,8 +2762,27 @@ circle.wb-eraser {
   color: var(--ink);
 }
 
+/* One column for the controls, so they line up down the page. Wider ones, like two buttons, still fit. */
+.set-control {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 250px;
+}
+
 .set-row-wide .set-control {
   flex: 1 1 100%;
+  display: block;
+  min-width: 0;
+}
+
+.set-control > input:not([type='checkbox']):not([type='radio']) {
+  width: 100%;
+  height: 32px;
+  padding-inline: 8px;
+  font-size: 13px;
+  border-radius: 6px;
 }
 
 .set-input-row {
@@ -2738,7 +2800,7 @@ circle.wb-eraser {
 }
 
 .set-control select {
-  min-width: 250px;
+  width: 100%;
   height: 32px;
   padding-inline: 8px;
   font: inherit;
@@ -2746,7 +2808,7 @@ circle.wb-eraser {
   color: var(--ink);
   color-scheme: dark;
   background: var(--well);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-input);
   border-radius: 6px;
 }
 
@@ -2769,7 +2831,7 @@ circle.wb-eraser {
 }
 
 .field-problem {
-  margin: 6px 0 0;
+  margin: 0;
   font-size: 12px;
   line-height: 1.45;
   color: #ff6b61;
@@ -2781,8 +2843,10 @@ circle.wb-eraser {
   width: 38px;
   height: 22px;
   padding: 0;
-  background: #48484e;
+  /* Off: 3:1 against the page, so it still reads as a control. */
+  background: #5c5c63;
   border: 0;
+  box-shadow: inset 0 0 0 1px #6e6e75;
   border-radius: 11px;
   cursor: pointer;
   transition: background 120ms;
@@ -2790,6 +2854,7 @@ circle.wb-eraser {
 
 .switch-on {
   background: var(--led-terminal);
+  box-shadow: none;
 }
 
 .switch-knob {
@@ -3803,21 +3868,32 @@ circle.wb-eraser {
   border-color: var(--led-waiting);
 }
 
+/* An action with no key: an offer, not a value. */
+.key-none {
+  font-weight: 400;
+  color: var(--ink-dim);
+}
+
+/* Reset shows only on a changed key, and keeps its room otherwise, so the keys stay in one column. */
+.key-reset-slot {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  min-width: 58px;
+}
+
 .key-fixed {
   font-size: 12px;
   color: var(--ink-dim);
 }
 
+/* Under the row whose key was tried. */
 .key-problem,
 .key-warning {
-  max-width: 760px;
-  margin: 0 auto 16px;
+  margin: 0 18px 10px;
 }
 
 .key-warning {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3935,12 +4011,6 @@ circle.wb-eraser {
 }
 
 .trigger-problem,
-.field-problem {
-  margin: 0;
-  font-size: 12px;
-  color: var(--led-needs);
-}
-
 .trigger-runs {
   display: flex;
   flex-direction: column;
