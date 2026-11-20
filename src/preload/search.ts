@@ -13,7 +13,8 @@ const searchBridge: SearchBridge = {
   readSource: call('readSource'),
   rebuild: call('rebuild'),
   prepareHandoff: call('prepareHandoff'),
-  startHandoff: call('startHandoff')
+  startHandoff: call('startHandoff'),
+  saveHandoff: call('saveHandoff')
 }
 
 export function exposeSearch(): void {

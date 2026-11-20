@@ -6,6 +6,7 @@ import { isSessionNode, type CanvasDoc, type CanvasNode, type ReaderNode } from 
 import { docName, isDocPath, type OpenDoc, type ReadResult, type ReaderComment } from '../../shared/reader'
 import { localPaths, openTerminalLink, type LinkDeps } from '../shellActions'
 import type { CommentStore } from './commentStore'
+import { linksStayLocal, type LinkFs } from './links'
 import { findPlan, tailLines } from './planFind'
 import { checkDocPath, docKey, insideFolder, MAX_DOC_BYTES, systemFolders } from './policy'
 
@@ -46,6 +47,8 @@ export interface DocsDeps {
   link: Omit<LinkDeps, 'home'>
   system?: string[]
   newId?: () => string
+  /** lstat and readlink, for tests. Node's by default. */
+  linkFs?: LinkFs
 }
 
 const missing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT'
@@ -71,6 +74,9 @@ export function createDocsService(d: DocsDeps) {
   const checkFile = async (path: string): Promise<{ ok: true; path: string; real: string; mtimeMs: number } | Fail> => {
     const given = checkDocPath(path, system)
     if (!given.ok) return given
+    // Before realpath, which would open a link to a network share and so connect to it.
+    const links = await linksStayLocal(given.path, d.linkFs)
+    if (!links.ok) return links
     let real: string
     try {
       real = await d.fs.realpath(given.path)

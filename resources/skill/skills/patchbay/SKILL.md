@@ -268,8 +268,10 @@ patchbay files --node <id> --turn
 Lists the files that agent edited with its own edit or patch calls, newest first, with the turn each was last edited
 in. Without `--node` it lists your own. `--turn` keeps the latest turn only. `alsoEditedBy` names another live agent
 that edited the same file in the same checkout, so check before you both change it. `unconfirmed` means the transcript
-never said whether that edit worked. Files changed by shell commands aren't listed. Like `read`, it works for nodes
-you opened or are linked to.
+never said whether that edit worked. `bySubagents` counts edits its subagents made. `changedDuringTurns` means the
+checkout changed there during that turn with no edit call, so a shell command or another process changed it; that
+check is skipped (`turnEndCheck` says why) when another agent works in the same checkout. Like `read`, it works for
+nodes you opened or are linked to.
 
 ## Read a node
 
