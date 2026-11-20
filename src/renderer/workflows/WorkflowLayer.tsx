@@ -10,6 +10,7 @@ import { attemptLook, workflowRunLook } from '../status/status'
 import { StatusMark, StatusPair } from '../status/StatusMarks'
 import { openRunPanel, useWorkflowUi } from './workflowUi'
 import './workflows.css'
+import { safePadding } from '../safeArea'
 
 function Value({ value }: { value: OutputValue }): React.JSX.Element {
   if (value.type === 'text') {
@@ -114,7 +115,7 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
     const r = await workflows.act(run.id, a)
     if (!r.ok) setProblem(r.reason)
   }
-  const show = (id: string): void => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
+  const show = (id: string): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
   const ended = run.state === 'succeeded' || run.state === 'stopped'
   return (
     <aside className="workflow-panel pop" aria-label={`Workflow run ${run.definition.name}`} data-workflow-panel={run.state}>
