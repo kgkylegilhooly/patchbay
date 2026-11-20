@@ -365,7 +365,8 @@ handoff from the conversation: objective, decisions, changed files, verification
 extracted from the transcript and git, with no AI call, and says so. What it can't find is marked `[Missing: …]` and
 what may be out of date `[Stale: …]`, such as a test that ran before later edits, a file that's gone, or an agent
 still working. Edit any of it, choose Claude Code or Codex, the folder and a title, and start the agent with it.
-Copy as Markdown copies the whole handoff.
+Copy as Markdown copies the whole handoff. **Save as file…** saves it as Markdown where you pick, starting in the
+project's folder, and **Open in Reader** then shows that file on the canvas.
 
 ## Projects and undo
 
@@ -498,7 +499,8 @@ the file.
   with `patchbay open-doc --path plan.md`.
 - **Reading.** Headings, lists, tables, task boxes and colored code, with an **Outline** to jump through and an arrow on
   each heading to fold its section. **Paper** gives a light page. When the file changes on disk the reader follows it,
-  keeps your place and says when it changed.
+  keeps your place and says when it changed. Pictures stored with the document show too. Pictures from the web are
+  never loaded: they show as a link you can open in your browser. Mermaid blocks show as their code.
 - **Comments.** Select words and press **Comment**, or press the **+** beside a paragraph or heading, or comment on the
   whole document. A comment keeps the words it's on, so it finds them again after edits, and says **Outdated** when
   they're gone. Comments are kept per file in app data, so closing the reader doesn't lose them.
@@ -508,7 +510,8 @@ the file.
   next send. An agent linked to the reader can also read the comments with `patchbay read`.
 - Readers open `.md`, `.markdown`, `.mdx` and `.txt` files on this PC's drives, up to 4 MB, but not network
   shares or files under Windows or Program Files. Links to the web open in your browser, and links to other Markdown
-  files open in another reader.
+  files open in another reader. A picture shows only from the document's folder or its project's, or, for a document
+  an agent opened, that agent's folders, up to 8 MB.
 
 ## Whiteboards
 
