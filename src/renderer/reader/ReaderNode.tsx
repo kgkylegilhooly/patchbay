@@ -14,6 +14,7 @@ import { ReaderComments, type Draft } from './ReaderComments'
 import { ReaderIcon } from './ReaderIcon'
 import { docsBridge, samePath } from './readerBridge'
 import { findQuote, rangeText, sectionOf, setHighlights, visibleText } from './quoteRange'
+import { enhanceBlocks } from './enhance'
 import { renderBlocks, renderHeading } from './render'
 import { changedAgo, slug } from './targets'
 import './reader.css'
@@ -128,7 +129,10 @@ const Section = memo(function Section({
   hidden,
   count,
   onToggle,
-  onShowComments
+  onShowComments,
+  nodeId,
+  version,
+  paper
 }: {
   index: number
   doc: DocOutline
@@ -137,9 +141,20 @@ const Section = memo(function Section({
   count: number
   onToggle: (i: number) => void
   onShowComments: (i: number) => void
+  nodeId: string
+  /** The file's modification time: pictures are read again when it changes. */
+  version: number
+  paper: boolean
 }): React.JSX.Element {
   const s = doc.sections[index]
   const html = useMemo(() => (collapsed ? '' : renderBlocks(s.body)), [s, collapsed])
+  const blocksRef = useRef<HTMLDivElement>(null)
+  // Diagrams and pictures, put in after the cleaned HTML is on the page.
+  useLayoutEffect(() => {
+    const el = blocksRef.current
+    if (!el || !html) return
+    return enhanceBlocks(el, { nodeId, version, theme: paper ? 'light' : 'dark' })
+  }, [html, nodeId, version, paper])
   const heading = useMemo(() => (s.heading ? renderHeading(s.heading) : ''), [s])
   const H = `h${Math.min(6, Math.max(1, s.depth))}` as 'h1'
   return (
@@ -159,7 +174,7 @@ const Section = memo(function Section({
           )}
         </div>
       )}
-      {!collapsed && <div className="reader-blocks" dangerouslySetInnerHTML={{ __html: html }} />}
+      {!collapsed && <div className="reader-blocks" ref={blocksRef} dangerouslySetInnerHTML={{ __html: html }} />}
     </section>
   )
 })
@@ -482,6 +497,9 @@ export const ReaderNode = memo(function ReaderNode({ data, selected }: NodeProps
                   count={perSection.get(s.index) ?? 0}
                   onToggle={onToggle}
                   onShowComments={onShowComments}
+                  nodeId={node.id}
+                  version={loaded.mtimeMs}
+                  paper={paper}
                 />
               ))}
               {hover && !bubble && (

@@ -14,6 +14,17 @@ export interface StartHandoff {
   besideNodeId?: string
 }
 
+export interface SaveHandoff {
+  /** The handoff as Markdown, as Copy as Markdown gives it. */
+  text: string
+  /** Names the file the save dialog suggests. */
+  title: string
+  /** Its folder is where the save dialog starts. */
+  projectId?: string
+}
+
+export type SaveHandoffResult = { ok: true; path: string } | SearchRefusal | { ok: false; cancelled: true; reason: string }
+
 /**
  * The search drawer's and handoff editor's calls to main, as window.patchbaySearch. Each is one request on the channel
  * `pb:search:<method>`, served in src/main/search/ipc.ts. Only the person's window can call these: no agent verb reaches
@@ -31,4 +42,6 @@ export interface SearchBridge {
   rebuild(): Promise<{ ok: true; stats: IndexStats } | SearchRefusal>
   prepareHandoff(source: HandoffSource): Promise<{ ok: true; draft: HandoffDraft } | SearchRefusal>
   startHandoff(a: StartHandoff): Promise<{ ok: true; nodeId: string } | SearchRefusal>
+  /** Saves the handoff as a Markdown file where the person picks (see src/main/search/saveHandoff.ts). */
+  saveHandoff(a: SaveHandoff): Promise<SaveHandoffResult>
 }

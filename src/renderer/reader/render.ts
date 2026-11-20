@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import { Marked, type Tokens, type TokensList } from 'marked'
+import { imageHrefKind } from '../../core/reader/pictures'
 import { escapeHtml, highlight, languageLabel } from '../highlight'
 
 /**
@@ -11,10 +12,12 @@ const markdown = new Marked({
   breaks: false,
   renderer: {
     code({ text, lang }) {
+      // A Mermaid block is drawn as a diagram once the page has it (see ./enhance.ts). Until then, or when it can't
+      // be drawn, it shows as its source.
       const mermaid = (lang ?? '').trim().toLowerCase() === 'mermaid'
-      const label = mermaid ? 'Mermaid diagram (source)' : languageLabel(lang)
+      const label = mermaid ? 'Mermaid diagram' : languageLabel(lang)
       return (
-        `<div class="code-block"><div class="code-head"><span class="code-lang">${escapeHtml(label)}</span>` +
+        `<div class="code-block${mermaid ? ' code-mermaid' : ''}"><div class="code-head"><span class="code-lang">${escapeHtml(label)}</span>` +
         `<span class="code-copy" role="button" tabindex="0">Copy</span></div>` +
         `<pre><code>${highlight(text.replace(/\n$/, ''), mermaid ? undefined : lang)}</code></pre></div>`
       )
@@ -23,9 +26,14 @@ const markdown = new Marked({
     checkbox({ checked }) {
       return `<input type="checkbox" class="task" disabled=""${checked ? ' checked=""' : ''}> `
     },
-    // The window loads no remote pictures, and local ones only from itself, so a picture is named rather than broken.
+    // A local picture is named here and shown once main has read it (see ./enhance.ts). The window never loads one
+    // from the web: that stays a link to it.
     image({ text, href }) {
-      return `<span class="reader-img" title="${escapeHtml(href ?? '')}">${escapeHtml(text ? `Image: ${text}` : 'Image')}</span>`
+      const label = escapeHtml(text ? `Image: ${text}` : 'Image')
+      if (imageHrefKind(href) === 'remote') {
+        return `<a class="reader-img reader-img-remote" href="${escapeHtml(href ?? '')}" title="Not loaded: pictures from the web aren't shown here. Click to open it in the browser.">${label}</a>`
+      }
+      return `<span class="reader-img reader-img-local" title="${escapeHtml(href ?? '')}">${label}</span>`
     }
   }
 })
@@ -40,7 +48,7 @@ const PURIFY = {
 }
 
 /** The classes this renderer gives out. Any other class in a document is dropped, so it can't pass for an app part. */
-const OWN_CLASS = /^(code-(block|head|lang|copy)|tok-[a-z]+|task|reader-img)$/
+const OWN_CLASS = /^(code-(block|head|lang|copy|mermaid)|tok-[a-z]+|task|reader-img(-local|-remote)?)$/
 
 /** A document's HTML, made safe: see PURIFY and OWN_CLASS. Exported for tests. */
 export function clean(html: string): string {
