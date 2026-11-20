@@ -5,6 +5,9 @@ import { recipes } from './recipeBridge'
 import { useAgentChoice } from './agentChoice'
 import { agentNames } from '../shared/agents'
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
+import { WorkflowList } from './workflows/WorkflowList'
+import { WorkflowPane, useWorkflowShown } from './workflows/WorkflowPane'
+import { leaveWorkflows } from './workflows/workflowUi'
 
 type Listing = { entries: RecipeEntry[]; repo: string | null; folder: string }
 
@@ -50,6 +53,9 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
   const agents = useAgentChoice()
   const [useAgent, setUseAgent] = useState<AgentKind | undefined>(undefined)
   const taskRef = useRef<HTMLTextAreaElement>(null)
+  // A workflow chosen in the second section takes the right side; see src/renderer/workflows.
+  const workflowShown = useWorkflowShown()
+  useEffect(() => leaveWorkflows, [])
 
   useEffect(() => {
     void recipes.list(projectId).then((l) => {
@@ -99,7 +105,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
   const canStart = !!recipe && !busy && !missing && badEdits.length === 0 && !plan?.problems.length
 
   const start = async (): Promise<void> => {
-    if (!entry || !canStart) return
+    if (!entry || !canStart || workflowShown) return
     setBusy(true)
     setProblem(null)
     const r = await recipes.start({ projectId, ref: entry.ref, ...(entry.hash ? { hash: entry.hash } : {}), params })
@@ -128,16 +134,17 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
             type="button"
             key={e.ref}
             role="option"
-            aria-selected={e.ref === chosen}
-            className={`recipe-item${e.ref === chosen ? ' recipe-item-on' : ''}${e.recipe ? '' : ' recipe-item-off'}`}
+            aria-selected={e.ref === chosen && !workflowShown}
+            className={`recipe-item${e.ref === chosen && !workflowShown ? ' recipe-item-on' : ''}${e.recipe ? '' : ' recipe-item-off'}`}
             data-recipe={e.name}
-            onClick={() => setChosen(e.ref)}
+            onClick={() => (leaveWorkflows(), setChosen(e.ref))}
           >
             <span className="recipe-item-name">{e.name}</span>
             <span className={`recipe-source recipe-source-${e.source}`}>{SOURCE_LABEL[e.source]}</span>
             {e.problem && <span className="recipe-why">{e.problem}</span>}
           </button>
         ))}
+        <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />
         <div className="recipe-list-foot">
           <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
             Personal folder
@@ -150,7 +157,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
         </div>
       </div>
 
-      <div className="recipe-preview">
+      {workflowShown ? <WorkflowPane projectId={projectId} onStart={onStart} onCancel={onCancel} /> : <div className="recipe-preview">
         {entry && !recipe && <p className="field-problem">This recipe can't be used: {entry.problem}</p>}
         {recipe && plan && (
           <>
@@ -334,7 +341,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
             {busy ? 'Starting…' : 'Start'}
           </button>
         </div>
-      </div>
+      </div>}
     </form>
   )
 }

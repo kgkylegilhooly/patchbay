@@ -598,6 +598,28 @@ linked, and setup steps that run before the agents start.
 
 The design is in `docs/plans/recipes.md`.
 
+## Workflows
+
+A workflow is a saved process: a form of inputs, then steps that run one after another, each passing its results to
+the next. Steps are an agent task, a command (a program and its arguments, no shell) or your review.
+
+- **New from recipe…** lists workflows in a second section. Choosing one shows its form and each step as it will run.
+  **Start** makes a worktree for the run, a group, and each step's node as its turn comes.
+- A step finishes only with evidence: the agent submits its result with `patchbay job-submit`, the command exits with
+  code 0, or you approve. An agent going idle never counts; you can remind it once, or mark the step done yourself.
+  A failing step stops the run; **Retry** runs it again on a new node and keeps the old attempt.
+- At a review you see what it shows. **Request changes** sends your note to the agent whose work it is, which works
+  on it again in the same session.
+- A chip above the dock says where each run is ("Step 3 of 4 · Tests running"); click it for the run panel.
+- **+ New workflow** and **Edit** open the step editor: inputs, steps in order, and values picked from a list (such as
+  "Plan › Plan document"). A workflow with problems still saves, and can't start until they're fixed.
+- A workflow can make a task for each run, which you accept in the review inbox.
+- Agents can start only a personal workflow you have started before, unchanged. Runs go on while Patchbay is open
+  or in the tray; after a full quit, steps are checked when it opens again, and nothing counts as done without its
+  result.
+
+The design is in `docs/plans/workflows.md` and `docs/plans/workflows-impl.md`.
+
 ## Comparing two approaches
 
 **Try another approach…** (canvas menu, an agent's menu, palette) gives one brief to two attempts, each with its own
