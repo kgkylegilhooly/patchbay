@@ -7,12 +7,13 @@ import type { Commands } from './menus'
  * What an empty project shows: the three ways most work starts, as buttons, and where the rest lives. The right-click
  * menu stays the full list; this only makes the first step visible.
  */
-export function EmptyCanvas({ commands }: { commands: Commands }): React.JSX.Element {
+export function EmptyCanvas({ commands, onContextMenu }: { commands: Commands; onContextMenu: (e: React.MouseEvent) => void }): React.JSX.Element {
   const agents = useAgentChoice()
   // Claude Code when it's on, otherwise Codex, so the first button always starts an agent that can run.
   const agent = commandAllowed('new-claude', agents) ? 'claude' : commandAllowed('new-codex', agents) ? 'codex' : null
   return (
-    <section className="stage-empty" aria-labelledby="stage-empty-title">
+    // "Right-click anywhere" includes the card itself, so it opens the canvas menu there too.
+    <section className="stage-empty" aria-labelledby="stage-empty-title" onContextMenu={onContextMenu}>
       <h2 id="stage-empty-title">Start with an agent or a terminal</h2>
       <div className="stage-empty-actions">
         {agent === 'claude' && (

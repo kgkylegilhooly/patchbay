@@ -425,7 +425,7 @@ function Canvas(): React.JSX.Element | null {
             />
           )}
         </ReactFlow>
-        {nodes.length === 0 && <EmptyCanvas commands={commands} />}
+        {nodes.length === 0 && <EmptyCanvas commands={commands} onContextMenu={onPaneMenu} />}
         {prefs.legend && (
           <ul className="legend" aria-label="What the links mean">
             <li className="legend-opened">Opened</li>
