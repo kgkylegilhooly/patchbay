@@ -10,6 +10,7 @@ import { closeHandoff, closeSearch, searchBridge } from './searchUi'
 import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
 import './search.css'
+import { safePadding } from './safeArea'
 
 const EVIDENCE: Record<Evidence, string> = { found: 'Found', partial: 'Partial', stale: 'Stale', missing: 'Missing' }
 
@@ -75,7 +76,7 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
     const doc = useStore.getState().doc
     const projectId = doc?.nodes.find((n) => n.id === r.nodeId)?.projectId ?? draft.projectId
     if (doc && projectId && projectId !== doc.activeProjectId && doc.projects.some((p) => p.id === projectId)) void bridge.dispatch({ op: 'switchProject', id: projectId })
-    setTimeout(() => void flow.fitView({ nodes: [{ id: r.nodeId }], padding: 0.2, maxZoom: 1, duration: 260 }), 300)
+    setTimeout(() => void flow.fitView({ nodes: [{ id: r.nodeId }], padding: safePadding(), maxZoom: 1, duration: 260 }), 300)
   }
 
   const markdown = draft ? handoffMarkdown(draft.sourceTitle, sections) : ''
