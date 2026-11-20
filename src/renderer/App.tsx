@@ -47,6 +47,7 @@ import { TerminalNode } from './nodes/TerminalNode'
 import { noteRecent } from './palette'
 import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from './prefs'
 import { useViewAreaReport } from './viewArea'
+import { safePadding, useChromeLayout, useChromeWatch } from './safeArea'
 import { RecentPanel } from './RecentPanel'
 import { SearchLayer } from './SearchLayer'
 import { ReviewInboxLayer } from './ReviewInbox'
@@ -130,6 +131,10 @@ function Canvas(): React.JSX.Element | null {
 
   const [prefs, setPrefs] = useState(loadPrefs)
   useViewAreaReport(prefs.sidebar)
+  const mapOn = prefs.minimap && nodes.length > 0
+  useChromeWatch(mapOn, !!doc)
+  const foldMap = useChromeLayout((s) => s.foldMap)
+  const mapOpen = useChromeLayout((s) => s.mapOpen)
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
   const setPref = useCallback((key: TogglePref) => {
@@ -347,7 +352,7 @@ function Canvas(): React.JSX.Element | null {
   useEffect(
     () =>
       bridge.onCenterNode((id) => {
-        const center = (): void => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
+        const center = (): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
         // A node in another project only exists on screen once its project has been drawn.
         if (flow.getNode(id)) center()
         else setTimeout(center, 300)
@@ -413,8 +418,9 @@ function Canvas(): React.JSX.Element | null {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <SubagentLayer />
           <TidyLayer sidebar={prefs.sidebar} />
-          {prefs.minimap && nodes.length > 0 && (
+          {mapOn && (!foldMap || mapOpen) && (
             <MiniMap<FlowNode>
+              className={foldMap ? 'minimap-lifted' : undefined}
               pannable
               zoomable
               onClick={onMapClick}
@@ -440,7 +446,7 @@ function Canvas(): React.JSX.Element | null {
         {prefs.sidebar && (
           <Sidebar commands={commands} prefs={prefs} onPrefs={updatePrefs} onClose={closeSidebar} />
         )}
-        <Dock commands={commands} sidebar={prefs.sidebar} recent={recentOpen} groupLabel={selected.length ? 'Group selection' : 'New group'} />
+        <Dock commands={commands} sidebar={prefs.sidebar} groupLabel={selected.length ? 'Group selection' : 'New group'} />
         {form?.kind === 'run-config' && (
           <LaunchForm
             initialFolder={defaultFolder(form.groupId)}

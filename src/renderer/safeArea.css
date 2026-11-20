@@ -1,0 +1,77 @@
+/* The safe area and the dock's layout. See src/core/canvas/safeArea.ts. */
+
+.stage {
+  /* Mirrors SAFE_MARGIN and SAFE_GAP: room kept from the canvas's edges and from each piece of chrome. */
+  --safe-margin: 16px;
+  --safe-gap: 12px;
+}
+
+/* The dock sits in the free part of the bottom row, between the sidebar and the minimap or a panel. Until the layout
+   has run it stays centred, as before. */
+.stage[data-dock-placed] > .dock {
+  left: var(--dock-left, 50%);
+  transform: none;
+}
+
+/* With a panel open on the right and too little room, the dock runs under it, drawn above: its zoom stays in reach. */
+.stage[data-dock-raised] > .dock {
+  z-index: 10;
+}
+
+/* ...and the panel it runs under keeps its last rows (a long list, the commit button) clear of it. */
+.stage[data-dock-raised] > .git-panel,
+.stage[data-dock-raised] > .drawer:not(.rvi) {
+  padding-bottom: var(--dock-room, 0px);
+}
+
+/* Work: the dock's one worded button, because it opens places rather than doing one thing. */
+.dock-work {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.06);
+  border: 0;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.dock-work:hover,
+.dock-work[aria-expanded='true'] {
+  background: rgb(255 255 255 / 0.13);
+}
+
+.dock-work:focus-visible,
+.dock-btn:focus-visible,
+.dock-zoom:focus-visible {
+  outline: 2px solid var(--cable-link);
+  outline-offset: 1px;
+}
+
+/* How many submissions wait for review. Neutral, not a status colour: it's a count of things to read. */
+.dock-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--face);
+  background: var(--ink);
+  border-radius: 999px;
+}
+
+/* A folded minimap, shown from the dock's Map button: above the dock's row, never on it. */
+.react-flow__minimap.minimap-lifted {
+  margin-bottom: 76px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+}
