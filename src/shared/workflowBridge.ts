@@ -41,6 +41,9 @@ export type PersonAction =
 
 export type Outcome = { ok: true } | { ok: false; reason: string }
 
+/** A review step waiting on a document: where the reader's comments go as Request changes. */
+export interface ReviewTarget { runId: string; attemptId: string; workflow: string; step: string; agent: string }
+
 /** The page's calls to main for workflows, on `pb:workflows:<method>`. See src/main/workflows/ipc.ts. */
 export interface WorkflowBridge {
   list(projectId: string): Promise<{ entries: WorkflowEntry[]; repo: string | null; folder: string }>
@@ -48,6 +51,8 @@ export interface WorkflowBridge {
   start(a: { projectId: string; ref: string; hash?: string; inputs: Record<string, unknown>; at?: { x: number; y: number } }): Promise<{ ok: true; runId: string; groupId: string | null } | { ok: false; reason: string; problems?: string[] }>
   runs(projectId: string): Promise<WorkflowRun[]>
   act(runId: string, action: PersonAction): Promise<Outcome>
+  /** The review step waiting on a document, so the reader can send its comments as Request changes. */
+  reviewFor(path: string): Promise<ReviewTarget | null>
   /** Saves a definition. One with issues still saves; `file` replaces that file, in the folder for `where`. */
   save(a: { projectId: string; workflow: unknown; where: 'personal' | 'repository'; overwrite?: boolean; file?: string }): Promise<{ ok: true; file: string; hash: string; issues: WorkflowIssue[] } | { ok: false; reason: string; exists?: boolean }>
   openFolder(projectId: string, where: 'personal' | 'repository'): Promise<void>

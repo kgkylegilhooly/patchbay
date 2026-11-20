@@ -466,6 +466,31 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     }
   }
 
+  /**
+   * The review waiting on a document, if any: a file a waiting review step shows, as kept or as the agent wrote it.
+   * The reader then sends its comments as Request changes, so the agent's revision goes through the run instead of
+   * arriving as a stray message the run never hears back from. Null when the file isn't under review, or the review
+   * shows no agent's work to send changes to.
+   */
+  const reviewFor = (path: string): { runId: string; attemptId: string; workflow: string; step: string; agent: string } | null => {
+    const want = resolve(path).toLowerCase()
+    for (const run of runs.values()) {
+      if (run.stopped || run.state !== 'waiting-for-you') continue
+      for (const step of run.definition.steps) {
+        const a = currentAttempt(run, step.key)
+        if (step.kind !== 'review' || a?.state !== 'waiting-for-you') continue
+        const plan = planStep(run, step)
+        const shows = plan.ok && plan.show?.some((s) => s.value.type === 'file' && [s.value.path, s.value.source].some((p) => resolve(p).toLowerCase() === want))
+        if (!shows) continue
+        const order = run.definition.steps.map((s) => s.key)
+        const agentKey = step.show.flatMap((b) => ('step' in b ? [b.step] : [])).filter((k) => run.definition.steps.find((s) => s.key === k)?.kind === 'agent').sort((x, y) => order.indexOf(y) - order.indexOf(x))[0]
+        if (!agentKey) return null
+        return { runId: run.id, attemptId: a.id, workflow: run.definition.name, step: step.title, agent: run.definition.steps.find((s) => s.key === agentKey)!.title }
+      }
+    }
+    return null
+  }
+
   const save = async (a: { projectId: string; workflow: unknown; where: 'personal' | 'repository'; overwrite?: boolean; file?: string }) => {
     let dir = personalDir
     if (a.where === 'repository') {
@@ -501,6 +526,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     runs: (projectId?: string): WorkflowRun[] => [...runs.values()].filter((r) => !projectId || r.projectId === projectId).sort((a, b) => b.startedAt - a.startedAt),
     get: (runId: string): WorkflowRun | undefined => runs.get(runId),
     runOfNode,
+    reviewFor,
     unavailable: loaded.unavailable,
     stepOutputs,
     async flush(): Promise<void> {

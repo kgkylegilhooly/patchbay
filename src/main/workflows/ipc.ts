@@ -41,6 +41,7 @@ export function registerWorkflowIpc({ service, dataDir }: { service: WorkflowSer
     return r.ok ? { ok: true, runId: r.run.id, groupId: r.run.groupId } : r
   })
   handle('runs', (projectId: string) => service.runs(String(projectId)))
+  handle('reviewFor', (path: string) => service.reviewFor(String(path)))
   handle('act', async (runId: string, action: PersonAction) => {
     if (!action || !ACTIONS.includes(action.type)) return { ok: false, reason: 'Unknown action.' }
     const r = await service.act(String(runId), action)

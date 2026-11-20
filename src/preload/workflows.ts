@@ -8,7 +8,7 @@ const call =
   (...args: unknown[]): Promise<never> =>
     ipcRenderer.invoke(`pb:workflows:${name}`, ...args) as Promise<never>
 
-const names = ['list', 'preview', 'start', 'runs', 'act', 'save', 'openFolder', 'openFile'] as const
+const names = ['list', 'preview', 'start', 'runs', 'act', 'reviewFor', 'save', 'openFolder', 'openFile'] as const
 
 export function exposeWorkflows(): void {
   const bridge = {

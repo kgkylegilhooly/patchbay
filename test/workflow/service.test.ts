@@ -204,6 +204,26 @@ describe('running a workflow through the service', () => {
   })
 })
 
+describe('the reader during a review', () => {
+  test('a document a waiting review shows, kept or as written, is routed to Request changes; nothing else is', async () => {
+    const w = world()
+    await startByPerson(w)
+    await submitPlan(w)
+    const doc = w.att('plan').outputs!.doc
+    if (doc.type !== 'file') throw new Error('not a file')
+    const target = { runId: w.run().id, attemptId: w.att('approve').id, workflow: 'Feature', step: 'Approve plan', agent: 'Plan' }
+    expect(w.service.reviewFor(doc.path)).toEqual(target)
+    expect(w.service.reviewFor(doc.source.toUpperCase())).toEqual(target)
+    expect(w.service.reviewFor(join(w.root, 'other.md'))).toBeNull()
+    // The reader's Send: the comments reach the plan agent, and the review opens again after it resubmits.
+    const planNode = w.att('plan').nodeId!
+    await w.service.act(target.runId, { type: 'decide', attemptId: target.attemptId, decision: 'request-changes', note: 'Comments on Plan:\n- Cover mobile' })
+    await w.settle()
+    expect(w.sent).toEqual([[planNode, expect.stringContaining('Cover mobile')]])
+    expect(w.service.reviewFor(doc.path)).toBeNull()
+  })
+})
+
 describe('who can submit', () => {
   test('only the current agent step\'s node, with files inside the run\'s folder', async () => {
     const w = world()

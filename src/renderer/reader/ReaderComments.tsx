@@ -7,6 +7,7 @@ import type { CommentAnchor, ReaderComment } from '../../shared/reader'
 import { bridge } from '../bridge'
 import { useStore } from '../store'
 import { changedAgo, readerTargets } from './targets'
+import { requestChanges, useReviewFor } from '../workflows/useReviewFor'
 
 /** A comment being written: on a quote, or on the whole document. */
 export interface Draft {
@@ -177,8 +178,16 @@ export function ReaderComments({
   const resolved = ordered.filter((c) => c.resolved).length
   const shown = showResolved ? ordered : ordered.filter((c) => !c.resolved)
   const sending = unsent(comments)
+  // A workflow's review step waiting on this document: Send is its Request changes. See src/renderer/workflows.
+  const review = useReviewFor(node.path)
 
   const send = async (): Promise<void> => {
+    if (review && sending.length) {
+      const r = await requestChanges(review, formatComments({ title: node.title, path: node.path, comments: sending, doc }))
+      if (!r.ok) return setResult({ ok: false, text: r.reason })
+      update((l) => markSent(l, sending.map((c) => c.id), review.agent, Date.now(), false))
+      return setResult({ ok: true, text: `Sent to ${review.agent} as changes requested at "${review.step}". The workflow reviews it again when ${review.agent} resubmits.` })
+    }
     if (!chosen || !sending.length) return
     const text = formatComments({ title: node.title, path: node.path, comments: sending, doc })
     const r = await bridge.sendToAgent(chosen.id, text)
@@ -223,7 +232,11 @@ export function ReaderComments({
         </ul>
       </div>
       <div className="reader-send">
-        {targets.length === 0 ? (
+        {review ? (
+          <span className="reader-c-empty" data-reader-review>
+            Workflow "{review.workflow}" is waiting on this at "{review.step}". Sending requests changes from {review.agent}.
+          </span>
+        ) : targets.length === 0 ? (
           <span className="reader-c-empty">Open an agent to send comments to.</span>
         ) : (
           <select aria-label="Send the comments to" value={chosen?.id ?? ''} onChange={(e) => setTo(e.target.value)}>
@@ -234,8 +247,8 @@ export function ReaderComments({
             ))}
           </select>
         )}
-        <button type="button" className="git-btn reader-send-btn" data-reader-send disabled={!chosen || sending.length === 0} onClick={() => void send()}>
-          {sending.length ? `Send ${sending.length} ${sending.length === 1 ? 'comment' : 'comments'}` : 'Send comments'}
+        <button type="button" className="git-btn reader-send-btn" data-reader-send disabled={(!chosen && !review) || sending.length === 0} onClick={() => void send()}>
+          {review ? `Request changes (${sending.length})` : sending.length ? `Send ${sending.length} ${sending.length === 1 ? 'comment' : 'comments'}` : 'Send comments'}
         </button>
         {result && (
           <span className={result.ok ? 'reader-result' : 'reader-result reader-result-bad'} role="status">
