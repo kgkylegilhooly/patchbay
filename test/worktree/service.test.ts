@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { checkRemovable, createWorktree, defaultWorktreePath, removeWorktree } from '../../src/core/worktree/service'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let root: string
 let repo: string
@@ -33,9 +36,7 @@ beforeEach(() => {
   repo = makeRepo(join(root, 'repo'))
 })
 
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
-})
+afterEach(() => removeTemp(root))
 
 test('defaultWorktreePath is <parent>/<name>-worktrees/<branch with / as ->', () => {
   expect(defaultWorktreePath(join(root, 'repo'), 'feature/a/b')).toBe(join(root, 'repo-worktrees', 'feature-a-b'))

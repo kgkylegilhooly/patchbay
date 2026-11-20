@@ -1,9 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdtempSync } from 'node:fs'
+import { constants, getPriority, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { createSessionHost, SessionStartError } from '../../src/main/sessions/host'
 import type { SessionHost, SessionSpec } from '../../src/shared/contract'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const CMD = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
 
@@ -66,34 +69,34 @@ test('a real shell echoes input and fires onExit once when killed', async () => 
   h.start(spec())
   expect(h.isRunning('n')).toBe(true)
   h.write('n', 'echo marker-%USERNAME%-end\r')
-  await vi.waitFor(() => expect(h.snapshot('n').data).toMatch(/marker-[^%\r\n]+-end/), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toMatch(/marker-[^%\r\n]+-end/), { timeout: 30_000 })
 
   await h.kill('n')
   await h.kill('n')
   expect(h.isRunning('n')).toBe(false)
   expect(exits).toHaveLength(1)
   expect(exits[0][0]).toBe('n')
-}, 30000)
+})
 
 test('a process that exits by itself fires onExit with its code and kill afterward is safe', async () => {
   const h = host()
   const exits: number[] = []
   h.onExit((_id, code) => exits.push(code))
   h.start(spec({ args: ['/c', 'exit 7'] }))
-  await vi.waitFor(() => expect(exits).toEqual([7]), { timeout: 15000 })
+  await vi.waitFor(() => expect(exits).toEqual([7]), { timeout: 30_000 })
   expect(h.isRunning('n')).toBe(false)
   await h.kill('n')
   h.write('n', 'x')
   h.resize('n', 80, 24)
   expect(exits).toEqual([7])
-}, 30000)
+})
 
 test('snapshot plus later chunks loses and duplicates nothing', async () => {
   const h = host()
   const chunks: Array<[string, number]> = []
   h.onOutput((_id, data, seq) => chunks.push([data, seq]))
   h.start(spec(printing('first-mark')))
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('first-mark'), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('first-mark'), { timeout: 30_000 })
 
   const snap = h.snapshot('n')
   // Everything delivered up to the snapshot is exactly what the snapshot holds.
@@ -102,12 +105,12 @@ test('snapshot plus later chunks loses and duplicates nothing', async () => {
 
   const mark = chunks.length
   h.write('n', 'echo second-mark\r')
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('second-mark'), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('second-mark'), { timeout: 30_000 })
   const later = chunks.slice(mark)
   expect(later[0][1]).toBe(snap.seq + 1)
   later.forEach(([, seq], i) => expect(seq).toBe(snap.seq + 1 + i))
   expect(snap.data + later.map(([d]) => d).join('')).toBe(h.snapshot('n').data)
-}, 30000)
+})
 
 test('output is batched, not one onOutput call per pty chunk', async () => {
   const h = host()
@@ -124,56 +127,56 @@ test('initialScrollback seeds the buffer before the first output', async () => {
   const h = host()
   h.start(spec({ ...printing('fresh-mark'), initialScrollback: 'OLD-SCROLLBACK\r\n' }))
   expect(h.snapshot('n').data.startsWith('OLD-SCROLLBACK\r\n')).toBe(true)
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('fresh-mark'), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('fresh-mark'), { timeout: 30_000 })
   expect(h.snapshot('n').data.startsWith('OLD-SCROLLBACK\r\n')).toBe(true)
-}, 30000)
+})
 
 test('bufferBytes caps the scrollback', async () => {
   const h = host({ bufferBytes: 64 })
   h.start(spec({ ...printing('tail-mark'), initialScrollback: 'x'.repeat(500) }))
   expect(Buffer.byteLength(h.snapshot('n').data)).toBeLessThanOrEqual(64)
-  await vi.waitFor(() => expect(h.snapshot('n').seq).toBeGreaterThan(0), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').seq).toBeGreaterThan(0), { timeout: 30_000 })
   expect(Buffer.byteLength(h.snapshot('n').data)).toBeLessThanOrEqual(64)
-}, 30000)
+})
 
 test('a restarted session keeps counting seq upward, so an attached view never ignores it', async () => {
   const h = host()
   h.start(spec(printing('run-one')))
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('run-one'), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('run-one'), { timeout: 30_000 })
   await h.kill('n')
   const before = h.snapshot('n')
   expect(before.data).toContain('run-one') // readable after exit, for saving
   const seqs: number[] = []
   h.onOutput((_id, _d, seq) => seqs.push(seq))
   h.start(spec(printing('run-two')))
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('run-two'), { timeout: 15000 })
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('run-two'), { timeout: 30_000 })
   expect(seqs[0]).toBe(before.seq + 1)
-}, 30000)
+})
 
 test('starting a node that is already running is refused and leaves it running', async () => {
   const h = host()
   h.start(spec())
   expect(() => h.start(spec())).toThrowError(expect.objectContaining({ reason: 'spawn-failed' }))
   expect(h.isRunning('n')).toBe(true)
-}, 30000)
+})
 
 test('a cwd with spaces works', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'patchbay host space '))
   const h = host()
   try {
     h.start(spec({ cwd: dir, ...printing('in-space-mark') }))
-    await vi.waitFor(() => expect(h.snapshot('n').data).toContain('in-space-mark'), { timeout: 15000 })
+    await vi.waitFor(() => expect(h.snapshot('n').data).toContain('in-space-mark'), { timeout: 30_000 })
     await h.kill('n')
   } finally {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    await removeTemp(dir)
   }
-}, 30000)
+})
 
 test('args for cmd.exe reach it verbatim, because cmd.exe has its own quoting', async () => {
   const h = host()
   h.start(spec({ args: ['/d', '/s', '/c', '"echo ^"a b^""'] }))
-  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('"a b"'), { timeout: 15000 })
-}, 30000)
+  await vi.waitFor(() => expect(h.snapshot('n').data).toContain('"a b"'), { timeout: 30_000 })
+})
 
 test('a background session runs below normal priority, and so does what it starts', async () => {
   const { getPriority, constants } = await import('node:os')
@@ -189,10 +192,17 @@ test('a background session runs below normal priority, and so does what it start
   expect(Number(readFileSync(out, 'utf8'))).toBe(constants.priority.PRIORITY_BELOW_NORMAL)
 })
 
-test('any other session keeps normal priority', () => {
+/**
+ * Windows gives a new process its creator's priority class when that is below normal or idle. Run from inside a
+ * Patchbay background session (as agents on the canvas run the suite), this test process is below normal itself, so
+ * every session it starts is too, whatever the host does. Patchbay's own host runs at normal priority.
+ */
+const testRunsBelowNormal = getPriority() > constants.priority.PRIORITY_NORMAL
+if (testRunsBelowNormal)
+  console.warn('Skipping "any other session keeps normal priority": this test process runs below normal priority (as in a Patchbay background session), and Windows passes that on to every process it starts.')
+
+test.skipIf(testRunsBelowNormal)('any other session keeps normal priority', () => {
   const h = host() as SessionHost & { start(s: SessionSpec): void }
   h.start(spec({ file: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }))
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getPriority, constants } = require('node:os') as typeof import('node:os')
   expect(getPriority(h.pid('n') as number)).toBe(constants.priority.PRIORITY_NORMAL)
 })

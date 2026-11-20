@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from 'vitest'
@@ -8,6 +8,9 @@ import { withRecipeVerbs } from '../../src/main/recipes/verbs'
 import { cleanEnv } from '../../src/main/sessions/env'
 import type { ClaudeNode } from '../../src/shared/model'
 import { recipeWorld } from './fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const lead: ClaudeNode = { id: 'lead', kind: 'claude', title: 'Lead', x: 0, y: 0, width: 600, height: 400, parentId: null, projectId: 'p1', cwd: process.cwd(), sessionId: null, transcriptPath: null, after: [] }
 
@@ -67,6 +70,6 @@ test('the patchbay command passes the recipe flags', async () => {
     expect(calls).toEqual([{ verb: 'run-recipe', args: { name: 'Implement and review', task: 'T', noWorktree: true, skip: ['setup', 'other'] } }])
   } finally {
     await server.close()
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    await removeTemp(dir)
   }
 })

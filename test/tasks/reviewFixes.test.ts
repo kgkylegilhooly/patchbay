@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -11,6 +11,9 @@ import { taskVerb } from '../../src/main/tasks/verbs'
 import type { CanvasDoc } from '../../src/shared/model'
 import { taskReadiness, type Task, type TaskRecords, type TaskRevision, type TaskVerification } from '../../src/shared/task'
 import { claudeNode, memoryStore } from '../control/fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let dir: string
 let repo: string
@@ -19,7 +22,7 @@ beforeEach(() => {
   repo = join(dir, 'repo')
   mkdirSync(repo)
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }))
+afterEach(() => removeTemp(dir))
 
 const rev: TaskRevision = { revision: 'abc', fingerprint: 'tree', uncommitted: false }
 const task = (over: Partial<Task> = {}): Task => ({ id: 't1', projectId: 'p', brief: 'B', acceptanceCriteria: ['C'], assignedSessionIds: [], cwd: repo, state: 'planned', requiredChecks: [], dependsOn: [], createdAt: 1, updatedAt: 1, acceptances: [], ...over })
@@ -103,7 +106,7 @@ describe('M3: git identity', () => {
       expect(ready.ready).toBe(true)
       expect(ready.warnings).toEqual([expect.stringContaining("isn't in a git repository")])
     } finally {
-      rmSync(plain, { recursive: true, force: true })
+      await removeTemp(plain)
     }
   })
 
@@ -154,7 +157,7 @@ test('L1: output of attempts no project records is pruned', async () => {
   const { store, tasks } = setup()
   const t = await tasks.create('p', { brief: 'B', acceptanceCriteria: ['C'], assignedSessionIds: [], cwd: repo, requiredChecks: [{ id: 'unit', command: 'echo ok', cwd: repo }], dependsOn: [] })
   const kept = await tasks.verify('p', t.id, 'me', 'unit')
-  await vi.waitFor(() => expect(store.get().projects.find((p) => p.id === 'p')!.tasks!.attempts[0]).toMatchObject({ status: 'passed' }), { timeout: 5000 })
+  await vi.waitFor(() => expect(store.get().projects.find((p) => p.id === 'p')!.tasks!.attempts[0]).toMatchObject({ status: 'passed' }), { timeout: 30_000 })
   const orphan = await prepareOutput(join(dir, 'task-output'), 'gone')
   expect(tasks.pruneOutput()).toBe(1)
   expect(existsSync(orphan)).toBe(false)
@@ -170,8 +173,9 @@ test('L2: a running verification is ended when the app quits', async () => {
   expect(stopVerifications()).toBe(1)
   const done = await run
   expect(done.status).toBe('failed')
-  expect(Date.now() - started).toBeLessThan(10_000)
-}, 20_000)
+  // Ended, not run out: ping takes 30 s. Loose, as ending a process tree is slow on a busy machine.
+  expect(Date.now() - started).toBeLessThan(20_000)
+})
 
 test('L5: a check that changes the files it checks says so', () => {
   const t = task({ submissionId: 's', requiredChecks: [{ id: 'unit', command: 'npm test', cwd: repo }] })

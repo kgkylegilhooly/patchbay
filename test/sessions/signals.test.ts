@@ -1,12 +1,15 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bashWord, buildClaudeLaunch, hookCommand, statusLineCommand, type ClaudeLaunchContext } from '../../src/main/sessions/claudeLaunch'
 import { claudeRunsBash } from '../../src/main/sessions/shell'
 import { parseSignalName, signalFile, statusFile, watchSignals, type SignalWatcher } from '../../src/main/sessions/signals'
 import type { ClaudeNode } from '../../src/shared/model'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
 const hasBash = existsSync(GIT_BASH)
@@ -19,14 +22,14 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "patchbay o'brien Jürgen 日本 signals "))
 })
 
-afterEach(() => {
+afterEach(async () => {
   watcher?.close()
   watcher = null
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await removeTemp(dir)
 })
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-async function until(fn: () => boolean, ms = 3000): Promise<void> {
+async function until(fn: () => boolean, ms = 20_000): Promise<void> {
   const end = Date.now() + ms
   while (!fn()) {
     if (Date.now() > end) throw new Error('timed out')
@@ -131,13 +134,23 @@ test.runIf(hasBash)("an owner's status line run again within a second shows what
   writeFileSync(script, `const fs=require('fs');const n=(fs.existsSync(${JSON.stringify(runs)})?fs.readFileSync(${JSON.stringify(runs)},'utf8').length:0)+1;fs.appendFileSync(${JSON.stringify(runs)},'x');let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write('run '+n+' for '+JSON.parse(s).session_id+'\\nsecond line'))`)
   const own = `node "${script.replace(/\\/g, '/')}"`
   const command = statusLineCommand('n1', ctx(), { command: own }) ?? ''
+  // The cache's first line is when the owner's line last ran, in microseconds. The test sets it rather than racing the
+  // clock: starting bash can take over a second on a busy machine.
+  const cache = `${statusFile(join(dir, 'signals'), 'n1')}.line`
+  const ranAt = (us: number): void => {
+    const was = readFileSync(cache, 'utf8')
+    writeFileSync(cache, `${us}${was.slice(was.indexOf('\n'))}`)
+  }
   const first = asClaude(command, JSON.stringify({ session_id: 'a' }), { PATCHBAY_STATUSLINE_FORWARD: own })
-  const again = asClaude(command, JSON.stringify({ session_id: 'b' }), { PATCHBAY_STATUSLINE_FORWARD: own })
   expect(first.stdout).toBe('run 1 for a\nsecond line')
+  // Ran a moment ago, however long the next bash takes to start.
+  ranAt(Date.now() * 1000 + 60_000_000)
+  const again = asClaude(command, JSON.stringify({ session_id: 'b' }), { PATCHBAY_STATUSLINE_FORWARD: own })
   expect(again.stdout).toBe('run 1 for a\nsecond line')
   // Patchbay still gets the newest input every time.
   expect(readFileSync(statusFile(join(dir, 'signals'), 'n1'), 'utf8')).toBe(JSON.stringify({ session_id: 'b' }))
-  await sleep(1100)
+  // Ran over a second ago: it runs again.
+  ranAt(Date.now() * 1000 - 1_500_000)
   const later = asClaude(command, JSON.stringify({ session_id: 'c' }), { PATCHBAY_STATUSLINE_FORWARD: own })
   expect(later.stdout).toBe('run 2 for c\nsecond line')
 })
@@ -202,22 +215,39 @@ test('forget removes a closed node\'s files', async () => {
 })
 
 test('a status line written many times a second is read at most once a second, and an unchanged one not at all', async () => {
-  const seen: string[] = []
-  watcher = watchSignals({ dir, onHook: () => {}, onStatus: (_id, text) => seen.push(text), pollMs: 60_000 })
-  const file = statusFile(dir, 'n1')
-  for (let i = 0; i < 12; i++) {
-    writeFileSync(file, JSON.stringify({ n: i }))
-    await sleep(100)
+  // The once-a-second look is stepped by hand, so the count doesn't depend on how busy the machine is.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  try {
+    const seen: string[] = []
+    watcher = watchSignals({ dir, onHook: () => {}, onStatus: (id, text) => seen.push(`${id} ${text}`), pollMs: 60_000 })
+    /** Seconds pass, one at a time, until what they read has come in. A second with nothing new reads nothing. */
+    const secondsUntil = async (fn: () => boolean): Promise<void> => {
+      for (let i = 0; i < 400 && !fn(); i++) {
+        await vi.advanceTimersByTimeAsync(1000)
+        await sleep(25)
+      }
+      expect(fn()).toBe(true)
+    }
+    const file = statusFile(dir, 'n1')
+    // Six writes within one second, then six in the next: one read a second, of the newest, never twelve.
+    for (let i = 0; i < 6; i++) writeFileSync(file, JSON.stringify({ n: i }))
+    await secondsUntil(() => seen.length === 1)
+    for (let i = 6; i < 12; i++) writeFileSync(file, JSON.stringify({ n: i }))
+    await secondsUntil(() => seen.length === 2)
+    expect(seen).toEqual([`n1 ${JSON.stringify({ n: 5 })}`, `n1 ${JSON.stringify({ n: 11 })}`])
+    // Written again unchanged, with a newer time: read, and not passed on. Another node's line shows the read happened.
+    writeFileSync(file, JSON.stringify({ n: 11 }))
+    const later = Date.now() / 1000 + 5
+    utimesSync(file, later, later)
+    writeFileSync(statusFile(dir, 'n2'), '{}')
+    await secondsUntil(() => seen.includes('n2 {}'))
+    // A look starts only once the one before has finished, so by this one the n1 read is done.
+    writeFileSync(statusFile(dir, 'n3'), '{}')
+    await secondsUntil(() => seen.includes('n3 {}'))
+    expect(seen.filter((x) => x.startsWith('n1 '))).toHaveLength(2)
+  } finally {
+    vi.useRealTimers()
   }
-  await sleep(1300)
-  // Twelve writes over 1.2 s: one read for the first burst and one a second after, never twelve.
-  expect(seen.length).toBeGreaterThanOrEqual(1)
-  expect(seen.length).toBeLessThanOrEqual(3)
-  expect(seen.at(-1)).toBe(JSON.stringify({ n: 11 }))
-  const count = seen.length
-  writeFileSync(file, JSON.stringify({ n: 11 }))
-  await sleep(1300)
-  expect(seen.length).toBe(count)
 })
 
 test('a session from the build before, writing its status line beside the tool signals, is still read', async () => {

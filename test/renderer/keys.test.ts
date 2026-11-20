@@ -17,6 +17,10 @@ import {
 } from '../../src/renderer/keys'
 import type { Commands, MenuState } from '../../src/renderer/menus'
 
+// Open document… asks main for a file picker through the window's bridge, which a test in Node doesn't have. Without
+// this, running every action leaves a rejected promise behind, which fails the whole run.
+vi.mock('../../src/renderer/reader/readerUi', async (actual) => ({ ...(await actual<object>()), pickDocument: vi.fn(async () => {}) }))
+
 const press = (key: string, over: Partial<{ code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean; altGr: boolean }> = {}) => ({
   key,
   code: over.code,

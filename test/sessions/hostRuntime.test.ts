@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { HOST_EXE, hostRuntime, pruneHostRuntimes } from '../../src/main/sessions/hostSpawn'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let root: string
 let install: string
@@ -33,9 +36,7 @@ beforeEach(() => {
   }
 })
 
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-})
+afterEach(() => removeTemp(root))
 
 const mainDir = (): string => join(install, 'resources', 'app.asar', 'out', 'main')
 

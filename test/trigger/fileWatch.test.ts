@@ -1,13 +1,16 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 import { createVerifyRunner } from '../../src/main/compare/verifyRunner'
 import { createFileBatcher, watchFolder, type FileBatch } from '../../src/main/triggers/fileWatch'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const dirs: string[] = []
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeTemp(d)
 })
 
 test('a real folder: matching changes arrive as one batch, ignored folders never do', async () => {

@@ -1,14 +1,17 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { createVerifyRunner } from '../../src/main/compare/verifyRunner'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let dir: string
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'patchbay-verify-'))
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeTemp(dir))
 
 const runner = () =>
   createVerifyRunner({

@@ -6,6 +6,9 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 import { buildClaudeLaunch, customLaunch, splitCommand } from '../../src/main/sessions/claudeLaunch'
 import { createSessionHost } from '../../src/main/sessions/host'
 import type { ClaudeNode } from '../../src/shared/model'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const programs: Record<string, string> = {
   bash: 'C:\\Git\\bin\\bash.exe',
@@ -22,9 +25,7 @@ let dir: string
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'patchbay custom '))
 })
-afterAll(() => {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-})
+afterAll(() => removeTemp(dir))
 
 test('splits on spaces outside double quotes and keeps backslashes', () => {
   expect(splitCommand('"C:\\Program Files\\x.exe" --a b')).toEqual(['C:\\Program Files\\x.exe', '--a', 'b'])
@@ -152,20 +153,20 @@ const gitBash = 'C:\\Program Files\\Git\\bin\\bash.exe'
 test('Git Bash delivers a hostile prompt unchanged', async () => {
   expect(await runThrough(gitBash)).toEqual(nasty())
   expect(() => readFileSync(canary())).toThrow()
-}, 40000)
+})
 
 test('Windows PowerShell delivers a hostile prompt unchanged', async () => {
   expect(await runThrough('powershell.exe')).toEqual(nasty())
   expect(() => readFileSync(canary())).toThrow()
-}, 40000)
+})
 
 test.runIf(available('pwsh'))('PowerShell 7 delivers a hostile prompt unchanged', async () => {
   expect(await runThrough('pwsh.exe')).toEqual(nasty())
   expect(() => readFileSync(canary())).toThrow()
-}, 40000)
+})
 
 test('cmd delivers shell syntax to a program without running it', async () => {
   const got = await runThrough('cmd.exe')
   expect(got.slice(0, 3)).toEqual(nasty().slice(0, 3))
   expect(() => readFileSync(canary())).toThrow()
-}, 40000)
+})

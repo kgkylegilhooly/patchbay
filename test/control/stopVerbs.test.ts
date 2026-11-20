@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createAfterGate } from '../../src/main/control/after'
 import { RpcRefusal } from '../../src/main/control/server'
 import { createVerbs } from '../../src/main/control/verbs'
@@ -9,6 +9,16 @@ import type { AgentKind } from '../../src/shared/model'
 import { claudeNode, fakeHost, fakeRunner, memoryStore, terminalNode } from './fakes'
 
 const LIMIT = { hook_event_name: 'StopFailure', error: 'rate_limit', last_assistant_message: "You've hit your 5-hour limit · resets 12:30am" }
+
+// The limit's reset is read as a time of day, and how it's written depends on how far off it is ("00:30", or "Sat 00:30"
+// a day away). The clock is set to a fixed afternoon so the next 00:30 is always hours away; it still runs, for the timers.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true })
+  vi.setSystemTime(new Date(2026, 10, 19, 15, 0))
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function setup({ enabled = ['claude', 'codex'] as AgentKind[] } = {}) {
   const store = memoryStore([

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -14,6 +14,9 @@ import { readAgentsFrom } from '../../src/main/agentsAllowed'
 import type { AttemptState, RemovalCheck, StartComparison } from '../../src/shared/compare'
 import type { CanvasStore } from '../../src/shared/contract'
 import type { CanvasDoc, ClaudeNode, GroupNode } from '../../src/shared/model'
+import { patientGit, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let root: string
 let repo: string
@@ -26,10 +29,8 @@ function sh(cwd: string, ...args: string[]): string {
 function makeRepo(path: string): string {
   mkdirSync(path, { recursive: true })
   sh(path, 'init', '-q', '-b', 'main')
-  sh(path, 'config', 'user.name', 'Test')
-  sh(path, 'config', 'user.email', 'test@example.invalid')
-  sh(path, 'config', 'commit.gpgsign', 'false')
-  sh(path, 'config', 'core.autocrlf', 'false')
+  // Written at once rather than by four more git runs: each one costs seconds on a busy machine.
+  appendFileSync(join(path, '.git', 'config'), '[user]\n\tname = Test\n\temail = test@example.invalid\n[commit]\n\tgpgsign = false\n[core]\n\tautocrlf = false\n')
   writeFileSync(join(path, 'app.txt'), 'one\ntwo\n')
   sh(path, 'add', 'app.txt')
   sh(path, 'commit', '-q', '-m', 'first')
@@ -42,7 +43,7 @@ function store(): CanvasStore {
 }
 
 const env = gitEnvFrom(Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === 'string')))
-const git = systemGit(env)
+const git = patientGit(systemGit(env))
 const reads = createCompareReads(git, createGitService(git))
 
 type World = ReturnType<typeof world>
@@ -108,9 +109,7 @@ beforeEach(() => {
   repo = makeRepo(join(root, 'repo'))
 })
 
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
-})
+afterEach(() => removeTemp(root))
 
 test('attempts begin from the recorded base, in distinct worktrees, branches and agents', async () => {
   const w = world()
@@ -380,8 +379,7 @@ test('work written while the sessions stop is not lost under an earlier confirma
   const r = await w!.service.remove(c.id, 'a', { deleteBranch: false, confirm: needs })
   expect(r).toMatchObject({ ok: false, needs: { uncommitted: 2 } })
   expect(readFileSync(join(a.path, 'late.txt'), 'utf8')).toBe('late\n')
-  // Many git runs: on a loaded machine during the full suite this can take over vitest's default 5 s.
-}, 20000)
+})
 
 test("a worktree made for an attempt whose agent couldn't start is named as left in place", async () => {
   const w = world({ runner: { startNode: async () => { throw new Error('no agent.') }, stopNode: async () => {} } })
