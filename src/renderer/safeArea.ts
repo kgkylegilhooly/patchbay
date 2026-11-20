@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { dockLayout, fitPadding, safeRect } from '../core/canvas/safeArea'
+import { dockLayout, fitPadding, SAFE_GAP, safeRect } from '../core/canvas/safeArea'
 import type { Rect, Size } from '../core/canvas/place'
 
 /**
@@ -88,8 +88,13 @@ function layOut(stage: HTMLElement, mapOn: boolean): void {
   })
   stage.style.setProperty('--dock-left', `${left}px`)
   stage.dataset.dockPlaced = ''
-  if (panels.length) stage.dataset.dockRaised = ''
-  else delete stage.dataset.dockRaised
+  // Only when the dock runs under a panel: it's drawn above it, and the panel keeps its last rows clear of it.
+  const dockBox = dock.getBoundingClientRect()
+  const under = panels.some((p) => left + dockBox.width > p.x)
+  if (under) {
+    stage.dataset.dockRaised = ''
+    stage.style.setProperty('--dock-room', `${Math.round(origin.bottom - dockBox.top + SAFE_GAP)}px`)
+  } else delete stage.dataset.dockRaised
   if (useChromeLayout.getState().foldMap !== foldMap) useChromeLayout.setState({ foldMap, ...(foldMap ? {} : { mapOpen: false }) })
 }
 

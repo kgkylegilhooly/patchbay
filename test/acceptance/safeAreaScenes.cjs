@@ -26,6 +26,20 @@ const showLegend = async (page) => {
   await sleep(200)
 }
 
+/** Throws, failing the picture, when the node's box on screen meets the sidebar, dock, minimap or legend. */
+const assertClear = (page, id) =>
+  page.evaluate((nodeId) => {
+    const el = document.querySelector(`.react-flow__node[data-id="${nodeId}"]`)
+    if (!el) throw new Error(`New node ${nodeId} isn't drawn`)
+    const a = el.getBoundingClientRect()
+    for (const sel of ['.stage > .sidebar', '.stage > .dock', '.react-flow__minimap', '.stage > .legend']) {
+      const c = document.querySelector(sel)?.getBoundingClientRect()
+      if (c && c.width && a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom) throw new Error(`New node ${nodeId} is under ${sel}`)
+    }
+  }, id)
+
+const nodeIds = (page) => page.evaluate(() => [...document.querySelectorAll('.react-flow__node')].map((n) => n.dataset.id))
+
 const scenes = {
   'safe-canvas': settle,
   'safe-fit': async (page) => {
@@ -43,12 +57,16 @@ const scenes = {
   'safe-new-nodes': async (page) => {
     await settle(page)
     for (const kind of ['browser', 'note', 'note']) {
+      const before = new Set(await nodeIds(page))
       await dockClick(page, 'add')
       await sleep(150)
       await page.click(`.menu-panel [data-cmd="${kind === 'note' ? 'new-sticky' : 'new-browser'}"]`)
-      await sleep(350)
+      await sleep(600)
+      // The node just made is always in the clear; earlier ones too, whenever they all fit in the view together.
+      const made = (await nodeIds(page)).filter((id) => !before.has(id))
+      for (const id of made) await assertClear(page, id)
     }
-    await sleep(800)
+    await sleep(500)
   },
   'safe-tidy': async (page) => {
     await settle(page)
@@ -100,6 +118,12 @@ const scenes = {
     await settle(page)
     await dockClick(page, 'work')
     await sleep(400)
+    const over = await page.evaluate(() => {
+      const r = document.querySelector('.dock .menu-panel')?.getBoundingClientRect()
+      return r ? { right: r.right, left: r.left, width: window.innerWidth } : null
+    })
+    if (!over) throw new Error('The Work menu did not open')
+    if (over.right > over.width || over.left < 0) throw new Error(`The Work menu runs off the window: ${JSON.stringify(over)}`)
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { waitingForReview, workLabel, workMenu } from '../../src/renderer/workDock'
+import { menuLeftWithin, waitingForReview, workLabel, workMenu } from '../../src/renderer/workDock'
 import type { MenuItem } from '../../src/renderer/menus'
 import { ACTIONS } from '../../src/renderer/actions'
 
@@ -50,5 +50,20 @@ describe('workMenu', () => {
   test('the button names what waits', () => {
     expect(workLabel(0)).toBe('Work')
     expect(workLabel(3)).toBe('Work: 3 waiting for review')
+  })
+})
+
+describe('menuLeftWithin', () => {
+  test('stays at its button when it fits', () => {
+    expect(menuLeftWithin({ dockLeft: 300, button: 100, width: 340, windowWidth: 1280 })).toBe(100)
+  })
+
+  test('moves left so its right edge stays inside the window, as at 1024 px', () => {
+    const left = menuLeftWithin({ dockLeft: 380, button: 370, width: 340, windowWidth: 1024 })
+    expect(380 + left + 340).toBeLessThanOrEqual(1024 - 8)
+  })
+
+  test('never past the window left edge', () => {
+    expect(380 + menuLeftWithin({ dockLeft: 380, button: 370, width: 2000, windowWidth: 1024 })).toBe(8)
   })
 })

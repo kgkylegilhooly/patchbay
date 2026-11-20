@@ -36,3 +36,15 @@ export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number
     { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() }
   ]
 }
+
+/** Room kept between a menu and the window's edge. */
+const EDGE = 8
+
+/**
+ * Where a menu over a dock button goes, relative to the dock: at the button, moved left as far as it takes to keep
+ * its right edge inside the window, and never past the window's left edge.
+ */
+export function menuLeftWithin(o: { dockLeft: number; button: number; width: number; windowWidth: number }): number {
+  const maxRight = o.windowWidth - EDGE - o.dockLeft
+  return Math.max(EDGE - o.dockLeft, Math.min(o.button, maxRight - o.width))
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dockLayout, fitPadding, SAFE_GAP, SAFE_MARGIN, safeInsets, safeRect } from '../../src/core/canvas/safeArea'
+import { centredIn, dockLayout, fitPadding, SAFE_GAP, SAFE_MARGIN, safeInsets, safeRect } from '../../src/core/canvas/safeArea'
 import { placeNear, type Rect } from '../../src/core/canvas/place'
 import type { CanvasDoc } from '../../src/shared/model'
 
@@ -144,3 +144,13 @@ describe('dockLayout', () => {
     expect(tight.left).toBe(314 + SAFE_GAP)
   })
 })
+
+describe('centredIn', () => {
+  test('puts the point in the middle of the safe area, not of the window', () => {
+    const safe = { x: 326, y: 16, width: 900, height: 600 }
+    const vp = centredIn(safe, { x: 1000, y: 500 }, 0.5)
+    expect(1000 * vp.zoom + vp.x).toBe(safe.x + safe.width / 2)
+    expect(500 * vp.zoom + vp.y).toBe(safe.y + safe.height / 2)
+  })
+})
+

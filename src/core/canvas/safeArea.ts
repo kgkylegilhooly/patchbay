@@ -111,3 +111,9 @@ export function dockLayout(d: DockInput): { left: number; foldMap: boolean } {
   const left = Math.max(start, Math.min(centred, end - width))
   return { left: Math.round(left), foldMap }
 }
+
+/** The view, at this zoom, that puts a canvas point in the middle of the safe area (screen pixels within the canvas). */
+export function centredIn(safe: Rect, at: { x: number; y: number }, zoom: number): { x: number; y: number; zoom: number } {
+  return { x: safe.x + safe.width / 2 - at.x * zoom, y: safe.y + safe.height / 2 - at.y * zoom, zoom }
+}
+

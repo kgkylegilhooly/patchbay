@@ -10,6 +10,7 @@ import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLau
 import type { Rect } from '../core/canvas/place'
 import { visibleArea } from './viewArea'
 import { safePadding } from './safeArea'
+import { centredIn } from '../core/canvas/safeArea'
 import { panToShow } from '../core/canvas/tidy'
 import { openTidy } from './tidyUi'
 import type { TriggerFields } from './TriggerForm'
@@ -119,6 +120,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       if (!view || !(vp.zoom > 0) || !inActiveProject(doc(), node)) return
       // A member of a group that isn't drawn yet has no place on screen to check.
       if (node.parentId && !doc().nodes.some((n) => n.id === node.parentId)) return
+      // A minimal pan: nodes made just before stay in view too, whenever they all fit.
       const d = panToShow(view, { ...absolutePosition(doc(), node), width: node.width, height: node.height })
       if (d.x || d.y) void flow.setViewport({ x: vp.x - d.x * vp.zoom, y: vp.y - d.y * vp.zoom, zoom: vp.zoom }, { duration: reducedMotion() ? 0 : 220 })
     }
@@ -258,7 +260,11 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         const rect = rects.find((r) => r.id === next)!
         setNodes((nodes) => nodes.map((n) => (n.selected === (n.id === next) ? n : { ...n, selected: n.id === next })))
         useStore.setState((s) => ({ maximized: s.maximized && next }))
-        void flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, { zoom: flow.getZoom(), duration: 200 })
+        // Centred in the safe area, so a big window isn't half under the sidebar.
+        const centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+        const safe = visibleArea(prefsRef.current.sidebar)
+        if (safe) void flow.setViewport(centredIn(safe, centre, flow.getZoom()), { duration: 200 })
+        else void flow.setCenter(centre.x, centre.y, { zoom: flow.getZoom(), duration: 200 })
         terminalActions(next)?.focus()
       },
       undo,

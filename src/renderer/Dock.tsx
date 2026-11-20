@@ -1,5 +1,5 @@
 import { useViewport } from '@xyflow/react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ClaudeIcon, CodexIcon, Icon, type IconName } from './icons'
 import { MenuPanel } from './Menu'
 import { addMenu, type Commands } from './menus'
@@ -7,7 +7,7 @@ import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
 import { toggleFoldedMap, useChromeLayout } from './safeArea'
-import { waitingForReview, workLabel, workMenu } from './workDock'
+import { menuLeftWithin, waitingForReview, workLabel, workMenu } from './workDock'
 import './safeArea.css'
 
 function DockButton({
@@ -54,6 +54,16 @@ function DockView({
   const working = open === 'work'
   const ref = useRef<HTMLDivElement>(null)
   const workRef = useRef<HTMLButtonElement>(null)
+  const workPanel = useRef<HTMLDivElement>(null)
+
+  // The Work menu opens over its button, kept inside the window: at 1024 px the button is near the dock's right end.
+  useLayoutEffect(() => {
+    const panel = workPanel.current
+    const dock = ref.current
+    if (!working || !panel || !dock || !workRef.current) return
+    const left = menuLeftWithin({ dockLeft: dock.getBoundingClientRect().left, button: workRef.current.offsetLeft, width: panel.getBoundingClientRect().width, windowWidth: window.innerWidth })
+    panel.style.left = `${left}px`
+  }, [working])
 
   useEffect(() => {
     if (!open) return
@@ -73,6 +83,7 @@ function DockView({
           entries={workMenu(commands, { waiting })}
           label="Work"
           onClose={close}
+          panelRef={workPanel}
           style={{ position: 'absolute', left: workRef.current?.offsetLeft ?? 0, bottom: 'calc(100% + 8px)' }}
         />
       )}
