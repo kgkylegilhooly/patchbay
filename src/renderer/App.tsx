@@ -52,6 +52,7 @@ import { SearchLayer } from './SearchLayer'
 import { ReviewInboxLayer } from './ReviewInbox'
 import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
+import { WorkflowLayer } from './workflows/WorkflowLayer'
 import { ProjectsLayer } from './ProjectsLayer'
 import { SubagentLayer } from './subagents/SubagentLayer'
 import { TidyLayer } from './TidyLayer'
@@ -507,6 +508,7 @@ function Canvas(): React.JSX.Element | null {
         <SearchLayer />
         <RecipeLayer selected={selected} />
         <CompareLayer />
+        <WorkflowLayer />
         <ProjectsLayer commands={commands} />
         <NeedsYouLayer commands={commands} />
         <ReaderLayer />

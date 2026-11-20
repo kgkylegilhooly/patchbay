@@ -49,6 +49,9 @@ const VERBS = {
   'open-doc': { path: 'path', title: 'text', group: 'text' },
   recipes: { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list' },
   'run-recipe': { name: 'text', source: 'text', task: 'text', branch: 'text', repo: 'path', cwd: 'path', 'no-worktree': 'flag', skip: 'list', hash: 'text' },
+  workflows: { name: 'text', source: 'text', input: 'repeat' },
+  'workflow-run': { name: 'text', source: 'text', input: 'repeat', hash: 'text' },
+  'job-submit': { output: 'repeat', step: 'text' },
   'browser navigate': { node: 'text', url: 'text' },
   'browser back': { node: 'text' },
   'browser forward': { node: 'text' },
@@ -104,6 +107,9 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   open-doc      --path FILE [--title T] [--group ID]   shows a Markdown file (a plan, a report) to the person in a reader; they comment and send the comments to you
   recipes       [--name N [--source S] [--task T] [--branch B] [--no-worktree] [--cwd DIR]]   lists recipes, or previews one; runs nothing
   run-recipe    --name N [--source built-in|personal|repository] [--task T] [--branch B] [--repo DIR] [--no-worktree] [--cwd DIR] [--skip KEY,KEY] [--hash H]
+  workflows     [--name N [--source S] [--input KEY=VALUE]...]   lists workflows and recent runs, or previews one; runs nothing
+  workflow-run  --name N [--input KEY=VALUE]... [--hash H]   starts a personal workflow the person has started before, unchanged
+  job-submit    --output KEY=VALUE|KEY=@FILE ... [--step KEY]   submits your result for the workflow step you are running
   browser navigate   --node ID --url URL
   browser back|forward|reload --node ID
   browser read       --node ID [--max-chars N]
@@ -242,6 +248,20 @@ function readTeamJson(text) {
   }
 }
 
+/** `--output key=value` as text, and `--output key=@file` as a file, resolved against this folder. */
+function jobOutputs(args) {
+  const { output = [], ...rest } = args
+  const outputs = output.map((item) => {
+    const eq = item.indexOf('=')
+    if (eq < 1) fail(`--output ${item}: write it as key=value, or key=@file for a file.`)
+    const key = item.slice(0, eq)
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(key)) fail(`--output ${key}: a field name starts with a letter and has only letters, digits, - and _.`)
+    const value = item.slice(eq + 1)
+    return value.startsWith('@') && value.length > 1 ? { key, file: toLocalPath(value.slice(1)) } : { key, text: value }
+  })
+  return { ...rest, outputs }
+}
+
 function teamMembers(args) {
   const { members, membersFile, ...rest } = args
   if ((members === undefined) === (membersFile === undefined)) fail('Give one of --members and --members-file.')
@@ -360,7 +380,7 @@ function main() {
   }
   if (!Object.hasOwn(VERBS, verb)) fail(`Unknown verb "${verb}".\n\n${USAGE}`)
   const args = parseFlags(verb, words)
-  call(verb.replace(' ', '-'), verb === 'spawn-team' ? teamMembers(args) : args)
+  call(verb.replace(' ', '-'), verb === 'spawn-team' ? teamMembers(args) : verb === 'job-submit' ? jobOutputs(args) : args)
 }
 
 main()
