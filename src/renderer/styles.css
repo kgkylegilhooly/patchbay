@@ -3404,59 +3404,7 @@ circle.wb-eraser {
   }
 }
 
-.font-tools {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.font-inline {
-  display: inline-flex;
-  align-items: center;
-}
-
-.font-step {
-  width: 18px;
-}
-
-.font-size {
-  min-width: 22px;
-  padding: 2px 0;
-  font: inherit;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-dim);
-  text-align: center;
-  background: none;
-  border: 0;
-  border-radius: 4px;
-}
-
-.font-size-own {
-  color: var(--ink);
-  background: rgb(255 255 255 / 0.1);
-  cursor: pointer;
-}
-
-.font-fold {
-  display: none;
-}
-
-.font-pop {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 5;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  background: #242427;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 8px 22px rgb(0 0 0 / 0.5);
-}
-
-/* The header gives way a piece at a time: the folder first, then the labels, then the tools fold up. */
+/* The header gives way a piece at a time: the folder first, then the labels. */
 @container (max-width: 500px) {
   .cwd {
     display: none;
@@ -3468,24 +3416,12 @@ circle.wb-eraser {
   .run-label {
     display: none;
   }
-  .font-inline {
-    display: none;
-  }
-  .font-fold {
-    display: inline-grid;
-  }
 }
 
 @container (max-width: 380px) {
   .unit-context,
   .confirm > span:first-child,
   .unit-head .port-chips {
-    display: none;
-  }
-}
-
-@container (max-width: 320px) {
-  .tool-refresh {
     display: none;
   }
 }

@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import { isSessionNode, type CanvasNode } from '../../shared/model'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { isSessionNode, type CanvasNode, type SessionNode } from '../../shared/model'
+import { copyText } from '../clipboard'
 import { Icon, type IconName } from '../icons'
+import { ContextMenu } from '../Menu'
+import type { Point } from '../menus'
 import { FONT_SIZE, steppedFontSize, windowFontSize } from '../prefs'
 import { nameWithAi, patchNode, refreshWindow, toggleMaximize, useStore } from '../store'
 import { terminalActions } from '../terminalRegistry'
+import { headerMenuEntries, useHeaderMenu } from './headerMenu'
 
 function Tool({ icon, label, tool, disabled, busy, pressed, onClick }: { icon: IconName; label: string; tool: string; disabled?: boolean; busy?: boolean; pressed?: boolean; onClick: () => void }): React.JSX.Element {
   return (
@@ -13,82 +18,77 @@ function Tool({ icon, label, tool, disabled, busy, pressed, onClick }: { icon: I
   )
 }
 
-/** Smaller, the current size (click for the global size), and larger. */
-function FontSteps({ node }: { node: CanvasNode }): React.JSX.Element {
+/**
+ * ⋯: the tools used now and then, in one menu. It draws at screen size outside the canvas, so it reads the same at
+ * any zoom and no neighbouring window covers it. Shift+F10 on the focused window opens it too.
+ */
+function MoreTool({ node }: { node: SessionNode }): React.JSX.Element {
+  const open = useHeaderMenu((s) => s.open === node.id)
+  const naming = useStore((s) => !!s.naming[node.id])
+  const chat = useStore((s) => !!s.chatView[node.id])
   const global = useStore((s) => s.terminalFontSize)
+  const button = useRef<HTMLButtonElement>(null)
+  const [at, setAt] = useState<Point | null>(null)
+  /** A press on ⋯ while the menu is open closes it first; the click that follows mustn't open it again. */
+  const closedAt = useRef(0)
+  const close = useCallback(() => {
+    closedAt.current = Date.now()
+    if (useHeaderMenu.getState().open === node.id) useHeaderMenu.setState({ open: null })
+  }, [node.id])
+  useLayoutEffect(() => {
+    if (!open) return setAt(null)
+    const r = button.current?.getBoundingClientRect()
+    setAt(r ? { x: r.right, y: r.bottom + 4 } : null)
+  }, [open])
+
   const size = windowFontSize(node.fontSize, global)
-  const own = node.fontSize !== undefined
-  const step = (by: number): void => patchNode(node.id, { fontSize: steppedFontSize(node.fontSize, global, by) })
+  const entries = headerMenuEntries(
+    { kind: node.kind, chat, naming, size, global, own: node.fontSize !== undefined, min: FONT_SIZE.min, max: FONT_SIZE.max, folder: node.kind === 'terminal' && node.sshHost ? '' : node.cwd },
+    {
+      refresh: () => refreshWindow(node.id),
+      toggleChat: () => useStore.setState((s) => ({ chatView: { ...s.chatView, [node.id]: !chat } })),
+      name: () => void nameWithAi(node.id),
+      step: (by) => patchNode(node.id, { fontSize: steppedFontSize(node.fontSize, global, by) }),
+      resetSize: () => patchNode(node.id, { fontSize: undefined }),
+      copyFolder: () => void copyText(node.cwd)
+    }
+  )
   return (
     <>
-      <button type="button" className="icon-btn tool-btn font-step nodrag" data-tool="font-smaller" aria-label="Smaller text in this window" title="Smaller text in this window" disabled={size <= FONT_SIZE.min} onClick={() => step(-1)}>
-        <Icon name="minus" size={13} />
-      </button>
       <button
+        ref={button}
         type="button"
-        className={`font-size nodrag${own ? ' font-size-own' : ''}`}
-        data-tool="font-reset"
-        aria-label={own ? `Text size ${size} in this window. Back to the global size, ${global}` : `Text size ${size}, the global size`}
-        title={own ? `Size ${size} in this window. Click for the global size, ${global}` : `Size ${size}, from the global setting`}
-        disabled={!own}
-        onClick={() => patchNode(node.id, { fontSize: undefined })}
+        className={`icon-btn tool-btn nodrag tool-more${naming ? ' tool-btn-busy' : ''}`}
+        data-tool="more"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={naming ? `More tools for ${node.title}. Asking Claude for a name…` : `More tools for ${node.title}`}
+        title={naming ? 'More tools. Asking Claude for a name…' : 'More tools (Shift+F10)'}
+        onClick={() => {
+          if (Date.now() - closedAt.current < 300) return
+          useHeaderMenu.setState({ open: open ? null : node.id })
+        }}
       >
-        {size}
+        <Icon name="more" size={15} />
       </button>
-      <button type="button" className="icon-btn tool-btn font-step nodrag" data-tool="font-larger" aria-label="Larger text in this window" title="Larger text in this window" disabled={size >= FONT_SIZE.max} onClick={() => step(1)}>
-        <Icon name="plus" size={13} />
-      </button>
+      {open && at && createPortal(<ContextMenu at={at} anchor="end" entries={entries} label={`${node.title} tools`} onClose={close} />, document.body)}
     </>
   )
 }
 
-/** Inline where there's room. On a narrow window they fold into one button that opens them. */
-function FontTools({ node }: { node: CanvasNode }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLSpanElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onPress = (e: MouseEvent): void => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    window.addEventListener('mousedown', onPress, true)
-    return () => window.removeEventListener('mousedown', onPress, true)
-  }, [open])
-  return (
-    <span className="font-tools" ref={ref} role="group" aria-label="Text size in this window">
-      <span className="font-inline">
-        <FontSteps node={node} />
-      </span>
-      <button type="button" className="icon-btn tool-btn font-fold nodrag" data-tool="font-fold" aria-label="Text size in this window" aria-expanded={open} title="Text size in this window" onClick={() => setOpen((o) => !o)}>
-        <Icon name="text-size" size={15} />
-      </button>
-      {open && (
-        <span className="font-pop nodrag">
-          <FontSteps node={node} />
-        </span>
-      )}
-    </span>
-  )
-}
-
-/** The icon buttons at the right of a session window's header. Close stays with the header, because it can ask first. */
+/**
+ * The tools at the right of a session window's header: Find and Maximize, which are used most, and ⋯ for the rest.
+ * Close stays with the header, because it can ask first.
+ */
 export function WindowTools({ node }: { node: CanvasNode }): React.JSX.Element | null {
   const maximized = useStore((s) => s.maximized === node.id)
-  const naming = useStore((s) => !!s.naming[node.id])
-  const chat = useStore((s) => !!s.chatView[node.id])
   if (!isSessionNode(node)) return null
-  const nameable = node.kind === 'terminal' || node.kind === 'claude'
   return (
     <span className="tools" role="toolbar" aria-label={`${node.title} tools`}>
-      <Tool tool="refresh" icon="refresh" label="Refresh the view. The session keeps running" onClick={() => refreshWindow(node.id)} />
-      {node.kind === 'claude' && (
-        <Tool tool="chat" icon={chat ? 'terminal' : 'note'} pressed={chat} label={chat ? 'Show the terminal' : 'Show as a chat'} onClick={() => useStore.setState((s) => ({ chatView: { ...s.chatView, [node.id]: !chat } }))} />
-      )}
-      <Tool tool="find" icon="find" label="Find in this window" onClick={() => terminalActions(node.id)?.find()} />
-      {nameable && <Tool tool="name" icon="sparkle" busy={naming} disabled={naming} label={naming ? 'Asking Claude for a name…' : 'Name with AI, from recent output. Uses a little plan quota'} onClick={() => void nameWithAi(node.id)} />}
-      <FontTools node={node} />
+      <Tool tool="find" icon="find" label="Find in this window (Ctrl+F)" onClick={() => terminalActions(node.id)?.find()} />
       {/* Maximized, the header draws it after Close instead. */}
       {!maximized && <MaximizeTool node={node} />}
+      <MoreTool node={node} />
     </span>
   )
 }
@@ -97,5 +97,5 @@ export function WindowTools({ node }: { node: CanvasNode }): React.JSX.Element |
 export function MaximizeTool({ node }: { node: CanvasNode }): React.JSX.Element | null {
   const maximized = useStore((s) => s.maximized === node.id)
   if (!isSessionNode(node)) return null
-  return <Tool tool="maximize" icon={maximized ? 'restore' : 'maximize'} pressed={maximized} label={maximized ? 'Restore (Esc when the terminal is not in use, or F11)' : 'Maximize'} onClick={() => toggleMaximize(node.id)} />
+  return <Tool tool="maximize" icon={maximized ? 'restore' : 'maximize'} pressed={maximized} label={maximized ? 'Restore (Esc when the terminal is not in use, or F11)' : 'Maximize (F11)'} onClick={() => toggleMaximize(node.id)} />
 }

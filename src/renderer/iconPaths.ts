@@ -73,7 +73,8 @@ export const PATHS = {
   whiteboard: 'M3.5 4.5h17v12h-17zM8 20.5l2-4M16 20.5l-2-4M7 12.5c1.5-2.5 3-3.5 4-2s2 1.5 3.5-1 2.5-1.5 2.5-1.5',
   image: 'M4 5h16v14H4zM4 16l4.5-4.5 4 4 2.5-2.5L20 18M15.5 8.5h.01',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
-  archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4'
+  archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',
+  more: 'M5.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zM11.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zM17.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z'
 } as const
 
 export type IconName = keyof typeof PATHS | 'claude' | 'codex' | 'terminal' | 'run'

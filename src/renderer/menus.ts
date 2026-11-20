@@ -29,6 +29,20 @@ export interface MenuItem {
   /** Asks in place before running: the first click swaps the label to this. */
   confirm?: string
   danger?: boolean
+  /** The menu stays open after it runs, so it can be used again, as when stepping a size. */
+  keepOpen?: boolean
+  /** A − value + row. Left and right step it, Enter runs `run` when `canRun`. It always stays open. */
+  steps?: { value: string; canRun: boolean; runLabel?: string; runTool?: string; down: MenuStep; up: MenuStep }
+  /** A name for checks to find the row by, as its `data-tool`. */
+  tool?: string
+}
+
+/** One side of a stepper row. */
+export interface MenuStep {
+  label: string
+  run: () => void
+  disabled?: boolean
+  tool?: string
 }
 
 export type MenuEntry = MenuItem | 'separator'
