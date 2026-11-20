@@ -76,7 +76,7 @@ export function HeaderZoomWatcher(): null {
       if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return
       if (keyFocusOf(e.target as Element | null) !== 'canvas') return
       // Anything open on top takes Esc first.
-      if (document.querySelector('.menu-panel, .palette, .pop, .settings, .drawer')) return
+      if (document.querySelector('.menu-panel, .palette, .pop, .settings, .drawer, .shell')) return
       const back = onEscape(useZoomMemory.getState().memory, flow.getViewport())
       if (!back) return
       e.preventDefault()

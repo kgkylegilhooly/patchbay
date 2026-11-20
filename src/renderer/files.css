@@ -3,11 +3,11 @@
 .files-chip {
   flex: none;
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   white-space: nowrap;
   color: #c9c9ce;
   background: rgb(255 255 255 / 0.07);
-  border-radius: 9px;
+  border-radius: var(--r-lg);
   cursor: pointer;
 }
 
@@ -46,7 +46,7 @@
   overflow: auto;
   color: var(--ink);
   font-family: var(--ui);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   background: #242427;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -62,7 +62,7 @@
 
 .files-head strong {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .files-scope {
@@ -73,7 +73,7 @@
 .files-note {
   margin: 0;
   color: var(--ink-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.4;
 }
 
@@ -85,7 +85,7 @@
 .files-problem {
   margin: 0;
   color: #ff8a80;
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .files-list {
@@ -104,7 +104,7 @@
   padding: 6px 8px;
   background: var(--well);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
 .files-row-shared {
@@ -136,13 +136,13 @@
 .files-meta {
   flex: none;
   color: var(--ink-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .files-tag {
   padding: 0 6px;
-  font-size: 10.5px;
-  border-radius: 8px;
+  font-size: var(--fs-xs);
+  border-radius: var(--r-lg);
 }
 
 .files-tag-unconfirmed {
@@ -169,10 +169,10 @@
   padding: 1px 8px;
   color: var(--ink);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 

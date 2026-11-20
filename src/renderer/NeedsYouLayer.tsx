@@ -16,7 +16,7 @@ export function NeedsYouLayer({ commands }: { commands: Commands }): React.JSX.E
     if (!peek) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || keyFocusOf(e.target as Element | null) !== 'canvas') return
-      if (document.querySelector('.menu-panel, .palette, .settings')) return
+      if (document.querySelector('.menu-panel, .palette, .settings, .shell-modal, .shell-view')) return
       e.preventDefault()
       e.stopPropagation()
       closePeek()

@@ -8,6 +8,7 @@ import { useStore } from './store'
 import { useAgentOff } from './agentChoice'
 import { openProjects } from './projectsUi'
 import './search.css'
+import { Panel } from './shell/Panel'
 
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const KINDS: Array<{ id: SearchKind | 'all'; label: string }> = [
@@ -70,25 +71,28 @@ function SourceViewer({ viewing, terms, onPage, onClose }: { viewing: Viewing; t
   const closedId = hit.ref.type === 'closed' ? hit.ref.closedId : null
   const reopenOff = useAgentOff()(hit.agent)
   return (
-    <div className="viewer search-viewer" role="dialog" aria-label={`Source of ${hit.title}`}>
-      <header className="drawer-head">
-        <h2>{hit.title}</h2>
-        <div className="search-viewer-actions">
-          {closedId && (
-            <>
-              <button className="btn" disabled={!!reopenOff} title={reopenOff ?? undefined} onClick={() => void bridge.reopenClosed(closedId).then(onClose)}>
-                Reopen
-              </button>
-              <button className="btn" onClick={() => openHandoff({ type: 'closed', closedId }, hit.title)}>
-                Continue with another agent…
-              </button>
-            </>
-          )}
-          <button className="icon-btn" aria-label="Close source" onClick={onClose}>
-            ×
-          </button>
-        </div>
-      </header>
+    <Panel
+      kind="drawer"
+      title={hit.title}
+      label={`Source of ${hit.title}`}
+      className="viewer shell-beside search-viewer"
+      closeLabel="Close source"
+      onClose={onClose}
+      initialFocus="none"
+      flush
+      actions={
+        closedId && (
+          <>
+            <button className="btn btn-sm" disabled={!!reopenOff} title={reopenOff ?? undefined} onClick={() => void bridge.reopenClosed(closedId).then(onClose)}>
+              Reopen conversation
+            </button>
+            <button className="btn btn-sm" onClick={() => openHandoff({ type: 'closed', closedId }, hit.title)}>
+              Continue with another agent…
+            </button>
+          </>
+        )
+      }
+    >
       {viewing.problem ? (
         <p className="drawer-empty">{viewing.problem}</p>
       ) : !w ? (
@@ -131,7 +135,7 @@ function SourceViewer({ viewing, terms, onPage, onClose }: { viewing: Viewing; t
           )}
         </div>
       )}
-    </div>
+    </Panel>
   )
 }
 
@@ -256,13 +260,28 @@ export function SearchPanel(): React.JSX.Element {
 
   return (
     <>
-      <aside className="drawer search-drawer" aria-label="Search">
-        <header className="drawer-head">
-          <h2>Search</h2>
-          <button className="icon-btn" aria-label="Close search" onClick={closeSearch}>
-            ×
-          </button>
-        </header>
+      <Panel
+        kind="drawer"
+        title="Search"
+        icon="find"
+        className="search-drawer"
+        closeLabel="Close search"
+        onClose={closeSearch}
+        initialFocus="none"
+        flush
+        footer={
+          <>
+            <span className="shell-foot-hint search-stats">
+              {stats ? statsLine(stats) : 'Indexing…'}
+              {stats?.syncing ? ' Still indexing, so results may be incomplete.' : ''}
+              {stats?.missing ? ` ${stats.missing} transcript${stats.missing === 1 ? ' is' : 's are'} missing from disk.` : ''}
+            </span>
+            <button className="btn btn-sm" disabled={rebuilding} onClick={() => void rebuild()} title="Reads every source again. Transcripts are only read, never changed.">
+              {rebuilding ? 'Rebuilding…' : 'Rebuild index'}
+            </button>
+          </>
+        }
+      >
         <div className="search-controls">
           <input
             ref={input}
@@ -342,17 +361,7 @@ export function SearchPanel(): React.JSX.Element {
             {more && <li className="drawer-empty">More matched. Add words or filters to narrow it down.</li>}
           </ul>
         )}
-        <footer className="search-foot">
-          <span>
-            {stats ? statsLine(stats) : 'Indexing…'}
-            {stats?.syncing ? ' Still indexing, so results may be incomplete.' : ''}
-            {stats?.missing ? ` ${stats.missing} transcript${stats.missing === 1 ? ' is' : 's are'} missing from disk.` : ''}
-          </span>
-          <button className="btn" disabled={rebuilding} onClick={() => void rebuild()} title="Reads every source again. Transcripts are only read, never changed.">
-            {rebuilding ? 'Rebuilding…' : 'Rebuild index'}
-          </button>
-        </footer>
-      </aside>
+      </Panel>
       {viewing && <SourceViewer viewing={viewing} terms={terms} onPage={(way) => showSource(viewing.hit, way)} onClose={() => setViewing(null)} />}
     </>
   )

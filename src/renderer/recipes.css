@@ -1,14 +1,16 @@
 /* The recipe picker, its preview, and the save dialog. */
 
-.pop.recipe-sheet {
+.recipe-sheet {
+  --shell-w: 1000px;
+}
+
+/* The recipes on the left, the chosen one on the right. */
+.recipe-body {
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(180px, 240px) 1fr;
   grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  width: min(1000px, calc(100vw - 32px));
-  max-height: calc(100% - 28px);
-  padding: 0;
-  overflow: hidden;
+  min-height: 0;
 }
 
 .recipe-sheet,
@@ -46,7 +48,7 @@
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 
@@ -72,16 +74,16 @@
 .recipe-why {
   flex-basis: 100%;
   color: var(--led-needs);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .recipe-source {
   flex: none;
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.02em;
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .recipe-source-built-in {
@@ -107,7 +109,7 @@
 
 /* The labels say what they open, so they're long for the rail: they wrap rather than run off it. */
 .recipe-list-foot .btn {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-align: left;
   white-space: normal;
 }
@@ -132,7 +134,7 @@
 .recipe-head h2,
 .recipe-save > h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 
@@ -146,7 +148,7 @@
   overflow: hidden;
   color: var(--ink-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -177,7 +179,7 @@
 .recipe-save h3 {
   margin: 0 0 6px;
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -188,17 +190,17 @@
 .recipe-dim {
   margin: 0;
   color: var(--ink-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .recipe-warning {
   margin: 0;
   padding: 8px 10px;
   color: #ffd9a8;
-  font-size: 13px;
+  font-size: var(--fs-md);
   background: rgb(255 159 67 / 0.1);
   border: 1px solid rgb(255 159 67 / 0.45);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .recipe-nodes,
@@ -220,7 +222,7 @@
   padding: 7px 10px;
   background: var(--face);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .recipe-node > :nth-child(n + 3),
@@ -242,7 +244,7 @@
 
 .recipe-node-kind {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .recipe-node-title {
@@ -254,19 +256,19 @@
   overflow: hidden;
   color: var(--ink-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .recipe-node-wait {
   color: var(--led-waiting);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .recipe-prompt summary {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -276,33 +278,31 @@
   padding: 8px;
   overflow: auto;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   white-space: pre-wrap;
   background: var(--well);
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
 .recipe-argv {
   display: block;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 code.recipe-argv {
   padding: 5px 8px;
   background: var(--well);
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
 .recipe-run-how {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
-.pop.recipe-save {
-  width: min(520px, calc(100vw - 32px));
-  max-height: calc(100% - 28px);
-  overflow: auto;
+.recipe-save {
+  --shell-w: 520px;
 }
 
 .recipe-nodes-compact .recipe-node {
@@ -316,17 +316,17 @@ code.recipe-argv {
   z-index: 20;
   margin: 0;
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--fs-md);
   background: var(--face-raised);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   transform: translateX(-50%);
 }
 
 .setup-hold-source {
   display: block;
   color: var(--ink-dim);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
 }
 
 .recipe-where {
@@ -336,7 +336,7 @@ code.recipe-argv {
 
 .recipe-where code {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   word-break: break-all;
 }
 

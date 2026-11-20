@@ -10,6 +10,7 @@ import { closeHandoff, closeSearch, searchBridge } from './searchUi'
 import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
 import './search.css'
+import { Panel } from './shell/Panel'
 
 const EVIDENCE: Record<Evidence, string> = { found: 'Found', partial: 'Partial', stale: 'Stale', missing: 'Missing' }
 
@@ -109,94 +110,90 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
   }
 
   return (
-    <div
-      className="handoff-back"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') closeHandoff()
-      }}
-    >
-      <section className="handoff" role="dialog" aria-modal="true" aria-label="Continue with another agent">
-        <header className="drawer-head">
-          <h2>Continue with another agent</h2>
-          <button className="icon-btn" aria-label="Close handoff" onClick={closeHandoff}>
-            ×
-          </button>
-        </header>
-        <div className="handoff-body">
-          <p className="handoff-from">
-            Handoff from <strong>{source.title}</strong>
-            {draft && <span className="handoff-from-agent"> · {AGENT_NAMES[draft.agent]}</span>}
-          </p>
-          <p className="handoff-label" role="note">
-            <span className="handoff-label-tag">Extracted</span>
-            {EXTRACTED_NOTE} Edit anything before starting.
-          </p>
-          {!draft && !problem && <p className="drawer-empty">Reading the conversation…</p>}
-          {sections.map((s) => (
-            <div key={s.id} className="handoff-section">
-              <div className="handoff-section-head">
-                <label htmlFor={`handoff-${s.id}`}>{s.title}</label>
-                <span className={`evidence evidence-${s.evidence}`}>{EVIDENCE[s.evidence]}</span>
-                {s.note && <span className="handoff-note">{s.note}</span>}
-                {edited(s) && <span className="handoff-edited">edited</span>}
-              </div>
-              <textarea id={`handoff-${s.id}`} spellCheck={false} rows={rowsFor(s.text)} value={s.text} onChange={(e) => edit(s.id, e.target.value)} />
-            </div>
-          ))}
-        </div>
-        {problem && <p className="search-problem">{problem}</p>}
-        {saved && (
-          <p className="handoff-saved" role="status">
-            {savedNow ? 'Saved to' : 'Edited since it was saved to'} <span title={saved.path}>{saved.path}</span>
-            {savedNow && (
-              <button className="btn" onClick={() => void openSaved()}>
-                Open in Reader
-              </button>
+    <Panel
+      kind="modal"
+      title="Continue with another agent"
+      icon="arrow-right"
+      className="handoff"
+      bodyClassName="handoff-body"
+      closeLabel="Close handoff"
+      onClose={closeHandoff}
+      initialFocus="none"
+      footer={
+        <>
+            {problem && <p className="search-problem">{problem}</p>}
+            {saved && (
+              <p className="handoff-saved" role="status">
+                {savedNow ? 'Saved to' : 'Edited since it was saved to'} <span title={saved.path}>{saved.path}</span>
+                {savedNow && (
+                  <button className="btn" onClick={() => void openSaved()}>
+                    Open in Reader
+                  </button>
+                )}
+              </p>
             )}
-          </p>
-        )}
-        <footer className="handoff-foot">
-          <div className="handoff-start">
-            <div className="handoff-agents" role="radiogroup" aria-label="Start with">
-              {agents.enabled.map((k) => (
-                <button key={k} role="radio" aria-checked={agent === k} className={`search-kind${agent === k ? ' search-kind-on' : ''}`} onClick={() => setAgent(k)}>
-                  {k === 'claude' ? <ClaudeIcon /> : <CodexIcon />} {AGENT_NAMES[k]}
+              <div className="handoff-start">
+                <div className="handoff-agents" role="radiogroup" aria-label="Start with">
+                  {agents.enabled.map((k) => (
+                    <button key={k} role="radio" aria-checked={agent === k} className={`search-kind${agent === k ? ' search-kind-on' : ''}`} onClick={() => setAgent(k)}>
+                      {k === 'claude' ? <ClaudeIcon /> : <CodexIcon />} {AGENT_NAMES[k]}
+                    </button>
+                  ))}
+                </div>
+                <label className="handoff-field">
+                  <span className="field-label">Title</span>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} />
+                </label>
+                <label className="handoff-field handoff-folder">
+                  <span className="field-label">Folder</span>
+                  <span className="handoff-folder-row">
+                    <input value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
+                    <button className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setCwd(f))}>
+                      Choose…
+                    </button>
+                  </span>
+                </label>
+              </div>
+              <div className="handoff-actions">
+                <span className={`handoff-count${tooLong ? ' handoff-count-over' : ''}`}>
+                  {prompt.length.toLocaleString()} / {MAX_HANDOFF_CHARS.toLocaleString()} characters
+                </span>
+                <button className="btn" disabled={!draft} onClick={() => void copy()}>
+                  {copied ? 'Copied' : 'Copy as Markdown'}
                 </button>
-              ))}
+                <button className="btn" disabled={!draft || saving} title="Save the handoff as a Markdown file" onClick={() => void save()}>
+                  {saving ? 'Saving…' : 'Save as file…'}
+                </button>
+                <button className="btn" onClick={closeHandoff}>
+                  Cancel
+                </button>
+                <button className="btn btn-solid" disabled={!draft || starting || tooLong || !title.trim()} onClick={() => void start()}>
+                  {starting ? 'Starting…' : `Start ${AGENT_NAMES[agent]}`}
+                </button>
+              </div>
+        </>
+      }
+    >
+        <p className="handoff-from">
+          Handoff from <strong>{source.title}</strong>
+          {draft && <span className="handoff-from-agent"> · {AGENT_NAMES[draft.agent]}</span>}
+        </p>
+        <p className="handoff-label" role="note">
+          <span className="handoff-label-tag">Extracted</span>
+          {EXTRACTED_NOTE} Edit anything before starting.
+        </p>
+        {!draft && !problem && <p className="drawer-empty">Reading the conversation…</p>}
+        {sections.map((s) => (
+          <div key={s.id} className="handoff-section">
+            <div className="handoff-section-head">
+              <label htmlFor={`handoff-${s.id}`}>{s.title}</label>
+              <span className={`evidence evidence-${s.evidence}`}>{EVIDENCE[s.evidence]}</span>
+              {s.note && <span className="handoff-note">{s.note}</span>}
+              {edited(s) && <span className="handoff-edited">edited</span>}
             </div>
-            <label className="handoff-field">
-              <span className="field-label">Title</span>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </label>
-            <label className="handoff-field handoff-folder">
-              <span className="field-label">Folder</span>
-              <span className="handoff-folder-row">
-                <input value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
-                <button className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setCwd(f))}>
-                  Choose…
-                </button>
-              </span>
-            </label>
+            <textarea id={`handoff-${s.id}`} spellCheck={false} rows={rowsFor(s.text)} value={s.text} onChange={(e) => edit(s.id, e.target.value)} />
           </div>
-          <div className="handoff-actions">
-            <span className={`handoff-count${tooLong ? ' handoff-count-over' : ''}`}>
-              {prompt.length.toLocaleString()} / {MAX_HANDOFF_CHARS.toLocaleString()} characters
-            </span>
-            <button className="btn" disabled={!draft} onClick={() => void copy()}>
-              {copied ? 'Copied' : 'Copy as Markdown'}
-            </button>
-            <button className="btn" disabled={!draft || saving} title="Save the handoff as a Markdown file" onClick={() => void save()}>
-              {saving ? 'Saving…' : 'Save as file…'}
-            </button>
-            <button className="btn" onClick={closeHandoff}>
-              Cancel
-            </button>
-            <button className="btn btn-solid" disabled={!draft || starting || tooLong || !title.trim()} onClick={() => void start()}>
-              {starting ? 'Starting…' : `Start ${AGENT_NAMES[agent]}`}
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>
+        ))}
+    </Panel>
   )
 }

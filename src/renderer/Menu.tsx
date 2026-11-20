@@ -6,6 +6,8 @@ import { clampToViewport, type MenuEntry, type MenuItem, type Point } from './me
 import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
+import { confirmThen } from './shell/confirmStore'
+import { confirmWords } from './shell/panelKeys'
 
 /**
  * A menu panel. Pressing on it never moves focus, so a terminal keeps the keyboard and Edit > Copy
@@ -38,7 +40,6 @@ export function MenuPanel({
     return action ? currentKey(action, overrides) : null
   }
   const [active, setActive] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState<string | null>(null)
   const ownRef = useRef<HTMLDivElement | null>(null)
   /** Set by the arrow keys, so a long menu scrolls to the row they reach, but not to a row under the mouse. */
   const keyed = useRef(false)
@@ -54,13 +55,10 @@ export function MenuPanel({
 
   const choose = (item: MenuItem): void => {
     if (item.disabled) return
-    if (item.confirm && confirming !== item.id) {
-      setConfirming(item.id)
-      setActive(item.id)
-      return
-    }
     onClose()
-    item.run()
+    // One confirmation for every destructive item, in its own dialog rather than a reworded menu row.
+    if (item.confirm) void confirmThen({ ...confirmWords(item.label === 'Close' ? 'Close window' : item.label), message: item.confirm, tone: item.danger ? 'danger' : 'neutral', attrs: { 'data-confirm': item.id } }, item.run)
+    else item.run()
   }
 
   // Refs let the listener below stay attached for the life of the menu.
@@ -132,7 +130,7 @@ export function MenuPanel({
             <span className="menu-check" aria-hidden="true">
               {entry.checked ? '✓' : entry.icon ? <Icon name={entry.icon} size={15} /> : ''}
             </span>
-            <span className="menu-label">{confirming === entry.id ? entry.confirm : entry.label}</span>
+            <span className="menu-label">{entry.label}</span>
             {shortcutOf(entry) && <span className="menu-shortcut">{shortcutOf(entry)}</span>}
           </button>
         )

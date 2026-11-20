@@ -8,6 +8,7 @@ import { teamStatus } from '../teamStatus'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStops } from '../agentStops'
+import { askConfirm } from '../shell/confirmStore'
 
 export const GROUP_COLORS = ['#49c2c9', '#e2b04a', '#e0689b', '#7fa8ff', '#62dc8a']
 
@@ -75,12 +76,11 @@ function BindForm({ groupId, onDone }: { groupId: string; onDone: () => void }):
 }
 
 function Bound({ node }: { node: GroupModel }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const worktree = node.worktree!
 
   const remove = async (): Promise<void> => {
-    setConfirming(false)
+    if (!(await askConfirm({ title: 'Remove this worktree?', message: "Deletes the worktree's folder, including git-ignored files. Sessions in it stop. The branch stays.", verb: 'Remove worktree', cancelLabel: 'Keep', attrs: { 'data-wt-confirm': node.id } }))) return
     try {
       const r = await bridge.removeWorktree(node.id)
       setError(r.ok ? null : r.reason)
@@ -94,26 +94,12 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
       <span className="branch" title={worktree.path}>
         {worktree.branch}
       </span>
-      {confirming ? (
-        <div className="wt-form wt-confirm" role="alertdialog" aria-label="Remove this worktree?">
-          <span>Delete this worktree's folder, including git-ignored files? Sessions in it stop. The branch stays.</span>
-          <button className="btn" onClick={() => setConfirming(false)}>
-            Keep
-          </button>
-          <button className="btn btn-danger" onClick={() => void remove()}>
-            Remove
-          </button>
-        </div>
-      ) : (
-        <>
-          <button className="btn" title="Keeps the folder on disk" onClick={() => void bridge.unbindWorktree(node.id)}>
-            Unbind
-          </button>
-          <button className="btn wt-remove" onClick={() => setConfirming(true)}>
-            Remove worktree…
-          </button>
-        </>
-      )}
+      <button className="btn" title="Keeps the folder on disk" onClick={() => void bridge.unbindWorktree(node.id)}>
+        Unbind
+      </button>
+      <button className="btn btn-risky wt-remove" onClick={() => void remove()}>
+        Remove worktree…
+      </button>
       {error && (
         <span className="wt-error" role="alert">
           {error}

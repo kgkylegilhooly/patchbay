@@ -4,6 +4,7 @@ import { bridge } from './bridge'
 import { TranscriptViewer } from './TranscriptViewer'
 import { useStore } from './store'
 import { useAgentOff } from './agentChoice'
+import { Panel } from './shell/Panel'
 
 const NONE: ClosedSession[] = []
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -47,13 +48,7 @@ export function RecentPanel({ onClose }: { onClose: () => void }): React.JSX.Ele
 
   return (
     <>
-      <aside className="drawer" aria-label="Closed conversations">
-        <header className="drawer-head">
-          <h2>Closed conversations</h2>
-          <button className="icon-btn" aria-label="Close recent conversations" onClick={onClose}>
-            ×
-          </button>
-        </header>
+      <Panel kind="drawer" title="Closed conversations" icon="recent" closeLabel="Close recent conversations" onClose={onClose} initialFocus="none" flush>
         {closed.length === 0 ? (
           <p className="drawer-empty">Close a Claude node and its conversation appears here, ready to reopen.</p>
         ) : (
@@ -63,7 +58,7 @@ export function RecentPanel({ onClose }: { onClose: () => void }): React.JSX.Ele
             ))}
           </ul>
         )}
-      </aside>
+      </Panel>
       {viewing && (
         <TranscriptViewer
           title={viewing.entry.title}
