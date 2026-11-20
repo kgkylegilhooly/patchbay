@@ -9,6 +9,7 @@ import { ATTEMPT_LABEL, RUN_STATE_LABEL, chipRuns, earlierAttempts, needsPerson,
 import { openRunPanel, useWorkflowUi } from './workflowUi'
 import './workflows.css'
 import { Panel } from '../shell/Panel'
+import { safePadding } from '../safeArea'
 
 function Value({ value }: { value: OutputValue }): React.JSX.Element {
   if (value.type === 'text') {
@@ -113,7 +114,7 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
     const r = await workflows.act(run.id, a)
     if (!r.ok) setProblem(r.reason)
   }
-  const show = (id: string): void => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
+  const show = (id: string): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
   const ended = run.state === 'succeeded' || run.state === 'stopped'
   return (
     <Panel

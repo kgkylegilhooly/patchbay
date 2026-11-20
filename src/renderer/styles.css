@@ -3162,13 +3162,6 @@ circle.wb-eraser {
   width: 300px;
 }
 
-/* On a narrower window the dock would sit on the sidebar's last rows, so it moves over to the free part of the canvas. */
-@media (max-width: 1040px) {
-  .stage:has(> .sidebar) > .dock {
-    left: calc(50% + 160px);
-  }
-}
-
 /* Native scrollbars are bright against this much dark. */
 .sidebar-list,
 .palette-list,

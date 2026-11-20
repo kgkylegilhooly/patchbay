@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { afterMove, isEmptyHeaderPart, onEscape, onHeaderDoubleClick, viewportFor, type Rect, type ZoomMemory } from './headerZoom'
 import { keyFocusOf } from './keys'
 import { useStore } from './store'
+import { measureSafeArea } from './safeArea'
 
 /** The canvas's own zoom limits (App.tsx), and how much room is left around a node zoomed to. */
 const LIMITS = { margin: 32, minZoom: 0.1, maxZoom: 2 }
@@ -14,18 +15,8 @@ const useZoomMemory = create<{ memory: ZoomMemory | null }>(() => ({ memory: nul
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** The part of the canvas actually seen, in pixels from its top left: past the sessions sidebar and above the dock. */
-function visibleArea(): Rect | null {
-  const pane = document.querySelector('.react-flow')?.getBoundingClientRect()
-  if (!pane || !pane.width || !pane.height) return null
-  let left = pane.left
-  let bottom = pane.bottom
-  const sidebar = document.querySelector('.sidebar')?.getBoundingClientRect()
-  if (sidebar && sidebar.width && sidebar.right > left && sidebar.right < pane.right - 200) left = sidebar.right
-  const dock = document.querySelector('.dock')?.getBoundingClientRect()
-  if (dock && dock.height && dock.top > pane.top + 200 && dock.top < bottom) bottom = dock.top
-  return { x: left - pane.left, y: 0, width: pane.right - left, height: bottom - pane.top }
-}
+/** The part of the canvas actually seen, in pixels from its top left: the safe area, clear of every piece of chrome. */
+const visibleArea = (): Rect | null => measureSafeArea()
 
 /**
  * A node header's onDoubleClick. On the header's empty part it zooms the canvas to the node, or back to the view from

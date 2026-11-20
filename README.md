@@ -309,6 +309,13 @@ first, then labels, and the text size folds into one button.
   the keyboard, and with reduced motion turned on in Windows the view jumps instead of gliding.
 - **Maximize** fills the canvas area without changing the saved layout. Esc or the same button restores it. While the
   terminal has the keyboard, Esc stays with the terminal, because that's how Claude is interrupted, so use F11 or the button.
+- **The safe area.** The sessions sidebar, the dock, the minimap, the link legend and a panel on the right never
+  cover what you just asked to see. New windows and notes land clear of them (the view pans a little when there's no
+  room), and Fit view, Tidy, zooming to a node and going to a session all frame things in the space left. The dock
+  centres itself in that space; when it and the minimap don't both fit along the bottom (a narrow window with the
+  sidebar open), the minimap folds into a map button on the dock.
+- **Work** on the dock opens Search, Recipes and workflows, the Review inbox, Comparisons, the Files shelf, Closed
+  conversations and Projects. Its number counts submitted work waiting for your review.
 - **Focus view** (Ctrl+Shift+L, or the grid on the dock) puts windows in split panes filling the app. Split a pane
   with the buttons on its bar and drag the dividers. An empty pane lists the windows not in the view, one click each,
   and clicking a session in the sidebar brings it into a pane. The pane you're typing in has a blue edge, and
@@ -399,7 +406,7 @@ project's folder, and **Open in Reader** then shows that file on the canvas.
 - **Undo and redo** cover moving, resizing, grouping, tidying, renaming, and adding or deleting notes and groups, one
   history per project, until the app closes. They never start or end a process, so closing a session isn't undoable.
 - **Tidy** (dock, View menu, canvas menu, or right-click a group) first shows dashed outlines where each node would
-  go. Pick the whole project, the selection or the group, and turn on Needs you first to put agents waiting on you,
+  go, bringing them into view first; Cancel goes back to the view from before. Pick the whole project, the selection or the group, and turn on Needs you first to put agents waiting on you,
   then working ones, at the top left. Apply is one undo step; Esc cancels. Tidy keeps cabled nodes together (a lead
   beside its team, a trigger beside its target), moves groups whole, never overlaps anything, and running it again
   changes nothing. Agents can run `patchbay arrange --layout tidy`.

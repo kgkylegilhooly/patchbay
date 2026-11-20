@@ -5,6 +5,7 @@ import { CompareView } from './CompareView'
 import { closeCompare, openComparisons, useCompareUi } from './compareUi'
 import { useStore } from './store'
 import './compare.css'
+import { safePadding } from './safeArea'
 
 /** The "Try another approach" dialog and the comparison view, over the canvas, whichever is open. */
 export function CompareLayer(): React.JSX.Element | null {
@@ -22,7 +23,7 @@ export function CompareLayer(): React.JSX.Element | null {
     const switching = !!node.projectId && node.projectId !== doc.activeProjectId
     if (switching) void bridge.dispatch({ op: 'switchProject', id: node.projectId! })
     closeCompare()
-    setTimeout(() => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 }), switching ? 300 : 0)
+    setTimeout(() => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 }), switching ? 300 : 0)
   }
 
   if (!projectId) return null
@@ -38,7 +39,7 @@ export function CompareLayer(): React.JSX.Element | null {
           onStarted={(c, problem) => {
             openComparisons(c.id, problem)
             // The new groups are drawn once their doc arrives.
-            setTimeout(() => void flow.fitView({ nodes: c.attempts.map((a) => ({ id: a.groupId })), padding: 0.15, maxZoom: 1, duration: 260 }), 300)
+            setTimeout(() => void flow.fitView({ nodes: c.attempts.map((a) => ({ id: a.groupId })), padding: safePadding(), maxZoom: 1, duration: 260 }), 300)
           }}
         />
       )}

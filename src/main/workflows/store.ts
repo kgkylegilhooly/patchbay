@@ -1,4 +1,5 @@
 import { readdirSync, renameSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
 import {
@@ -60,6 +61,11 @@ export interface RunStoreLoad {
   runs: WorkflowRun[]
   /** Files that couldn't be used: moved aside (damaged) or left (newer). */
   unavailable: Array<{ file: string; problem: string; setAside?: string }>
+  /**
+   * Why the runs couldn't be listed at all (anything but there being none yet). Then nothing is known about what
+   * exists, and nothing may be deleted on the strength of this load.
+   */
+  failed?: string
 }
 
 export function createRunStore(dir: string, opts: { now?: () => number; log?: (line: string) => void } = {}) {
@@ -96,14 +102,28 @@ export function createRunStore(dir: string, opts: { now?: () => number; log?: (l
     load(): RunStoreLoad {
       const out: RunStoreLoad = { runs: [], unavailable: [] }
       let files: string[] = []
-      try { files = readdirSync(runsDir).filter((f) => f.endsWith('.json')).sort() } catch { return out }
+      try { files = readdirSync(runsDir).filter((f) => f.endsWith('.json')).sort() } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+          out.failed = `${runsDir} couldn't be listed: ${(e as Error).message}`
+          log(`Workflows: ${out.failed}. Runs aren't shown, and nothing is pruned, until it can be.`)
+        }
+        return out
+      }
       for (const f of files) {
         const file = join(runsDir, f)
         let raw: unknown
         let problem: string
         let newer = false
+        let text: string | null
         try {
-          raw = JSON.parse(readIfPresentSync(file) ?? 'null')
+          text = readIfPresentSync(file)
+        } catch (e) {
+          // Couldn't be read now (locked, say): left as it is, and still counted as there.
+          out.unavailable.push({ file, problem: `Couldn't be read: ${(e as Error).message}` })
+          continue
+        }
+        try {
+          raw = JSON.parse(text ?? 'null')
           const read = readRun(raw)
           if (read.ok && `${read.run.id}.json` === f) { out.runs.push(read.run); continue }
           problem = read.ok ? `The file is named ${f} but holds run ${read.run.id}.` : read.problem
@@ -129,6 +149,17 @@ export function createRunStore(dir: string, opts: { now?: () => number; log?: (l
     save(run: WorkflowRun): Promise<void> {
       if (!RUN_ID.test(run.id)) return Promise.reject(new Error(`Bad run id ${run.id}`))
       return write(join(runsDir, `${run.id}.json`), `${JSON.stringify(run)}\n`)
+    },
+
+    /** Deletes a run's file, after any write to it still queued. */
+    remove(runId: string): Promise<void> {
+      if (!RUN_ID.test(runId)) return Promise.reject(new Error(`Bad run id ${runId}`))
+      const file = join(runsDir, `${runId}.json`)
+      const next = (writes.get(file) ?? Promise.resolve()).then(() => rm(file, { force: true }))
+      const tail = next.catch((e: unknown) => log(`Workflows: ${file} couldn't be deleted: ${String(e)}`))
+      writes.set(file, tail)
+      void tail.then(() => { if (writes.get(file) === tail) writes.delete(file) })
+      return next
     },
 
     isTrusted(hash: string): boolean {

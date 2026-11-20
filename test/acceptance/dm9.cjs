@@ -162,7 +162,10 @@ async function main() {
     await L.waitFor('the node to go', async () => !(await L.nodeOf(page, 'a')), 8000)
     const history = (await L.doc(page)).closed
     c.check('DM9: closing adds it to the history', history.length === 1 && history[0].sessionId === closingSession, history[0]?.title)
-    await page.evaluate(() => document.querySelector('.dock [data-cmd="recent"]').click())
+    // Closed conversations is in the dock's Work menu.
+    await page.evaluate(() => document.querySelector('.dock [data-cmd="work"]').click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await page.evaluate(() => document.querySelector('.dock .menu-panel [data-cmd="recent"]').click())
     await page.waitForSelector('.shell-drawer .recent-entry', { timeout: 5000 })
     await button(page, '.recent-entry', 'View transcript')
     await page.waitForSelector('.viewer-text', { timeout: 5000 })
