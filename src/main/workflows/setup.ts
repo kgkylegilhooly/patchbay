@@ -64,5 +64,9 @@ export function setupWorkflows(d: {
   })
   for (const u of service.unavailable) d.log(`Workflows: a run couldn't be loaded (${u.problem})${u.setAside ? `; kept at ${u.setAside}` : ''}.`)
   registerWorkflowIpc({ service, dataDir: d.dataDir, isAppUi: d.isAppUi })
+  // Old finished runs and their files go once the app has settled, then daily, so start-up costs nothing.
+  const prune = (): void => void service.prune().catch((e: unknown) => d.log(`Workflows: pruning failed: ${String(e)}`))
+  setTimeout(prune, 60_000).unref()
+  setInterval(prune, 24 * 60 * 60_000).unref()
   return { wrap: (verbs) => withWorkflowVerbs(verbs, { store: d.store, service }), recover: () => service.recover() }
 }

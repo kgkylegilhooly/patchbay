@@ -103,6 +103,9 @@ async function main() {
     // This may run from inside another agent's session, which must not be mistaken for one of Patchbay's.
     if (!require('./test/acceptance/lib.cjs').inheritNot(key) && !/^ELECTRON_RUN_AS_NODE$|^ELECTRON_RENDERER_URL$/i.test(key)) env[key] = value
   }
+  // As in the acceptance runs, the window opens beside the screens without taking focus, so pictures don't pop up over
+  // whatever the person is doing. PB_SHOW=1 shows it as usual.
+  if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
 
   const child = spawn(
     electronPath,
