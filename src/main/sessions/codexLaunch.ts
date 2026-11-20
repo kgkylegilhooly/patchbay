@@ -18,8 +18,13 @@ export interface CodexLaunchContext extends SessionEnvContext {
  * a hook once and remembers it by its exact command. The node travels in the environment instead.
  *
  * No PreToolUse, as for Claude: it started Node before every tool call, and PostToolUse sets everything it did.
+ *
+ * Codex 0.170 also reports Interrupt (Esc ended the turn: it's at its prompt, so `idle`, where Claude can only say
+ * `unknown`) and SubagentStart / SubagentStop, which feed its subagent cards. Adding a hook means Codex asks the person
+ * to trust the new commands once, on the next launch. Not SessionEnd: its only reason is "other", which doesn't say
+ * whether the program is ending or only the conversation, so a process exit stays what marks a node exited.
  */
-export const CODEX_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop']
+export const CODEX_HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'Stop', 'Interrupt', 'SubagentStart', 'SubagentStop']
 
 let located: string | null = null
 

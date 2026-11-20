@@ -55,6 +55,10 @@ const hook = (name, extra = {}) => {
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
 // "edits=a.ts,b.ts" also keeps one, and runs a turn that edits those files in its folder. See editTurn.
 const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? null
+// In that turn, "writes=x,y" changes files with no edit call, as a shell command would, and "subedits=z" edits files
+// through a pretend subagent, whose transcript is written where Claude Code writes one.
+const writes = /\bwrites=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
+const subedits = /\bsubedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
 const chat = /\bchat\b/.test(prompt) || !!edits
 // "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
 const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
@@ -131,6 +135,25 @@ async function editTurn(files) {
     line({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Edit', input: { file_path: file, old_string: '', new_string: 'x' } }] } })
     if (!open) line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'The file was updated.' }] } })
   })
+  for (const name of writes) {
+    const file = path.join(process.cwd(), name)
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, `{"generated": "${new Date().toISOString()}"}\n`)
+  }
+  if (subedits.length) {
+    const dir = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents')
+    fs.mkdirSync(dir, { recursive: true })
+    const sub = path.join(dir, 'agent-fakesub01.jsonl')
+    const subLine = (entry) => fs.appendFileSync(sub, `${JSON.stringify({ ...entry, isSidechain: true, agentId: 'fakesub01', timestamp: new Date().toISOString() })}\n`)
+    subedits.forEach((name, i) => {
+      const file = path.join(process.cwd(), name)
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, `export const bySubagent${i} = true\n`)
+      const id = `toolu_sub_${i}`
+      subLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Write', input: { file_path: file, content: 'x' } }] } })
+      subLine({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'File created.' }] } })
+    })
+  }
   await hook('PostToolUse')
   say('assistant', `Edited ${files.length} files.`)
   await hook('Stop')
