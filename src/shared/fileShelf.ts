@@ -184,9 +184,65 @@ export function quotePathFor(path: string, target: PathTarget): string {
     case 'cmd':
       return `"${p}" `
     case 'agent':
-    case 'other':
       return /[\s&()^%!;,'`=]/.test(p) ? `"${p}" ` : `${p} `
+    case 'other':
+      // A shell Patchbay doesn't know, such as zsh, fish or nu: single quotes are literal in all of them.
+      return `'${p.replace(/'/g, `'\\''`)}' `
   }
+}
+
+/** Characters a shell Patchbay doesn't know might act on, even inside quotes. */
+const RISKY_FOR_UNKNOWN = /[$`;&|()%!'"\r\n]/
+/** cmd replaces %NAME% even inside double quotes, and nothing typed can stop it. */
+const CMD_VARIABLE = /%[^%\\/]+%/
+
+export type Typing = { ok: true; text: string } | { ok: false; reason: string }
+
+/**
+ * What to type for these paths into a window, or why they should be copied instead. A name a shell would act on, such
+ * as `$(…)` for a shell Patchbay doesn't know or `%NAME%` for cmd, is never typed: it could run or change on Enter.
+ */
+export function pathTyping(paths: string[], target: PathTarget): Typing {
+  const shown = paths.map(withoutLongPrefix)
+  if (target === 'other' && shown.some((p) => RISKY_FOR_UNKNOWN.test(p))) {
+    return { ok: false, reason: "This file's name has characters this terminal's shell might act on, so its path was copied instead of typed. Paste it if it's right." }
+  }
+  if (target === 'cmd' && shown.some((p) => CMD_VARIABLE.test(p))) {
+    return { ok: false, reason: "This path has %…% in it, which cmd would replace, so it was copied instead of typed. Paste it if it's right." }
+  }
+  return { ok: true, text: paths.map((p) => quotePathFor(p, target)).join('') }
+}
+
+/**
+ * What a double-click may open with its default app: documents, pictures and media. Anything else (a program, script,
+ * shortcut, installer, disk image, or a Windows file that connects somewhere, such as `.library-ms` or `.rdp`) is only
+ * shown in File Explorer. A list of what's safe rather than of what isn't, since Windows keeps adding to the latter.
+ */
+const SAFE_TO_OPEN = new Set(
+  (
+    'png jpg jpeg gif webp bmp tif tiff heic avif ico ' +
+    'pdf txt md markdown log rtf csv tsv json jsonl yaml yml toml ini xml ' +
+    'doc docx odt xls xlsx ods ppt pptx odp ' +
+    // Source files that no interpreter claims on a usual PC: not .js, .py, .rb, .php or .ps1.
+    'ts tsx jsx c h cpp hpp cs go rs java kt swift sql css scss vue svelte ' +
+    'mp3 wav ogg flac m4a aac mp4 mov webm mkv avi m4v'
+  ).split(' ')
+)
+
+export function isSafeToOpen(path: string): boolean {
+  // Windows ignores trailing dots and spaces, and anything after a colon names a stream of the file.
+  const name = fileName(path).split(':')[0].replace(/[. ]+$/, '').toLowerCase()
+  const dot = name.lastIndexOf('.')
+  return dot > 0 && SAFE_TO_OPEN.has(name.slice(dot + 1))
+}
+
+/** A path Windows' own apps can take: past MAX_PATH it needs the long-path prefix. */
+export function longForm(path: string): string {
+  const p = withoutLongPrefix(path).replace(/\//g, '\\')
+  if (p.length < 260) return p
+  if (/^[A-Za-z]:\\/.test(p)) return `\\\\?\\${p}`
+  if (isNetworkPath(p)) return `\\\\?\\UNC\\${p.replace(/^\\+/, '')}`
+  return p
 }
 
 /** What "Send path to agent" sends. */

@@ -1,6 +1,6 @@
-import { FILE_NODE_SIZE, fileName, quotePathFor, type PathTarget } from '../shared/fileShelf'
+import { FILE_NODE_SIZE, fileName, pathTyping, type PathTarget } from '../shared/fileShelf'
 import { shellKind } from '../shared/terminalProfiles'
-import type { CanvasDoc, CanvasNode, FileNode } from '../shared/model'
+import type { AgentStatus, CanvasDoc, CanvasNode, FileNode } from '../shared/model'
 import { placed, type Place } from './newNodes'
 
 /**
@@ -32,7 +32,16 @@ export function pathTargetOf(node: CanvasNode | undefined, profiles: { profiles:
   return profile ? shellKind(profile.program) : 'other'
 }
 
-/** What dropping or dragging files onto a window types into it: each path quoted for it, with a space after. */
-export function typedPaths(paths: string[], target: PathTarget): string {
-  return paths.map((p) => quotePathFor(p, target)).join('')
+export type TypingDecision = { type: 'type'; text: string } | { type: 'copy'; reason: string } | { type: 'skip'; reason: string }
+
+/**
+ * What dropping or dragging files onto a window does: types each path, quoted for it; copies them instead when its
+ * shell might act on a name; or nothing, for an agent waiting on the person, where keys could answer its question.
+ */
+export function typingFor(paths: string[], target: PathTarget, status: AgentStatus | null, title: string): TypingDecision {
+  if (target === 'agent' && status === 'needs-you') {
+    return { type: 'skip', reason: `${title} is waiting on you, so the path wasn't typed: keys could answer its question. Answer it first, or use Send path to agent.` }
+  }
+  const typing = pathTyping(paths, target)
+  return typing.ok ? { type: 'type', text: typing.text } : { type: 'copy', reason: typing.reason }
 }

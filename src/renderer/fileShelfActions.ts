@@ -1,7 +1,8 @@
 import type { ShelfSource } from '../shared/fileShelf'
 import { bridge } from './bridge'
-import { newFileNodes, pathTargetOf, typedPaths } from './fileNodes'
-import { checkFiles, filesBridge } from './fileShelfUi'
+import { copyText } from './clipboard'
+import { newFileNodes, pathTargetOf, typingFor } from './fileNodes'
+import { checkFiles, fileNotice, filesBridge } from './fileShelfUi'
 import type { Place } from './newNodes'
 import { undoable, useStore } from './store'
 import { currentTerminalProfiles } from './terminalProfilesUi'
@@ -16,12 +17,20 @@ export function noteShared(projectId: string | undefined, paths: string[], sourc
   void filesBridge()?.note(id, paths.map((path, i) => ({ path, source, at: at + i, ...(nodeTitle ? { nodeTitle } : {}) })))
 }
 
-/** Types these paths into a terminal or agent window, quoted for it. False when the window takes no typing. */
+/**
+ * Types these paths into a terminal or agent window, quoted for it. A path its shell might act on is copied instead,
+ * and nothing is typed into an agent waiting on the person, where keys could answer its question. False when the
+ * window takes no typing at all.
+ */
 export function typePathsInto(nodeId: string, paths: string[]): boolean {
-  const node = useStore.getState().doc?.nodes.find((n) => n.id === nodeId)
+  const state = useStore.getState()
+  const node = state.doc?.nodes.find((n) => n.id === nodeId)
   const target = pathTargetOf(node, currentTerminalProfiles())
-  if (!target || !paths.length) return false
-  bridge.input(nodeId, typedPaths(paths, target))
+  if (!node || !target || !paths.length) return false
+  const decision = typingFor(paths, target, state.statuses[nodeId] ?? null, node.title)
+  if (decision.type === 'type') bridge.input(nodeId, decision.text)
+  else if (decision.type === 'copy') void copyText(paths.join('\n')).then(() => fileNotice(decision.reason), () => fileNotice("That path wasn't typed, since its shell might act on it, and it couldn't be copied either."))
+  else fileNotice(decision.reason)
   return true
 }
 

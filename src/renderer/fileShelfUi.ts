@@ -96,7 +96,7 @@ export function openFile(path: string): void {
       if (!r.ok) {
         fileNotice(r.reason)
         checkFiles([{ path, network: isNetworkPath(path) }])
-      } else fileNotice(r.revealed ? 'This file runs a program, so Patchbay showed it in File Explorer instead of opening it.' : null)
+      } else fileNotice(r.revealed ? "Patchbay opens only documents, pictures and media this way, so this file was shown in File Explorer instead." : null)
     })
 }
 

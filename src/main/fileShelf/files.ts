@@ -1,5 +1,5 @@
 import { isAbsolute } from 'node:path'
-import { isDevicePath, isNetworkPath, parentFolder, withoutLongPrefix, type FileState } from '../../shared/fileShelf'
+import { isDevicePath, isNetworkPath, isSafeToOpen, longForm, parentFolder, withoutLongPrefix, type FileState } from '../../shared/fileShelf'
 import { isRunnable } from '../shellActions'
 
 export interface FileDeps {
@@ -22,20 +22,23 @@ function usable(path: string): string | null {
 }
 
 /**
- * Opens a file with its default app, by the same rules as a link in a terminal: anything Windows would run, or hand to
- * an interpreter, is only shown in File Explorer. A folder opens in File Explorer.
+ * Opens a file with its default app, but only a document, picture or media file (isSafeToOpen): anything else, such as a
+ * program, script, shortcut, installer or a Windows file that connects somewhere, is only shown in File Explorer. An
+ * agent can pin any file it wrote, and a friendly icon invites a double-click. A folder opens in File Explorer.
  */
 export async function openFile(path: string, deps: FileDeps): Promise<FileResult> {
   const p = usable(path)
   if (!p) return { ok: false, reason: `That isn't a full path to a file: ${path}` }
   const kind = await deps.kind(p)
   if (!kind) return { ok: false, reason: `File not found: ${p}` }
-  if (kind === 'file' && isRunnable(p)) {
-    deps.reveal(p)
+  if (kind === 'file' && (isRunnable(p) || !isSafeToOpen(p))) {
+    deps.reveal(longForm(p))
     return { ok: true, revealed: true }
   }
-  const error = await deps.openPath(p)
-  return error ? { ok: false, reason: error } : { ok: true }
+  const error = await deps.openPath(longForm(p))
+  if (!error) return { ok: true }
+  // Past MAX_PATH, many apps can't take the file even with the long-path prefix.
+  return { ok: false, reason: p.length >= 260 ? `This path is too long for its app to open. Use Reveal in File Explorer instead. (${error})` : error }
 }
 
 /** Shows it in File Explorer, or the nearest folder above it that's still there when it's gone. */
@@ -43,7 +46,7 @@ export async function revealFile(path: string, deps: FileDeps): Promise<FileResu
   const p = usable(path)
   if (!p) return { ok: false, reason: `That isn't a full path to a file: ${path}` }
   if (await deps.kind(p)) {
-    deps.reveal(p)
+    deps.reveal(longForm(p))
     return { ok: true }
   }
   let folder = parentFolder(p)

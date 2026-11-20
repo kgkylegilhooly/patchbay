@@ -84,6 +84,27 @@ describe('opening and revealing', () => {
     expect(deps.revealed).toEqual(['C:\\a\\run.cmd', 'C:\\a\\tool.EXE', 'C:\\a\\link.lnk'])
   })
 
+  test('only documents, pictures and media open: every other type is revealed, including ones Windows runs or connects out with', async () => {
+    const risky = ['notes.library-ms', 'x.search-ms', 'y.searchConnector-ms', 'help.chm', 'box.rdp', 'app.appinstaller', 'app.msix', 'disk.iso', 'disk.vhdx', 'sb.wsb', 'add.xll', 'page.mht', 'run.js', 'run.py', 'tool.rb', 'noext', 'page.html', 'pic.svg', 'Makefile', 'evil.cmd .', 'evil.exe:stream']
+    const files = Object.fromEntries(risky.map((n) => [`C:\\w\\${n}`, 'file' as const]))
+    const deps = fakeDeps(files)
+    for (const n of risky) expect(await openFile(`C:\\w\\${n}`, deps), n).toEqual({ ok: true, revealed: true })
+    expect(deps.opened).toEqual([])
+    const safe = ['a.pdf', 'b.PNG', 'c.docx', 'd.md', 'e.csv', 'f.mp4', 'g.ts', 'h.txt']
+    const deps2 = fakeDeps(Object.fromEntries(safe.map((n) => [`C:\\w\\${n}`, 'file' as const])))
+    for (const n of safe) expect(await openFile(`C:\\w\\${n}`, deps2), n).toEqual({ ok: true })
+    expect(deps2.revealed).toEqual([])
+  })
+
+  test('a path past MAX_PATH goes to the app with the long-path prefix, and a failure says to reveal it instead', async () => {
+    const deep = `C:\\${Array.from({ length: 30 }, (_, i) => `folder-${i}`).join('\\')}\\report.pdf`
+    const opened: string[] = []
+    const deps: FileDeps = { kind: async () => 'file', openPath: async (p) => (opened.push(p), 'Access is denied.'), reveal: () => {} }
+    const r = await openFile(deep, deps)
+    expect(opened).toEqual([`\\\\?\\${deep}`])
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/too long .* Reveal in File Explorer/) })
+  })
+
   test('a missing file says so, and never errors', async () => {
     const deps = fakeDeps({})
     expect(await openFile('C:\\gone.txt', deps)).toEqual({ ok: false, reason: 'File not found: C:\\gone.txt' })
