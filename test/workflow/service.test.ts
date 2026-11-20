@@ -75,7 +75,7 @@ function world(wf: Workflow = featureWorkflow(), opts: {
   const tracker = fakeTracker()
   const sent: Array<[string, string]> = []
   const readers: string[] = []
-  const tasks = { created: [] as unknown[], submitted: [] as unknown[], verified: [] as unknown[] }
+  const tasks = { created: [] as unknown[], submitted: [] as unknown[], verified: [] as unknown[], recorded: [] as unknown[] }
   let holding = false
   let clock = 1_000_000
   let ids = 0
@@ -99,7 +99,8 @@ function world(wf: Workflow = featureWorkflow(), opts: {
     tasks: {
       async create(_p, input) { tasks.created.push(input); return { id: 'task1' } },
       async submit(...a) { tasks.submitted.push(a) },
-      async verify(...a) { tasks.verified.push(a) }
+      async verify(...a) { tasks.verified.push(a) },
+      async recordRun(...a) { tasks.recorded.push(a) }
     },
     send: (id, text) => (sent.push([id, text]), { ok: true }),
     revision: async () => ({ revision: 'abc', uncommitted: false, fingerprint: 'f' }),
@@ -495,5 +496,67 @@ describe('review fixes', () => {
     expect(openAction('C:/x/link.lnk')).toBe('reveal')
     expect(openAction('C:/x/doc.md')).toBe('open')
     expect(openAction('C:/x/log.txt')).toBe('open')
+  })
+})
+
+describe('L1 and L2 through the service', () => {
+  /** Runs the feature workflow to its tests step, running. */
+  async function toTests(w: ReturnType<typeof world>) {
+    await startByPerson(w)
+    await submitPlan(w)
+    await w.service.act(w.run().id, { type: 'decide', attemptId: w.att('approve').id, decision: 'approve' })
+    await w.settle()
+    await w.service.submit(w.att('implement').nodeId!, [{ key: 'summary', text: 'Done' }])
+    await w.settle()
+  }
+  const logOf = (w: ReturnType<typeof world>) => join(w.dataDir, 'workflow-artifacts', w.run().id, w.att('tests').id.replace(/:/g, '_'), 'log.txt')
+
+  test('L1: the passing check step is recorded as the task\'s evidence, not run again', async () => {
+    const w = world()
+    await toTests(w)
+    mkdirSync(join(logOf(w), '..'), { recursive: true })
+    writeFileSync(logOf(w), 'all passing')
+    w.runner.exit(w.att('tests').nodeId!, 0)
+    await w.settle()
+    expect(w.tasks.verified).toEqual([])
+    expect(w.tasks.recorded).toEqual([['p1', 'task1', w.att('implement').nodeId, expect.objectContaining({ checkId: 'tests', command: 'npm test --', cwd: w.run().cwd, exitCode: 0, outputRef: logOf(w) })]])
+  })
+
+  test('L1: without the step\'s evidence (no log kept), the check runs through the task service', async () => {
+    const w = world()
+    await toTests(w)
+    w.runner.exit(w.att('tests').nodeId!, 0)
+    await w.settle()
+    expect(w.tasks.recorded).toEqual([])
+    expect(w.tasks.verified).toHaveLength(1)
+  })
+
+  test('L2: old finished runs and their files go; open runs, unread runs\' files and in-play tasks stay', async () => {
+    const wf = featureWorkflow()
+    delete wf.deliverable
+    ;(wf.steps[3] as { taskCheck?: boolean }).taskCheck = undefined
+    const w = world(wf)
+    await startByPerson(w)
+    await submitPlan(w)
+    const finished = w.run().id
+    await w.service.act(finished, { type: 'stop' })
+    await w.settle()
+    const open = (await w.service.start({ projectId: 'p1', ref: 'Feature', inputs: { brief: 'Second' }, by: { person: true } }))
+    await w.settle()
+    const artifacts = join(w.dataDir, 'workflow-artifacts')
+    mkdirSync(join(artifacts, 'orphan'), { recursive: true })
+    mkdirSync(join(artifacts, 'newer-run'), { recursive: true })
+    // A run file this version can't read keeps its files.
+    writeFileSync(join(w.dataDir, 'workflow-runs', 'runs', 'newer-run.json'), JSON.stringify({ schema: 2, id: 'newer-run' }))
+    w.service.dispose()
+    const later = world(wf, { dataDir: w.dataDir, store: w.store, repo: w.root })
+    later.advanceClock(91 * 24 * 60 * 60_000)
+    const r = await later.service.prune()
+    expect(r.removed).toEqual([finished])
+    expect(existsSync(join(w.dataDir, 'workflow-runs', 'runs', `${finished}.json`))).toBe(false)
+    expect(existsSync(join(artifacts, finished))).toBe(false)
+    expect(existsSync(join(artifacts, 'orphan'))).toBe(false)
+    expect(existsSync(join(artifacts, 'newer-run'))).toBe(true)
+    expect(open.ok && later.service.get(open.run.id)).toBeTruthy()
   })
 })

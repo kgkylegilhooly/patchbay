@@ -1,4 +1,5 @@
 import { readdirSync, renameSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
 import {
@@ -129,6 +130,17 @@ export function createRunStore(dir: string, opts: { now?: () => number; log?: (l
     save(run: WorkflowRun): Promise<void> {
       if (!RUN_ID.test(run.id)) return Promise.reject(new Error(`Bad run id ${run.id}`))
       return write(join(runsDir, `${run.id}.json`), `${JSON.stringify(run)}\n`)
+    },
+
+    /** Deletes a run's file, after any write to it still queued. */
+    remove(runId: string): Promise<void> {
+      if (!RUN_ID.test(runId)) return Promise.reject(new Error(`Bad run id ${runId}`))
+      const file = join(runsDir, `${runId}.json`)
+      const next = (writes.get(file) ?? Promise.resolve()).then(() => rm(file, { force: true }))
+      const tail = next.catch((e: unknown) => log(`Workflows: ${file} couldn't be deleted: ${String(e)}`))
+      writes.set(file, tail)
+      void tail.then(() => { if (writes.get(file) === tail) writes.delete(file) })
+      return next
     },
 
     isTrusted(hash: string): boolean {
