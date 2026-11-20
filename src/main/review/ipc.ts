@@ -20,7 +20,7 @@ export function registerReviewIpc(s: {
   isAppUi: (e: IpcMainInvokeEvent) => boolean
   log?: (line: string) => void
 }): void {
-  const service = createReviewService({ store: s.store, tasks: s.tasks, data: createReviewStore(join(s.dataDir, 'review-inbox.json'), s.log), git: createReviewGit(join(s.dataDir, 'review-objects')), send: s.send })
+  const service = createReviewService({ store: s.store, tasks: s.tasks, data: createReviewStore(join(s.dataDir, 'review-inbox.json'), s.log), git: createReviewGit(join(s.dataDir, 'review-objects')), send: s.send, log: s.log })
   for (const name of REVIEW_METHODS) {
     ipcMain.handle(`pb:review:${name}`, async (e, ...args: unknown[]): Promise<Awaited<ReturnType<ReviewBridge[typeof name]>>> => {
       if (!s.isAppUi(e)) return { ok: false, error: 'The review inbox is available only in the application UI.' } as never

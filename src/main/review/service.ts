@@ -28,6 +28,7 @@ import type { Task, TaskView } from '../../shared/task'
 import type { SendResult } from '../agentMessages'
 import type { TaskService } from '../tasks/service'
 import { baseName, EMPTY_TREE, isOid, repoPath, type ReviewGit } from './git'
+import { objectNeeds, OBJECT_LIMITS, pruneObjectStore, type ObjectLimits, type PruneReport } from './objectPrune'
 import type { ReviewStore } from './store'
 
 export interface ReviewDeps {
@@ -38,6 +39,9 @@ export interface ReviewDeps {
   /** The queued delivery every message to an agent goes through: a busy agent gets it once it's idle. */
   send: (sessionId: string, text: string) => SendResult
   now?: () => number
+  /** How the review object store is pruned. See objectPrune.ts. */
+  limits?: ObjectLimits
+  log?: (line: string) => void
 }
 
 const same = (a: string, b: string): boolean => resolve(a).toLowerCase() === resolve(b).toLowerCase()
@@ -65,18 +69,57 @@ export function createReviewService(d: ReviewDeps) {
     return root
   }
 
+  const limits = d.limits ?? OBJECT_LIMITS
+  /** Snapshots handed to the window, which may still be showing them: kept by pruning for `limits.shownMs`. */
+  const shownTrees = new Map<string, { root: string; tree: string; at: number }>()
+  /** Repositories snapshotted this run. Their store folders are in use, so pruning never removes them. */
+  const usedRoots = new Set<string>()
+  /** Pruning the object store, while it runs. A snapshot waits for it, and it waits for snapshots being written. */
+  let pruning: Promise<unknown> = Promise.resolve()
+
   /** Snapshots being taken now. Calls at the same moment share one; a later call always takes its own, so it's never stale. */
   const snapshots = new Map<string, Promise<string>>()
   const snapshot = (root: string): Promise<string> => {
     const key = root.toLowerCase()
     const pending = snapshots.get(key)
     if (pending) return pending
-    const tree = d.git.snapshot(root)
+    usedRoots.add(root)
+    const tree = pruning.then(() => d.git.snapshot(root)).then((t) => {
+      shownTrees.set(`${key}:${t}`, { root, tree: t, at: now() })
+      return t
+    })
     snapshots.set(key, tree)
     const clear = (): void => { if (snapshots.get(key) === tree) snapshots.delete(key) }
     tree.then(clear, clear)
     return tree
   }
+
+  /** Removes what the review store no longer needs. See objectPrune.ts. */
+  const pruneObjects = (): Promise<PruneReport> => {
+    const run = Promise.allSettled([...snapshots.values()]).then(async () => {
+      const at = now()
+      for (const [k, s] of shownTrees) if (at - s.at > limits.shownMs) shownTrees.delete(k)
+      const data = d.data.get()
+      // An open comment written on a snapshot needs it while open. Its repository is its task's.
+      const roots = new Map<string, Promise<string | null>>()
+      const comments: { root: string; revision: string }[] = []
+      for (const c of data.comments) {
+        if (c.status !== 'open' || c.anchor.revisionKind !== 'snapshot') continue
+        const cwd = d.store.get().projects.find((p) => p.id === c.projectId)?.tasks?.tasks.find((t) => t.id === c.taskId)?.cwd
+        if (!cwd) continue
+        if (!roots.has(cwd)) roots.set(cwd, d.git.toplevel(cwd).catch(() => null))
+        const root = await roots.get(cwd)!
+        if (root) comments.push({ root, revision: c.anchor.revision })
+      }
+      // Every repository this run has looked at, and every one a record names, keeps its folder.
+      const inUse = [...usedRoots, ...data.marks.map((m) => m.root), ...comments.map((c) => c.root)]
+      const needs = objectNeeds({ marks: data.marks, comments, shown: [...shownTrees.values()], roots: inUse }, at, limits)
+      return pruneObjectStore(d.git, d.git.objectsRoot, needs, at, limits)
+    })
+    pruning = run.catch(() => {})
+    return run
+  }
+  let lastPrune = -Infinity
 
   const lastMark = (projectId: string, taskId: string): ReviewMark | undefined =>
     d.data.get().marks.filter((m) => m.projectId === projectId && m.taskId === taskId).sort((a, b) => a.at - b.at).at(-1)
@@ -130,13 +173,28 @@ export function createReviewService(d: ReviewDeps) {
       if (!contents.has(key)) contents.set(key, d.git.fileAt(root, rev, path).then((t) => (t === null || t === 'too-large' ? t : fileLines(t))))
       return contents.get(key)!
     }
+    const renamed = new Map<string, Promise<Map<string, string>>>()
+    const renamedTo = (from: string, to: string, path: string): Promise<string | undefined> => {
+      const key = `${from}:${to}`
+      if (!renamed.has(key)) renamed.set(key, d.git.renames(root, from, to).catch(() => new Map<string, string>()))
+      return renamed.get(key)!.then((m) => m.get(path))
+    }
+    /** A comment against `rev`. A file renamed since the comment is followed, and the placement names its new path. */
+    const placeIn = async (c: ReviewComment, rev: string): Promise<Placement> => {
+      const lines = await linesAt(rev, c.anchor.path)
+      if (lines !== null || c.anchor.revision === rev) return placeAnchor(c.anchor, lines)
+      const moved = await renamedTo(c.anchor.revision, rev, c.anchor.path)
+      if (!moved) return placeAnchor(c.anchor, null)
+      const p = placeAnchor(c.anchor, await linesAt(rev, moved))
+      return p.kind === 'outdated' ? p : { ...p, path: moved }
+    }
     const out: CommentView[] = []
     for (const c of list) {
       let placement: Placement
-      if (c.anchor.side === 'new') placement = placeAnchor(c.anchor, await linesAt(tree, c.anchor.path))
+      if (c.anchor.side === 'new') placement = await placeIn(c, tree)
       else {
         const from = await oldFrom(c)
-        placement = 'none' in from ? { kind: 'outdated', reason: from.none } : placeAnchor(c.anchor, await linesAt(from.rev, c.anchor.path))
+        placement = 'none' in from ? { kind: 'outdated', reason: from.none } : await placeIn(c, from.rev)
       }
       out.push({ ...c, placement, state: commentState(c, placement) })
     }
@@ -192,6 +250,14 @@ export function createReviewService(d: ReviewDeps) {
         return !!project.tasks && !project.tasks.tasks.some((t) => t.id === tid)
       }
       if (pruneReviewData(d.data.get(), gone) !== d.data.get()) d.data.update((data) => pruneReviewData(data, gone))
+      // The object store too, now and then, in the background: it's only used while the inbox is.
+      if (now() - lastPrune >= limits.everyMs) {
+        lastPrune = now()
+        void pruneObjects().then(
+          (r) => { if (r.removed || r.skipped.length) d.log?.(`Review objects pruned: ${r.removed} removed${r.reviewsDropped ? `, ${r.reviewsDropped} old review snapshots given up for space` : ''}${r.skipped.length ? `; left alone: ${r.skipped.join(', ')}` : ''}.`) },
+          (e: unknown) => d.log?.(`Review objects couldn't be pruned: ${String(e)}`)
+        )
+      }
       const queue = reviewQueue(await d.tasks.views(projectId))
       // Each agent's repository is looked up once per listing, however many tasks there are.
       const tops = new Map<string, Promise<string | null>>()
@@ -252,7 +318,7 @@ export function createReviewService(d: ReviewDeps) {
         if (!(await d.git.objectType(root, mark.tree))) {
           if (mark.head && (await d.git.objectType(root, mark.head))) {
             from = mark.head
-            notes.push(`git has cleaned up the saved snapshot of what you reviewed, so this compares with the commit you reviewed, ${short(mark.head)}. Uncommitted changes you already saw then may show again.`)
+            notes.push(`The saved snapshot of what you reviewed has been cleaned up (Patchbay keeps a review's snapshot for ${Math.round(limits.reviewMs / 86_400_000)} days, less when they take too much room), so this compares with the commit you reviewed, ${short(mark.head)}. Uncommitted changes you already saw then may show again.`)
           } else throw new Error('The revision recorded at your last review is no longer in this repository. Use Mark reviewed to record a new one.')
         }
         if (mark.head && head && mark.head !== head && !(await d.git.isAncestor(root, mark.head, head))) {
@@ -266,10 +332,13 @@ export function createReviewService(d: ReviewDeps) {
       return set
     },
 
-    async fileDiff(projectId: string, taskId: string, range: ChangeRange, path: string): Promise<{ text: string; truncated: boolean }> {
+    async fileDiff(projectId: string, taskId: string, range: ChangeRange, path: string, oldPath?: string): Promise<{ text: string; truncated: boolean }> {
       if (!isOid(range?.from) || !isOid(range?.to)) throw new Error('Not a revision to compare')
-      return d.git.diff(await rootOf(findTask(projectId, taskId)), range.from, range.to, repoPath(path))
+      return d.git.diff(await rootOf(findTask(projectId, taskId)), range.from, range.to, repoPath(path), oldPath === undefined || oldPath === null ? undefined : repoPath(oldPath))
     },
+
+    /** Prunes the review object store now. The inbox does this itself every few hours; tests call it. */
+    pruneObjects,
 
     async comments(projectId: string, taskId: string, tree?: string): Promise<CommentView[]> {
       const task = findTask(projectId, taskId)
