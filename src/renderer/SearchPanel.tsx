@@ -8,6 +8,7 @@ import { useStore } from './store'
 import { useAgentOff } from './agentChoice'
 import { openProjects } from './projectsUi'
 import './search.css'
+import { safePadding } from './safeArea'
 
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const KINDS: Array<{ id: SearchKind | 'all'; label: string }> = [
@@ -218,7 +219,7 @@ export function SearchPanel(): React.JSX.Element {
     }
     const switching = !!node.projectId && node.projectId !== doc.activeProjectId
     if (switching) void bridge.dispatch({ op: 'switchProject', id: node.projectId! })
-    const center = (): void => void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
+    const center = (): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
     // A node in another project only exists on screen once its project has been drawn.
     if (!switching && flow.getNode(id)) center()
     else setTimeout(center, 300)

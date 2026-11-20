@@ -6,22 +6,27 @@ import { addMenu, type Commands } from './menus'
 import { useStore } from './store'
 import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
+import { toggleFoldedMap, useChromeLayout } from './safeArea'
+import { waitingForReview, workLabel, workMenu } from './workDock'
+import './safeArea.css'
 
 function DockButton({
   cmd,
   label,
   icon,
   pressed,
+  className,
   onClick
 }: {
   cmd: string
   label: string
   icon: IconName
   pressed?: boolean
+  className?: string
   onClick: () => void
 }): React.JSX.Element {
   return (
-    <button type="button" className="dock-btn" data-cmd={cmd} aria-label={label} title={label} aria-pressed={pressed} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+    <button type="button" className={`dock-btn${className ? ` ${className}` : ''}`} data-cmd={cmd} aria-label={label} title={label} aria-pressed={pressed} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
       <Icon name={icon} />
     </button>
   )
@@ -30,12 +35,10 @@ function DockButton({
 function DockView({
   commands,
   sidebar,
-  recent,
   groupLabel
 }: {
   commands: Commands
   sidebar: boolean
-  recent: boolean
   groupLabel: string
 }): React.JSX.Element {
   const { zoom } = useViewport()
@@ -43,21 +46,36 @@ function DockView({
   const focus = useStore((s) => !!s.focus)
   const git = useStore((s) => s.gitOpen)
   const agents = useAgentChoice()
-  const [adding, setAdding] = useState(false)
+  const waiting = useStore((s) => waitingForReview(s.doc?.projects.find((p) => p.id === s.doc?.activeProjectId)?.tasks?.tasks))
+  const foldMap = useChromeLayout((s) => s.foldMap)
+  const mapOpen = useChromeLayout((s) => s.mapOpen)
+  const [open, setOpen] = useState<'add' | 'work' | null>(null)
+  const adding = open === 'add'
+  const working = open === 'work'
   const ref = useRef<HTMLDivElement>(null)
+  const workRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (!adding) return
+    if (!open) return
     const onPress = (e: MouseEvent): void => {
-      if (!ref.current?.contains(e.target as Node)) setAdding(false)
+      if (!ref.current?.contains(e.target as Node)) setOpen(null)
     }
     window.addEventListener('mousedown', onPress, true)
     return () => window.removeEventListener('mousedown', onPress, true)
-  }, [adding])
+  }, [open])
 
+  const close = (): void => setOpen(null)
   return (
     <div className="dock" ref={ref} role="toolbar" aria-label="Canvas tools">
-      {adding && <MenuPanel entries={addMenu(commands)} label="Add" onClose={() => setAdding(false)} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)' }} />}
+      {adding && <MenuPanel entries={addMenu(commands)} label="Add" onClose={close} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)' }} />}
+      {working && (
+        <MenuPanel
+          entries={workMenu(commands, { waiting })}
+          label="Work"
+          onClose={close}
+          style={{ position: 'absolute', left: workRef.current?.offsetLeft ?? 0, bottom: 'calc(100% + 8px)' }}
+        />
+      )}
       <button
         type="button"
         className="dock-btn dock-add"
@@ -66,7 +84,7 @@ function DockView({
         title="Add to the canvas"
         aria-expanded={adding}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setAdding((a) => !a)}
+        onClick={() => setOpen((o) => (o === 'add' ? null : 'add'))}
       >
         <Icon name="plus" />
       </button>
@@ -85,11 +103,27 @@ function DockView({
       <DockButton cmd="fit-view" label="Fit view" icon="fit" onClick={commands.fitView} />
       <DockButton cmd="tidy" label="Tidy canvas" icon="tidy" onClick={() => commands.tidy()} />
       <DockButton cmd="toggle-sidebar" label="Sessions sidebar" icon="sidebar" pressed={sidebar} onClick={() => commands.togglePref('sidebar')} />
-      <DockButton cmd="recent" label="Closed conversations" icon="recent" pressed={recent} onClick={commands.toggleRecent} />
       <DockButton cmd="toggle-board" label="Board view" icon="board" pressed={board} onClick={commands.toggleBoard} />
       <DockButton cmd="toggle-focus" label="Focus view" icon="grid" pressed={focus} onClick={() => commands.toggleFocus()} />
       <DockButton cmd="toggle-git" label="Git panel" icon="branch" pressed={git} onClick={() => commands.toggleGit()} />
       <span className="dock-sep" />
+      <button
+        type="button"
+        ref={workRef}
+        className="dock-work"
+        data-cmd="work"
+        aria-label={workLabel(waiting)}
+        title="Search, recipes and workflows, review, files and projects"
+        aria-haspopup="menu"
+        aria-expanded={working}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((o) => (o === 'work' ? null : 'work'))}
+      >
+        Work
+        {waiting > 0 && <span className="dock-count" aria-hidden>{waiting}</span>}
+      </button>
+      <span className="dock-sep" />
+      {foldMap && <DockButton cmd="toggle-map" className="dock-map" label="Map of the canvas" icon="map" pressed={mapOpen} onClick={toggleFoldedMap} />}
       <DockButton cmd="zoom-out" label="Zoom out" icon="minus" onClick={commands.zoomOut} />
       <button type="button" className="dock-zoom" data-cmd="zoom-reset" title="Actual size" onMouseDown={(e) => e.preventDefault()} onClick={commands.zoomReset}>
         {Math.round(zoom * 100)}%

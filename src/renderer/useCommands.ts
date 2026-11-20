@@ -9,6 +9,8 @@ import { pickedProfile, profileFolder, terminalFolderFor } from './terminalProfi
 import { absolutePosition, groupMembers, newBrowser, newClaude, newGroup, newLaunchRun, newRun, newSsh, newSticky, newTerminal, newTrigger, newWhiteboard, placed, SIZES, type Place } from './newNodes'
 import type { Rect } from '../core/canvas/place'
 import { visibleArea } from './viewArea'
+import { safePadding } from './safeArea'
+import { panToShow } from '../core/canvas/tidy'
 import { openTidy } from './tidyUi'
 import type { TriggerFields } from './TriggerForm'
 import { nearestInDirection } from './nodeNav'
@@ -20,6 +22,8 @@ import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, terminalActions } from './terminalRegistry'
+
+const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export type NewForm = { kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'; at?: Point; groupId?: string; editId?: string } | null
 
@@ -79,7 +83,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       return doc().projects.find((p) => p.id === doc().activeProjectId)?.folder || lastFolder.current
     }
 
-    /** The canvas on screen, in canvas coordinates, less what the sidebar and dock cover. */
+    /** The canvas on screen, in canvas coordinates: the safe area, clear of the sidebar, dock, minimap and legend. */
     const visible = (): Rect | null => {
       const area = visibleArea(prefsRef.current.sidebar)
       const vp = flow.getViewport()
@@ -105,23 +109,35 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       return { ...(onScreen ? { beside: selected } : {}), group, doc: doc(), view }
     }
 
+    /**
+     * When a new node couldn't find room inside the safe area (the view is full), the view pans, at the same zoom, only
+     * as far as it takes to show it: something just made is never left under the dock, the minimap or off the edge.
+     */
+    const reveal = (node: CanvasNode): void => {
+      const view = visible()
+      const vp = flow.getViewport()
+      if (!view || !(vp.zoom > 0) || !inActiveProject(doc(), node)) return
+      // A member of a group that isn't drawn yet has no place on screen to check.
+      if (node.parentId && !doc().nodes.some((n) => n.id === node.parentId)) return
+      const d = panToShow(view, { ...absolutePosition(doc(), node), width: node.width, height: node.height })
+      if (d.x || d.y) void flow.setViewport({ x: vp.x - d.x * vp.zoom, y: vp.y - d.y * vp.zoom, zoom: vp.zoom }, { duration: reducedMotion() ? 0 : 220 })
+    }
+
     const open = (node: CanvasNode): void => {
       dispatch({ op: 'addNode', node })
+      reveal(node)
       if (isSessionNode(node)) void bridge.startNode(node.id).then((r) => noteRunProblem(node.id, r))
     }
 
-    /** Fits everything into the part of the canvas the sidebar and dock don't cover. */
-    const fitAll = (): void => {
-      const left = prefsRef.current.sidebar ? '330px' : '24px'
-      void flow.fitView({ padding: { top: '24px', left, right: '24px', bottom: '84px' }, duration: 220 })
-    }
+    /** Fits everything into the safe area: the part of the canvas no chrome covers. */
+    const fitAll = (): void => void flow.fitView({ padding: safePadding(8, prefsRef.current.sidebar), duration: 220 })
 
     const target = (nodeId?: string) => (nodeId ? terminalActions(nodeId) : focusedTerminal())
 
     /** Brings a node into view and gives its terminal the keyboard. A node in another project has to be drawn first. */
     const center = (id: string): void => {
       const go = (): void => {
-        void flow.fitView({ nodes: [{ id }], padding: 0.2, maxZoom: 1, duration: 260 })
+        void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
         terminalActions(id)?.focus()
       }
       if (flow.getNode(id)) go()
@@ -195,9 +211,17 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       armTrigger: (id) => setForm({ kind: 'arm', editId: id }),
       disarmTrigger: (id) => void bridge.disarmTrigger(id),
       runTriggerNow: (id) => void bridge.runTriggerNow(id),
-      newSticky: (at) => undoable('add note', [{ op: 'addNode', node: newSticky(place(at), crypto.randomUUID()) }]),
+      newSticky: (at) => {
+        const node = newSticky(place(at), crypto.randomUUID())
+        undoable('add note', [{ op: 'addNode', node }])
+        reveal(node)
+      },
       // Not undoable: redoing it would bring the board back empty, losing what was drawn since. Deleting it is undoable.
-      newWhiteboard: (at) => void dispatch({ op: 'addNode', node: newWhiteboard(place(at), crypto.randomUUID()) }),
+      newWhiteboard: (at) => {
+        const node = newWhiteboard(place(at), crypto.randomUUID())
+        dispatch({ op: 'addNode', node })
+        reveal(node)
+      },
       group: (at) => {
         const members = groupMembers(doc(), selectedRef.current)
         const id = crypto.randomUUID()

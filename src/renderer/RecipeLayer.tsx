@@ -5,6 +5,7 @@ import { RecipeSave } from './RecipeSave'
 import { closeRecipes, useRecipeUi } from './recipeUi'
 import { useStore } from './store'
 import './recipes.css'
+import { safePadding } from './safeArea'
 
 /** The recipe picker and the save dialog, over the canvas, whichever is open. */
 export function RecipeLayer({ selected }: { selected: string[] }): React.JSX.Element | null {
@@ -30,7 +31,7 @@ export function RecipeLayer({ selected }: { selected: string[] }): React.JSX.Ele
           onStart={({ group }) => {
             closeRecipes()
             // The new group is drawn once its doc arrives.
-            setTimeout(() => void flow.fitView({ nodes: [{ id: group }], padding: 0.15, maxZoom: 1, duration: 260 }), 300)
+            setTimeout(() => void flow.fitView({ nodes: [{ id: group }], padding: safePadding(), maxZoom: 1, duration: 260 }), 300)
           }}
         />
       )}
