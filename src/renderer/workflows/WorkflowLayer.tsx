@@ -5,7 +5,9 @@ import { stepOutputs, type OutputValue, type StepAttempt, type WorkflowRun } fro
 import type { PersonAction } from '../../shared/workflowBridge'
 import { useStore } from '../store'
 import { workflows } from '../workflowBridge'
-import { ATTEMPT_LABEL, RUN_STATE_LABEL, chipRuns, earlierAttempts, needsPerson, runStrip, runSubject } from './runView'
+import { ATTEMPT_LABEL, chipRuns, earlierAttempts, needsPerson, runStrip, runSubject } from './runView'
+import { attemptLook, workflowRunLook } from '../status/status'
+import { StatusMark, StatusPair } from '../status/StatusMarks'
 import { openRunPanel, useWorkflowUi } from './workflowUi'
 import './workflows.css'
 
@@ -121,7 +123,7 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
           <h2>{run.definition.name}</h2>
           {runSubject(run) && <p className="recipe-dim">{runSubject(run)}</p>}
         </div>
-        <span className={`workflow-state workflow-state-${run.state}`}>{RUN_STATE_LABEL[run.state]}</span>
+        <StatusPair look={workflowRunLook(run.state)} className={`workflow-state workflow-state-${run.state}`} />
         <button type="button" className="btn" aria-label="Close" onClick={onClose}>✕</button>
       </header>
       <p className="recipe-dim workflow-where">
@@ -130,14 +132,15 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
       <ol className="workflow-run-steps">
         {run.definition.steps.map((s, n) => {
           const a = currentAttempt(run, s.key)
-          const label = a?.idle ? 'Idle, no result' : ATTEMPT_LABEL[a?.state ?? 'pending']
+          const look = attemptLook(a?.state ?? 'pending', a?.idle)
           const outs = stepOutputs(s)
           return (
             <li key={s.key} className={`workflow-run-step workflow-run-step-${a?.state ?? 'pending'}`} data-workflow-run-step={s.key}>
               <div className="workflow-row">
                 <span className="workflow-step-n">{n + 1}</span>
                 <span className="recipe-node-title">{s.title}</span>
-                <span className={`workflow-state workflow-state-${a?.state ?? 'pending'}`}>{label}{a && a.n > 1 ? ` · attempt ${a.n}` : ''}</span>
+                <StatusPair look={look} className={`workflow-state workflow-state-${a?.state ?? 'pending'}`} />
+                {a && a.n > 1 && <span className="recipe-dim">attempt {a.n}</span>}
                 {a?.decidedBy && <span className="recipe-dim">by you</span>}
                 {a?.nodeId && (
                   <button type="button" className="btn" onClick={() => show(a.nodeId!)}>
@@ -231,6 +234,7 @@ export function WorkflowLayer(): React.JSX.Element | null {
               data-workflow-chip={r.state}
               onClick={() => openRunPanel(r.id === panelRun ? null : r.id)}
             >
+              <StatusMark look={workflowRunLook(r.state)} size={8} />
               <strong>Workflow: {r.definition.name}</strong>
               {runSubject(r) && <span className="recipe-dim"> — {runSubject(r)}</span>}
               <span className="workflow-strip">{runStrip(r)}</span>

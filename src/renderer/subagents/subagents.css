@@ -50,15 +50,15 @@
 }
 
 .sa-running {
-  --sa-color: var(--led-working);
+  --sa-color: var(--status-working);
 }
 
 .sa-done {
-  --sa-color: var(--led-idle);
+  --sa-color: var(--status-done);
 }
 
 .sa-failed {
-  --sa-color: var(--led-needs);
+  --sa-color: var(--status-needs);
 }
 
 .sa-fading,
@@ -71,24 +71,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-
-.sa-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--sa-color);
-}
-
-.sa-running .sa-dot {
-  animation: sa-blink 1.6s steps(2, jump-none) infinite;
-}
-
-@keyframes sa-blink {
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .sa-type {
@@ -127,7 +109,7 @@
 }
 
 .sa-failed .sa-meta {
-  color: var(--led-needs);
+  color: var(--status-needs-ink);
 }
 
 .sa-more {
@@ -182,10 +164,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sa-running .sa-dot {
-    animation: none;
-  }
-
   .sa-card,
   .sa-cable {
     transition: none;

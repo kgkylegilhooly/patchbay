@@ -1,58 +1,38 @@
 import type { AgentStop } from '../shared/agentStop'
 import type { AgentStatus } from '../shared/model'
+import type { RunResult } from '../shared/contract'
+import { agentLook, runLook, TONE_TOKENS, TOKEN_FALLBACK, type Tone } from './status/status'
 
-/** The status colours the minimap paints with: the same `--led-*` tokens the dots use, so the two never disagree. */
-export interface LedTokens {
-  working: string
-  idle: string
-  needs: string
-  waiting: string
-}
+/** The colour of each status tone, read from the same CSS tokens the marks use, so the minimap never disagrees. */
+export type ToneColors = Record<Tone, string>
 
-/** What styles.css sets, for where there's no stylesheet to read, as in tests. */
-export const LED_FALLBACK: LedTokens = { working: '#ff9f43', idle: '#34c759', needs: '#ff453a', waiting: '#7da7ff' }
+const toneColors = (read: (token: string) => string): ToneColors =>
+  Object.fromEntries((Object.keys(TONE_TOKENS) as Tone[]).map((tone) => [tone, read(TONE_TOKENS[tone])])) as ToneColors
 
-/** No status to report: a terminal, a command, or an agent Patchbay can't read yet. */
-export const NEUTRAL = '#a3abbd'
-const ENDED = '#6d7790'
+/** What status.css sets, for where there's no stylesheet to read, as in tests. */
+export const TONE_FALLBACK: ToneColors = toneColors((token) => TOKEN_FALLBACK[token])
 
-let cached: LedTokens | null = null
+let cached: ToneColors | null = null
 
 /** Reads the tokens once from the page. */
-export function ledTokens(root: Element | null = typeof document === 'undefined' ? null : document.documentElement): LedTokens {
+export function ledTokens(root: Element | null = typeof document === 'undefined' ? null : document.documentElement): ToneColors {
   if (cached) return cached
-  if (!root) return LED_FALLBACK
+  if (!root) return TONE_FALLBACK
   const style = getComputedStyle(root)
-  const read = (name: string, fallback: string): string => style.getPropertyValue(name).trim() || fallback
-  cached = {
-    working: read('--led-working', LED_FALLBACK.working),
-    idle: read('--led-idle', LED_FALLBACK.idle),
-    needs: read('--led-needs', LED_FALLBACK.needs),
-    waiting: read('--led-waiting', LED_FALLBACK.waiting)
-  }
+  cached = toneColors((token) => style.getPropertyValue(token).trim() || TOKEN_FALLBACK[token])
   return cached
 }
 
 /**
- * A node's colour on the minimap. An agent stopped on an error keeps the status `unknown`, so its stop decides: one
- * only the person can clear, such as a failed login, is red like needs-you; one that clears by itself, such as a
+ * A node's colour on the minimap: its tone's colour. An agent stopped on an error keeps the status `unknown`, so its
+ * stop decides: one the person has to clear, such as a failed login, is red; one that clears by itself, such as a
  * usage limit, is amber.
  */
-export function statusMapColor(status: AgentStatus | null | undefined, stop: Pick<AgentStop, 'holds'> | undefined, tokens: LedTokens = LED_FALLBACK): string {
-  if (status === 'unknown' && stop) return stop.holds === 'person' ? tokens.needs : tokens.working
-  switch (status) {
-    case 'working':
-      return tokens.working
-    case 'idle':
-      return tokens.idle
-    case 'needs-you':
-      return tokens.needs
-    case 'queued':
-    case 'starting':
-      return tokens.waiting
-    case 'exited':
-      return ENDED
-    default:
-      return NEUTRAL
-  }
+export function statusMapColor(status: AgentStatus | null | undefined, stop: AgentStop | undefined, colors: ToneColors = TONE_FALLBACK, now = Date.now()): string {
+  return colors[agentLook(status, stop, now).tone]
+}
+
+/** A run command's colour on the minimap: amber while it runs, red when it failed, as its mark. */
+export function runMapColor(run: RunResult | undefined, colors: ToneColors = TONE_FALLBACK): string {
+  return colors[runLook(run).tone]
 }

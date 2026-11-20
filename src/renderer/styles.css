@@ -22,11 +22,12 @@
   --cable-after: #bf7af0;
   --cable-trigger: #e7b53f;
 
-  --led-working: #ff9f43;
-  --led-idle: #34c759;
-  --led-needs: #ff453a;
-  --led-waiting: #7da7ff;
-  --led-terminal: #2f7bf6;
+  /* Old names for the status tokens in status/status.css. Waiting and terminal were blue; blue is not a status now. */
+  --led-working: var(--status-working);
+  --led-idle: var(--status-done);
+  --led-needs: var(--status-needs);
+  --led-waiting: var(--status-quiet);
+  --led-terminal: var(--status-quiet);
 
   --radius: 10px;
   --ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
@@ -362,7 +363,7 @@ select {
 .dock-add,
 .dock-add:hover {
   color: #fff;
-  background: var(--led-terminal);
+  background: var(--accent-fill);
 }
 
 .dock-add:hover {
@@ -727,13 +728,11 @@ select {
   border-radius: 50%;
 }
 
-.project-signal-working {
-  background: var(--led-working, #ffb938);
-}
-
-.project-signal-needs-you {
-  background: var(--led-needs);
-  box-shadow: 0 0 6px var(--led-needs);
+/* Holds a status mark (status/status.css), except Unseen, which is the white unread dot itself. */
+.project-signal:has(.st) {
+  display: inline-flex;
+  width: auto;
+  height: auto;
 }
 
 .project-rename {
@@ -868,57 +867,7 @@ select {
   background: #48484e;
 }
 
-.badge-terminal .led {
-  background: var(--led-terminal);
-}
-
-.badge-working .led {
-  background: var(--led-working);
-}
-
-.badge-idle .led {
-  background: var(--led-idle);
-}
-
-.badge-needs-you {
-  color: var(--led-needs);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-/* The word, not the dot: a filled pill, so it stands out in sentence case like the other statuses. */
-.badge-needs-you:not(:has(.led)) {
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--led-needs);
-  color: #1f0c0a;
-}
-
-.badge-needs-you .led {
-  background: var(--led-needs);
-  animation: blink 1.1s steps(2, jump-none) infinite;
-}
-
-.badge-queued .led,
-.badge-starting .led {
-  background: var(--led-waiting);
-}
-
-/* The only motion nobody asked for: a node waiting on you. */
-@keyframes blink {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0.25;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .badge-needs-you .led {
-    animation: none;
-  }
-}
+/* Colours and shapes per status: status/status.css. */
 
 /* Strips between a unit's header and its terminal */
 
@@ -2336,31 +2285,6 @@ circle.wb-eraser {
   gap: 3px;
 }
 
-.team-light {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #6d6d75;
-}
-
-.team-working {
-  background: var(--led-working);
-}
-
-.team-idle {
-  background: var(--led-idle);
-}
-
-.team-needs-you {
-  background: var(--led-needs);
-  box-shadow: 0 0 6px var(--led-needs);
-}
-
-.team-starting,
-.team-queued {
-  background: var(--led-waiting);
-}
-
 .team-summary {
   flex: none;
   white-space: nowrap;
@@ -2853,7 +2777,7 @@ circle.wb-eraser {
 }
 
 .switch-on {
-  background: var(--led-terminal);
+  background: var(--accent-fill);
   box-shadow: none;
 }
 
@@ -2917,7 +2841,8 @@ circle.wb-eraser {
   flex: none;
   width: 7px;
   height: 7px;
-  background: var(--cable-link);
+  /* Unread is a marker, not a status, and never blue. */
+  background: var(--status-unread);
   border-radius: 50%;
 }
 
@@ -3381,7 +3306,7 @@ circle.wb-eraser {
 
 .tool-btn-busy {
   opacity: 1;
-  color: var(--led-waiting);
+  color: var(--accent-ink);
   animation: tool-busy 1s ease-in-out infinite alternate;
 }
 
@@ -3864,8 +3789,8 @@ circle.wb-eraser {
 }
 
 .key-bind-on {
-  color: var(--led-waiting);
-  border-color: var(--led-waiting);
+  color: var(--accent-ink);
+  border-color: var(--accent-ink);
 }
 
 /* An action with no key: an offer, not a value. */
