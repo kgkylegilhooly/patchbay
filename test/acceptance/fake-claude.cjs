@@ -153,6 +153,7 @@ async function editTurn(files) {
       subLine({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Write', input: { file_path: file, content: 'x' } }] } })
       subLine({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'File created.' }] } })
     })
+    fs.writeFileSync(path.join(dir, 'agent-fakesub01.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Write the slug tests', toolUseId: 'toolu_task', spawnDepth: 1, finished: true }))
   }
   await hook('PostToolUse')
   say('assistant', `Edited ${files.length} files.`)
