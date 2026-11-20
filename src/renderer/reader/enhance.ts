@@ -1,12 +1,10 @@
 import { isPictureUrl } from '../../core/reader/pictures'
 import type { ImageResult } from '../../shared/reader'
-import { drawDiagram, type DiagramTheme } from './diagrams'
 import { docsBridge } from './readerBridge'
 
 /**
- * What the sanitized HTML of a section can't hold: Mermaid diagrams drawn from their code blocks, and local pictures
- * read through main. Both go in as <img> from data: URLs after the document's HTML was cleaned, and both leave the
- * text the page anchors comments to (a diagram's source, a picture's alt text) in place.
+ * What the sanitized HTML of a section can't hold: local pictures, read through main. They go in as <img> from data:
+ * URLs after the document's HTML was cleaned, and leave the alt text, which comments anchor to, in place.
  */
 
 const pictures = new Map<string, Promise<ImageResult>>()
@@ -62,72 +60,10 @@ function enhancePictures(root: HTMLElement, nodeId: string, version: number, liv
   }
 }
 
-function headOf(block: HTMLElement): HTMLElement | null {
-  return block.querySelector<HTMLElement>(':scope > .code-head')
-}
-
-function resetDiagram(block: HTMLElement): void {
-  block.querySelectorAll(':scope > .reader-mermaid, :scope > .reader-mermaid-error').forEach((e) => e.remove())
-  headOf(block)?.querySelector('.reader-mermaid-toggle')?.remove()
-  block.classList.remove('reader-mermaid-drawn', 'reader-mermaid-failed', 'reader-mermaid-source')
-}
-
-function enhanceDiagrams(root: HTMLElement, theme: DiagramTheme, live: () => boolean): void {
-  for (const block of root.querySelectorAll<HTMLElement>('.code-block.code-mermaid')) {
-    if (block.dataset.drawn === theme) continue
-    block.dataset.theme = theme
-    const source = block.querySelector('pre')?.textContent ?? ''
-    void drawDiagram(source, theme).then((r) => {
-      if (!live() || !block.isConnected || block.dataset.theme !== theme) return
-      resetDiagram(block)
-      block.dataset.drawn = theme
-      const head = headOf(block)
-      if (!r.ok) {
-        // The source stays, with why it isn't drawn.
-        const why = document.createElement('p')
-        why.className = 'reader-mermaid-error'
-        why.dataset.readerUi = ''
-        why.textContent = `Couldn't draw this diagram: ${r.reason}`
-        head?.after(why)
-        block.classList.add('reader-mermaid-failed')
-        return
-      }
-      const figure = document.createElement('div')
-      figure.className = 'reader-mermaid'
-      const img = document.createElement('img')
-      img.alt = 'Mermaid diagram'
-      img.src = r.url
-      img.width = r.width
-      img.height = r.height
-      img.draggable = false
-      figure.append(img)
-      head?.after(figure)
-      block.classList.add('reader-mermaid-drawn')
-      // Show the source instead, and back.
-      const toggle = document.createElement('span')
-      toggle.className = 'reader-mermaid-toggle'
-      toggle.setAttribute('role', 'button')
-      toggle.tabIndex = 0
-      toggle.textContent = 'Source'
-      const flip = (e: Event): void => {
-        e.stopPropagation()
-        const showing = block.classList.toggle('reader-mermaid-source')
-        toggle.textContent = showing ? 'Diagram' : 'Source'
-      }
-      toggle.addEventListener('click', flip)
-      toggle.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') flip(e)
-      })
-      head?.querySelector('.code-copy')?.before(toggle)
-    })
-  }
-}
-
-/** Fills in a section's diagrams and pictures. The returned function stops any still on their way. */
-export function enhanceBlocks(root: HTMLElement, o: { nodeId: string; version: number; theme: DiagramTheme }): () => void {
+/** Fills in a section's pictures. The returned function stops any still on their way. */
+export function enhanceBlocks(root: HTMLElement, o: { nodeId: string; version: number }): () => void {
   let on = true
   const live = (): boolean => on
-  enhanceDiagrams(root, o.theme, live)
   enhancePictures(root, o.nodeId, o.version, live)
   return () => {
     on = false

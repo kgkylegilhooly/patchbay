@@ -131,8 +131,7 @@ const Section = memo(function Section({
   onToggle,
   onShowComments,
   nodeId,
-  version,
-  paper
+  version
 }: {
   index: number
   doc: DocOutline
@@ -144,17 +143,16 @@ const Section = memo(function Section({
   nodeId: string
   /** The file's modification time: pictures are read again when it changes. */
   version: number
-  paper: boolean
 }): React.JSX.Element {
   const s = doc.sections[index]
   const html = useMemo(() => (collapsed ? '' : renderBlocks(s.body)), [s, collapsed])
   const blocksRef = useRef<HTMLDivElement>(null)
-  // Diagrams and pictures, put in after the cleaned HTML is on the page.
+  // Local pictures, put in after the cleaned HTML is on the page.
   useLayoutEffect(() => {
     const el = blocksRef.current
     if (!el || !html) return
-    return enhanceBlocks(el, { nodeId, version, theme: paper ? 'light' : 'dark' })
-  }, [html, nodeId, version, paper])
+    return enhanceBlocks(el, { nodeId, version })
+  }, [html, nodeId, version])
   const heading = useMemo(() => (s.heading ? renderHeading(s.heading) : ''), [s])
   const H = `h${Math.min(6, Math.max(1, s.depth))}` as 'h1'
   return (
@@ -499,7 +497,6 @@ export const ReaderNode = memo(function ReaderNode({ data, selected }: NodeProps
                   onShowComments={onShowComments}
                   nodeId={node.id}
                   version={loaded.mtimeMs}
-                  paper={paper}
                 />
               ))}
               {hover && !bubble && (

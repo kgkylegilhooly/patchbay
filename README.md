@@ -493,9 +493,8 @@ the file.
   with `patchbay open-doc --path plan.md`.
 - **Reading.** Headings, lists, tables, task boxes and colored code, with an **Outline** to jump through and an arrow on
   each heading to fold its section. **Paper** gives a light page. When the file changes on disk the reader follows it,
-  keeps your place and says when it changed. Mermaid blocks are drawn as diagrams (press **Source** to see the code);
-  one that can't be drawn shows its code and why. Pictures stored with the document show too. Pictures from the web
-  are never loaded: they show as a link you can open in your browser.
+  keeps your place and says when it changed. Pictures stored with the document show too. Pictures from the web are
+  never loaded: they show as a link you can open in your browser. Mermaid blocks show as their code.
 - **Comments.** Select words and press **Comment**, or press the **+** beside a paragraph or heading, or comment on the
   whole document. A comment keeps the words it's on, so it finds them again after edits, and says **Outdated** when
   they're gone. Comments are kept per file in app data, so closing the reader doesn't lose them.

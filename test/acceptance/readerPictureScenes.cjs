@@ -1,7 +1,7 @@
 'use strict'
-// Screenshot scenes for Mermaid diagrams and pictures in the Reader, and saving a handoff as a file:
-// `node screenshot.js <out.png> --scene reader-diagrams --size 1600x1000` (or reader-diagrams-paper, handoff-saved).
-// Each scene also checks, in the page, what the picture can't show: that nothing hostile ran or loaded.
+// Screenshot scenes for pictures in the Reader, and saving a handoff as a file:
+// `node screenshot.js <out.png> --scene reader-pictures --size 1600x1000` (or reader-pictures-before, handoff-saved,
+// handoff-open-saved). Each scene also checks, in the page, what the picture can't show.
 const fs = require('node:fs')
 const path = require('node:path')
 const zlib = require('node:zlib')
@@ -38,72 +38,44 @@ function png(width, height) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))])
 }
 
-const DOC = `# Ledger switch: how it fits together
+const DOC = `# Ledger switch: error rates
 
-The ledger takes over from the legacy invoice tables in two steps.
-
-${TICKS}mermaid
-flowchart LR
-  App[Billing API] -->|writes| Legacy[(Legacy tables)]
-  App -->|writes| Ledger[(Ledger)]
-  Legacy --> Compare{{Nightly compare}}
-  Ledger --> Compare
-  Compare -->|differs| Issue[File an issue]
-${TICKS}
-
-## Read path
-
-${TICKS}mermaid
-sequenceDiagram
-  participant C as Client
-  participant A as Billing API
-  participant L as Ledger
-  C->>A: GET /invoices
-  A->>L: read(account)
-  L-->>A: entries
-  A-->>C: invoices
-${TICKS}
-
-## Last week's error rates
+Error rates fell in every phase of the switch.
 
 ![Error rates by phase](shots/error-rates.png)
 
+The same chart by absolute path: ![chart again](<CHART>)
+
 The chart comes from the dashboard export. The vendor's own chart isn't loaded: ![vendor chart](https://example.com/chart.png)
 
-## Not drawn
-
-A diagram that doesn't parse shows its source and why:
-
-${TICKS}mermaid
-flowchart LR
-  A -->
-  B -->> -- C
-${TICKS}
-
-${TICKS}mermaid
-flowchart LR
-  X["<img src=x onerror=window.__pwned=1>Safe label"] --> Y
-  click X "javascript:window.__pwned=2"
-  click Y call window.__pwned(3)
-${TICKS}
+A file that only claims to be a picture isn't shown: ![fake](shots/fake.png)
 
 A picture outside the document's folders isn't read: ![secret](../outside/secret.png)
+
+Mermaid blocks stay as their source:
+
+${TICKS}mermaid
+flowchart LR
+  Legacy --> Compare
+  Ledger --> Compare
+${TICKS}
 `
 
-function seedDiagrams(doc) {
+function seedPictures(doc) {
   const cwd = path.join(doc.projects[0].folder, 'docs')
   fs.mkdirSync(path.join(cwd, 'shots'), { recursive: true })
   fs.mkdirSync(path.join(doc.projects[0].folder, 'outside'), { recursive: true })
   const file = path.join(cwd, 'ledger-switch.md')
-  fs.writeFileSync(file, DOC)
+  fs.writeFileSync(file, DOC.replace('<CHART>', require('node:url').pathToFileURL(path.join(cwd, 'shots', 'error-rates.png')).href))
   fs.writeFileSync(path.join(cwd, 'shots', 'error-rates.png'), png(360, 150))
+  fs.writeFileSync(path.join(cwd, 'shots', 'fake.png'), '<html><script>window.__pwned = 1</script></html>')
   fs.writeFileSync(path.join(doc.projects[0].folder, 'outside', 'secret.png'), png(20, 20))
   // The document's own folder is what it may show from, so the project's folder is set elsewhere for this scene.
   doc.projects[0].folder = cwd
   const planner = doc.nodes.find((n) => n.id === 'idle')
   Object.assign(planner, { title: 'Planner', x: 0, y: 0, width: 480, height: 420 })
   doc.nodes = doc.nodes.filter((n) => n.projectId !== 'p1' || n.id === 'idle')
-  doc.nodes.push({ id: 'reader', kind: 'reader', title: 'Ledger switch', path: file, fromNodeId: 'idle', x: 520, y: 0, width: 1000, height: 1060, parentId: null, projectId: 'p1' })
+  doc.nodes.push({ id: 'reader', kind: 'reader', title: 'Ledger switch', path: file, fromNodeId: 'idle', x: 520, y: 0, width: 1000, height: 1000, parentId: null, projectId: 'p1' })
   doc.edges = [{ id: 'e-reader', from: 'idle', to: 'reader', kind: 'link' }]
   doc.viewport = { x: 60, y: 20, zoom: 0.88 }
   doc.projects[0].viewport = doc.viewport
@@ -117,78 +89,50 @@ async function hideSidebar(page) {
   await sleep(200)
 }
 
-/** Waits for every diagram to be drawn or refused, and every picture shown or refused, then checks them all. */
-async function checkDiagrams(page, theme) {
+/** Waits for every picture to be shown or refused, then checks them all. */
+async function checkPictures(page) {
   await page.waitForFunction(
-    (sel, theme) => {
-      const blocks = [...document.querySelectorAll(`${sel} .code-mermaid`)]
+    (sel) => {
       const pics = [...document.querySelectorAll(`${sel} .reader-img-local`)]
-      return blocks.length === 4 && blocks.every((b) => b.dataset.drawn === theme || b.classList.contains('reader-mermaid-failed')) && pics.length === 2 && pics.every((p) => /reader-img-(shown|failed)/.test(p.className))
+      return pics.length === 4 && pics.every((p) => /reader-img-(shown|failed)/.test(p.className))
     },
-    { timeout: 30000 },
-    READER,
-    theme
+    { timeout: 15000 },
+    READER
   )
-  const report = await page.evaluate((sel) => {
-    const blocks = [...document.querySelectorAll(`${sel} .code-mermaid`)]
-    const svgs = blocks.map((b) => b.querySelector('.reader-mermaid img')?.getAttribute('src') ?? null)
-    return {
-      drawn: blocks.map((b) => b.classList.contains('reader-mermaid-drawn')),
-      errors: blocks.map((b) => b.querySelector('.reader-mermaid-error')?.textContent ?? null),
-      svg: svgs.map((s) => (s ? decodeURIComponent(s.replace(/^data:image\/svg\+xml;charset=utf-8,/, '')) : null)),
-      pwned: window.__pwned ?? null,
-      pictures: [...document.querySelectorAll(`${sel} .reader-img-local`)].map((p) => ({ cls: p.className, src: p.querySelector('img')?.getAttribute('src')?.slice(0, 22) ?? null, title: p.title })),
-      remote: [...document.querySelectorAll(`${sel} a.reader-img-remote`)].map((a) => a.getAttribute('href')),
-      pageImgs: [...document.querySelectorAll(`${sel} .reader-doc img`)].map((i) => i.getAttribute('src')?.slice(0, 15)),
-      loose: document.querySelectorAll('body > [id^="dreader-mermaid"], body > [id^="reader-mermaid"]').length
-    }
-  }, READER)
+  const report = await page.evaluate((sel) => ({
+    pictures: [...document.querySelectorAll(`${sel} .reader-img-local`)].map((p) => ({ cls: p.className, src: p.querySelector('img')?.getAttribute('src')?.slice(0, 22) ?? null, title: p.title })),
+    remote: [...document.querySelectorAll(`${sel} a.reader-img-remote`)].map((a) => a.getAttribute('href')),
+    pageImgs: [...document.querySelectorAll(`${sel} .reader-doc img`)].map((i) => i.getAttribute('src')?.slice(0, 15)),
+    mermaid: [...document.querySelectorAll(`${sel} .code-lang`)].map((e) => e.textContent),
+    pwned: window.__pwned ?? null
+  }), READER)
   const fail = (why) => {
-    const short = { ...report, svg: report.svg.map((v) => v && v.replace(/<style>[\s\S]*?<\/style>/, '').slice(0, 1500)) }
-    throw new Error(`${why}\n${JSON.stringify(short, null, 1)}`)
+    throw new Error(`${why}
+${JSON.stringify(report, null, 1)}`)
   }
-  if (report.pwned !== null) fail('Something in a diagram ran')
-  if (!report.drawn[0] || !report.drawn[1]) fail('The flowchart and the sequence diagram should be drawn')
-  if (report.drawn[2] || !report.errors[2]) fail('The broken diagram should show its source and an error')
-  for (const svg of report.svg.filter(Boolean)) {
-    if (/<script|<foreignObject|onerror|onload|javascript:|<a[\s>]|<image|href=|url\((?!#)/i.test(svg)) fail('A drawn diagram kept something it should not')
-  }
-  const words = (svg) => (svg ?? '').replace(/<style>[\s\S]*?<\/style>/, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
-  if (!/Safe label/.test(words(report.svg[3]))) fail(`The hostile diagram lost its label text: ${words(report.svg[3])} / ${words(report.svg[0])}`)
-  if (!/reader-img-shown/.test(report.pictures[0].cls) || report.pictures[0].src !== 'data:image/png;base64,') fail('The local picture should show from a data: URL')
-  if (!/reader-img-failed/.test(report.pictures[1].cls) || !/outside the folders/.test(report.pictures[1].title)) fail('The picture outside the folders should be refused')
+  const [beside, absolute, fake, outside] = report.pictures
+  if (report.pwned !== null) fail('Something ran')
+  for (const p of [beside, absolute]) if (!/reader-img-shown/.test(p.cls) || p.src !== 'data:image/png;base64,') fail('The local pictures should show from data: URLs')
+  if (!/reader-img-failed/.test(fake.cls) || !/isn't a picture/.test(fake.title)) fail('The fake picture should be refused')
+  if (!/reader-img-failed/.test(outside.cls) || !/outside the folders/.test(outside.title)) fail('The picture outside the folders should be refused')
   if (report.remote.length !== 1 || report.remote[0] !== 'https://example.com/chart.png') fail('The remote picture should be a link')
-  if (report.pageImgs.some((s) => !s.startsWith('data:image/'))) fail('Every picture on the page should be a data: URL')
-  if (report.loose) fail('Mermaid left elements behind')
-  console.log(`reader-diagrams (${theme}): ${report.drawn.filter(Boolean).length} drawn, 1 refused with its error, pictures and remote link as expected, nothing ran`)
+  if (report.pageImgs.some((src) => !src.startsWith('data:image/'))) fail('Every picture on the page should be a data: URL')
+  if (!report.mermaid.includes('Mermaid diagram (source)')) fail('A Mermaid block should stay as its source')
+  console.log('reader-pictures: 2 shown from data: URLs, fake and outside refused, remote is a link, nothing ran')
 }
 
 const scenes = {
-  // The same document with no checks, for a picture of a build without diagrams or pictures.
-  'reader-diagrams-before': async (page) => {
+  // The same document with no checks, for a picture of a build without pictures.
+  'reader-pictures-before': async (page) => {
     await hideSidebar(page)
     await page.waitForSelector(`${READER} .reader-doc .reader-section`, { timeout: 15000 })
     await sleep(1500)
   },
-  'reader-diagrams': async (page) => {
+  'reader-pictures': async (page) => {
     await hideSidebar(page)
     await page.waitForSelector(`${READER} .reader-doc .reader-section`, { timeout: 15000 })
-    await checkDiagrams(page, 'dark')
+    await checkPictures(page)
     await sleep(400)
-  },
-  'reader-diagrams-paper': async (page) => {
-    await hideSidebar(page)
-    await page.waitForSelector(`${READER} .reader-doc .reader-section`, { timeout: 15000 })
-    await checkDiagrams(page, 'dark')
-    await page.click(`${READER} .reader-tool[title^="A light page"]`)
-    await checkDiagrams(page, 'light')
-    // Scrolled to the pictures and the diagrams that weren't drawn.
-    await page.evaluate((sel) => {
-      const scroll = document.querySelector(`${sel} .reader-scroll`)
-      const h = [...scroll.querySelectorAll('.reader-heading')].find((e) => e.textContent.includes('Last week'))
-      scroll.scrollTop += h.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 10
-    }, READER)
-    await sleep(500)
   }
 }
 
@@ -232,6 +176,6 @@ const seedSave = (doc) => {
 
 module.exports = {
   scenes,
-  seeds: { 'reader-diagrams-before': seedDiagrams, 'reader-diagrams': seedDiagrams, 'reader-diagrams-paper': seedDiagrams, 'handoff-saved': seedSave, 'handoff-open-saved': seedSave }
+  seeds: { 'reader-pictures-before': seedPictures, 'reader-pictures': seedPictures, 'handoff-saved': seedSave, 'handoff-open-saved': seedSave }
 }
 

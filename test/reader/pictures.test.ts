@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { diagramError, imageHrefKind, isPictureUrl, scrubCss, svgDataUrl, svgSize } from '../../src/core/reader/pictures'
+import { imageHrefKind, isPictureUrl } from '../../src/core/reader/pictures'
 import { createImageReader, imageFolders, imagePath, MAX_IMAGE_BYTES, sniffImage } from '../../src/main/reader/images'
 import type { ClaudeNode, ReaderNode } from '../../src/shared/model'
 import { memoryStore } from '../control/fakes'
@@ -12,6 +12,15 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10])
 
 describe('which picture addresses are remote', () => {
+  it('takes only picture data: URLs as an image source', () => {
+    expect(isPictureUrl('data:image/png;base64,AAAA')).toBe(true)
+    expect(isPictureUrl('data:image/svg+xml;base64,AAAA')).toBe(true)
+    expect(isPictureUrl('data:text/html;base64,AAAA')).toBe(false)
+    expect(isPictureUrl('https://example.com/a.png')).toBe(false)
+    expect(isPictureUrl('file:///C:/a.png')).toBe(false)
+    expect(isPictureUrl(undefined)).toBe(false)
+  })
+
   it('treats the web, data and other schemes as remote, and paths as local', () => {
     expect(imageHrefKind('https://example.com/a.png')).toBe('remote')
     expect(imageHrefKind('http://x/a.png')).toBe('remote')
@@ -23,42 +32,6 @@ describe('which picture addresses are remote', () => {
     expect(imageHrefKind('C:\\shots\\a.png')).toBe('local')
     expect(imageHrefKind('file:///C:/shots/a.png')).toBe('local')
     expect(imageHrefKind('')).toBe('none')
-  })
-})
-
-describe('diagram SVG helpers', () => {
-  it('scrubs CSS of anything that reaches outside the picture', () => {
-    const css = '@import url(http://evil/x.css); .a{fill:url(#grad)} .b{background:url("https://evil/p.png")} .c{width:expression(alert(1))} .d{behavior:url(x.htc)} .e{background:u\\72l(http://evil)}'
-    const out = scrubCss(css)
-    expect(out).not.toMatch(/@import/i)
-    expect(out).not.toMatch(/evil/)
-    expect(out).not.toMatch(/expression\s*\(/i)
-    expect(out).not.toMatch(/behavior\s*:/i)
-    expect(out).toContain('url(#grad)')
-  })
-
-  it('sizes a picture from its viewBox, capped', () => {
-    expect(svgSize('0 0 320 120')).toEqual({ width: 320, height: 120 })
-    expect(svgSize('-8 -8 8000 2000')).toEqual({ width: 4000, height: 1000 })
-    expect(svgSize('0 0 0 10')).toBeNull()
-    expect(svgSize('nonsense')).toBeNull()
-    expect(svgSize(null)).toBeNull()
-  })
-
-  it('makes data: URLs, and takes only picture data: URLs as an image source', () => {
-    expect(svgDataUrl('<svg xmlns="http://www.w3.org/2000/svg"/>')).toMatch(/^data:image\/svg\+xml;charset=utf-8,%3Csvg/)
-    expect(isPictureUrl('data:image/png;base64,AAAA')).toBe(true)
-    expect(isPictureUrl(svgDataUrl('<svg/>'))).toBe(true)
-    expect(isPictureUrl('data:text/html;base64,AAAA')).toBe(false)
-    expect(isPictureUrl('https://example.com/a.png')).toBe(false)
-    expect(isPictureUrl('file:///C:/a.png')).toBe(false)
-    expect(isPictureUrl(undefined)).toBe(false)
-  })
-
-  it('says why a diagram failed in a few short lines', () => {
-    expect(diagramError(new Error('Parse error on line 2:\n...A --> \n-----^\nExpecting X\nmore\nand more'))).toBe('Parse error on line 2:\n...A -->\n-----^\nExpecting X')
-    expect(diagramError({ message: 'Lexical error' })).toBe('Lexical error')
-    expect(diagramError(null)).toBe('The diagram could not be read.')
   })
 })
 

@@ -12,12 +12,10 @@ const markdown = new Marked({
   breaks: false,
   renderer: {
     code({ text, lang }) {
-      // A Mermaid block is drawn as a diagram once the page has it (see ./enhance.ts). Until then, or when it can't
-      // be drawn, it shows as its source.
       const mermaid = (lang ?? '').trim().toLowerCase() === 'mermaid'
-      const label = mermaid ? 'Mermaid diagram' : languageLabel(lang)
+      const label = mermaid ? 'Mermaid diagram (source)' : languageLabel(lang)
       return (
-        `<div class="code-block${mermaid ? ' code-mermaid' : ''}"><div class="code-head"><span class="code-lang">${escapeHtml(label)}</span>` +
+        `<div class="code-block"><div class="code-head"><span class="code-lang">${escapeHtml(label)}</span>` +
         `<span class="code-copy" role="button" tabindex="0">Copy</span></div>` +
         `<pre><code>${highlight(text.replace(/\n$/, ''), mermaid ? undefined : lang)}</code></pre></div>`
       )
@@ -48,7 +46,7 @@ const PURIFY = {
 }
 
 /** The classes this renderer gives out. Any other class in a document is dropped, so it can't pass for an app part. */
-const OWN_CLASS = /^(code-(block|head|lang|copy|mermaid)|tok-[a-z]+|task|reader-img(-local|-remote)?)$/
+const OWN_CLASS = /^(code-(block|head|lang|copy)|tok-[a-z]+|task|reader-img(-local|-remote)?)$/
 
 /** A document's HTML, made safe: see PURIFY and OWN_CLASS. Exported for tests. */
 export function clean(html: string): string {

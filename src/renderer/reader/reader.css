@@ -469,49 +469,6 @@ a.reader-img-remote:hover {
   white-space: nowrap;
 }
 
-/* A Mermaid diagram drawn from its code block. "Source" shows the block's code instead. */
-.reader-mermaid {
-  padding: 14px 12px;
-  overflow-x: auto;
-  text-align: center;
-  background: var(--r-bg);
-}
-
-.reader-mermaid img {
-  max-width: 100%;
-  height: auto;
-}
-
-.code-mermaid.reader-mermaid-drawn:not(.reader-mermaid-source) > pre,
-.code-mermaid.reader-mermaid-source > .reader-mermaid {
-  display: none;
-}
-
-.reader-mermaid-toggle {
-  margin-left: auto;
-  margin-right: 10px;
-  cursor: pointer;
-  color: var(--r-dim);
-}
-
-.reader-mermaid-toggle:hover,
-.reader-mermaid-toggle:focus-visible {
-  color: var(--r-accent);
-}
-
-.reader-mermaid-error {
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  color: #f0a35e;
-  border-bottom: 1px solid var(--r-line);
-}
-
-.reader-paper .reader-mermaid-error {
-  color: #a1480c;
-}
-
 .reader-doc .code-head {
   user-select: none;
 }
