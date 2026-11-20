@@ -298,11 +298,11 @@ export async function restartNode(id: string): Promise<void> {
 }
 
 /** Opens and starts a terminal in a folder, just to the right of another window. */
-export function openTerminalBeside(besideId: string, cwd: string): string | null {
+export function openTerminalBeside(besideId: string, cwd: string, profile?: { id: string; name: string }): string | null {
   const doc = useStore.getState().doc
   const beside = doc?.nodes.find((n) => n.id === besideId)
   if (!doc || !beside) return null
-  const node = newTerminal({ beside, group: null, doc }, crypto.randomUUID(), { cwd })
+  const node = newTerminal({ beside, group: null, doc }, crypto.randomUUID(), { cwd, ...(profile ? { profile } : {}) })
   dispatch({ op: 'addNode', node })
   void bridge.startNode(node.id).then((r) => noteRunProblem(node.id, r))
   return node.id

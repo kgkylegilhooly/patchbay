@@ -58,7 +58,9 @@ async function main() {
 
     await openMenu(page, at)
     const labels = await page.$$eval('.menu-panel .menu-label', (ls) => ls.map((l) => l.textContent))
-    c.check('Clicking a path opens its menu', JSON.stringify(labels) === JSON.stringify(['Open', 'New terminal here', 'Copy path', 'Show in File Explorer']), labels)
+    // Then one "New terminal here: <profile>" for each terminal profile other than the default, as this PC has them.
+    const plain = labels.filter((l) => !l.startsWith('New terminal here: '))
+    c.check('Clicking a path opens its menu', JSON.stringify(plain) === JSON.stringify(['Open', 'New terminal here', 'Copy path', 'Show in File Explorer']), labels)
     console.log('SHOT', await L.shot(page, 'paths-after-menu'))
 
     await page.click('[data-cmd="path-copy"]')

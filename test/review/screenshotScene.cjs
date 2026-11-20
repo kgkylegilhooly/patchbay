@@ -43,6 +43,16 @@ scenes.scenes.review = async (page) => {
 
 // Fixes requested, the agent's change made on disk, then "Since last review" shows only that change, and the
 // comment, moved by the lines added above it, says where it went.
+// A file the branch renamed and changed: listed once as a rename, its diff showing both names and the changed line.
+// Before renames were shown, the same branch lists a deleted file and an added one.
+scenes.scenes['review-rename'] = async (page) => {
+  if (!(await openInbox(page))) return
+  await page.click('[data-section="committed"] [data-review-file="src/sessions-create.js"]')
+  await page.waitForSelector('.rvi-diff .review-line', { timeout: 10000 })
+  await page.evaluate(() => document.querySelector('.rvi-changes').scrollIntoView())
+  await sleep(300)
+}
+
 scenes.scenes['review-diff'] = async (page) => {
   if (!(await openInbox(page))) return
   await comment(page, 'src/auth.js', 'Reject expired tokens here too, not only malformed ones.', 'if (!validToken(token))')
@@ -84,7 +94,8 @@ function revisionOf(cwd) {
 const prepare = scenes.prepare
 scenes.prepare = (name, cwdRoot) => {
   const scene = prepare(name, cwdRoot)
-  if (name !== 'review' && name !== 'review-diff') return scene
+  if (name !== 'review' && name !== 'review-diff' && name !== 'review-rename') return scene
+  const rename = name === 'review-rename'
   const cwd = scene.cwd
   const git = (...args) => execFileSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd, windowsHide: true, encoding: 'utf8' })
   const write = (f, text) => {
@@ -96,11 +107,17 @@ scenes.prepare = (name, cwdRoot) => {
   git('config', 'user.email', 'fixture@example.invalid')
   write('README.md', '# Login service\n')
   write('src/auth.js', 'export function login(token) {\n  return createSession(token)\n}\n')
+  if (rename) write('src/session.js', 'export function createSession(token) {\n  const id = newId()\n  sessions.set(id, { token, at: Date.now() })\n  return id\n}\n')
   git('add', '-A')
   git('commit', '-q', '-m', 'Login service')
   git('switch', '-q', '-c', 'feat/token-checks')
   write('src/auth.js', "import { validToken } from './token.js'\n\nexport function login(token) {\n  if (!validToken(token)) throw new Error('Invalid token')\n  return createSession(token)\n}\n")
-  write('src/token.js', "export function validToken(token) {\n  return typeof token === 'string' && /^[A-Za-z0-9._-]{20,}$/.test(token)\n}\n")
+  if (rename) {
+    // Moved into a folder of its own, with one line changed: one rename, not a deleted and an added file.
+    git('mv', 'src/session.js', 'src/sessions-create.js')
+    write('src/sessions-create.js', 'export function createSession(token) {\n  const id = newId()\n  sessions.set(id, { token, at: Date.now(), expiresAt: Date.now() + 15 * 60_000 })\n  return id\n}\n')
+  }
+  write('src/token.js',"export function validToken(token) {\n  return typeof token === 'string' && /^[A-Za-z0-9._-]{20,}$/.test(token)\n}\n")
   git('add', '-A')
   git('commit', '-q', '-m', 'Validate tokens before creating a session')
   write('README.md', '# Login service\n\nTokens are validated before a session starts.\n')
