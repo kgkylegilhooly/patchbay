@@ -1,9 +1,32 @@
 /* "Try another approach" and the comparison view. */
 
+/* Header, scrolling body, footer: like the recipe picker, Cancel and Start both never scroll away. */
 .pop.compare-start {
   width: min(760px, calc(100vw - 32px));
   max-height: calc(100% - 28px);
+  overflow: hidden;
+}
+
+.compare-start-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  /* Out to the dialog's edges, so the scrollbar sits there and focus rings aren't clipped. */
+  margin: 0 -14px;
+  padding: 2px 14px;
   overflow: auto;
+}
+
+.compare-start .compare-head,
+.compare-start-problem,
+.compare-start-foot {
+  flex: none;
+}
+
+.compare-start-problem {
+  margin: 0;
 }
 
 .pop.compare-sheet {
@@ -18,6 +41,7 @@
 }
 
 .compare-start,
+.compare-start-body,
 .compare-sheet,
 .compare-list,
 .compare-main,

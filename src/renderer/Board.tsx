@@ -14,6 +14,7 @@ import { useAgentChoice } from './agentChoice'
 import { agentOffReason } from '../shared/agents'
 import './work.css'
 import { SessionTaskOutcomes, TaskOutcomes } from './tasks/TaskOutcomes'
+import { shortPath } from './shortPath'
 
 type Drag = { key: string; x: number; y: number; over: string | null }
 type IssueAsk = { issue: GithubIssue; kind: 'close' | 'reopen' | 'comment'; body: string }
@@ -39,6 +40,7 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
   const status = useStore((s) => s.statuses[node.id] ?? (node.kind === 'claude' ? 'unknown' : null))
   const run = useStore((s) => s.runs[node.id])
   const context = contextLabel(useStore((s) => s.usage.nodes[node.id]))
+  const root = useStore((s) => s.doc?.projects.find((p) => p.id === node.projectId)?.folder)
   return (
     <>
       <span className="card-top">
@@ -51,7 +53,7 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
         {node.kind === 'run' && <span className="run-label">{runLabel(run)}</span>}
         {context && <span className={`session-context usage-${context.level}`}>{context.text}</span>}
       </span>
-      <span className="card-where">{node.cwd || 'Home folder'}</span>
+      <span className="card-where" title={node.cwd || undefined}>{node.cwd ? shortPath(node.cwd, root) : 'Home folder'}</span>
       <SessionTaskOutcomes sessionId={node.id} />
     </>
   )
@@ -325,11 +327,11 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
                   {removal.moved ? `Its ${removal.moved === 1 ? 'card moves' : `${removal.moved} cards move`} to "${board.columns.find((c) => c.id === removal.movedTo)?.title}". Sessions keep running.` : 'It has no cards.'}
                 </p>
                 <div className="git-confirm-row">
+                  <button type="button" className="git-btn" onClick={() => setRemoving(null)}>Cancel</button>
                   <button type="button" className="git-btn git-btn-danger" data-col-tool="confirm-remove" onClick={() => {
                     change((b) => removeColumn(b, col.id, allKeys).board)
                     setRemoving(null)
                   }}>Remove</button>
-                  <button type="button" className="git-btn" onClick={() => setRemoving(null)}>Cancel</button>
                 </div>
               </div>
             )}
@@ -388,10 +390,10 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
           </p>
           {ask.kind === 'comment' && <textarea aria-label="Comment" rows={5} value={ask.body} onChange={(e) => setAsk({ ...ask, body: e.target.value })} autoFocus />}
           <div className="git-confirm-row">
+            <button type="button" className="git-btn" data-board="cancel-write" onClick={() => setAsk(null)}>Cancel</button>
             <button type="button" className="git-btn git-btn-danger" data-board="confirm-write" disabled={ask.kind === 'comment' && !ask.body.trim()} onClick={() => void runIssueAction(ask)}>
               {ask.kind === 'comment' ? 'Post comment' : ask.kind === 'close' ? 'Close issue' : 'Reopen issue'}
             </button>
-            <button type="button" className="git-btn" data-board="cancel-write" onClick={() => setAsk(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -406,8 +408,8 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
             <input aria-label="Branch name" value={start.branch} disabled={!start.worktree} onChange={(e) => setStart({ ...start, branch: e.target.value })} />
           </label>
           <div className="git-confirm-row">
-            <button type="button" className="git-btn git-btn-main" data-board="confirm-start" disabled={!!claudeOff || (start.worktree && !start.branch.trim())} onClick={() => void startWork(start)}>Start session</button>
             <button type="button" className="git-btn" data-board="cancel-start" onClick={() => setStart(null)}>Cancel</button>
+            <button type="button" className="git-btn git-btn-main" data-board="confirm-start" disabled={!!claudeOff || (start.worktree && !start.branch.trim())} onClick={() => void startWork(start)}>Start session</button>
           </div>
         </div>
       )}

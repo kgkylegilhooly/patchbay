@@ -3,6 +3,7 @@ import type { BranchInfo, ChangeEntry, CommitRow, DiffResult, GitOutcome, RepoCh
 import { discardWarning, refChip, repoCandidates, switchWarning } from './gitView'
 import { Icon } from './icons'
 import { ReviewBar, ReviewDiff } from './ReviewDiff'
+import { shortPath } from './shortPath'
 import { useStore } from './store'
 import { work } from './workBridge'
 import './work.css'
@@ -170,10 +171,10 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
         <h2>
           <Icon name="branch" size={15} /> Git
         </h2>
-        <select className="git-repo" aria-label="Repository" value={root ?? ''} onChange={(e) => setRoot(e.target.value || null)} disabled={!repos?.length}>
+        <select className="git-repo" aria-label="Repository" title={root ?? undefined} value={root ?? ''} onChange={(e) => setRoot(e.target.value || null)} disabled={!repos?.length}>
           {(repos ?? []).map((x) => (
-            <option key={x.root} value={x.root}>
-              {x.label}: {x.root}
+            <option key={x.root} value={x.root} title={x.root}>
+              {x.label}: {shortPath(x.root)}
             </option>
           ))}
         </select>
@@ -303,7 +304,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                 </section>
                 {file && (
                   <section className="git-diff" aria-label={`Changes in ${file.path}`}>
-                    <h3 className="git-section">
+                    <h3 className="git-section git-diff-title">
                       {file.path} {file.staged ? '(staged)' : ''}
                       <button type="button" className="icon-btn" aria-label="Hide the diff" onClick={() => setFile(null)}>×</button>
                     </h3>

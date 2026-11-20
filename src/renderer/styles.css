@@ -2340,6 +2340,15 @@ circle.wb-eraser {
   z-index: 5;
 }
 
+/* Next to the harmless Unbind: red text says this one deletes a folder. */
+.wt-bound .wt-remove:not(:disabled) {
+  color: var(--led-needs);
+}
+
+.wt-bound .wt-remove:hover:not(:disabled) {
+  border-color: var(--led-needs);
+}
+
 .wt-form input {
   width: 13em;
 }

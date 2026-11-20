@@ -247,6 +247,14 @@
   text-transform: uppercase;
 }
 
+/* A file name, shown exactly as it is on disk. */
+.git-section.git-diff-title {
+  color: var(--ink);
+  font: 600 12px var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .git-entry,
 .git-branch {
   display: flex;

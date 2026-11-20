@@ -14,7 +14,7 @@ const KINDS: Array<{ id: SearchKind | 'all'; label: string }> = [
   { id: 'all', label: 'Everything' },
   { id: 'conversation', label: 'Conversations' },
   { id: 'note', label: 'Notes' },
-  { id: 'message', label: 'Messages' }
+  { id: 'message', label: 'Agent messages' }
 ]
 const TYPING_MS = 180
 const RETRY_MS = 2000
@@ -28,7 +28,7 @@ function KindMark({ hit }: { hit: SearchHit }): React.JSX.Element {
 }
 
 function statsLine(s: IndexStats): string {
-  const parts = [`${s.conversations} conversation${s.conversations === 1 ? '' : 's'}`, `${s.notes} note${s.notes === 1 ? '' : 's'}`, `${s.messages} message${s.messages === 1 ? '' : 's'}`]
+  const parts = [`${s.conversations} conversation${s.conversations === 1 ? '' : 's'}`, `${s.notes} note${s.notes === 1 ? '' : 's'}`, `${s.messages} agent message${s.messages === 1 ? '' : 's'}`]
   if (s.other) parts.push(`${s.other} other`)
   return `Indexed ${parts.join(', ')}${s.syncedAt ? `, updated ${TIME.format(s.syncedAt)}` : ''}.`
 }
@@ -322,7 +322,7 @@ export function SearchPanel(): React.JSX.Element {
                   <span className="search-hit-meta">
                     <span className={`search-project${h.projectGone ? ' search-project-gone' : ''}`}>{projectLabel(h)}</span>
                     {h.kind === 'conversation' && h.role && <span>{h.role === 'user' ? 'asked' : 'agent said'}</span>}
-                    {h.matches > 1 && <span>{h.matches} matching messages</span>}
+                    {h.matches > 1 && <span>{h.matches} matching turns</span>}
                     {h.ref.type === 'closed' && <span>closed</span>}
                   </span>
                   <span className="search-snippet">

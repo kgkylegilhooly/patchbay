@@ -30,6 +30,32 @@
   display: flex;
 }
 
+.rvi-empty {
+  margin: auto;
+  max-width: 46ch;
+  padding: 24px;
+  color: var(--ink-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.rvi-empty h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rvi-empty p {
+  margin: 0 0 6px;
+}
+
+.rvi-empty code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
 .rvi-queue {
   flex: none;
   width: min(300px, 34%);
