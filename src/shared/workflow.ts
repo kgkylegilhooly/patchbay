@@ -471,6 +471,13 @@ export function workflowIssues(wf: Workflow): WorkflowIssue[] {
           }
         }
         if (step.taskCheck && !wf.deliverable) add(`${path}.taskCheck`, `${who} is a check on the deliverable task, but the workflow has no deliverable.`, step.key)
+        if (step.taskCheck) {
+          // The task's check is declared when the run starts and runs through cmd: only inputs are known then, and
+          // nothing in it may be something cmd acts on.
+          if (step.run.some((a) => templateRefs(a).some((r) => 'step' in r))) add(`${path}.taskCheck`, `${who} is a check on the deliverable task, so it can only use inputs, not other steps' outputs.`, step.key)
+          const bad = step.run.find((a) => SHELL_ACTS_ON.test(a.replace(/\{\{[^}]*\}\}/g, '')))
+          if (bad !== undefined) add(`${path}.taskCheck`, `${who} is a check on the deliverable task, which runs it through cmd, so ${quote(bad)} can't contain characters cmd acts on.`, step.key)
+        }
         break
       }
       case 'review':

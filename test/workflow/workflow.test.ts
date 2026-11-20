@@ -104,7 +104,7 @@ describe('issues', () => {
     })
 
     test('values as plain arguments are fine; literal shell characters are fine too, as no shell runs them', () => {
-      expect(messages(edit((w) => { step(w, 'tests').run = ['node', 'scripts/check.js', '--name', '{{in:brief}}', 'a&b'] }))).toEqual([])
+      expect(messages(edit((w) => { step(w, 'tests').run = ['node', 'scripts/check.js', '--name', '{{in:brief}}', 'a&b']; delete step(w, 'tests').taskCheck }))).toEqual([])
       expect(messages(edit((w) => { step(w, 'tests').run = ['bash', 'script.sh'] }))).toEqual([])
     })
 

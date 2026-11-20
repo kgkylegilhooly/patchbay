@@ -3,24 +3,10 @@ import { join } from 'node:path'
 import { writeAtomic } from '../../core/persist/atomicFile'
 import type { RecipeSource } from '../../shared/recipe'
 import { readWorkflowShape, workflowFileName, workflowIssues, WorkflowError, type Workflow, type WorkflowIssue } from '../../shared/workflow'
+import type { WorkflowEntry } from '../../shared/workflowBridge'
 import { readDefinitionFolder, recipeHash } from '../recipes/files'
 
-/** A workflow as listed, beside recipes in the library: where it came from, and what's wrong with it if anything. */
-export interface WorkflowEntry {
-  /** `source:name`, or `source:file` for one that couldn't be read. */
-  ref: string
-  source: RecipeSource
-  name: string
-  description?: string
-  file?: string
-  /** Absent when the file couldn't be read at all. */
-  workflow?: Workflow
-  /** Names exactly this content, by the same rule as recipes. A run records it; agents may only start trusted ones. */
-  hash?: string
-  /** Why it can't be started: it couldn't be read, or it has issues. */
-  problem?: string
-  issues?: WorkflowIssue[]
-}
+export type { WorkflowEntry }
 
 /** Where a repository keeps its workflows, from its root. */
 export const REPO_WORKFLOWS = join('.patchbay', 'workflows')

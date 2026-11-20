@@ -364,6 +364,8 @@ Read the file for what you're about to do, beside this one, before you start:
 - [github.md](github.md): read the project's GitHub issues and pull requests.
 - [recipes.md](recipes.md): list, preview and start saved setups of agents, commands and notes, with `patchbay
   recipes` and `patchbay run-recipe`.
+- [workflows.md](workflows.md): run a step of a workflow and submit its result with `patchbay job-submit`, or write,
+  preview and start workflows.
 
 ## Close
 

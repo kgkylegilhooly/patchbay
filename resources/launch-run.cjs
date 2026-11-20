@@ -57,6 +57,33 @@ if (/\.(cmd|bat)$/i.test(program)) {
 // Where the command came from, as for a recipe's setup step.
 if (typeof plan.note === 'string' && plan.note) process.stdout.write(`\x1b[2m${plan.note}\x1b[0m\r\n`)
 process.stdout.write(`\x1b[2m> ${[plan.file, ...plan.args].join(' ')}\x1b[0m\r\n`)
-const child = spawn(file, args, { cwd: plan.cwd, env, stdio: 'inherit', windowsVerbatimArguments: verbatim })
+// With a logFile (a workflow's command step), the output is also kept there, up to a limit, as the step's log.
+const LOG_LIMIT = 5 * 1024 * 1024
+let log = null
+let logged = 0
+if (typeof plan.logFile === 'string' && plan.logFile) {
+  try {
+    fs.mkdirSync(path.dirname(plan.logFile), { recursive: true })
+    log = fs.openSync(plan.logFile, 'w')
+  } catch (e) {
+    fail(`Couldn't open the log file ${plan.logFile}: ${e.message}`)
+  }
+}
+const keep = (chunk) => {
+  if (log === null || logged >= LOG_LIMIT) return
+  const part = chunk.subarray(0, LOG_LIMIT - logged)
+  fs.writeSync(log, part)
+  logged += part.length
+  if (logged >= LOG_LIMIT) fs.writeSync(log, '\n[Patchbay: the log was cut off here at 5 MB.]\n')
+}
+const child = spawn(file, args, { cwd: plan.cwd, env, stdio: log === null ? 'inherit' : ['inherit', 'pipe', 'pipe'], windowsVerbatimArguments: verbatim })
+if (log !== null) {
+  child.stdout.on('data', (c) => (process.stdout.write(c), keep(c)))
+  child.stderr.on('data', (c) => (process.stderr.write(c), keep(c)))
+}
 child.on('error', (e) => fail(e.message))
-child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
+// Without a log, as before: on exit. With one, once its output is all written.
+child.on(log === null ? 'exit' : 'close', (code, signal) => {
+  if (log !== null) fs.closeSync(log)
+  process.exit(code ?? (signal ? 1 : 0))
+})

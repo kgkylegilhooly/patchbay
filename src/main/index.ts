@@ -27,6 +27,7 @@ import { registerNeedsYouIpc } from './needsYou/ipc'
 import { createRecipeService } from './recipes/service'
 import { createSetupGate } from './recipes/setupGate'
 import { withRecipeVerbs } from './recipes/verbs'
+import { setupWorkflows } from './workflows/setup'
 import { createTaskService } from './tasks/service'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
@@ -444,7 +445,9 @@ async function boot(): Promise<void> {
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
   // The reader: Markdown files shown read-only, with comments for agents. See src/main/reader.
   const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
-  const allVerbs = withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments })
+  // Workflows: saved processes whose steps run in order, each finishing on evidence. See src/main/workflows.
+  const workflows = setupWorkflows({ store, runner, tracker, stops, tasks, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), docs: docs.service, broadcast, log: (line) => log?.write(line) })
+  const allVerbs = workflows.wrap(withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments }))
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
     const stop = tracker.get(id) === 'unknown' ? stops.get(id) : undefined
     return (stop && heldReason(stop, Date.now())) ?? undefined
@@ -542,6 +545,7 @@ async function boot(): Promise<void> {
     for (const id of plan.claude) await runner.startNode(id)
     gate.evaluate()
     setupGate.evaluate()
+    void workflows.recover()
     return [...plan.terminals, ...plan.claude]
   }
 
