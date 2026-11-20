@@ -359,7 +359,8 @@ code.recipe-argv {
 }
 
 /* .field sets inputs to full width, which a checkbox or radio mustn't be. */
-.pop .recipe-check input {
+.pop .recipe-check input,
+.shell .recipe-check input {
   flex: none;
   width: auto;
   margin: 0;
