@@ -151,3 +151,8 @@
   gap: 6px;
   white-space: nowrap;
 }
+
+/* A section heading names a status; only the things in it blink or pulse. */
+.sidebar-section .st .led {
+  animation: none;
+}
