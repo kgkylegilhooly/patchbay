@@ -97,11 +97,11 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
       {confirming ? (
         <div className="wt-form wt-confirm" role="alertdialog" aria-label="Remove this worktree?">
           <span>Delete this worktree's folder, including git-ignored files? Sessions in it stop. The branch stays.</span>
-          <button className="btn btn-danger" onClick={() => void remove()}>
-            Remove
-          </button>
           <button className="btn" onClick={() => setConfirming(false)}>
             Keep
+          </button>
+          <button className="btn btn-danger" onClick={() => void remove()}>
+            Remove
           </button>
         </div>
       ) : (
@@ -109,8 +109,8 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
           <button className="btn" title="Keeps the folder on disk" onClick={() => void bridge.unbindWorktree(node.id)}>
             Unbind
           </button>
-          <button className="btn" onClick={() => setConfirming(true)}>
-            Remove worktree
+          <button className="btn wt-remove" onClick={() => setConfirming(true)}>
+            Remove worktree…
           </button>
         </>
       )}

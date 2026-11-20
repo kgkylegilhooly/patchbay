@@ -147,11 +147,11 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
         <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />
         <div className="recipe-list-foot">
           <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
-            Personal folder
+            Open personal recipes folder
           </button>
           {listing?.repo && (
             <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'repository')}>
-              Repository folder
+              Open repository recipes folder
             </button>
           )}
         </div>
@@ -236,8 +236,8 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
 
             <section aria-label="What it makes">
               <h3>
-                Makes, in a group called <q>{plan.frame.title}</q>
-                {worktree && <> on a new worktree</>}
+                Creates a group, <q>{plan.frame.title}</q>
+                {worktree ? <>, in a new worktree</> : null}
               </h3>
               <p className="recipe-dim recipe-where">
                 {worktree ? 'New worktree' : 'Working directory'}: <code>{shownCwd}</code>

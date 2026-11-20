@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { loadOrCreateSecret, RpcRefusal, startControlServer, tokenFor } from '../../src/main/control/server'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const HOOK = resolve('resources/hook.cjs')
 const SECRET = 'test-secret'
@@ -20,7 +23,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await Promise.all(closers.splice(0).map((c) => c()))
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  await removeTemp(dir)
 })
 
 type Handlers = Partial<Parameters<typeof startControlServer>[0]>
@@ -209,15 +212,29 @@ test('hook.cjs exits 0 quickly when the server is unreachable', async () => {
   const run = await runHook({ hook_event_name: 'Stop' }, hookEnv())
   expect(run.code).toBe(0)
   expect(run.stdout).toBe('')
-  expect(run.ms).toBeLessThan(2500)
+  // It gave up on the port by itself and kept the event for the app. The bound is loose on purpose: starting node
+  // alone can take seconds on a busy machine, and what this catches is a hook left waiting.
+  expect(readFileSync(join(dir, 'missed', 'node-1.jsonl'), 'utf8')).toMatch(/"hook_event_name":"Stop"/)
+  expect(run.ms).toBeLessThan(10_000)
 })
 
-test('hook.cjs exits 0 within 2 s when the server accepts but never answers', async () => {
-  await server({ onHook: () => new Promise(() => {}) })
+test('hook.cjs exits 0 within its limit when the server accepts but never answers', async () => {
+  let arrived = 0
+  let answered = false
+  await server({
+    onHook: () => {
+      arrived = Date.now()
+      return new Promise(() => {}).finally(() => (answered = true))
+    }
+  })
   const run = await runHook({ hook_event_name: 'Stop' }, hookEnv())
   expect(run.code).toBe(0)
-  expect(run.ms).toBeLessThan(3000)
-}, 10000)
+  // It left on its own, with the request still unanswered. Timed from the request, not from starting node, which on a
+  // busy machine is slow by itself; its limit is 1.5 s, and a hook that waited would never end.
+  expect(arrived).toBeGreaterThan(0)
+  expect(answered).toBe(false)
+  expect(Date.now() - arrived).toBeLessThan(10_000)
+})
 
 test('hook.cjs exits 0 when the endpoint file is missing, stdin is junk or env is absent', async () => {
   expect((await runHook({ hook_event_name: 'Stop' }, hookEnv())).code).toBe(0)

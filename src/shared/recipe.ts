@@ -672,6 +672,7 @@ export function recipeFromSelection(nodes: CanvasNode[], edges: Edge[], selected
     if (!chosen.has(n.id)) return false
     if (n.kind === 'trigger') skipped.push({ title: n.title, why: 'Triggers are armed by hand, so they are not saved.' })
     else if (n.kind === 'whiteboard') skipped.push({ title: n.title, why: 'Whiteboards are not saved in recipes.' })
+    else if (n.kind === 'file') skipped.push({ title: n.title, why: 'File icons point at a file on this PC, so they are not saved in recipes.' })
     else return true
     return false
   })

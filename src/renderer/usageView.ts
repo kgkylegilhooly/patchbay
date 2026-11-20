@@ -140,14 +140,15 @@ export function pillText(state: UsageState, now: number, mode: UsageMode = 'used
   // Codex's part shows its closest limit, the one that would stop it first.
   const codexClosest = codexLive.length ? Math.max(...codexLive.map((w) => w.percent)) : undefined
   const parts = [
-    ...(fiveHour ? [`${shown(fiveHour.percent, mode)}% 5h`] : []),
-    ...(sevenDay ? [`${shown(sevenDay.percent, mode)}% wk`] : []),
-    ...(codexClosest !== undefined ? [`${shown(codexClosest, mode)}% Codex`] : [])
+    ...(fiveHour ? [`5h ${shown(fiveHour.percent, mode)}%`] : []),
+    ...(sevenDay ? [`wk ${shown(sevenDay.percent, mode)}%`] : []),
+    ...(codexClosest !== undefined ? [`Codex ${shown(codexClosest, mode)}%`] : [])
   ]
   const closest = Math.max(fiveHour?.percent ?? 0, sevenDay?.percent ?? 0, codexClosest ?? 0)
   const at = Math.max(state.plan?.at ?? 0, state.codex?.at ?? 0)
   return {
-    text: parts.join(' · '),
+    // The mode word once, at the end, says whether the numbers are what is used or what is left.
+    text: `${parts.join(' · ')} ${mode}`,
     level: levelOf(closest),
     stale: now - at > STALE_AFTER_MS,
     detail: planLines(state.plan, now).join('\n'),

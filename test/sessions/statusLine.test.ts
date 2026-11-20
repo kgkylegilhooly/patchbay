@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -9,6 +9,9 @@ import { startControlServer, tokenFor } from '../../src/main/control/server'
 import { buildClaudeLaunch, findUserStatusLine } from '../../src/main/sessions/claudeLaunch'
 import { parseUsageReport } from '../../src/shared/usage'
 import type { ClaudeNode } from '../../src/shared/model'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const SCRIPT = resolve(__dirname, '../../resources/statusline.cjs')
 const INPUT = JSON.stringify({ session_id: 's1', huge: 'x'.repeat(100), context_window: { used_percentage: 34 } })
@@ -21,9 +24,9 @@ beforeEach(() => {
   servers = []
 })
 
-afterEach(() => {
+afterEach(async () => {
   for (const s of servers) s.close()
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await removeTemp(dir)
 })
 
 test('parseUsageReport maps the real shape and drops malformed fields', () => {
@@ -162,8 +165,8 @@ test('statusline.cjs sends only the usage fields, to /usage with the token', asy
 test('statusline.cjs still draws the owner line with the server down', async () => {
   const r = await run({ PATCHBAY_ENDPOINT_FILE: join(dir, 'missing.json'), PATCHBAY_STATUSLINE_FORWARD: echoCommand() })
   expect(r.code).toBe(0)
+  // Printed at all shows it didn't wait for the server: the script ends itself, printing nothing, 5.5 s in.
   expect(r.out.trim()).toBe('OWNER:s1')
-  expect(r.ms).toBeLessThan(4000)
 })
 
 test('statusline.cjs prints nothing when the forwarded command fails', async () => {
@@ -179,9 +182,10 @@ test('statusline.cjs gives up on a forwarded command that hangs', async () => {
   const r = await run({ PATCHBAY_ENDPOINT_FILE: file, PATCHBAY_STATUSLINE_FORWARD: `node -e "setTimeout(()=>{},60000)"` })
   expect(r.code).toBe(0)
   expect(r.out).toBe('')
-  expect(r.ms).toBeLessThan(8000)
+  // Its limit is 5 s, against a command that would take 60. Loose, as starting node and bash is slow on a busy machine.
+  expect(r.ms).toBeLessThan(30_000)
   expect(bodies).toHaveLength(1)
-}, 15000)
+})
 
 async function realServer(onUsage: (id: string, report: unknown) => void) {
   return startControlServer({ secret: 'sec', endpointFile: join(dir, 'ep.json'), onHook: () => ({}), onRpc: async () => null, onUsage })

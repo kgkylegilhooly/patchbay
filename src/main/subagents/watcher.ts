@@ -101,6 +101,8 @@ export function createSubagentWatcher(opts: {
   now?: () => number
   everyMs?: number
   log?(message: string): void
+  /** Cards from elsewhere, such as Codex windows' hooks (codexCards.ts): brought up to date each tick, then merged in. */
+  also?: { refresh(): Promise<void>; snapshot(): SubagentSnapshot }
 }): SubagentWatcher {
   const now = opts.now ?? Date.now
   const parents = new Map<string, Parent>()
@@ -285,7 +287,8 @@ export function createSubagentWatcher(opts: {
       const ids = new Set(watched.map((w) => w.nodeId))
       for (const id of [...parents.keys()]) if (!ids.has(id)) parents.delete(id)
       for (const w of watched) await look(w.nodeId, w)
-      const snap = build()
+      await opts.also?.refresh().catch((e: unknown) => opts.log?.(`Codex subagent cards: ${String(e)}`))
+      const snap = { ...build(), ...(opts.also?.snapshot() ?? {}) }
       const text = JSON.stringify(snap)
       if (text !== last && !closed) {
         last = text

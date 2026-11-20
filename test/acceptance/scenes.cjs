@@ -555,7 +555,8 @@ const scenes = {
   ...require('./needsYouScenes.cjs').scenes,
   ...require('./filesScenes.cjs').scenes,
   ...require('./stopScenes.cjs').scenes,
-  ...require('./readerScenes.cjs').scenes
+  ...require('./readerScenes.cjs').scenes,
+  ...require('./readerPictureScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -655,7 +656,8 @@ const seeds = {
   ...require('./needsYouScenes.cjs').seeds,
   ...require('./filesScenes.cjs').seeds,
   ...require('./stopScenes.cjs').seeds,
-  ...require('./readerScenes.cjs').seeds
+  ...require('./readerScenes.cjs').seeds,
+  ...require('./readerPictureScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
@@ -691,6 +693,12 @@ function prepare(name, cwdRoot) {
 module.exports = { prepare, scenes, canvas, rightClickCanvas, seedLinks, showLegend }
 Object.assign(scenes, require('./placementScenes.cjs').scenes)
 Object.assign(seeds, require('./placementScenes.cjs').seeds)
+Object.assign(scenes, require('./fileShelfScenes.cjs').scenes)
+Object.assign(seeds, require('./fileShelfScenes.cjs').seeds)
 Object.assign(scenes, require('./tidyScenes.cjs').scenes)
 Object.assign(seeds, require('./tidyScenes.cjs').seeds)
+Object.assign(scenes, require('./uxPanelScenes.cjs').scenes)
+Object.assign(seeds, require('./uxPanelScenes.cjs').seeds)
+Object.assign(scenes, require('./canvasUxScenes.cjs').scenes)
+Object.assign(seeds, require('./canvasUxScenes.cjs').seeds)
 Object.assign(scenes, require('./workflowScenes.cjs').scenes)

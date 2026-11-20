@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PatchbayBridge } from '../shared/contract'
 import { exposeWork } from './work'
 import { exposeSearch } from './search'
+import { exposeFileShelf } from './fileShelf'
 import { exposeRecipes } from './recipes'
 import { exposeNeedsYou } from './needsYou'
 import { exposeReview } from './review'
@@ -142,6 +143,7 @@ const bridge: PatchbayBridge = {
 contextBridge.exposeInMainWorld('patchbay', bridge)
 exposeWork()
 exposeSearch()
+exposeFileShelf()
 exposeRecipes()
 exposeNeedsYou()
 exposeReview()

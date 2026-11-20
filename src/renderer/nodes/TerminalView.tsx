@@ -15,9 +15,11 @@ import { isDocPath } from '../../shared/reader'
 import { openDocument } from '../reader/readerUi'
 import { linkKind } from '../terminalPaths'
 import { copyText } from '../clipboard'
+import { noteShared, pinFiles } from '../fileShelfActions'
 import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
+import { otherProfiles, pickedProfile } from '../terminalProfilesUi'
 import { findTerminalPathMatches } from '../terminalPaths'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { installZoomCompensation, screenPoint } from '../xtermZoom'
@@ -97,11 +99,13 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     const report = (r: { ok: true } | { ok: false; reason: string }): void => setNotice(r.ok ? null : r.reason)
     return {
       open: () => void bridge.openTerminalLink(nodeId, target).then(report),
-      newTerminal: () =>
+      newTerminal: (profileId) =>
         void bridge.resolveTerminalPath(nodeId, target).then((r) => {
           report(r)
-          if (r.ok) openTerminalBeside(nodeId, r.folder)
+          if (r.ok) openTerminalBeside(nodeId, r.folder, pickedProfile(profileId))
         }),
+      // As last read: Settings and the other menus read the list again when they open.
+      profiles: otherProfiles().map((p) => ({ id: p.id, name: p.name })),
       // The full Windows path when the file is there, and what was printed when it isn't, so something always copies.
       copy: () =>
         void bridge.resolveTerminalPath(nodeId, target).then((r) =>
@@ -111,6 +115,13 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
           )
         ),
       reveal: () => void bridge.revealTerminalPath(nodeId, target).then(report),
+      // A file icon beside this window, and an entry on the Files shelf. It points at the file; nothing is copied.
+      pin: () =>
+        void bridge.resolveTerminalPath(nodeId, target).then((r) => {
+          report(r)
+          const from = useStore.getState().doc?.nodes.find((n) => n.id === nodeId)
+          if (r.ok) pinFiles([r.path], { besideId: nodeId }, 'pin', from?.title)
+        }),
       ...(isDocPath(target) ? { reader: () => void openDocument(target, { fromNodeId: nodeId }).then(report) } : {})
     }
   }
@@ -322,7 +333,11 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       void file
         .arrayBuffer()
         .then((buffer) => bridge.savePastedImage(new Uint8Array(buffer), item.type))
-        .then((path) => bridge.input(nodeId, /\s/.test(path) ? `"${path}"` : path))
+        .then((path) => {
+          const from = useStore.getState().doc?.nodes.find((n) => n.id === nodeId)
+          noteShared(from?.projectId, [path], 'paste', from?.title)
+          return bridge.input(nodeId, /\s/.test(path) ? `"${path}"` : path)
+        })
         .catch((e: unknown) => setNotice(`The image wasn't saved: ${e instanceof Error ? e.message : String(e)}`))
     }
     host.addEventListener('paste', onPaste, true)

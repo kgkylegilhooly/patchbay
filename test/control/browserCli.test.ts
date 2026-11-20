@@ -1,10 +1,13 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { startControlServer, tokenFor, type ControlServer } from '../../src/main/control/server'
 import { cleanEnv } from '../../src/main/sessions/env'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const CLI = join(resolve('resources/cli'), 'patchbay.cjs')
 const SECRET = 'browser-cli-secret'
@@ -28,13 +31,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await server.close()
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await removeTemp(dir)
 })
 
 const cli = (args: string[]): Promise<{ code: number; stderr: string }> =>
   new Promise((done) => {
     const env = cleanEnv(process.env, { PATCHBAY_NODE_ID: 'n1', PATCHBAY_TOKEN: tokenFor(SECRET, 'n1'), PATCHBAY_ENDPOINT_FILE: join(dir, 'endpoint.json') })
-    execFile(process.execPath, [CLI, ...args], { env, cwd: dir, windowsHide: true, timeout: 20000 }, (e, _out, stderr) =>
+    execFile(process.execPath, [CLI, ...args], { env, cwd: dir, windowsHide: true, timeout: 45_000 }, (e, _out, stderr) =>
       done({ code: e ? ((e as { code?: number }).code ?? -1) : 0, stderr })
     )
   })

@@ -80,6 +80,12 @@ async function main() {
     check('Ctrl+, opens the page', true)
     await shoot(page, 'settings-canvas')
     const minimapOn = async () => (await page.$('.react-flow__minimap')) !== null
+    // An empty canvas has no minimap, so give it a note first.
+    await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      await window.patchbay.dispatch({ op: 'addNode', node: { id: 'map-note', kind: 'sticky', title: 'Note', text: '', x: 0, y: 0, width: 220, height: 140, parentId: null, projectId: doc.activeProjectId } })
+    })
+    await lib.sleep(150)
     const before = await minimapOn()
     await page.click('#set-minimap')
     await lib.sleep(150)

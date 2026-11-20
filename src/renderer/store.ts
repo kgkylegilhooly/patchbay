@@ -280,13 +280,13 @@ export function closeNodes(ids: string[]): void {
   // A trigger isn't layout: undoing its deletion would bring back something that sends prompts.
   const sessions = nodes.filter((n) => closing.has(n.id) && (isSessionNode(n) || n.kind === 'trigger')).map((n) => n.id)
   // A browser's page and history can't be put back, so like a session it's closed for good.
-  // A reader is layout too: its file is only read, and its comments are kept apart from it.
-  const layout = nodes.filter((n) => closing.has(n.id) && (n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'))
+  // A reader and a file icon are layout too: its file is only read, and its comments are kept apart from it.
+  const layout = nodes.filter((n) => closing.has(n.id) && (n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader' || n.kind === 'file'))
   const pages = nodes.filter((n) => closing.has(n.id) && n.kind === 'browser').map((n) => n.id)
   if (pages.length) dispatch({ op: 'removeNodes', ids: pages, at: Date.now() })
   if (layout.length) {
     const kinds = new Set(layout.map((n) => n.kind))
-    const label = kinds.size > 1 ? 'delete' : kinds.has('sticky') ? 'delete note' : kinds.has('whiteboard') ? 'delete whiteboard' : kinds.has('reader') ? 'close reader' : 'remove group'
+    const label = kinds.size > 1 ? 'delete' : kinds.has('sticky') ? 'delete note' : kinds.has('whiteboard') ? 'delete whiteboard' : kinds.has('reader') ? 'close reader' : kinds.has('file') ? 'remove file' : 'remove group'
     undoable(label, [{ op: 'removeNodes', ids: layout.map((n) => n.id), at: Date.now() }])
   }
   if (sessions.length) dispatch({ op: 'removeNodes', ids: sessions, at: Date.now() })
@@ -298,11 +298,11 @@ export async function restartNode(id: string): Promise<void> {
 }
 
 /** Opens and starts a terminal in a folder, just to the right of another window. */
-export function openTerminalBeside(besideId: string, cwd: string): string | null {
+export function openTerminalBeside(besideId: string, cwd: string, profile?: { id: string; name: string }): string | null {
   const doc = useStore.getState().doc
   const beside = doc?.nodes.find((n) => n.id === besideId)
   if (!doc || !beside) return null
-  const node = newTerminal({ beside, group: null, doc }, crypto.randomUUID(), { cwd })
+  const node = newTerminal({ beside, group: null, doc }, crypto.randomUUID(), { cwd, ...(profile ? { profile } : {}) })
   dispatch({ op: 'addNode', node })
   void bridge.startNode(node.id).then((r) => noteRunProblem(node.id, r))
   return node.id

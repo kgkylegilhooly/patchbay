@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChangeSection, CommentView, ReviewBridge, ReviewSide } from '../shared/reviewInbox'
+import { placedPath, type ChangeSection, type CommentView, type ReviewBridge, type ReviewSide } from '../shared/reviewInbox'
 
 declare global {
   interface Window {
@@ -32,17 +32,19 @@ export function closeReviewInbox(): void {
  * file as it is (`currentNew`); for the old side, the current "from" of the comment's own list (`currentOld`, and
  * the same list). Anywhere else it's only in the list, so a comment never shows against code it wasn't on.
  */
-export function commentsByLine(comments: CommentView[], o: { path: string; section: ChangeSection; from: string; to: string; currentNew: boolean; currentOld: boolean }): Map<string, CommentView[]> {
+export function commentsByLine(comments: CommentView[], o: { path: string; oldPath?: string; section: ChangeSection; from: string; to: string; currentNew: boolean; currentOld: boolean }): Map<string, CommentView[]> {
   const out = new Map<string, CommentView[]>()
   const put = (side: ReviewSide, line: number, c: CommentView): void => {
     const k = `${side}:${line}`
     out.set(k, [...(out.get(k) ?? []), c])
   }
   for (const c of comments) {
-    if (c.anchor.path !== o.path) continue
     const side = c.anchor.side
-    if (c.anchor.revision === (side === 'new' ? o.to : o.from)) put(side, c.anchor.line, c)
-    else if (c.placement.kind !== 'outdated') {
+    // A renamed file's old side is its old path; a comment followed through a rename is where the rename took it.
+    const file = side === 'old' ? (o.oldPath ?? o.path) : o.path
+    if (c.anchor.revision === (side === 'new' ? o.to : o.from)) {
+      if (c.anchor.path === file) put(side, c.anchor.line, c)
+    } else if (c.placement.kind !== 'outdated' && placedPath(c) === file) {
       if (side === 'new' && o.currentNew) put(side, c.placement.line, c)
       if (side === 'old' && o.currentOld && (c.anchor.section ?? 'committed') === o.section) put(side, c.placement.line, c)
     }

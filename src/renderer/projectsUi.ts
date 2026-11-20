@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ArchivedToast } from './archiveToast'
 
 /** Which projects sheet is open. Kept apart from the canvas store, so it adds no state there. */
 export const useProjectsUi = create<{
@@ -6,7 +7,11 @@ export const useProjectsUi = create<{
   archive: string | null
   /** Why the manager opened, such as a jump to a node in an archived project. */
   notice: string | null
-}>(() => ({ manager: false, archive: null, notice: null }))
+  /** The toast after an archive, with its Unarchive button. */
+  archived?: ArchivedToast | null
+}>(() => ({ manager: false, archive: null, notice: null, archived: null }))
+
+export const showArchived = (toast: ArchivedToast | null): void => useProjectsUi.setState({ archived: toast })
 
 export const openProjects = (notice: string | null = null): void => useProjectsUi.setState({ manager: true, notice })
 export const closeProjects = (): void => useProjectsUi.setState({ manager: false, archive: null, notice: null })

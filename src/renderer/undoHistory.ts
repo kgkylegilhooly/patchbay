@@ -25,7 +25,7 @@ const layoutOf = ({ id, x, y, width, height, parentId, title }: CanvasNode): Nod
 const sameLayout = (a: CanvasNode, b: CanvasNode): boolean =>
   a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.parentId === b.parentId && a.title === b.title
 
-const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader'
+const isLayoutOnly = (n: CanvasNode): boolean => n.kind === 'sticky' || n.kind === 'whiteboard' || n.kind === 'group' || n.kind === 'reader' || n.kind === 'file'
 
 /** What it takes to go each way between two docs. Null if the layout didn't change. */
 export function diffLayout(before: CanvasDoc, after: CanvasDoc): Pick<HistoryEntry, 'undo' | 'redo'> | null {

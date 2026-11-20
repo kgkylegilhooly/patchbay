@@ -138,11 +138,14 @@ export interface LiveBrowserDriver extends BrowserDriver {
 export function createBrowserDriver({
   dataDir,
   store,
-  push
+  push,
+  onShot
 }: {
   dataDir: string
   store: CanvasStore
   push: (id: string, state: BrowserState | null) => void
+  /** An evidence picture was kept, for the Files shelf. */
+  onShot?: (nodeId: string, path: string) => void
 }): LiveBrowserDriver {
   const shotsDir = join(dataDir, 'browser-shots')
   const guests = new Map<string, WebContents>()
@@ -157,6 +160,7 @@ export function createBrowserDriver({
   const evidence = new BrowserEvidenceStore(dataDir, (id) => change(id, { evidence: evidence.summary(id) }))
   // Out of the store's own update, as an attempt can end while the canvas is being changed.
   evidence.lifecycle = (attempt) => queueMicrotask(() => linkAttemptToTask(store, attempt))
+  if (onShot) evidence.shot = onShot
 
   /** Back to the node's own size: the person sees the page as it is, and focus emulation from pressing Enter ends. */
   const releaseViewport = async (id: string): Promise<void> => {

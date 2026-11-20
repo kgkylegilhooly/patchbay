@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -11,6 +11,9 @@ import { cleanEnv } from '../../src/main/sessions/env'
 import type { CanvasStore } from '../../src/shared/contract'
 import type { FilesSummary } from '../../src/shared/filesTouched'
 import type { AgentStatus, CanvasDoc, ClaudeNode } from '../../src/shared/model'
+import { PATIENT_GIT_MS, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const dirs: string[] = []
 const temp = (): string => {
@@ -18,11 +21,11 @@ const temp = (): string => {
   dirs.push(d)
   return d
 }
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeTemp(d)
 })
 
-const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})))
+const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})), PATIENT_GIT_MS)
 const sh = (cwd: string, ...args: string[]): string => execFileSync('git', ['-C', cwd, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', windowsHide: true })
 
 function repo(): string {
@@ -166,7 +169,7 @@ const turn = async (w: ReturnType<typeof world>, id: string, fn: () => void): Pr
   await w.service.settled()
 }
 
-describe('the service', () => {
+describe('the service', { timeout: 30_000 }, () => {
   test('a turn takes a snapshot, its edits are read from the transcript, and its diff shows only that turn', async () => {
     const root = repo()
     const w = world(root, ['a'])

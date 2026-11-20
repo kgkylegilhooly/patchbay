@@ -60,6 +60,46 @@
   color: var(--led-working);
 }
 
+/* After an archive: a toast above the dock, in place of a dialog that had to be dismissed. */
+.archived-toast {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  z-index: 25;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 9px 10px 9px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+  transform: translateX(-50%);
+}
+
+.archived-toast-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.archived-toast-text p {
+  margin: 0;
+  color: var(--ink-dim);
+}
+
+.archived-toast-text .archived-toast-head {
+  color: var(--ink);
+}
+
+.archived-toast-text .archive-warn {
+  color: var(--led-working);
+}
+
 .archive-option {
   display: flex;
   gap: 8px;
@@ -116,6 +156,7 @@
 }
 
 .projects-close {
+  align-self: center;
   margin-left: auto;
 }
 
@@ -223,8 +264,6 @@ th.projects-num .projects-sort {
   color: var(--ink-dim);
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
-  text-align: left;
 }
 
 .projects-rename {
@@ -281,8 +320,13 @@ th.projects-num .projects-sort {
   border-color: var(--cable-trigger);
 }
 
-.projects-delete:not(:disabled):hover {
+/* Quiet until asked, but red from the start: it removes the project for good. */
+.projects-delete:not(:disabled) {
   color: var(--led-needs);
+}
+
+.projects-delete:not(:disabled):hover {
+  border-color: var(--led-needs);
 }
 
 .projects-foot {

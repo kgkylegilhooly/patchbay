@@ -207,8 +207,8 @@ export const BrowserNode = memo(function BrowserNode({ data, selected }: NodePro
 
 function CloseButton({ node }: { node: BrowserNodeModel }): React.JSX.Element {
   return (
-    <button className="icon-btn nodrag" aria-label={`Close ${node.title}`} title="Close" onClick={() => void closeBrowser(node.id)}>
-      ×
+    <button className="icon-btn tool-btn nodrag" data-tool="close" aria-label={`Close ${node.title}`} title="Close" onClick={() => void closeBrowser(node.id)}>
+      <Icon name="close" size={15} />
     </button>
   )
 }

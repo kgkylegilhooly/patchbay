@@ -190,3 +190,13 @@
   margin: 0;
   max-height: 260px;
 }
+
+.files-tag-subagent {
+  color: #b9c6ff;
+  background: rgb(120 140 255 / 0.14);
+}
+
+.files-tag-command {
+  color: #9fe0d0;
+  background: rgb(80 200 180 / 0.12);
+}

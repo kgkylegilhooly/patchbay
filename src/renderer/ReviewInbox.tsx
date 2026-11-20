@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   fixesPending,
+  placedPath,
   placementText,
   reviewEvidence,
   shownLine,
@@ -18,6 +19,7 @@ import { Icon } from './icons'
 import { noteTarget, parseDiff, type DiffLine } from './reviewNotes'
 import { ago, closeReviewInbox, commentsByLine, reviewBridge, useReviewInbox } from './reviewInboxUi'
 import { useStore } from './store'
+import { TaskComparisons } from './tasks/TaskComparisons'
 import './reviewInbox.css'
 
 const short = (oid: string | null | undefined): string => (oid ? oid.slice(0, 7) : '—')
@@ -67,10 +69,17 @@ function ReviewInbox(): React.JSX.Element {
         <button className="icon-btn" aria-label="Close the review inbox" onClick={closeReviewInbox}><Icon name="close" size={16} /></button>
       </header>
       <div className="rvi-body">
+        {/* Empty: one message across the whole view, not a sentence in the queue beside a blank pane. */}
+        {items?.length === 0 && !error ? (
+          <div className="rvi-empty">
+            <h3>Nothing is waiting for review</h3>
+            <p>When an agent finishes a task, its changes and checks land here for you to accept or send back for fixes.</p>
+            <p className="rvi-dim">Agents submit with <code>patchbay task submit</code>.</p>
+          </div>
+        ) : (<>
         <nav className="rvi-queue" aria-label="Waiting for review">
           {error && <p className="rvi-error" role="alert">{error}</p>}
           {items === null && !error && <p className="drawer-empty">Loading…</p>}
-          {items?.length === 0 && <p className="drawer-empty">Nothing is waiting for review. Work shows here once an agent submits a task with <code>patchbay task submit</code>.</p>}
           {items?.map((item) => {
             const t = item.view.task
             return (
@@ -88,6 +97,7 @@ function ReviewInbox(): React.JSX.Element {
           })}
         </nav>
         {selected ? <ReviewItem key={selected.view.task.id} item={selected} onChanged={load} /> : <div className="rvi-detail" />}
+        </>)}
       </div>
     </div>
   )
@@ -184,7 +194,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
   const open = async (file: ChangedFile): Promise<void> => {
     const range = changes?.ranges[file.section]
     if (!range) return
-    const d = await call(reviewBridge().fileDiff(task.projectId, task.id, range, file.path))
+    const d = await call(file.oldPath ? reviewBridge().fileDiff(task.projectId, task.id, range, file.path, file.oldPath) : reviewBridge().fileDiff(task.projectId, task.id, range, file.path))
     if (d) setShown({ file, range, ...d })
   }
   const addComment = useCallback(async (path: string, side: ReviewSide, line: number, revision: string, section: ChangeSection, text: string): Promise<boolean> => {
@@ -245,6 +255,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
         {item.view.readiness.warnings.length > 0 && <p className="rvi-dim">{item.view.readiness.warnings.join('; ')}</p>}
       </section>
       <Evidence item={item} />
+      {item.view.attempts.some((a) => a.kind === 'comparison') && <section className="rvi-section" aria-label="Comparisons"><TaskComparisons attempts={item.view.attempts} /></section>}
       <section className="rvi-section rvi-changes" aria-label="Changes">
         <div className="rvi-toolbar">
           <div className="rvi-modes" role="tablist">
@@ -274,12 +285,12 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
               <span className="rvi-label" title={SECTION[s].help}>{SECTION[s].title} · {files.length} file{files.length === 1 ? '' : 's'}</span>
               {files.length === 0 && <p className="rvi-dim">None.</p>}
               {files.map((f) => {
-                const count = unresolved.filter((c) => c.anchor.path === f.path).length
+                const count = unresolved.filter((c) => placedPath(c) === f.path || (!!f.oldPath && c.anchor.side === 'old' && c.anchor.path === f.oldPath)).length
                 const on = shown?.file.path === f.path && shown.file.section === s
                 return (
-                  <button key={f.path} className={`rvi-file${on ? ' rvi-file-on' : ''}`} data-review-file={f.path} onClick={() => void open(f)}>
+                  <button key={f.path} className={`rvi-file${on ? ' rvi-file-on' : ''}`} data-review-file={f.path} title={f.oldPath ? `Renamed from ${f.oldPath}` : undefined} onClick={() => void open(f)}>
                     <span className={`rvi-status rvi-status-${f.status}`}>{f.status}</span>
-                    <span className="rvi-path">{f.path}</span>
+                    {f.oldPath ? <span className="rvi-path"><span className="rvi-old-path">{f.oldPath}</span> → {f.path}</span> : <span className="rvi-path">{f.path}</span>}
                     {s === 'local' && <span className="rvi-pill rvi-local">uncommitted</span>}
                     {count > 0 && <span className="rvi-pill">{count}</span>}
                   </button>
@@ -327,7 +338,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
             <button className="git-btn git-btn-main" data-review="accept-anyway" disabled={busy} onClick={() => void accept(true)}>Accept anyway</button>
           </span>
         ) : (
-          <button className="git-btn git-btn-main" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? 'Accept this submission (P1 checks it again first)' : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
+          <button className="git-btn git-btn-main" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? "Before accepting, Patchbay checks the files haven't changed since the required checks passed." : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
         )}
       </footer>
       {result && <p className={result.ok ? 'rvi-result' : 'rvi-result rvi-result-bad'} role="status">{result.text} <button className="git-mini" aria-label="Dismiss" onClick={() => setResult(null)}>×</button></p>}
@@ -391,27 +402,28 @@ function InboxDiff({ shown, changes, comments, onAdd }: { shown: ShownDiff; chan
   const lines = useMemo(() => parseDiff(shown.text), [shown.text])
   const [editing, setEditing] = useState<number | null>(null)
   const [limit, setLimit] = useState(PAGE_LINES)
-  const { path, section } = shown.file
+  const { path, oldPath, section } = shown.file
   const localPaths = useMemo(() => new Set(changes.files.filter((f) => f.section === 'local').map((f) => f.path)), [changes.files])
   // The new side is the code as it is now when it's the working folder, or HEAD for a committed file with no local change.
   const currentNew = shown.range.to === changes.tree || (section === 'committed' && shown.range.to === changes.head && !localPaths.has(path))
   // The old side is current when it's what the comment's own list compares from now.
   const currentOld = (section === 'committed' && shown.range.from === changes.base?.mergeBase) || (section === 'local' && shown.range.from === changes.head)
-  const byLine = useMemo(() => commentsByLine(comments, { path, section, from: shown.range.from, to: shown.range.to, currentNew, currentOld }), [comments, path, section, shown.range, currentNew, currentOld])
+  const byLine = useMemo(() => commentsByLine(comments, { path, oldPath, section, from: shown.range.from, to: shown.range.to, currentNew, currentOld }), [comments, path, oldPath, section, shown.range, currentNew, currentOld])
   const save = useCallback(async (i: number, text: string): Promise<boolean> => {
     const target = noteTarget(lines[i])
     if (!target) return false
     const revision = target.side === 'new' ? shown.range.to : shown.range.from
-    const ok = await onAdd(path, target.side, target.line, revision, section, text)
+    // A renamed file's removed lines are in its old path at the "from" revision.
+    const ok = await onAdd(target.side === 'old' && oldPath ? oldPath : path, target.side, target.line, revision, section, text)
     if (ok) setEditing(null)
     return ok
-  }, [lines, shown.range, onAdd, path, section])
+  }, [lines, shown.range, onAdd, path, oldPath, section])
   const cancel = useCallback(() => setEditing(null), [])
   if (!shown.text.trim()) return <p className="rvi-dim">No text differences in {path} (a mode change, or a binary file).</p>
   return (
     <div className="rvi-diff">
       <div className="rvi-diff-head">
-        <code>{path}</code>
+        <code>{oldPath ? `${oldPath} → ${path}` : path}</code>
         <span className="rvi-dim">{section === 'local' ? 'uncommitted' : section === 'committed' ? 'committed' : 'since last review'} · {short(shown.range.from)} → {shown.range.to === changes.tree ? 'working folder now' : short(shown.range.to)}{shown.truncated ? ' · cut short, too large' : ''}</span>
       </div>
       <pre className="git-diff-text review-diff">

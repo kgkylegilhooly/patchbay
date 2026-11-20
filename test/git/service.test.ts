@@ -1,16 +1,19 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { gitEnvFrom } from '../../src/core/git/args'
 import { createGitService, systemGit } from '../../src/core/git/service'
+import { patientGit, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let root: string
 let repo: string
 let bare: string
 const env = gitEnvFrom(process.env as Record<string, string>)
-const svc = createGitService(systemGit(env))
+const svc = createGitService(patientGit(systemGit(env)))
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
@@ -36,7 +39,7 @@ beforeEach(() => {
   git(repo, 'push', '-q', '-u', 'origin', 'main')
 })
 
-afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
+afterEach(() => removeTemp(root))
 
 test('stage, unstage, discard and commit on a real repository', async () => {
   writeFileSync(join(repo, 'a.txt'), 'two\n')
@@ -93,7 +96,9 @@ test('branches, push with a new upstream, pull, and a merge in the history', asy
   git(other, 'commit', '-q', '-m', 'from other')
   git(other, 'push', '-q', 'origin', 'main')
   expect((await svc.fetch(repo)).ok).toBe(true)
-  expect((await svc.pull(repo, 'ff-only')).ok).toBe(true)
+  const pulled = await svc.pull(repo, 'ff-only')
+  // On failure, git's own reason shows.
+  expect(pulled).toMatchObject({ ok: true })
   expect(existsSync(join(repo, 'o.txt'))).toBe(true)
 })
 

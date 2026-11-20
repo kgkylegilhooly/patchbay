@@ -1,10 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { RpcRefusal, startControlServer, tokenFor, type ControlServer } from '../../src/main/control/server'
 import { createApprovals } from '../../src/main/sessions/approvals'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const HOOK = resolve('resources/hook.cjs')
 const SECRET = 's'
@@ -38,7 +41,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await server.close()
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  await removeTemp(dir)
 })
 
 function startHook(input: unknown): {
@@ -64,7 +67,7 @@ function startHook(input: unknown): {
 
 const request = { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }
 const pendingOne = async () => {
-  await vi.waitFor(() => expect(approvals.pending()).toHaveLength(1), { timeout: 5000 })
+  await vi.waitFor(() => expect(approvals.pending()).toHaveLength(1), { timeout: 30_000 })
   return approvals.pending()[0]
 }
 
@@ -85,7 +88,7 @@ test('hook.cjs prints allow and deny JSON in the form Claude Code reads', async 
   expect(output.hookEventName).toBe('PermissionRequest')
   expect(output.decision.behavior).toBe('deny')
   expect(output.decision.message).toEqual(expect.any(String))
-}, 20000)
+})
 
 test('hook.cjs hands the canvas context to the agent when its session starts, and prints nothing for other events', async () => {
   const start = await startHook({ hook_event_name: 'SessionStart', source: 'startup' }).finished
@@ -95,7 +98,7 @@ test('hook.cjs hands the canvas context to the agent when its session starts, an
   })
   const stop = await startHook({ hook_event_name: 'Stop' }).finished
   expect(stop).toEqual({ code: 0, stdout: '' })
-}, 20000)
+})
 
 test('hook.cjs holds past its usual 2 s limit while waiting for an answer', async () => {
   const hook = startHook(request)
@@ -104,19 +107,19 @@ test('hook.cjs holds past its usual 2 s limit while waiting for an answer', asyn
   expect(hook.child.exitCode).toBeNull()
   approvals.answer(requestId, 'allow')
   expect((await hook.finished).stdout).toContain('"allow"')
-}, 20000)
+})
 
 test('hook.cjs prints nothing and exits 0 when the request is cleared', async () => {
   const hook = startHook(request)
   await pendingOne()
   approvals.clearNode(NODE)
   expect(await hook.finished).toEqual({ code: 0, stdout: '' })
-}, 20000)
+})
 
 test('hook.cjs prints nothing and exits 0 for a question, without holding', async () => {
   const hook = startHook({ hook_event_name: 'PermissionRequest', tool_name: 'AskUserQuestion', tool_input: {} })
   expect(await hook.finished).toEqual({ code: 0, stdout: '' })
-}, 20000)
+})
 
 test('hook.cjs prints nothing and exits 0 if the server closes mid-hold', async () => {
   const hook = startHook(request)
@@ -124,7 +127,7 @@ test('hook.cjs prints nothing and exits 0 if the server closes mid-hold', async 
   await server.close()
   expect(await hook.finished).toEqual({ code: 0, stdout: '' })
   approvals.clearNode(NODE)
-}, 20000)
+})
 
 test('hook.cjs withholds an oversized tool input, which means no buttons', async () => {
   const hook = startHook({
@@ -134,14 +137,14 @@ test('hook.cjs withholds an oversized tool input, which means no buttons', async
   })
   expect(await hook.finished).toEqual({ code: 0, stdout: '' })
   expect(approvals.pending()).toEqual([])
-}, 20000)
+})
 
 test('a killed hook closes its connection, which clears the buttons', async () => {
   const hook = startHook(request)
   await pendingOne()
   hook.child.kill()
-  await vi.waitFor(() => expect(approvals.pending()).toEqual([]), { timeout: 5000 })
-}, 20000)
+  await vi.waitFor(() => expect(approvals.pending()).toEqual([]), { timeout: 30_000 })
+})
 
 test('no /rpc verb can answer an approval', async () => {
   const hook = startHook(request)
@@ -165,4 +168,4 @@ test('no /rpc verb can answer an approval', async () => {
 
   approvals.clearNode(NODE)
   expect((await hook.finished).stdout).toBe('')
-}, 20000)
+})

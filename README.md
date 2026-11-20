@@ -143,6 +143,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `canvas.json`, `canvas.json.bak` | The canvas and its backup. A damaged file is kept as `canvas.corrupt-*.json` |
 | `scrollback\` | Each terminal's saved output |
 | `pastes\` | Images pasted into terminals |
+| `file-shelf.json` | Each project's Files shelf: the paths of files shared in it, the newest 2,000. Paths only, never copies |
 | `Partitions\patchbay-browser*\` | Browser node storage: sign-ins and site data, apart from your own browser |
 | `browser-shots\` | Screenshots agents took of browser nodes, the newest 50 |
 | `browser-evidence.json` | Agents' recorded browser checks, for 30 days, the last 100. A file that can't be read is kept beside it as `.bad-*` |
@@ -271,13 +272,18 @@ and spends a little quota.
 ## Sessions sidebar
 
 - **Project** lists sessions under each open project, across all of them. Headers fold, and stay folded after a restart.
-- **Status** sorts every session by what it's doing: Need attention, Unread, Running, Idle and Unknown. Only a session
+  A row shows its folder only when it isn't the project's folder.
+- **Status** sorts every session by what it's doing: Need attention, Unread, Running, Idle and No status yet. Only a session
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
+  Empty sections are left out, except Need attention, which says "All clear."
 - **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
   its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
-  It goes under Need attention. The reset time comes from Claude's status line, or from its message.
+  It goes under Need attention. The reset time comes from Claude's status line, or from its message. A Codex turn
+  that fails gets the same badge and the same holding of messages: Patchbay reads the error from Codex's rollout file
+  (Codex has no hook for it), and the reset from Codex's own limits there. After Esc, a Codex window goes back to
+  Idle, since Codex reports the interrupt; a Claude window stays Unknown.
 - **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
   waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
   `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
@@ -285,7 +291,7 @@ and spends a little quota.
   in any project, and opens its peek. Press it again for the next. With "Also unread" ticked, Unread sessions follow.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
-- **Recently closed** reopens a closed Claude conversation, the same as Recent conversations.
+- **Closed conversations** reopens a closed Claude conversation, the same as the Closed conversations panel.
 
 ## Session windows
 
@@ -310,20 +316,24 @@ first, then labels, and the text size folds into one button.
   the canvas. Each project keeps its own layout.
 - **Links and paths** in a terminal are underlined when you point at them. Clicking a web link opens it in your browser,
   including the hyperlinks Claude Code prints. Right-click one for **Copy link**, for a PC whose security settings stop
-  links opening from another app. Clicking or right-clicking a file path offers Open, New terminal here, Copy path and
-  Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
+  links opening from another app. Clicking or right-clicking a file path offers Open, New terminal here (and one for
+  each other terminal profile), Copy path and Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
 - **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
   with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
   reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
   the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
-  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows get cards from Codex's subagent
+  hooks: the type at first, then the task, tool calls and tokens once Codex says where the subagent's conversation is.
 
 ## Files each agent edited
 
 An agent's header and its row in the sidebar show **N files** once it has edited files with its own edit or patch
-calls. They're read from its transcript, so files a shell command changed aren't listed. The chip turns amber with ⚠
+calls, read from its transcript. A Claude agent's subagents' edits count too, labelled **by a subagent**. As a turn
+ends, Patchbay compares the checkout with the snapshot taken when the turn started: a file that changed with no such
+edit is listed as **changed during this turn (by a command or another process)**, never as the agent's own edit. That
+check is skipped, and the list says why, when another agent works in the same checkout. The chip turns amber with ⚠
 when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
 in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
 
@@ -364,7 +374,8 @@ handoff from the conversation: objective, decisions, changed files, verification
 extracted from the transcript and git, with no AI call, and says so. What it can't find is marked `[Missing: …]` and
 what may be out of date `[Stale: …]`, such as a test that ran before later edits, a file that's gone, or an agent
 still working. Edit any of it, choose Claude Code or Codex, the folder and a title, and start the agent with it.
-Copy as Markdown copies the whole handoff.
+Copy as Markdown copies the whole handoff. **Save as file…** saves it as Markdown where you pick, starting in the
+project's folder, and **Open in Reader** then shows that file on the canvas.
 
 ## Projects and undo
 
@@ -497,7 +508,8 @@ the file.
   with `patchbay open-doc --path plan.md`.
 - **Reading.** Headings, lists, tables, task boxes and colored code, with an **Outline** to jump through and an arrow on
   each heading to fold its section. **Paper** gives a light page. When the file changes on disk the reader follows it,
-  keeps your place and says when it changed.
+  keeps your place and says when it changed. Pictures stored with the document show too. Pictures from the web are
+  never loaded: they show as a link you can open in your browser. Mermaid blocks show as their code.
 - **Comments.** Select words and press **Comment**, or press the **+** beside a paragraph or heading, or comment on the
   whole document. A comment keeps the words it's on, so it finds them again after edits, and says **Outdated** when
   they're gone. Comments are kept per file in app data, so closing the reader doesn't lose them.
@@ -507,7 +519,8 @@ the file.
   next send. An agent linked to the reader can also read the comments with `patchbay read`.
 - Readers open `.md`, `.markdown`, `.mdx` and `.txt` files on this PC's drives, up to 4 MB, but not network
   shares or files under Windows or Program Files. Links to the web open in your browser, and links to other Markdown
-  files open in another reader.
+  files open in another reader. A picture shows only from the document's folder or its project's, or, for a document
+  an agent opened, that agent's folders, up to 8 MB.
 
 ## Whiteboards
 
@@ -527,6 +540,24 @@ Add one from the canvas menu or with Ctrl+Shift+D.
 - **Agents** linked to a board export it with `patchbay whiteboard` and look at the PNG, pictures and drawing included.
   They can draw diagrams on it with `patchbay draw`, from boxes and the arrows between them; the board shows which agent
   drew, with **Undo** and **Keep**. **Copy as image**, in the board's header, puts it on your clipboard.
+
+## Files on the canvas, and the Files shelf
+
+- **File icons.** Drag files from File Explorer onto the canvas: each becomes an icon, like one on a desktop, that
+  points at the file and never copies it. **Pin to canvas** in a terminal's path menu, or on the shelf, does the same.
+  Double-click opens a file with its default app. A program or script (`.exe`, `.cmd`, `.bat`, `.ps1`, `.lnk` and the
+  like) is only shown in File Explorer. Right-click for Reveal in File Explorer, Copy path, Send path to agent and
+  Remove from canvas.
+- **Use a file again.** Drag its icon onto a terminal or agent window to type its path there, quoted for that shell.
+  Dropping files from File Explorer straight onto a window does the same. **Send path to agent** sends it as a message.
+  An agent linked to an icon by a cable can `patchbay read` it, which gives the path, not the contents.
+- **Missing files** show dimmed and marked Missing, never as an error. They're looked at again when shown and when
+  Patchbay gets focus.
+- **Files shelf.** View > Files shelf…, the palette, or **Files** in the title bar. Every file shared in the project,
+  newest first, with where it came from: pictures pasted into windows, files dropped onto the canvas or a window, file
+  icons, documents opened in a Reader, and browser evidence pictures. Search by name or folder, and filter by type. Each has Open, Reveal, Copy path,
+  Pin to canvas, Send path to agent and Forget. Forgetting leaves the file alone.
+- **Network paths** (`\\server\share`) work for files you drop yourself. An agent can't pin one.
 
 ## Agents working together
 
@@ -635,6 +666,11 @@ from the commit shown in the dialog, which is recorded.
   Each result keeps the command, exit code, time, the commit it ran at and its output, and says when the attempt has
   changed since.
 - **Choose A** or **B** only records the choice. Merge the branch yourself with Git.
+- **For a task:** a task card on the board has **Try two approaches…**, which starts a comparison for it (the start
+  dialog's **For task** field does the same). Its attempts and every verification run are recorded on the task, as
+  commands Patchbay ran with their output, and so is your choice. Those runs were in the attempts' worktrees, so they
+  never count as the task's required checks, and nothing is merged or accepted: you still merge, the task's agent
+  submits, and you accept. The board and the review inbox show the task's comparison.
 - **Remove worktree…** stops the sessions in it. Uncommitted changes, or (when also deleting the branch) commits no
   other branch has, are listed and need a second confirmation for that removal.
 
@@ -657,7 +693,7 @@ its page on the next launch.
 - **Recorded checks.** `patchbay browser verify --phase start|step|finish` records an attempt: the URL, viewport,
   actions, a picture at each phase, and console errors and failed requests with the page and time. `browser viewport
   --preset desktop|mobile` sets the page size first, and finish, Take control or `--preset node` set it back. The
-  node's **Evidence** panel shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
+  node's **Checks** panel (hidden until there's one) shows each attempt and which agent made it, marks missing pictures and cut-short logs, and
   labels the agent's passed or failed as its claim, not proof. Only the agent that started an attempt can finish it.
   One left alone for 10 minutes is marked abandoned. With `--task-id`, the task's card lists the attempt too, and it
   never makes the task ready. Console text, headers, request bodies and typed text are never kept, and evidence
@@ -707,13 +743,15 @@ submitted with `patchbay task submit`, ready or not yet ready, newest first.
   fixes**, never with a time.
 - **+** on a diff line adds a comment. Comments are saved, with the file, side, revision and the code around the line.
   When the code moves, the comment follows and says where from; when the line changes or goes, it's marked outdated.
+  A renamed file shows once, as old → new, and a comment on it follows it to its new name.
   You resolve comments yourself; an agent's reply doesn't.
 - **Request fixes** sends every unresolved comment to an agent assigned to the task, through the same queue as
   `patchbay send`: a busy agent gets it when it's idle. **Accept** is the board's own acceptance, only for you.
 - What's recorded as reviewed is what you were looking at, not the files at the moment you click. If they changed after
   you loaded them, it says so, and those changes show under **Since last review**.
 - Snapshots go to Patchbay's own store (`review-objects\`), never into the repository: no objects, commits, refs or
-  index changes there.
+  index changes there. Patchbay cleans the store up: it keeps what open comments and each task's latest review (for 90
+  days) need, and keeps a repository's share under 512 MB by giving up the oldest reviews' snapshots first.
 - With unresolved comments, or fixes requested after the latest submission, **Accept** asks first.
 - Browser checks an agent recorded show beside the command runs, as the agent's claim.
 

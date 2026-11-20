@@ -115,11 +115,16 @@ export function fileLines(text: string): string[] {
   return lines
 }
 
+/** `path`, when set: the file was renamed since, and this is where the line is now. */
 export type Placement =
-  | { kind: 'same'; line: number }
+  | { kind: 'same'; line: number; path?: string }
   /** Found again at another line. `contextChanged`: the line itself is the same but the lines around it aren't. */
-  | { kind: 'moved'; line: number; from: number; contextChanged: boolean }
+  | { kind: 'moved'; line: number; from: number; contextChanged: boolean; path?: string }
   | { kind: 'outdated'; reason: string }
+
+/** The file a comment's line is in now: the anchor's own, or where a rename took it. */
+export const placedPath = (c: { anchor: Pick<ReviewAnchor, 'path'>; placement: Placement }): string =>
+  (c.placement.kind !== 'outdated' && c.placement.path) || c.anchor.path
 
 const contextMatches = (lines: string[], i: number, before: string[], after: string[]): boolean =>
   before.every((l, k) => lines[i - before.length + k] === l) && after.every((l, k) => lines[i + 1 + k] === l)
@@ -169,22 +174,24 @@ export interface CommentView extends ReviewComment {
 /** Where a placement is, in words. */
 export function placementText(p: Placement, side: ReviewSide): string {
   const where = side === 'new' ? 'line' : 'removed line'
-  if (p.kind === 'same') return `${where} ${p.line}`
-  if (p.kind === 'moved') return `${where} ${p.line} (moved from ${p.from}${p.contextChanged ? '; nearby lines changed' : ''})`
+  const renamed = p.kind !== 'outdated' && p.path ? `, now in ${p.path}` : ''
+  if (p.kind === 'same') return `${where} ${p.line}${renamed ? ` (${renamed.slice(2)})` : ''}`
+  if (p.kind === 'moved') return `${where} ${p.line} (moved from ${p.from}${p.contextChanged ? '; nearby lines changed' : ''}${renamed})`
   return `outdated: ${p.reason}`
 }
 
 /** The fix request an agent gets: every unresolved comment, grouped by file, outdated ones said to be so. */
 export function formatFixRequest(task: Pick<Task, 'id' | 'brief'>, comments: CommentView[], reviewed: string): string {
   const open = comments.filter((c) => c.state !== 'resolved')
-  const files = [...new Set(open.map((c) => c.anchor.path))]
+  // Grouped by where each line is now, so a comment on a file renamed since goes under its new name.
+  const files = [...new Set(open.map(placedPath))]
   const parts = [
     `Review of task "${task.brief.trim().replace(/\s+/g, ' ')}" (task ${task.id}). Please fix each comment below, then submit again with: patchbay task submit --task ${task.id} --summary "what you changed".`,
     `Reviewed: ${reviewed}.`
   ]
   for (const path of files) {
     parts.push('', `${path}:`)
-    for (const c of open.filter((x) => x.anchor.path === path)) {
+    for (const c of open.filter((x) => placedPath(x) === path)) {
       const where = c.placement.kind === 'outdated'
         ? `${c.anchor.side === 'new' ? 'was line' : 'was removed line'} ${c.anchor.line} (this code changed since the comment; check it still applies)`
         : placementText(c.placement, c.anchor.side)
@@ -217,7 +224,7 @@ export function reviewEvidence(view: TaskView): Evidence[] {
   const submission = view.attempts.find((a) => a.id === view.task.submissionId && a.kind === 'agent-report')
   if (submission?.kind === 'agent-report') out.push({ source: 'agent-report', label: "Agent's report (written by the agent, not checked)", summary: submission.summary, at: submission.startedAt })
   for (const check of view.task.requiredChecks) {
-    const run = view.attempts.filter((a): a is TaskVerification => a.kind === 'command' && a.checkId === check.id).at(-1)
+    const run = view.attempts.filter((a): a is TaskVerification => a.kind === 'command' && !a.comparison && a.checkId === check.id).at(-1)
     const said = view.readiness.reasons.filter((r) => r.startsWith(`${check.id}:`)).map((r) => r.slice(check.id.length + 1).trim())
     const base = { source: 'command' as const, label: 'Command run recorded by Patchbay', checkId: check.id, command: check.command }
     if (!run) out.push({ ...base, state: 'not run', detail: 'No run recorded.' })
@@ -266,8 +273,10 @@ export type ChangeSection = 'committed' | 'local' | 'since-review'
 
 export interface ChangedFile {
   path: string
-  /** git's letter: A, M, D or T. */
+  /** git's letter: A, M, D, T, or R for a renamed file. */
   status: string
+  /** A renamed file's path before: its old side's lines are in this file. */
+  oldPath?: string
   section: ChangeSection
 }
 
@@ -320,7 +329,8 @@ export interface ReviewBridge {
   inbox(projectId: string): Promise<Result<InboxItem[]>>
   branches(projectId: string, taskId: string): Promise<Result<string[]>>
   changes(projectId: string, taskId: string, mode: CompareMode): Promise<Result<ChangeSet>>
-  fileDiff(projectId: string, taskId: string, range: ChangeRange, path: string): Promise<Result<{ text: string; truncated: boolean }>>
+  /** `oldPath`: a renamed file's path before, so the diff shows the rename. */
+  fileDiff(projectId: string, taskId: string, range: ChangeRange, path: string, oldPath?: string): Promise<Result<{ text: string; truncated: boolean }>>
   /** `tree`: the snapshot the window just got from changes, so placing comments doesn't take another. */
   comments(projectId: string, taskId: string, tree?: string): Promise<Result<CommentView[]>>
   addComment(projectId: string, taskId: string, c: { path: string; side: ReviewSide; line: number; revision: string; text: string; section: ChangeSection; base?: string }): Promise<Result<CommentView>>

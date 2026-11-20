@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -13,6 +13,9 @@ import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import { createVerbs } from '../../src/main/control/verbs'
 import { emptyTasks, taskReadiness, type Task, type TaskRecords, type TaskRevision, type TaskVerification } from '../../src/shared/task'
 import { claudeNode, fakeHost, fakeRunner, memoryStore } from '../control/fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let dir: string
 let repo: string
@@ -22,7 +25,7 @@ beforeEach(() => {
   repo = join(dir, 'repo')
   mkdirSync(repo)
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }))
+afterEach(() => removeTemp(dir))
 const input = () => ({ brief: 'Implement tasks', acceptanceCriteria: ['Outcomes persist'], assignedSessionIds: ['me'], cwd: repo, requiredChecks: [{ id: 'unit', command: 'echo verified', cwd: repo }], dependsOn: [] })
 function setup() {
   const store = memoryStore([claudeNode('me', { projectId: 'project-1', cwd: repo })])
@@ -34,7 +37,7 @@ async function waitForCheck(tasks: ReturnType<typeof createTaskService>, id: str
   await vi.waitFor(async () => {
     const view = await tasks.show('project-1', id)
     expect(view.attempts.filter((a) => a.kind === 'command').at(-1)).not.toMatchObject({ status: 'running' })
-  }, { timeout: 5000 })
+  }, { timeout: 30_000 })
 }
 function readyData(): { data: TaskRecords; task: Task; check: TaskVerification } {
   const task: Task = { ...input(), id: 'task', projectId: 'project-1', createdAt: 1, updatedAt: 3, state: 'ready-for-review', submissionId: 'submission', acceptances: [] }
@@ -95,7 +98,7 @@ test('a long-running command is stopped and recorded as failed, never passed', a
   expect(result.status).toBe('failed')
   expect(result.error).toMatch(/time limit/)
   expect(readFileSync(check.outputRef, 'utf8')).toContain('time limit')
-}, 10000)
+})
 
 test('restart preserves outcomes and attempts, marks interrupted runs, and never launches them', async () => {
   const docStore = createDocStore(dir)

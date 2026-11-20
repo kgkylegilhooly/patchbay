@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -13,6 +13,9 @@ import { sessionTree } from '../../src/renderer/sessionTree'
 import type { RunResult } from '../../src/shared/contract'
 import type { CanvasDoc, RunNode } from '../../src/shared/model'
 import { memoryStore } from '../control/fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let dir: string
 
@@ -20,9 +23,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'patchbay run '))
 })
 
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-})
+afterEach(() => removeTemp(dir))
 
 const node = (command: string, id = 'r1'): RunNode => ({ id, kind: 'run', title: 'R', x: 0, y: 0, width: 1, height: 1, parentId: null, cwd: dir, command })
 
@@ -95,21 +96,21 @@ test('Stop kills the whole tree by process id and reports stoppedByYou', async (
   expect(await done).toMatchObject({ running: false, stoppedByYou: true })
   expect(host.isRunning('r1')).toBe(false)
   expect(host.pid('r1')).toBeNull()
-}, 20000)
+})
 
 test('closing a run node also kills its tree', async () => {
   const { runner, killed } = setup('pause')
   await runner.startNode('r1')
   await runner.stopNode('r1')
   expect(killed).toHaveLength(1)
-}, 20000)
+})
 
 test('quitting kills the tree of a running run node', async () => {
   const { runner, killed } = setup('pause')
   await runner.startNode('r1')
   await runner.stopAll()
   expect(killed).toHaveLength(1)
-}, 20000)
+})
 
 test('Ctrl+C in the window counts as stopping it yourself', async () => {
   const { runner, finished, host } = setup('pause')
@@ -118,7 +119,7 @@ test('Ctrl+C in the window counts as stopping it yourself', async () => {
   runner.noteInput('r1', '\x03')
   await host.kill('r1')
   expect(await done).toMatchObject({ stoppedByYou: true })
-}, 20000)
+})
 
 test('earlier output stays above a dim divider when it runs again', async () => {
   const { runner, finished, host } = setup('echo first-output')
@@ -132,7 +133,7 @@ test('earlier output stays above a dim divider when it runs again', async () => 
   expect(text.indexOf('first-output')).toBeGreaterThan(-1)
   expect(text).toContain('--- run again ---')
   expect(text.lastIndexOf('first-output')).toBeGreaterThan(text.indexOf('--- run again ---'))
-}, 20000)
+})
 
 test('a run that starts again reads as running, with stoppedByYou reset', async () => {
   const { runner, finished, results } = setup('exit 3')
@@ -211,4 +212,4 @@ test('Stop also kills everything else on the console, which a broken parent chai
   expect(killed).toEqual(expect.arrayContaining([pid, 777, 888]))
   expect(killed).toHaveLength(3)
   await done
-}, 20000)
+})

@@ -11,10 +11,10 @@ export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' |
  */
 export const BUCKETS: { id: BucketId; label: string; help: string; always: boolean }[] = [
   { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer', always: true },
-  { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: true },
-  { id: 'running', label: 'Running', help: 'Claude is working', always: true },
-  { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: true },
-  { id: 'unknown', label: 'Unknown', help: "Patchbay can't tell, so don't assume it finished", always: true },
+  { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: false },
+  { id: 'running', label: 'Running', help: 'Claude is working', always: false },
+  { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: false },
+  { id: 'unknown', label: 'No status yet', help: "Patchbay can't tell, so don't assume it finished", always: false },
   { id: 'starting', label: 'Starting', help: 'Queued, or on its way up', always: false },
   { id: 'stopped', label: 'Stopped', help: 'The process has ended', always: false },
   { id: 'plain', label: 'Terminals and commands', help: "These don't report a status, so none is shown", always: false }
@@ -95,7 +95,23 @@ export function closedProjects(doc: CanvasDoc): Project[] {
   return doc.projects.filter((p) => !isProjectOpen(p) && !isProjectArchived(p)).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
 }
 
-/** The same history the Recent conversations panel shows, the newest first. */
+/** The same folder, however it's written: case, slash direction and a trailing slash don't count. */
+export function sameFolder(a: string, b: string): boolean {
+  const norm = (f: string): string => f.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  return norm(a) === norm(b)
+}
+
+/**
+ * Whether a sidebar row shows its folder line. Under its own project's heading, a session in the project's folder
+ * would only repeat it, so the line shows only where the session runs somewhere else. The Status tab always shows
+ * it, as it names the row's project there.
+ */
+export function rowShowsWhere(where: string, project: Project | undefined, tab: 'project' | 'status'): boolean {
+  if (tab === 'status') return true
+  return !project || !sameFolder(where, project.folder)
+}
+
+/** The same history the Closed conversations panel shows, the newest first. */
 export function recentlyClosed(doc: CanvasDoc, query: string): ClosedSession[] {
   const q = query.trim().toLowerCase()
   const shown = q ? doc.closed.filter((c) => c.title.toLowerCase().includes(q) || c.cwd.toLowerCase().includes(q)) : doc.closed
