@@ -255,6 +255,7 @@ function jobOutputs(args) {
     const eq = item.indexOf('=')
     if (eq < 1) fail(`--output ${item}: write it as key=value, or key=@file for a file.`)
     const key = item.slice(0, eq)
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(key)) fail(`--output ${key}: a field name starts with a letter and has only letters, digits, - and _.`)
     const value = item.slice(eq + 1)
     return value.startsWith('@') && value.length > 1 ? { key, file: toLocalPath(value.slice(1)) } : { key, text: value }
   })

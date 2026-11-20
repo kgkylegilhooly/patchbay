@@ -1,11 +1,12 @@
 import { randomUUID, createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { createReadStream, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFile, mkdir, realpath, rm, stat } from 'node:fs/promises'
+import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { CanvasStore, RunResult } from '../../shared/contract'
 import { isProjectArchived, type AgentStatus, type CanvasNode, type ClaudeNode, type GroupNode, type RunNode } from '../../shared/model'
 import type { TaskRevision } from '../../shared/task'
 import { branchFor, showArgv } from '../../shared/recipe'
-import { stepOutputs, workflowIssues, type OutputValue, type Workflow, type WorkflowRun } from '../../shared/workflow'
+import { SHELL_ACTS_ON, STEP_KEY, stepOutputs, templateRefs, workflowIssues, type OutputValue, type Workflow, type WorkflowRun } from '../../shared/workflow'
 import { advance, checkRunInputs, createRun, currentAttempt, deadline, planStep, type Effect, type RunEvent } from '../../core/workflow/engine'
 import { placeInGroup, placeInProject, placeNear } from '../../core/canvas/place'
 import { agentsNow } from '../agentsAllowed'
@@ -27,6 +28,13 @@ export interface WorkflowServiceDeps {
   tracker: { get(id: string): AgentStatus; onChange(cb: (id: string, status: AgentStatus) => void): void }
   /** Usage-limit holds: a held step's clock stops. */
   stops?: { holding(id: string): boolean }
+  /**
+   * Whether the session host has a live session for a node. After a restart an adopted agent's status is `unknown`
+   * until it next reports, so this, not the status, says whether it's still going.
+   */
+  isRunning?(id: string): boolean
+  /** How long an agent's node may show as exited before its step counts as interrupted: a restart passes through it. */
+  exitGraceMs?: number
   runStore: RunStore
   dataDir: string
   /** resources/launch-run.cjs, which runs a command step's program with no shell. */
@@ -71,6 +79,21 @@ export type RawOutput = { key: string; text: string } | { key: string; file: str
 export type WorkflowService = ReturnType<typeof createWorkflowService>
 
 const quoted = (p: string): string => `"${p.replace(/\\/g, '/')}"`
+
+/** A file's size and sha256, read as a stream so a large one doesn't hold up the main process. */
+function hashFile(path: string): Promise<{ size: number; sha256: string }> {
+  return new Promise((done, fail) => {
+    const hash = createHash('sha256')
+    let size = 0
+    createReadStream(path)
+      .on('data', (chunk: Buffer | string) => {
+        size += chunk.length
+        hash.update(chunk)
+      })
+      .on('error', fail)
+      .on('end', () => done({ size, sha256: hash.digest('hex') }))
+  })
+}
 const insideFolder = (folder: string, p: string): boolean => {
   const rel = relative(folder, p)
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
@@ -112,6 +135,22 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
       if (s.kind === 'agent' && !agents.enabled.includes(s.agent)) problems.push(`Step "${s.title}" uses ${s.agent === 'codex' ? 'Codex' : 'Claude Code'}, which is turned off in Settings > Agents.`)
     }
     if (wf.worktree !== false && !repo) problems.push("Each run gets its own worktree, and this project's folder isn't in a git repository.")
+    // A task check is declared as one command line, which the task service runs through cmd. A value put into it must
+    // have nothing cmd acts on, or it would become a command of its own.
+    if (checked.ok) {
+      for (const s of wf.steps) {
+        if (s.kind !== 'command' || !s.taskCheck) continue
+        for (const arg of s.run) {
+          for (const r of templateRefs(arg)) {
+            if (!('input' in r)) continue
+            const v = checked.inputs[r.input]
+            const bad = v === undefined ? undefined : String(v).match(SHELL_ACTS_ON)?.[0]
+            const label = wf.inputs.find((i) => i.key === r.input)?.label ?? r.input
+            if (bad !== undefined) problems.push(`"${label}" can't contain ${JSON.stringify(bad)}: step "${s.title}" is also the deliverable task's check, which runs through cmd, where that character would act.`)
+          }
+        }
+      }
+    }
     return [...new Set(problems)]
   }
 
@@ -340,35 +379,65 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     const run = runOfNode(nodeId)
     const node = d.store.get().nodes.find((n) => n.id === nodeId)
     if (!run || !node) return { ok: false, message: "You aren't running a workflow step, so there's nothing to submit a result for." }
-    const attempt = run.attempts.filter((a) => a.nodeId === nodeId).sort((a, b) => b.n - a.n)[0]
-    const values: Record<string, OutputValue> = {}
-    const into = join(artifactsDir, run.id, attempt.id.replace(/:/g, '_'))
+    // Keys become file names: only plain ones, and each once.
     const seen = new Set<string>()
     for (const o of outputs) {
+      if (!STEP_KEY.test(o.key)) return { ok: false, message: `--output ${JSON.stringify(o.key)}: a field name starts with a letter and has only letters, digits, - and _.` }
       if (seen.has(o.key)) return { ok: false, message: `--output ${o.key} is given twice.` }
       seen.add(o.key)
-      if ('text' in o) { values[o.key] = { type: 'text', text: o.text }; continue }
+    }
+    // Everything the engine would refuse is refused before any file is read or copied: the same report, with each file
+    // standing in as an empty file of that name.
+    const projectId = node.projectId ?? ''
+    const stand = Object.fromEntries(outputs.map((o): [string, OutputValue] => [o.key, 'text' in o ? { type: 'text', text: o.text } : { type: 'file', path: '', sha256: '', source: o.file }]))
+    const dry = advance(run, { type: 'submitted', nodeId, projectId, ...(step ? { step } : {}), outputs: stand }, { now: now(), newId: () => 'dry-run' })
+    if (!dry.ok) return { ok: false, message: dry.message }
+
+    const attempt = run.attempts.filter((a) => a.nodeId === nodeId).sort((a, b) => b.n - a.n)[0]
+    const into = join(artifactsDir, run.id, attempt.id.replace(/:/g, '_'))
+    // Every file is checked before the first is copied.
+    const files: Array<{ key: string; source: string }> = []
+    for (const o of outputs) {
+      if ('text' in o) continue
       const source = resolve(run.cwd, o.file)
-      if (!insideFolder(run.cwd, source)) return { ok: false, message: `${o.file} isn't inside the run's folder ${run.cwd}. Save the file there and submit it again.` }
+      const outside = `${o.file} isn't inside the run's folder ${run.cwd}. Save the file there and submit it again.`
+      if (!insideFolder(run.cwd, source)) return { ok: false, message: outside }
+      let real: string
       let size: number
       try {
-        const st = statSync(source)
+        real = await realpath(source)
+        const st = await stat(real)
         if (!st.isFile()) return { ok: false, message: `${source} isn't a file.` }
         size = st.size
       } catch {
         return { ok: false, message: `There's no file ${source}.` }
       }
+      // A link or junction inside the folder that leads outside it is refused, as the file itself would be.
+      if (!insideFolder(await realpath(run.cwd).catch(() => run.cwd), real)) return { ok: false, message: outside }
       if (size > MAX_ARTIFACT_BYTES) return { ok: false, message: `${source} is bigger than ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB.` }
-      mkdirSync(into, { recursive: true })
-      const kept = join(into, `${o.key}-${basename(source)}`)
-      copyFileSync(source, kept)
-      values[o.key] = { type: 'file', path: kept, sha256: createHash('sha256').update(readFileSync(kept)).digest('hex'), source }
+      files.push({ key: o.key, source: real })
+    }
+    const values: Record<string, OutputValue> = { ...stand }
+    try {
+      for (const f of files) {
+        await mkdir(into, { recursive: true })
+        // Named by the key alone, which is plain, so the copy can only land in this attempt's folder.
+        const kept = join(into, `${f.key}${extname(f.source).replace(/[^.A-Za-z0-9_-]/g, '')}`)
+        if (!insideFolder(into, kept)) throw new Error(`Bad output name ${f.key}`)
+        await copyFile(f.source, kept)
+        const { size, sha256 } = await hashFile(kept)
+        if (size > MAX_ARTIFACT_BYTES) throw new Error(`${f.source} grew past ${MAX_ARTIFACT_BYTES / 1024 / 1024} MB while it was copied.`)
+        values[f.key] = { type: 'file', path: kept, sha256, source: f.source }
+      }
+    } catch (e) {
+      await rm(into, { recursive: true, force: true }).catch(() => {})
+      return { ok: false, message: (e as Error).message }
     }
     let revision: TaskRevision | undefined
     try { revision = await d.revision(run.cwd) } catch { revision = undefined }
-    const r = await apply(run.id, { type: 'submitted', nodeId, projectId: node.projectId ?? '', ...(step ? { step } : {}), outputs: values, ...(revision ? { revision } : {}) })
+    const r = await apply(run.id, { type: 'submitted', nodeId, projectId, ...(step ? { step } : {}), outputs: values, ...(revision ? { revision } : {}) })
     if (!r.ok) {
-      rmSync(into, { recursive: true, force: true })
+      await rm(into, { recursive: true, force: true }).catch(() => {})
       return { ok: false, message: r.message }
     }
     return { ok: true, run: r.run }
@@ -376,20 +445,22 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
 
   // Watching nodes
 
-  const activeNodes = (): Map<string, WorkflowRun> => {
+  /** Nodes of current attempts still going, by node id. Launching ones only when asked: their node may not exist yet. */
+  const activeNodes = (withLaunching = true): Map<string, WorkflowRun> => {
+    const states = withLaunching ? ['launching', 'running', 'waiting-for-you'] : ['running', 'waiting-for-you']
     const m = new Map<string, WorkflowRun>()
     for (const run of runs.values()) {
-      for (const a of run.attempts) if (a.nodeId && ['launching', 'running', 'waiting-for-you'].includes(a.state) && currentAttempt(run, a.step)?.id === a.id) m.set(a.nodeId, run)
+      for (const a of run.attempts) if (a.nodeId && states.includes(a.state) && currentAttempt(run, a.step)?.id === a.id) m.set(a.nodeId, run)
     }
     return m
   }
 
-  const logOf = (run: WorkflowRun, nodeId: string): OutputValue | undefined => {
+  const logOf = async (run: WorkflowRun, nodeId: string): Promise<OutputValue | undefined> => {
     const a = run.attempts.find((x) => x.nodeId === nodeId && x.state !== 'superseded')
     if (!a) return undefined
     const file = join(artifactsDir, run.id, a.id.replace(/:/g, '_'), 'log.txt')
     try {
-      return { type: 'file', path: file, sha256: createHash('sha256').update(readFileSync(file)).digest('hex'), source: file }
+      return { type: 'file', path: file, sha256: (await hashFile(file)).sha256, source: file }
     } catch {
       return undefined
     }
@@ -402,9 +473,9 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     if (!run || result.running) return
     if (result.stoppedByYou) void apply(run.id, { type: 'node-gone', nodeId: id })
     else if (result.exitCode !== null) {
-      const log = logOf(run, id)
       const exitCode = result.exitCode
       void apply(run.id, async (): Promise<RunEvent> => {
+        const log = await logOf(run, id)
         let revision: TaskRevision | undefined
         try { revision = await d.revision(run.cwd) } catch { revision = undefined }
         return { type: 'exited', nodeId: id, exitCode, ...(log ? { log } : {}), ...(revision ? { revision } : {}) }
@@ -418,12 +489,22 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     if (!run) return
     if (status === 'idle') void apply(run.id, { type: 'idle', nodeId: id })
     else if (status === 'working') void apply(run.id, { type: 'busy', nodeId: id })
-    else if (status === 'exited' && d.store.get().nodes.find((n) => n.id === id)?.kind === 'claude') void apply(run.id, { type: 'node-gone', nodeId: id })
+    else if (status === 'exited' && d.store.get().nodes.find((n) => n.id === id)?.kind === 'claude') {
+      // Restarting an agent passes through exited; only one that stays exited has ended. Closing the node is caught
+      // at once by the canvas watch below.
+      const t = setTimeout(() => {
+        if (disposed || d.tracker.get(id) !== 'exited' || d.isRunning?.(id)) return
+        const still = activeNodes().get(id)
+        if (still) void apply(still.id, { type: 'node-gone', nodeId: id })
+      }, d.exitGraceMs ?? 15_000)
+      t.unref?.()
+    }
   })
 
   const unsubscribe = d.store.subscribe((doc) => {
     const present = new Set(doc.nodes.map((n) => n.id))
-    for (const [nodeId, run] of activeNodes()) if (!present.has(nodeId)) void apply(run.id, { type: 'node-gone', nodeId })
+    // Not launching ones: their node is made only after the run is saved, and a failed launch says so itself.
+    for (const [nodeId, run] of activeNodes(false)) if (!present.has(nodeId)) void apply(run.id, { type: 'node-gone', nodeId })
   })
 
   /** Time limits, with time held at a usage limit added back. */
@@ -460,7 +541,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
         if (node.kind === 'run') {
           nodes[a.nodeId] = r?.running ? 'running' : 'stopped'
           if (r && !r.running && r.exitCode !== null && !r.stoppedByYou) exits[a.nodeId] = r.exitCode
-        } else nodes[a.nodeId] = STARTED.has(d.tracker.get(a.nodeId)) ? 'running' : 'stopped'
+        } else nodes[a.nodeId] = d.isRunning?.(a.nodeId) || STARTED.has(d.tracker.get(a.nodeId)) ? 'running' : 'stopped'
       }
       await apply(run.id, { type: 'recovered', nodes, exits })
     }

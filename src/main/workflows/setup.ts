@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import type { IpcMainInvokeEvent } from 'electron'
 import type { CanvasStore, RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import type { WorkflowRun } from '../../shared/workflow'
@@ -19,6 +20,10 @@ export function setupWorkflows(d: {
   runner: { startNode(id: string): Promise<void>; stopNode(id: string): Promise<void>; runs(): Record<string, RunResult>; onRun(cb: (id: string, run: RunResult) => void): void }
   tracker: { get(id: string): AgentStatus; onChange(cb: (id: string, status: AgentStatus) => void): void }
   stops: { holding(id: string): boolean }
+  /** Whether the session host has a live session for a node. */
+  isRunning(id: string): boolean
+  /** Whether an IPC call comes from the app's own page. */
+  isAppUi(e: IpcMainInvokeEvent): boolean
   tasks: WorkflowServiceDeps['tasks']
   dataDir: string
   launcher: string
@@ -35,6 +40,7 @@ export function setupWorkflows(d: {
     runner: d.runner,
     tracker: d.tracker,
     stops: d.stops,
+    isRunning: d.isRunning,
     runStore,
     dataDir: d.dataDir,
     launcher: d.launcher,
@@ -57,6 +63,6 @@ export function setupWorkflows(d: {
     }
   })
   for (const u of service.unavailable) d.log(`Workflows: a run couldn't be loaded (${u.problem})${u.setAside ? `; kept at ${u.setAside}` : ''}.`)
-  registerWorkflowIpc({ service, dataDir: d.dataDir })
+  registerWorkflowIpc({ service, dataDir: d.dataDir, isAppUi: d.isAppUi })
   return { wrap: (verbs) => withWorkflowVerbs(verbs, { store: d.store, service }), recover: () => service.recover() }
 }

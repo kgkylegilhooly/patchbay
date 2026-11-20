@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { openAction } from '../../src/main/workflows/openPolicy'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -53,7 +54,15 @@ function fakeTracker() {
 }
 
 /** A project in a folder, a personal workflow file, and the service over them, with git and processes faked. */
-function world(wf: Workflow = featureWorkflow(), opts: { dataDir?: string; store?: ReturnType<typeof projectStore>; repo?: string } = {}) {
+function world(wf: Workflow = featureWorkflow(), opts: {
+  dataDir?: string
+  store?: ReturnType<typeof projectStore>
+  repo?: string
+  isRunning?: (id: string) => boolean
+  exitGraceMs?: number
+  /** Runs before each save of a run, as something else on the canvas might. */
+  beforeSave?: () => void
+} = {}) {
   const root = opts.repo ?? mkdtempSync(join(tmpdir(), 'pb-wf-svc-'))
   if (!opts.repo) dirs.push(root)
   const dataDir = opts.dataDir ?? join(root, 'data')
@@ -73,7 +82,12 @@ function world(wf: Workflow = featureWorkflow(), opts: { dataDir?: string; store
   const service = createWorkflowService({
     store, runner, tracker,
     stops: { holding: () => holding },
-    runStore: createRunStore(join(dataDir, 'workflow-runs'), { log: () => {} }),
+    ...(opts.isRunning ? { isRunning: opts.isRunning } : {}),
+    ...(opts.exitGraceMs !== undefined ? { exitGraceMs: opts.exitGraceMs } : {}),
+    runStore: (() => {
+      const real = createRunStore(join(dataDir, 'workflow-runs'), { log: () => {} })
+      return { ...real, save: async (r: WorkflowRun) => { opts.beforeSave?.(); await real.save(r) } }
+    })(),
     dataDir,
     launcher: 'C:\\app\\resources\\launch-run.cjs',
     toplevel: async () => repo,
@@ -383,5 +397,103 @@ describe('verbs', () => {
     expect(w.service.runs()).toEqual([])
     await expect(verbs('agent1', 'workflow-run', { name: 'Feature', input: ['brief=x'] })).rejects.toThrow(/hasn't started/)
     expect(existsSync(join(w.dataDir, 'workflow-runs', 'runs'))).toBe(false)
+  })
+})
+
+describe('review fixes', () => {
+  test('H1: an output key that is a path is refused, and nothing is written anywhere', async () => {
+    const w = world()
+    await startByPerson(w)
+    const cwd = w.run().cwd
+    writeFileSync(join(cwd, 'payload.bat'), 'echo pwned')
+    const node = w.att('plan').nodeId!
+    for (const key of ['../../../escaped', String.raw`..\..\x`, 'a/b', '']) {
+      expect(await w.service.submit(node, [{ key, file: 'payload.bat' }, { key: 'summary', text: 's' }])).toMatchObject({ ok: false, message: expect.stringContaining('field name') })
+    }
+    expect(existsSync(join(w.dataDir, 'escaped-payload.bat'))).toBe(false)
+    expect(existsSync(join(w.dataDir, 'workflow-artifacts'))).toBe(false)
+  })
+
+  test('H1: a refused submission copies nothing: an unknown field, another project, a finished attempt', async () => {
+    const w = world()
+    await startByPerson(w)
+    const cwd = w.run().cwd
+    writeFileSync(join(cwd, 'plan.md'), '# P')
+    const node = w.att('plan').nodeId!
+    expect(await w.service.submit(node, [{ key: 'doc', file: 'plan.md' }, { key: 'summary', text: 's' }, { key: 'extra', file: 'plan.md' }])).toMatchObject({ ok: false })
+    expect(await w.service.submit(node, [{ key: 'doc', text: 'not a file' }, { key: 'summary', text: 's' }])).toMatchObject({ ok: false })
+    expect(existsSync(join(w.dataDir, 'workflow-artifacts'))).toBe(false)
+    expect(await submitPlan(w)).toMatchObject({ ok: true })
+    // The copy is named by the key alone, inside the attempt's folder.
+    const doc = w.att('plan').outputs!.doc
+    expect(doc.type === 'file' && doc.path).toBe(join(w.dataDir, 'workflow-artifacts', w.run().id, `${w.att('plan').id.replace(/:/g, '_')}`, 'doc.md'))
+    const again = await w.service.submit(node, [{ key: 'doc', file: 'plan.md' }, { key: 'summary', text: 'again' }])
+    expect(again).toMatchObject({ ok: false, message: expect.stringContaining('already has its result') })
+  })
+
+  test('H1: a junction inside the run folder that leads outside it is refused', async () => {
+    const w = world()
+    await startByPerson(w)
+    const outside = join(w.root, 'secrets')
+    mkdirSync(outside)
+    writeFileSync(join(outside, 'key.txt'), 'secret')
+    symlinkSync(outside, join(w.run().cwd, 'link'), 'junction')
+    const r = await w.service.submit(w.att('plan').nodeId!, [{ key: 'doc', file: 'link/key.txt' }, { key: 'summary', text: 's' }])
+    expect(r).toMatchObject({ ok: false, message: expect.stringContaining("isn't inside the run's folder") })
+  })
+
+  test('H2: after a restart, an agent the host still runs stays running though its status is unknown, and can submit', async () => {
+    const w = world()
+    await startByPerson(w)
+    const planNode = w.att('plan').nodeId!
+    w.service.dispose()
+    const again = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root, isRunning: (id) => id === planNode })
+    await again.service.recover()
+    await again.settle()
+    expect(again.att('plan').state).toBe('running')
+    writeFileSync(join(again.run().cwd, 'plan.md'), '# P')
+    expect(await again.service.submit(planNode, [{ key: 'doc', file: 'plan.md' }, { key: 'summary', text: 's' }])).toMatchObject({ ok: true })
+  })
+
+  test('H3: a value with a character cmd acts on never reaches a task check; nothing is made', async () => {
+    const w = world()
+    const r = await w.service.start({ projectId: 'p1', ref: 'Feature', inputs: { brief: 'x', filter: 'x&calc' }, by: { person: true } })
+    expect(r).toMatchObject({ ok: false, reason: expect.stringContaining('"Test filter" can\'t contain "&"') })
+    expect(w.tasks.created).toEqual([])
+    expect(w.store.get().nodes).toEqual([])
+    expect(await w.service.start({ projectId: 'p1', ref: 'Feature', inputs: { brief: 'x & y', filter: 'unit' }, by: { person: true } })).toMatchObject({ ok: true })
+  })
+
+  test('M1: a canvas change while the run is being saved doesn\'t interrupt the step being launched', async () => {
+    let w: ReturnType<typeof world>
+    let n = 0
+    w = world(featureWorkflow(), {
+      beforeSave: () => w?.store.dispatch({ op: 'addNode', node: { id: `other${++n}`, kind: 'sticky', title: 'N', text: '', x: 0, y: 0, width: 10, height: 10, parentId: null, projectId: 'p1' } as never })
+    })
+    await startByPerson(w)
+    expect(w.att('plan').state).toBe('running')
+  })
+
+  test('M2: restarting a step\'s agent keeps its attempt; an agent that stays exited is interrupted', async () => {
+    const w = world(featureWorkflow(), { exitGraceMs: 20 })
+    await startByPerson(w)
+    const node = w.att('plan').nodeId!
+    w.tracker.set(node, 'exited')
+    w.tracker.set(node, 'starting')
+    await new Promise((r) => setTimeout(r, 60))
+    await w.settle()
+    expect(w.att('plan').state).toBe('running')
+    w.tracker.set(node, 'exited')
+    await new Promise((r) => setTimeout(r, 60))
+    await w.settle()
+    expect(w.att('plan').state).toBe('interrupted')
+  })
+
+  test('M3: Open only shows a runnable file in its folder', () => {
+    expect(openAction('C:/data/workflow-artifacts/r/a/doc.hta')).toBe('reveal')
+    expect(openAction('C:/x/run.bat')).toBe('reveal')
+    expect(openAction('C:/x/link.lnk')).toBe('reveal')
+    expect(openAction('C:/x/doc.md')).toBe('open')
+    expect(openAction('C:/x/log.txt')).toBe('open')
   })
 })

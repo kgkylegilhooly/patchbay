@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join, relative, isAbsolute, resolve } from 'node:path'
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { openAction } from './openPolicy'
 import type { PersonAction } from '../../shared/workflowBridge'
 import type { WorkflowService } from './service'
 
@@ -15,9 +16,11 @@ const ACTIONS = ['decide', 'retry', 'stop', 'remind', 'mark-done']
  * Serves `pb:workflows:*`, the workflow picker's, form's, run panel's and editor's channels. See
  * src/preload/workflows.ts. These are the person's own: only the app's page calls them.
  */
-export function registerWorkflowIpc({ service, dataDir }: { service: WorkflowService; dataDir: string }): void {
+export function registerWorkflowIpc({ service, dataDir, isAppUi }: { service: WorkflowService; dataDir: string; isAppUi: (e: IpcMainInvokeEvent) => boolean }): void {
   const handle = (name: string, fn: (...args: never[]) => unknown): void => {
-    ipcMain.handle(`pb:workflows:${name}`, async (_e, ...args: unknown[]) => {
+    ipcMain.handle(`pb:workflows:${name}`, async (e, ...args: unknown[]) => {
+      // Starting a workflow trusts it, and the actions are the person's: only the app's own page may call these.
+      if (!isAppUi(e)) return { ok: false, reason: 'Workflows are available only in the application UI.' }
       try {
         return await (fn as (...a: unknown[]) => unknown)(...args)
       } catch (e) {
@@ -61,6 +64,11 @@ export function registerWorkflowIpc({ service, dataDir }: { service: WorkflowSer
     const listed = service.runs().some((r) => r.attempts.some((a) => Object.values(a.outputs ?? {}).some((o) => o.type === 'file' && resolve(o.path) === p)))
     const owned = inside(join(dataDir, 'workflows'), p) || inside(join(dataDir, 'workflow-artifacts'), p) || listed || /[\\/]\.patchbay[\\/]workflows[\\/][^\\/]+\.json$/i.test(p)
     if (!owned) return { ok: false, reason: "That isn't a workflow's file." }
+    // A file Windows would run (an agent's output can be any kind) is only shown in its folder, never run.
+    if (openAction(p) === 'reveal') {
+      shell.showItemInFolder(p)
+      return { ok: true }
+    }
     const err = await shell.openPath(p)
     return err ? { ok: false, reason: err } : { ok: true }
   })

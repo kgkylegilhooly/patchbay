@@ -3,7 +3,7 @@ import type { Verbs } from '../control/verbs'
 import { RpcRefusal } from '../control/server'
 import { archivedRefusal } from '../control/archived'
 import { currentAttempt } from '../../core/workflow/engine'
-import type { WorkflowRun } from '../../shared/workflow'
+import { STEP_KEY, type WorkflowRun } from '../../shared/workflow'
 import { findWorkflow } from './files'
 import type { RawOutput, WorkflowService } from './service'
 
@@ -43,6 +43,7 @@ function outputsOf(args: Args): RawOutput[] {
   return raw.map((o: unknown) => {
     const r = o as Record<string, unknown>
     if (!r || typeof r.key !== 'string' || !r.key) refuse('--output must be key=value or key=@file.')
+    if (!STEP_KEY.test(r.key)) refuse(`--output ${JSON.stringify(r.key)}: a field name starts with a letter and has only letters, digits, - and _.`)
     if (typeof r.text === 'string') return { key: r.key, text: r.text }
     if (typeof r.file === 'string') return { key: r.key, file: r.file }
     return refuse(`--output ${r.key}: give a value, or @ and a file.`)
