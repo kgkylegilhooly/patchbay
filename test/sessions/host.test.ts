@@ -178,8 +178,17 @@ test('args for cmd.exe reach it verbatim, because cmd.exe has its own quoting', 
   await vi.waitFor(() => expect(h.snapshot('n').data).toContain('"a b"'), { timeout: 30_000 })
 })
 
-test('a background session runs below normal priority, and so does what it starts', async () => {
-  const { getPriority, constants } = await import('node:os')
+/**
+ * Windows gives a new process its creator's priority class when that is below normal or idle. Run from inside a
+ * Patchbay background session (as agents on the canvas run the suite), this test process is below normal itself, so
+ * every session it starts is too, whatever the host does. Patchbay's own host runs at normal priority.
+ */
+const testRunsBelowNormal = getPriority() > constants.priority.PRIORITY_NORMAL
+if (testRunsBelowNormal)
+  console.warn('Skipping the session priority tests: this test process runs below normal priority (as in a Patchbay background session), and Windows passes that on to every process it starts.')
+
+// Below normal already, every child would be below normal whatever the host did, so this would prove nothing.
+test.skipIf(testRunsBelowNormal)('a background session runs below normal priority, and so does what it starts', async () => {
   const out = join(mkdtempSync(join(tmpdir(), 'pb-priority-')), 'child.txt')
   const h = host() as SessionHost & { start(s: SessionSpec): void }
   // The session starts a child of its own, which records its own priority, as an agent's tools would.
@@ -188,18 +197,9 @@ test('a background session runs below normal priority, and so does what it start
   const pid = h.pid('n') as number
   expect(getPriority(pid)).toBe(constants.priority.PRIORITY_BELOW_NORMAL)
   const { readFileSync, existsSync } = await import('node:fs')
-  for (let i = 0; i < 100 && !existsSync(out); i++) await new Promise((r) => setTimeout(r, 50))
+  await vi.waitFor(() => expect(existsSync(out)).toBe(true), { timeout: 30_000 })
   expect(Number(readFileSync(out, 'utf8'))).toBe(constants.priority.PRIORITY_BELOW_NORMAL)
 })
-
-/**
- * Windows gives a new process its creator's priority class when that is below normal or idle. Run from inside a
- * Patchbay background session (as agents on the canvas run the suite), this test process is below normal itself, so
- * every session it starts is too, whatever the host does. Patchbay's own host runs at normal priority.
- */
-const testRunsBelowNormal = getPriority() > constants.priority.PRIORITY_NORMAL
-if (testRunsBelowNormal)
-  console.warn('Skipping "any other session keeps normal priority": this test process runs below normal priority (as in a Patchbay background session), and Windows passes that on to every process it starts.')
 
 test.skipIf(testRunsBelowNormal)('any other session keeps normal priority', () => {
   const h = host() as SessionHost & { start(s: SessionSpec): void }

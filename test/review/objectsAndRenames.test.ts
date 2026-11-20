@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -49,10 +49,13 @@ async function setup(limits: Partial<ObjectLimits> = {}) {
   await tasks.submit('p', task.id, 'builder', 'Added token checks')
   const objects = join(dir, 'data', 'review-objects')
   const reviewGit = createReviewGit(objects, patientGit(systemReviewGit()))
+  /** Makes git's lookups fail, as a locked, busy or unmounted repository does. */
+  const broken = { toplevel: false, storeDir: false }
   let t = Date.now()
+  const lim: ObjectLimits = { ...OBJECT_LIMITS, ...limits }
   const review = createReviewService({
-    store, tasks, data: createReviewStore(join(dir, 'data', 'review-inbox.json'), () => {}), git: reviewGit, send: () => ({ ok: true, queued: false }) as never,
-    now: () => t, limits: { ...OBJECT_LIMITS, ...limits }
+    store, tasks, data: createReviewStore(join(dir, 'data', 'review-inbox.json'), () => {}), git: { ...reviewGit, toplevel: (f: string) => (broken.toplevel ? Promise.resolve(null) : reviewGit.toplevel(f)), storeDir: (r: string) => (broken.storeDir ? Promise.reject(new Error('git rev-parse took too long.')) : reviewGit.storeDir(r)) }, send: () => ({ ok: true, queued: false }) as never,
+    now: () => t, limits: lim
   })
   const shownNow = async () => {
     const set = await review.changes('p', task.id, { kind: 'branch', base: 'main' })
@@ -61,7 +64,7 @@ async function setup(limits: Partial<ObjectLimits> = {}) {
   /** Loose objects in the review store, over all its folders. */
   const loose = (): string[] =>
     existsSync(objects) ? readdirSync(objects).flatMap((f) => readdirSync(join(objects, f)).filter((s) => /^[0-9a-f]{2}$/.test(s)).flatMap((s) => readdirSync(join(objects, f, s)).map((n) => s + n))) : []
-  return { review, reviewGit, task, objects, shownNow, loose, later: (ms: number) => void (t += ms) }
+  return { review, reviewGit, task, objects, shownNow, loose, broken, limits: lim, later: (ms: number) => void (t += ms) }
 }
 
 test('pruning keeps the latest review and open comments, and removes the snapshots nothing needs', async () => {
@@ -136,11 +139,60 @@ test('over its size, a folder gives up the oldest reviews first, never an open c
   expect(r.reviewsDropped).toBe(1)
   expect(await reviewGit.objectType(repo, shown.tree)).toBeNull()
   expect(await reviewGit.fileAt(repo, onComment, 'notes/a.txt')).toBe('comment here\n')
-  // Resolved, the comment no longer holds its snapshot.
+  // Resolved, the comment keeps its snapshot for a while, so Reopen still finds its line; after that it goes.
   const [c] = await review.comments('p', task.id)
   review.setCommentStatus('p', c.id, 'resolved')
+  later(DAY)
+  await review.pruneObjects()
+  expect(await reviewGit.fileAt(repo, onComment, 'notes/a.txt')).toBe('comment here\n')
+  later(31 * DAY)
   await review.pruneObjects()
   expect(await reviewGit.objectType(repo, onComment)).toBeNull()
+})
+
+test("a repository that can't be looked up stops the whole run: nothing is removed, and the run says why", async () => {
+  const { review, reviewGit, task, shownNow, loose, broken, later } = await setup({ graceMs: 0, shownMs: 0 })
+  write('notes/a.txt', 'comment here\n')
+  const onComment = (await shownNow()).set.tree
+  await review.addComment('p', task.id, { path: 'notes/a.txt', side: 'new', line: 1, revision: onComment, text: 'Explain this', section: 'local' })
+  write('notes/b.txt', 'scratch\n')
+  await shownNow()
+  later(40 * DAY)
+  const before = loose().sort()
+  broken.toplevel = true
+  const a = await review.pruneObjects()
+  expect(a).toMatchObject({ removed: 0, notRun: expect.stringMatching(/couldn't be read as a git repository just now, so nothing was pruned/) })
+  broken.toplevel = false
+  broken.storeDir = true
+  const b = await review.pruneObjects()
+  expect(b).toMatchObject({ removed: 0, notRun: expect.stringMatching(/review store folder of .* couldn't be found \(git rev-parse took too long\.\)/) })
+  expect(loose().sort()).toEqual(before)
+  expect(await reviewGit.fileAt(repo, onComment, 'notes/a.txt')).toBe('comment here\n')
+  // Readable again, the next run prunes what nothing needs and keeps the comment's.
+  broken.storeDir = false
+  expect((await review.pruneObjects()).removed).toBeGreaterThan(0)
+  expect(await reviewGit.fileAt(repo, onComment, 'notes/a.txt')).toBe('comment here\n')
+})
+
+test('objects kept only for being recent never cost a review its snapshot', async () => {
+  const { review, reviewGit, task, shownNow, objects, limits, later } = await setup({ shownMs: 0 })
+  write('notes/b.txt', 'reviewed\n')
+  const { shown } = await shownNow()
+  await review.markReviewed('p', task.id, shown)
+  // The folder's cap is exactly what the review holds now.
+  const size = (): number => readdirSync(objects).flatMap((f) => readdirSync(join(objects, f)).filter((s) => /^[0-9a-f]{2}$/.test(s)).flatMap((s) => readdirSync(join(objects, f, s)).map((n) => statSync(join(objects, f, s, n)).size))).reduce((a, b) => a + b, 0)
+  limits.maxBytes = size()
+  // Newer snapshots push the folder over it. Within the hour's grace their objects can't go, and giving up the review
+  // would free nothing they hold.
+  for (let i = 0; i < 3; i++) {
+    write('notes/scratch.txt', `draft ${i}\n`)
+    await shownNow()
+  }
+  // No longer on screen, but written moments ago.
+  later(1)
+  const r = await review.pruneObjects()
+  expect(r.reviewsDropped).toBe(0)
+  expect(await reviewGit.objectType(repo, shown.tree)).toBe('tree')
 })
 
 test('objects written moments ago are kept, as a snapshot may be being written or shown', async () => {

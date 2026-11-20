@@ -96,7 +96,9 @@ test('branches, push with a new upstream, pull, and a merge in the history', asy
   git(other, 'commit', '-q', '-m', 'from other')
   git(other, 'push', '-q', 'origin', 'main')
   expect((await svc.fetch(repo)).ok).toBe(true)
-  expect((await svc.pull(repo, 'ff-only')).ok).toBe(true)
+  const pulled = await svc.pull(repo, 'ff-only')
+  // On failure, git's own reason shows.
+  expect(pulled).toMatchObject({ ok: true })
   expect(existsSync(join(repo, 'o.txt'))).toBe(true)
 })
 

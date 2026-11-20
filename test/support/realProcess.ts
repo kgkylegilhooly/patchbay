@@ -30,11 +30,24 @@ export function patientGit<R, Rest extends unknown[]>(
  */
 export async function removeTemp(dir: string | undefined): Promise<void> {
   if (!dir) return
+  // rm retries each busy entry on its own, so a folder of many can take far longer than one retry run: this bounds it.
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<'late'>((done) => {
+    timer = setTimeout(() => done('late'), REMOVE_DEADLINE_MS)
+    timer.unref?.()
+  })
   try {
-    await rm(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 })
+    const removed = rm(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 })
+    removed.catch(() => {})
+    if ((await Promise.race([removed, deadline])) === 'late') console.warn(`Left temp folder ${dir} in place: still busy after ${REMOVE_DEADLINE_MS / 1000} s.`)
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
     if (code !== 'EBUSY' && code !== 'EPERM' && code !== 'ENOTEMPTY') throw e
     console.warn(`Left temp folder ${dir} in place: ${code}.`)
+  } finally {
+    clearTimeout(timer)
   }
 }
+
+/** The longest a test waits for its temp folder to go. */
+const REMOVE_DEADLINE_MS = 20_000

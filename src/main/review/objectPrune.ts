@@ -18,6 +18,8 @@ export const OBJECT_LIMITS = {
    * commit reviewed, and says so.
    */
   reviewMs: 90 * 24 * 60 * 60_000,
+  /** A resolved comment keeps its snapshot this long after it was resolved, so Reopen still finds its line. */
+  resolvedMs: 30 * 24 * 60 * 60_000,
   /** A folder for a repository no review record names any more: its objects go once this old. */
   orphanMs: 30 * 24 * 60 * 60_000,
   /** Most a repository's folder keeps. Past it, the oldest reviews' snapshots go first; open comments' never do. */
@@ -79,10 +81,14 @@ export function objectNeeds(
 const HEX2 = /^[0-9a-f]{2}$/
 const HEX38 = /^[0-9a-f]{38}(?:[0-9a-f]{24})?$/
 
-/** Removes a folder's loose objects that aren't in `keep` and weren't written since `before`. Gives what's left. */
-export async function sweepObjects(dir: string, keep: Set<string>, before: number): Promise<{ removed: number; bytes: number }> {
+/**
+ * Removes a folder's loose objects that aren't in `keep` and weren't written since `before`. Gives what's left:
+ * `bytes` in all, and `recentBytes` of it kept only for being newer than `before`, which no review can free.
+ */
+export async function sweepObjects(dir: string, keep: Set<string>, before: number): Promise<{ removed: number; bytes: number; recentBytes: number }> {
   let removed = 0
   let bytes = 0
+  let recentBytes = 0
   const subs = await readdir(dir).catch(() => [] as string[])
   for (const sub of subs) {
     if (!HEX2.test(sub)) continue
@@ -95,6 +101,7 @@ export async function sweepObjects(dir: string, keep: Set<string>, before: numbe
       if (!s?.isFile()) continue
       if (!HEX38.test(name) || keep.has(sub + name) || s.mtimeMs >= before) {
         bytes += s.size
+        if (HEX38.test(name) && !keep.has(sub + name)) recentBytes += s.size
         left++
         continue
       }
@@ -103,7 +110,7 @@ export async function sweepObjects(dir: string, keep: Set<string>, before: numbe
     }
     if (!left) await rmdir(folder).catch(() => {})
   }
-  return { removed, bytes }
+  return { removed, bytes, recentBytes }
 }
 
 export interface PruneReport {
@@ -115,11 +122,18 @@ export interface PruneReport {
   foldersRemoved: number
   /** Repositories left alone because git couldn't list what they need. */
   skipped: string[]
+  /** Why nothing at all was pruned this time, when a record's repository couldn't be looked up. */
+  notRun?: string
 }
+
+/** A run that removes nothing, and says why. */
+export const prunedNothing = (why: string, skipped: string[]): PruneReport => ({ removed: 0, reviewsDropped: 0, foldersRemoved: 0, skipped, notRun: why })
 
 /**
  * Prunes the review store. Nothing a folder needs is removed, and nothing at all from a folder whose needs couldn't be
- * listed: a git failure leaves it as it was. The caller makes sure no snapshot is being written meanwhile.
+ * listed: a git failure leaves it as it was. If any record's repository folder can't be named, nothing is pruned this
+ * time, since its folder would otherwise look like no record's. The caller makes sure no snapshot is being written
+ * meanwhile, and that every record is in `needs`.
  */
 export async function pruneObjectStore(
   git: Pick<ReviewGit, 'storeDir' | 'reachable'>,
@@ -133,8 +147,9 @@ export async function pruneObjectStore(
   for (const n of needs) {
     try {
       known.set(resolve(await git.storeDir(n.root)).toLowerCase(), n)
-    } catch {
-      // Its folder can't be named now (the repository may be gone); it's treated as no record's, so only very old objects go.
+    } catch (e) {
+      // Busy, locked, or not there for now: tried again next time.
+      return prunedNothing(`The review store folder of ${n.root} couldn't be found (${e instanceof Error ? e.message : String(e)}), so nothing was pruned.`, [n.root])
     }
   }
   const folders = await readdir(objectsRoot, { withFileTypes: true }).catch(() => [])
@@ -151,14 +166,19 @@ export async function pruneObjectStore(
       continue
     }
     const reviews = [...need.reviews]
+    let dropped = false
     try {
       for (;;) {
         const keep = await git.reachable(need.root, [...need.required, ...reviews.map((r) => r.tree)])
         const r = await sweepObjects(dir, keep, now - limits.graceMs)
         report.removed += r.removed
-        if (r.bytes <= limits.maxBytes || !reviews.length) break
+        // Objects kept only for being recent can't be freed by giving up a review; the next run, past the grace, can.
+        if (r.bytes - r.recentBytes <= limits.maxBytes || !reviews.length) break
+        // A review given up last time that freed nothing: the rest is shared or recent, so giving up more won't help.
+        if (dropped && r.removed === 0) break
         reviews.shift()
         report.reviewsDropped++
+        dropped = true
       }
     } catch {
       report.skipped.push(need.root)

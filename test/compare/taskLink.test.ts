@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -17,6 +17,9 @@ import type { CanvasDoc } from '../../src/shared/model'
 import { sanitizeTasks, taskReadiness, type Task, type TaskComparisonAttempt, type TaskRecords, type TaskVerification } from '../../src/shared/task'
 import { comparisonCheckId, taskComparisonBrief, taskComparisons, withComparisonChoice } from '../../src/shared/taskCompare'
 import { readRevision } from '../../src/main/tasks/verification'
+import { patientGit, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let root: string
 let repo: string
@@ -47,7 +50,7 @@ function store(tasks: TaskRecords): CanvasStore {
 }
 
 const env = gitEnvFrom(Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => typeof e[1] === 'string')))
-const git = systemGit(env)
+const git = patientGit(systemGit(env))
 const reads = createCompareReads(git, createGitService(git))
 
 function world(tasks: TaskRecords = { tasks: [task()], attempts: [] }) {
@@ -87,7 +90,7 @@ beforeEach(() => {
   root = realpathSync.native(mkdtempSync(join(tmpdir(), 'patchbay-compare-task-')))
   repo = makeRepo(join(root, 'repo'))
 })
-afterEach(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
+afterEach(() => removeTemp(root))
 
 test('a comparison for a task that is gone, cancelled or accepted is refused before anything is made', async () => {
   for (const [records, words] of [

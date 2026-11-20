@@ -28,7 +28,7 @@ import type { Task, TaskView } from '../../shared/task'
 import type { SendResult } from '../agentMessages'
 import type { TaskService } from '../tasks/service'
 import { baseName, EMPTY_TREE, isOid, repoPath, type ReviewGit } from './git'
-import { objectNeeds, OBJECT_LIMITS, pruneObjectStore, type ObjectLimits, type PruneReport } from './objectPrune'
+import { objectNeeds, OBJECT_LIMITS, prunedNothing, pruneObjectStore, type ObjectLimits, type PruneReport } from './objectPrune'
 import type { ReviewStore } from './store'
 
 export interface ReviewDeps {
@@ -100,16 +100,20 @@ export function createReviewService(d: ReviewDeps) {
       const at = now()
       for (const [k, s] of shownTrees) if (at - s.at > limits.shownMs) shownTrees.delete(k)
       const data = d.data.get()
-      // An open comment written on a snapshot needs it while open. Its repository is its task's.
+      // A comment written on a snapshot needs it while open, and for a while after it's resolved, so Reopen still finds
+      // its line. Its repository is its task's. One that can't be looked up now stops the whole run: its folder would
+      // otherwise look like no record's.
       const roots = new Map<string, Promise<string | null>>()
       const comments: { root: string; revision: string }[] = []
       for (const c of data.comments) {
-        if (c.status !== 'open' || c.anchor.revisionKind !== 'snapshot') continue
+        if (c.anchor.revisionKind !== 'snapshot') continue
+        if (c.status !== 'open' && at - (c.resolvedAt ?? c.createdAt) > limits.resolvedMs) continue
         const cwd = d.store.get().projects.find((p) => p.id === c.projectId)?.tasks?.tasks.find((t) => t.id === c.taskId)?.cwd
-        if (!cwd) continue
+        if (!cwd) return prunedNothing(`The task of a review comment (${c.projectId}/${c.taskId}) couldn't be read, so nothing was pruned.`, [])
         if (!roots.has(cwd)) roots.set(cwd, d.git.toplevel(cwd).catch(() => null))
         const root = await roots.get(cwd)!
-        if (root) comments.push({ root, revision: c.anchor.revision })
+        if (!root) return prunedNothing(`${cwd} couldn't be read as a git repository just now, so nothing was pruned.`, [cwd])
+        comments.push({ root, revision: c.anchor.revision })
       }
       // Every repository this run has looked at, and every one a record names, keeps its folder.
       const inUse = [...usedRoots, ...data.marks.map((m) => m.root), ...comments.map((c) => c.root)]
@@ -254,7 +258,7 @@ export function createReviewService(d: ReviewDeps) {
       if (now() - lastPrune >= limits.everyMs) {
         lastPrune = now()
         void pruneObjects().then(
-          (r) => { if (r.removed || r.skipped.length) d.log?.(`Review objects pruned: ${r.removed} removed${r.reviewsDropped ? `, ${r.reviewsDropped} old review snapshots given up for space` : ''}${r.skipped.length ? `; left alone: ${r.skipped.join(', ')}` : ''}.`) },
+          (r) => { if (r.notRun) d.log?.(`Review objects not pruned: ${r.notRun} It tries again in a few hours.`); else if (r.removed || r.skipped.length) d.log?.(`Review objects pruned: ${r.removed} removed${r.reviewsDropped ? `, ${r.reviewsDropped} old review snapshots given up for space` : ''}${r.skipped.length ? `; left alone: ${r.skipped.join(', ')}` : ''}.`) },
           (e: unknown) => d.log?.(`Review objects couldn't be pruned: ${String(e)}`)
         )
       }

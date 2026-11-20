@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -11,6 +11,9 @@ import { describeFiles } from '../../src/main/files/verbs'
 import { cleanEnv } from '../../src/main/sessions/env'
 import type { AgentStatus } from '../../src/shared/model'
 import { endCheckNote, originTags } from '../../src/renderer/filesView'
+import { PATIENT_GIT_MS, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const dirs: string[] = []
 const temp = (): string => {
@@ -18,11 +21,11 @@ const temp = (): string => {
   dirs.push(d)
   return d
 }
-afterEach(() => {
-  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+afterEach(async () => {
+  for (const d of dirs.splice(0)) await removeTemp(d)
 })
 
-const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})))
+const git = gitRunner(gitEnvFrom(cleanEnv(process.env, {})), PATIENT_GIT_MS)
 const sh = (cwd: string, ...args: string[]): string => execFileSync('git', ['-C', cwd, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', windowsHide: true })
 
 function repo(): string {
