@@ -293,7 +293,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     'separator',
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
-    { id: 'tidy', label: 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
+    { id: 'tidy', label: s.selectedCount > 1 ? 'Tidy selection' : 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
     'separator',
     { id: 'recent', label: 'Recent conversations', icon: 'recent', run: c.toggleRecent }
   ]
@@ -349,6 +349,7 @@ export function nodeMenu(
       'separator',
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
+      { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')
     ]
   }

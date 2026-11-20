@@ -54,6 +54,7 @@ import { RecipeLayer } from './RecipeLayer'
 import { CompareLayer } from './CompareLayer'
 import { ProjectsLayer } from './ProjectsLayer'
 import { SubagentLayer } from './subagents/SubagentLayer'
+import { TidyLayer } from './TidyLayer'
 import { NeedsYouLayer } from './NeedsYouLayer'
 import { ReaderNode } from './reader/ReaderNode'
 import { ReaderLayer } from './reader/ReaderLayer'
@@ -411,6 +412,7 @@ function Canvas(): React.JSX.Element | null {
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <SubagentLayer />
+          <TidyLayer sidebar={prefs.sidebar} />
           {prefs.minimap && (
             <MiniMap<FlowNode>
               pannable

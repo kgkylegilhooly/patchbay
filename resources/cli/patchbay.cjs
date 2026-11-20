@@ -28,7 +28,7 @@ const VERBS = {
   },
   'spawn-team': { label: 'text', color: 'text', members: 'text', 'members-file': 'path' },
   group: { ids: 'list', label: 'text', color: 'text' },
-  arrange: { ids: 'list', layout: 'text', gap: 'int' },
+  arrange: { ids: 'list', layout: 'text', gap: 'int', group: 'text', status: 'flag' },
   rename: { node: 'text', title: 'text' },
   sticky: { text: 'text', title: 'text', group: 'text' },
   note: { node: 'text', text: 'text', append: 'text' },
@@ -82,6 +82,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
                   members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]
   group         --ids ID,ID --label L [--color C]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
+  arrange       --layout tidy [--ids ID,ID | --group ID] [--status]   keeps related nodes together, needs-you first with --status
   rename        --node ID --title T
   sticky        --text MARKDOWN [--title T] [--group ID]
   note          --node ID (--append MARKDOWN | --text MARKDOWN)   adds to a note, or replaces one you opened

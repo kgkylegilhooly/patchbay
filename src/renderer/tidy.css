@@ -1,0 +1,86 @@
+/* Tidy preview: where each node would go, as dashed outlines, and the bar to apply or cancel. */
+
+.tidy-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 2px dashed var(--cable-link);
+  border-radius: var(--radius);
+  background: rgb(61 139 253 / 0.08);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.tidy-ghost-group {
+  border-color: var(--ink-dim);
+  background: rgb(236 236 238 / 0.03);
+  z-index: 999;
+}
+
+.tidy-ghost-still {
+  border-style: dotted;
+  border-color: rgb(152 152 158 / 0.5);
+  background: none;
+}
+
+.tidy-ghost-title {
+  display: block;
+  padding: 6px 10px;
+  max-width: 100%;
+  overflow: hidden;
+  font: 600 13px var(--ui);
+  color: var(--ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tidy-ghost-still .tidy-ghost-title {
+  color: var(--ink-dim);
+}
+
+.react-flow__panel.tidy-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  max-width: calc(100% - 32px);
+  padding: 8px 10px;
+  font: 13px var(--ui);
+  color: var(--ink);
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.55);
+}
+
+.tidy-bar-title {
+  font-weight: 600;
+}
+
+.tidy-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tidy-scope-on {
+  border-color: var(--cable-link);
+  background: rgb(61 139 253 / 0.18);
+}
+
+.tidy-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.tidy-count {
+  color: var(--ink-dim);
+}
+
+.tidy-previewing .react-flow__node {
+  opacity: 0.35;
+  transition: opacity 120ms;
+}
