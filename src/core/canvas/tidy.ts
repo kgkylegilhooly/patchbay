@@ -1,5 +1,5 @@
 import type { AgentStatus, CanvasDoc, CanvasNode, CanvasOp } from '../../shared/model'
-import { GROUP_PAD, GROUP_TOP, PLACE_GAP, absoluteRect, placeNear, type Point, type Rect, type Size } from './place'
+import { GROUP_PAD, GROUP_TOP, PLACE_GAP, absoluteRect, placeNear, projectOf, type Point, type Rect, type Size } from './place'
 import { reduce } from './reduce'
 
 /**
@@ -16,7 +16,7 @@ export interface TidyOptions {
   /** Agents that need the person first, then working ones, then the rest. Off: creation order. */
   byStatus?: boolean
   statuses?: Readonly<Record<string, AgentStatus | undefined>>
-  /** The canvas on screen, in canvas coordinates. Its shape sets how wide the result is. */
+  /** The canvas on screen, in canvas coordinates. A selection that has to move goes to a free spot in it. */
   view?: Rect | null
   gap?: number
 }
@@ -41,6 +41,8 @@ export interface TidyPlan {
 
 /** Row widths come in steps this big, so adding one node rarely reflows the rest. */
 const WIDTH_STEP = 600
+/** The shape the result is packed to. Fixed, so the layout doesn't change with the window or the sidebar. */
+const ASPECT = 16 / 10
 /** A layer of this many or fewer is one column; more make a near-square grid. */
 const COLUMN_MAX = 3
 const RANK: Record<AgentStatus, number> = { 'needs-you': 0, working: 1, starting: 2, queued: 2, idle: 3, unknown: 4, exited: 5 }
@@ -50,7 +52,8 @@ const right = (r: Rect): number => r.x + r.width
 const bottom = (r: Rect): number => r.y + r.height
 const overlaps = (a: Rect, b: Rect): boolean => a.x < right(b) && b.x < right(a) && a.y < bottom(b) && b.y < bottom(a)
 const widen = (r: Rect, by: number): Rect => ({ x: r.x - by, y: r.y - by, width: r.width + 2 * by, height: r.height + 2 * by })
-const inProject = (n: CanvasNode, projectId: string): boolean => !n.projectId || n.projectId === projectId
+/** As place.ts counts it: a node saved before projects existed is in the project on screen. */
+const inProject = (doc: Pick<CanvasDoc, 'activeProjectId'>, n: CanvasNode, projectId: string): boolean => projectOf(doc, n) === projectId
 
 interface Scoped {
   scope: TidyScope
@@ -71,19 +74,19 @@ function topOf(byId: Map<string, CanvasNode>, node: CanvasNode): CanvasNode {
 }
 
 /** Which nodes are laid out, and inside what. Units come in the doc's order, which is the order they were made. */
-export function resolveScope(doc: Pick<CanvasDoc, 'nodes'>, projectId: string, scope: TidyScope): Scoped | null {
+export function resolveScope(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'>, projectId: string, scope: TidyScope): Scoped | null {
   const byId = new Map(doc.nodes.map((n) => [n.id, n]))
   const order = new Map(doc.nodes.map((n, i) => [n.id, i]))
   const sorted = (nodes: CanvasNode[]): CanvasNode[] => [...new Set(nodes)].sort((a, b) => order.get(a.id)! - order.get(b.id)!)
   if (scope.kind === 'project') {
-    return { scope, parentId: null, units: doc.nodes.filter((n) => !n.parentId && inProject(n, projectId)) }
+    return { scope, parentId: null, units: doc.nodes.filter((n) => !n.parentId && inProject(doc, n, projectId)) }
   }
   if (scope.kind === 'group') {
     const group = byId.get(scope.id)
-    if (!group || group.kind !== 'group' || !inProject(group, projectId)) return null
+    if (!group || group.kind !== 'group' || !inProject(doc, group, projectId)) return null
     return { scope, parentId: group.id, units: doc.nodes.filter((n) => n.parentId === group.id) }
   }
-  const picked = sorted(scope.ids.map((id) => byId.get(id)).filter((n): n is CanvasNode => !!n && inProject(n, projectId)))
+  const picked = sorted(scope.ids.map((id) => byId.get(id)).filter((n): n is CanvasNode => !!n && inProject(doc, n, projectId)))
   if (picked.length === 0) return null
   if (picked.length === 1 && picked[0].kind === 'group') return resolveScope(doc, projectId, { kind: 'group', id: picked[0].id })
   const parents = new Set(picked.map((n) => n.parentId ?? null))
@@ -168,20 +171,21 @@ function layoutCluster(members: CanvasNode[], next: Map<string, string[]>, befor
   return { width: Math.max(0, x - gap), height, at }
 }
 
-/** Blocks in rows, in order, each row as wide as fits a target taken from their area and the view's shape. */
-function pack(blocks: Block[], view: Rect | null | undefined, gap: number): { at: Map<string, Point>; width: number; height: number } {
-  const aspect = view && view.width > 0 && view.height > 0 ? view.width / view.height : 16 / 10
-  const area = blocks.reduce((sum, b) => sum + (b.width + gap) * (b.height + gap), 0)
-  const widest = Math.max(0, ...blocks.map((b) => b.width))
-  const target = Math.max(widest, Math.ceil(Math.sqrt(area * aspect) / WIDTH_STEP) * WIDTH_STEP)
+interface Packing {
+  at: Map<string, Point>
+  width: number
+  height: number
+}
+
+/** Blocks in rows, in order, starting a new row when the next block would reach past `rowWidth`. */
+function pack(blocks: Block[], rowWidth: number, gap: number): Packing {
   const at = new Map<string, Point>()
   let x = 0
   let y = 0
   let rowHeight = 0
   let width = 0
   for (const b of blocks) {
-    // The target counts a gap after every block, so the last one in a row gets that much back.
-    if (x > 0 && x + b.width > target + gap) {
+    if (x > 0 && x + b.width > rowWidth) {
       y += rowHeight + gap
       x = 0
       rowHeight = 0
@@ -192,6 +196,28 @@ function pack(blocks: Block[], view: Rect | null | undefined, gap: number): { at
     rowHeight = Math.max(rowHeight, b.height)
   }
   return { at, width, height: y + rowHeight }
+}
+
+/**
+ * The row widths worth trying, the usual one first. The usual one comes from the blocks' area and a fixed 16:10 shape,
+ * not the view's, so opening the sidebar or an agent tidying from main gives the same layout. The rest are each width
+ * that fits one more or one fewer block in the first row, nearest the usual first: what a group tries when the usual
+ * one would grow it into a neighbour.
+ */
+function rowWidths(blocks: Block[], gap: number): number[] {
+  const area = blocks.reduce((sum, b) => sum + (b.width + gap) * (b.height + gap), 0)
+  const widest = Math.max(0, ...blocks.map((b) => b.width))
+  // The target counts a gap after every block, so the last one in a row gets that much back.
+  const usual = Math.max(widest, Math.ceil(Math.sqrt(area * ASPECT) / WIDTH_STEP) * WIDTH_STEP) + gap
+  const others = new Set<number>()
+  let x = 0
+  for (const b of blocks) {
+    x += b.width
+    others.add(Math.max(x, widest))
+    x += gap
+  }
+  others.delete(usual)
+  return [usual, ...[...others].sort((a, b) => Math.abs(a - usual) - Math.abs(b - usual) || a - b)]
 }
 
 /**
@@ -212,12 +238,8 @@ function settled(units: CanvasNode[], at: Map<string, Point>): Point | null {
   return best && best.count >= 2 ? best.origin : null
 }
 
-/** Where everything in the scope goes. Null when there's nothing to tidy there. */
-export function planTidy(doc: CanvasDoc, opts: TidyOptions): TidyPlan | null {
-  const scoped = resolveScope(doc, opts.projectId, opts.scope)
-  if (!scoped || scoped.units.length === 0) return null
-  const gap = opts.gap ?? PLACE_GAP
-  const { units, parentId } = scoped
+/** The units' clusters, laid out and in order, ready to be packed at any row width. */
+function blocksOf(doc: CanvasDoc, opts: TidyOptions, units: CanvasNode[], gap: number): Block[] {
   const byId = new Map(doc.nodes.map((n) => [n.id, n]))
   const unitIds = new Set(units.map((n) => n.id))
   const order = new Map(units.map((n, i) => [n.id, i]))
@@ -268,56 +290,129 @@ export function planTidy(doc: CanvasDoc, opts: TidyOptions): TidyPlan | null {
   for (const n of units) clusters.set(find(n.id), [...(clusters.get(find(n.id)) ?? []), n])
   const rankOf = (members: CanvasNode[]): number => Math.min(...members.map((n) => ranks.get(n.id)!))
   const ordered = [...clusters.values()].sort((a, b) => rankOf(a) - rankOf(b) || order.get(a[0].id)! - order.get(b[0].id)!)
-  const packed = pack(
-    ordered.map((members) => layoutCluster(members, next, before, gap)),
-    opts.view,
-    gap
-  )
+  return ordered.map((members) => layoutCluster(members, next, before, gap))
+}
 
-  // Where the result starts, in the parent's coordinates.
-  const parent = parentId ? byId.get(parentId)! : null
-  const others = doc.nodes.filter((n) => (n.parentId ?? null) === parentId && inProject(n, opts.projectId) && !unitIds.has(n.id))
-  const placeAt = (origin: Point): Rect[] =>
-    units.map((n) => ({ x: origin.x + packed.at.get(n.id)!.x, y: origin.y + packed.at.get(n.id)!.y, width: n.width, height: n.height }))
-  const clear = (rects: Rect[]): boolean => rects.every((r) => others.every((o) => !overlaps(widen(r, gap - 1), o)))
-  const corner = settled(units, packed.at) ?? { x: Math.min(...units.map((n) => n.x)), y: Math.min(...units.map((n) => n.y)) }
-  let origin: Point
-  if (scoped.scope.kind === 'group') origin = { x: GROUP_PAD, y: GROUP_TOP }
-  else if (clear(placeAt(corner))) origin = corner
-  else if (parent) origin = { x: GROUP_PAD, y: Math.max(GROUP_TOP, ...others.map((o) => bottom(o) + gap)) }
-  else origin = placeNear(doc, { at: corner, size: { width: packed.width, height: packed.height }, projectId: opts.projectId, view: opts.view, gap, ignore: unitIds })
+/**
+ * The moves that lay these units out inside their parent. Top-level: where most of them already are, else where they
+ * started, else the nearest free spot. In a group: from its padding (the whole group) or clear of the members left
+ * alone (a selection), at the first row width that doesn't grow the group into a neighbour it wasn't already touching;
+ * only a top-level group that's boxed in on every side moves aside. With `inner`, the group's own place is left to
+ * the tidy of the level above.
+ */
+function placeUnits(doc: CanvasDoc, opts: TidyOptions, scoped: Scoped, gap: number, inner = false): TidyMove[] {
+  const { units, parentId } = scoped
+  const blocks = blocksOf(doc, opts, units, gap)
+  const widths = rowWidths(blocks, gap)
+  const unitIds = new Set(units.map((n) => n.id))
+  const parent = parentId ? doc.nodes.find((n) => n.id === parentId)! : null
+  const others = doc.nodes.filter((n) => (n.parentId ?? null) === parentId && inProject(doc, n, opts.projectId) && !unitIds.has(n.id))
+  const clear = (origin: Point, packed: Packing): boolean =>
+    units.every((n) => {
+      const r = { x: origin.x + packed.at.get(n.id)!.x, y: origin.y + packed.at.get(n.id)!.y, width: n.width, height: n.height }
+      return others.every((o) => !overlaps(widen(r, gap - 1), o))
+    })
 
-  const moves: TidyMove[] = []
-  for (const n of units) {
-    const p = packed.at.get(n.id)!
-    const x = Math.round(origin.x + p.x)
-    const y = Math.round(origin.y + p.y)
-    if (x !== n.x || y !== n.y) moves.push({ id: n.id, x, y })
-  }
-
-  // A group that grows into a neighbour moves to the nearest free spot beside where it was.
-  if (parent && !parent.parentId) {
-    const fitted = reduce(doc, { op: 'moveNodes', moves }).nodes.find((n) => n.id === parent.id)!
-    const was = absoluteRect(doc, parent)
-    const now: Rect = { ...was, width: fitted.width, height: fitted.height }
-    const neighbours = doc.nodes.filter((n) => !n.parentId && n.id !== parent.id && inProject(n, opts.projectId))
-    if (neighbours.some((n) => overlaps(widen(now, gap - 1), n) && !overlaps(widen(was, gap - 1), n))) {
-      const spot = placeNear(doc, { beside: was, size: { width: now.width, height: now.height }, projectId: opts.projectId, view: opts.view, gap, ignore: new Set([parent.id]) })
-      if (spot.x !== parent.x || spot.y !== parent.y) moves.push({ id: parent.id, ...spot })
+  const layout = (rowWidth: number): TidyMove[] => {
+    const packed = pack(blocks, rowWidth, gap)
+    const corner = settled(units, packed.at) ?? { x: Math.min(...units.map((n) => n.x)), y: Math.min(...units.map((n) => n.y)) }
+    let origin: Point
+    if (scoped.scope.kind === 'group' || inner) origin = { x: GROUP_PAD, y: GROUP_TOP }
+    else if (clear(corner, packed)) origin = corner
+    else if (parent) origin = { x: GROUP_PAD, y: Math.max(GROUP_TOP, ...others.map((o) => bottom(o) + gap)) }
+    else origin = placeNear(doc, { at: corner, size: { width: packed.width, height: packed.height }, projectId: opts.projectId, view: opts.view, gap, ignore: unitIds })
+    const moves: TidyMove[] = []
+    for (const n of units) {
+      const p = packed.at.get(n.id)!
+      const x = Math.round(origin.x + p.x)
+      const y = Math.round(origin.y + p.y)
+      if (x !== n.x || y !== n.y) moves.push({ id: n.id, x, y })
     }
+    return moves
   }
+  if (!parent || inner) return layout(widths[0])
 
-  return { scope: scoped.scope, parentId, units: units.map((n) => n.id), moves }
+  // The group's neighbours, and the group before and after, all in its parent's coordinates.
+  const neighbours = doc.nodes.filter((n) => (n.parentId ?? null) === (parent.parentId ?? null) && n.id !== parent.id && inProject(doc, n, opts.projectId))
+  const was: Rect = { x: parent.x, y: parent.y, width: parent.width, height: parent.height }
+  const grown = (moves: TidyMove[]): Rect => {
+    const g = reduce(doc, { op: 'moveNodes', moves }).nodes.find((n) => n.id === parent.id)!
+    return { x: g.x, y: g.y, width: g.width, height: g.height }
+  }
+  // A neighbour already touching or overlapping the group doesn't rule a layout out, as long as it isn't covered anew.
+  const covers = (now: Rect): boolean => neighbours.some((n) => overlaps(now, n) && !overlaps(was, n))
+  const crowds = (now: Rect): boolean => neighbours.some((n) => overlaps(widen(now, gap - 1), n) && !overlaps(widen(was, gap - 1), n))
+  let fallback: TidyMove[] | null = null
+  for (const w of widths) {
+    const moves = layout(w)
+    const now = grown(moves)
+    if (covers(now)) continue
+    if (!crowds(now)) return moves
+    fallback ??= moves
+  }
+  if (fallback) return fallback
+
+  // Boxed in on every side: the usual layout, and a top-level group moves to the nearest free spot beside where it was.
+  const moves = layout(widths[0])
+  if (!parent.parentId) {
+    const now = grown(moves)
+    const spot = placeNear(doc, { beside: was, size: { width: now.width, height: now.height }, projectId: opts.projectId, view: opts.view, gap, ignore: new Set([parent.id]) })
+    if (spot.x !== parent.x || spot.y !== parent.y) moves.push({ id: parent.id, ...spot })
+  }
+  return moves
+}
+
+/** Groups in or under these units, innermost first. */
+function groupsWithin(doc: CanvasDoc, units: CanvasNode[]): CanvasNode[] {
+  const out: CanvasNode[] = []
+  const seen = new Set<string>()
+  const visit = (n: CanvasNode): void => {
+    if (n.kind !== 'group' || seen.has(n.id)) return
+    seen.add(n.id)
+    for (const c of doc.nodes) if (c.parentId === n.id) visit(c)
+    out.push(n)
+  }
+  units.forEach(visit)
+  return out
+}
+
+const anyOverlap = (rects: Rect[]): boolean => rects.some((a, i) => rects.some((b, j) => j > i && overlaps(a, b)))
+
+/** Where everything in the scope goes. Null when there's nothing to tidy there. */
+export function planTidy(doc: CanvasDoc, opts: TidyOptions): TidyPlan | null {
+  const scoped = resolveScope(doc, opts.projectId, opts.scope)
+  if (!scoped || scoped.units.length === 0) return null
+  const gap = opts.gap ?? PLACE_GAP
+
+  // A group being moved whole whose members are stacked gets its inside tidied first, innermost first, so nothing
+  // tidied is left on top of anything. A group whose members are clear of each other keeps its own arrangement.
+  let work = doc
+  for (const g of groupsWithin(doc, scoped.units)) {
+    const kids = work.nodes.filter((n) => n.parentId === g.id)
+    if (!anyOverlap(kids)) continue
+    const moves = placeUnits(work, opts, { scope: { kind: 'group', id: g.id }, parentId: g.id, units: kids }, gap, true)
+    work = reduce(work, { op: 'moveNodes', moves })
+  }
+  const units = scoped.units.map((u) => work.nodes.find((n) => n.id === u.id)!)
+  const done = reduce(work, { op: 'moveNodes', moves: placeUnits(work, opts, { ...scoped, units }, gap) })
+
+  const was = new Map(doc.nodes.map((n) => [n.id, n]))
+  const moves: TidyMove[] = []
+  for (const n of done.nodes) {
+    const old = was.get(n.id)
+    if (old && (old.x !== n.x || old.y !== n.y)) moves.push({ id: n.id, x: n.x, y: n.y })
+  }
+  return { scope: scoped.scope, parentId: scoped.parentId, units: scoped.units.map((n) => n.id), moves }
 }
 
 export function tidyOp(plan: TidyPlan): CanvasOp {
   return { op: 'moveNodes', moves: plan.moves }
 }
 
-/** Where each unit (and the group tidied) would be drawn once the plan is applied, in canvas coordinates. */
+/** Where each unit, the group tidied and anything moved inside a group would be drawn once applied, in canvas coordinates. */
 export function tidyResult(doc: CanvasDoc, plan: TidyPlan): { id: string; rect: Rect }[] {
   const after = reduce(doc, tidyOp(plan))
-  const ids = plan.parentId ? [plan.parentId, ...plan.units] : plan.units
+  const ids = [...new Set([...(plan.parentId ? [plan.parentId] : []), ...plan.units, ...plan.moves.map((m) => m.id)])]
   return ids.flatMap((id) => {
     const n = after.nodes.find((node) => node.id === id)
     return n ? [{ id, rect: absoluteRect(after, n) }] : []

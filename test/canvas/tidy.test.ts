@@ -353,3 +353,132 @@ test('nothing to tidy gives no plan', () => {
   expect(planTidy(messy(), opts({ scope: { kind: 'group', id: 'w1' } }))).toBeNull()
   expect(planTidy(messy(), opts({ scope: { kind: 'selection', ids: ['nope'] } }))).toBeNull()
 })
+
+describe('review cases', () => {
+  const term = (id: string, x: number, y: number, width: number, height: number, extra: Partial<CanvasNode> = {}): CanvasNode =>
+    node(id, { kind: 'terminal', x, y, width, height, cwd: 'C:/', ...extra } as Partial<CanvasNode> & { x: number; y: number })
+
+  test('a group tidied next to a neighbour 30px away grows away from it instead of over it (H1)', () => {
+    const kid = (i: number): CanvasNode => term(`k${i}`, GROUP_PAD, GROUP_TOP + i * 280, 320, 240, { parentId: 'G' })
+    const doc = docOf([group('G', 0, 0, 368, GROUP_TOP + 3 * 280), kid(0), kid(1), kid(2), term('N', 368 + 30, 0, 560, 340)])
+    const after = tidy(doc, { scope: { kind: 'group', id: 'G' } })
+    expect(covers(rectOf(after, 'G'), rectOf(after, 'N'))).toBe(false)
+    expect(rectOf(after, 'N')).toMatchObject({ x: 398, y: 0 })
+    expectNoOverlap(after, 'G')
+    expect(planTidy(after, opts({ scope: { kind: 'group', id: 'G' } }))!.moves).toEqual([])
+  })
+
+  test('a nested group grows away from its siblings in the outer group (L2)', () => {
+    const inner = group('inner', GROUP_PAD, GROUP_TOP, 368, GROUP_TOP + 3 * 280)
+    const doc = docOf([
+      group('outer', 0, 0, 2000, 1400),
+      { ...inner, parentId: 'outer' },
+      ...[0, 1, 2].map((i) => term(`k${i}`, GROUP_PAD, GROUP_TOP + i * 280, 320, 240, { parentId: 'inner' })),
+      term('sib', GROUP_PAD + 368 + 30, GROUP_TOP, 560, 340, { parentId: 'outer' })
+    ])
+    const after = tidy(doc, { scope: { kind: 'group', id: 'inner' } })
+    expect(covers(rectOf(after, 'inner'), rectOf(after, 'sib'))).toBe(false)
+  })
+
+  test('tidying the project also unstacks members stacked inside a group, and leaves a tidy group alone (M1)', () => {
+    const doc = docOf([
+      group('stacked', 0, 0, 700, 600),
+      agent('s1', GROUP_PAD, GROUP_TOP, { parentId: 'stacked' }),
+      agent('s2', GROUP_PAD + 10, GROUP_TOP + 10, { parentId: 'stacked' }),
+      group('neat', 2000, 0, 2 * GROUP_PAD + AGENT.width, GROUP_TOP + 2 * AGENT.height + 100 + GROUP_PAD),
+      agent('n1', GROUP_PAD, GROUP_TOP, { parentId: 'neat' }),
+      agent('n2', GROUP_PAD, GROUP_TOP + AGENT.height + 100, { parentId: 'neat' })
+    ])
+    const after = tidy(doc)
+    expectNoOverlap(after, 'stacked')
+    expectNoOverlap(after, null)
+    for (const id of ['s1', 's2']) expect(inside(rectOf(after, id), rectOf(after, 'stacked'))).toBe(true)
+    // The neat group keeps its own arrangement: one column, 100px apart.
+    expect(after.nodes.find((n) => n.id === 'n2')).toMatchObject({ x: GROUP_PAD, y: GROUP_TOP + AGENT.height + 100 })
+    expect(planTidy(after, opts())!.moves).toEqual([])
+    // The preview draws the members that move inside the group too.
+    expect(tidyResult(doc, planTidy(doc, opts())!).map((g) => g.id)).toContain('s2')
+  })
+
+  test('the layout does not change with the view: sidebar open, or an agent tidying from main (M2)', () => {
+    let doc = docOf(Array.from({ length: 9 }, (_, i) => term(`t${i}`, i * 700, (i % 3) * 500, 560, 340)))
+    const run = (width: number, height: number): number => {
+      const plan = planTidy(doc, opts({ view: { x: 0, y: 0, width, height } }))!
+      doc = reduce(doc, tidyOp(plan))
+      return plan.moves.length
+    }
+    expect(run(1600, 900)).toBeGreaterThan(0)
+    expect([run(1600, 900), run(1270, 900), run(1552, 892), run(900, 1600)]).toEqual([0, 0, 0, 0])
+  })
+
+  test('a node saved before projects is tidied only with the project on screen (L1)', () => {
+    const doc = docOf([agent('a', 0, 0), agent('b', 10, 10, { projectId: 'p2' })])
+    doc.projects.push({ id: 'p2', name: 'Two', folder: '', viewport: { x: 0, y: 0, zoom: 1 } })
+    delete (doc.nodes[0] as { projectId?: string }).projectId
+    expect(planTidy(doc, opts({ projectId: 'p2' }))!.units).toEqual(['b'])
+    expect(planTidy(doc, opts({ projectId: 'p1' }))!.units).toEqual(['a'])
+  })
+
+  test('moveNodes keeps a stray number on the canvas (L3)', () => {
+    const doc = docOf([agent('a', 0, 0)])
+    expect(reduce(doc, { op: 'moveNodes', moves: [{ id: 'a', x: 1e300, y: -1e300 }] }).nodes[0]).toMatchObject({ x: 1e7, y: -1e7 })
+  })
+
+  test('fuzz: no new overlap at any level, in any scope, and a second tidy changes nothing', () => {
+    let seed = 7
+    const rnd = (): number => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+    const int = (n: number): number => Math.floor(rnd() * n)
+    const problems: string[] = []
+    for (let t = 0; t < 300; t++) {
+      const nodes: CanvasNode[] = []
+      const edges: Edge[] = []
+      const n = 4 + int(10)
+      for (let i = 0; i < n; i++) nodes.push(term(`n${i}`, int(3000), int(2000), 300 + int(400), 200 + int(300)))
+      const groupCount = int(3)
+      for (let g = 0; g < groupCount; g++) {
+        const kids = 1 + int(4)
+        // Members in a row, or stacked on each other.
+        const stacked = rnd() < 0.3
+        for (let k = 0; k < kids; k++) nodes.push(term(`g${g}k${k}`, stacked ? GROUP_PAD + k * 10 : GROUP_PAD + k * 360, GROUP_TOP, 320, 240, { parentId: `g${g}` }))
+        const w = stacked ? GROUP_PAD + (kids - 1) * 10 + 320 + GROUP_PAD : GROUP_PAD + kids * 360 - 40 + GROUP_PAD
+        nodes.unshift(group(`g${g}`, int(3000), int(2000), w, GROUP_TOP + 240 + GROUP_PAD))
+      }
+      for (let e = 0; e < n / 2; e++) {
+        const a = nodes[int(nodes.length)].id
+        const b = nodes[int(nodes.length)].id
+        if (a !== b) edges.push(edge(a, b, 'opened'))
+      }
+      const doc = docOf(nodes, edges)
+      const tops = doc.nodes.filter((x) => !x.parentId)
+      const groups = doc.nodes.filter((x) => x.kind === 'group')
+      const scopes: TidyOptions['scope'][] = [{ kind: 'project' }, { kind: 'selection', ids: tops.slice(0, 3).map((x) => x.id) }]
+      if (groups.length) {
+        scopes.push({ kind: 'group', id: groups[0].id }, { kind: 'selection', ids: doc.nodes.filter((x) => x.parentId === groups[0].id).slice(0, 2).map((x) => x.id) })
+      }
+      for (const scope of scopes) {
+        const plan = planTidy(doc, opts({ scope }))
+        if (!plan) continue
+        const after = reduce(doc, tidyOp(plan))
+        const before = (id: string): CanvasNode => doc.nodes.find((x) => x.id === id)!
+        // Two siblings that overlap now and didn't before, where tidy moved or resized either.
+        for (const a of after.nodes)
+          for (const b of after.nodes) {
+            if (a.id >= b.id || (a.parentId ?? null) !== (b.parentId ?? null)) continue
+            const touched = [a, b].some((x) => plan.moves.some((m) => m.id === x.id) || x.width !== before(x.id).width || x.height !== before(x.id).height)
+            if (touched && covers(rectOf(after, a.id), rectOf(after, b.id)) && !covers(rectOf(doc, a.id), rectOf(doc, b.id))) {
+              problems.push(`${t} ${JSON.stringify(scope)} overlap ${a.id} ${b.id}`)
+            }
+          }
+        // After tidying the project, no group has members on top of each other.
+        if (scope.kind === 'project')
+          for (const g of groups) {
+            const kids = after.nodes.filter((x) => x.parentId === g.id).map((x) => rectOf(after, x.id))
+            if (kids.some((a, i) => kids.some((b, j) => j > i && covers(a, b)))) problems.push(`${t} stacked inside ${g.id}`)
+          }
+        const again = planTidy(after, opts({ scope }))
+        if (again?.moves.length) problems.push(`${t} ${JSON.stringify(scope)} not idempotent (${again.moves.length})`)
+      }
+    }
+    expect(problems.slice(0, 10)).toEqual([])
+  })
+})

@@ -86,7 +86,7 @@ export function TidyLayer({ sidebar }: { sidebar: boolean }): React.JSX.Element 
         {ghosts.map(({ id, rect }) => {
           const group = id === plan.parentId
           const from = absoluteRect(doc, doc.nodes.find((n) => n.id === id)!)
-          const changed = group ? from.width !== rect.width || from.height !== rect.height || moving.has(id) : moving.has(id)
+          const changed = moving.has(id) || from.width !== rect.width || from.height !== rect.height
           return (
             <div
               key={id}

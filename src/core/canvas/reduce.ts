@@ -7,6 +7,7 @@ import { archived, archiveRefusal, moveProjectBefore, nearestUnarchived, orderPr
 const PADDING = 24
 const HEADER = 40
 const CLOSED_LIMIT = 200
+const MOVE_LIMIT = 10_000_000
 
 type ById = Map<string, CanvasNode>
 
@@ -250,7 +251,11 @@ function arrange(doc: CanvasDoc, ids: string[], layout: 'grid' | 'row' | 'column
 
 /** Positions are relative to each node's parent. A move that isn't a finite number is left out. */
 function moveNodes(doc: CanvasDoc, moves: { id: string; x: number; y: number }[]): CanvasDoc {
-  const to = new Map((Array.isArray(moves) ? moves : []).filter((m) => Number.isFinite(m?.x) && Number.isFinite(m?.y)).map((m) => [m.id, m]))
+  // Far enough out to hold any real canvas, near enough that a stray number can't lose a node.
+  const clamp = (v: number): number => Math.max(-MOVE_LIMIT, Math.min(MOVE_LIMIT, v))
+  const to = new Map(
+    (Array.isArray(moves) ? moves : []).filter((m) => Number.isFinite(m?.x) && Number.isFinite(m?.y)).map((m) => [m.id, { x: clamp(m.x), y: clamp(m.y) }])
+  )
   const parents = new Set<string | null>()
   let changed = false
   const nodes = doc.nodes.map((n) => {
