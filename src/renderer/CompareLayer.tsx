@@ -33,6 +33,7 @@ export function CompareLayer(): React.JSX.Element | null {
           projectId={projectId}
           source={start.source || folder}
           brief={start.brief}
+          taskId={start.taskId}
           onCancel={closeCompare}
           onStarted={(c, problem) => {
             openComparisons(c.id, problem)

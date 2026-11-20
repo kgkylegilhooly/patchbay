@@ -18,6 +18,7 @@ import { Icon } from './icons'
 import { noteTarget, parseDiff, type DiffLine } from './reviewNotes'
 import { ago, closeReviewInbox, commentsByLine, reviewBridge, useReviewInbox } from './reviewInboxUi'
 import { useStore } from './store'
+import { TaskComparisons } from './tasks/TaskComparisons'
 import './reviewInbox.css'
 
 const short = (oid: string | null | undefined): string => (oid ? oid.slice(0, 7) : '—')
@@ -245,6 +246,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
         {item.view.readiness.warnings.length > 0 && <p className="rvi-dim">{item.view.readiness.warnings.join('; ')}</p>}
       </section>
       <Evidence item={item} />
+      {item.view.attempts.some((a) => a.kind === 'comparison') && <section className="rvi-section" aria-label="Comparisons"><TaskComparisons attempts={item.view.attempts} /></section>}
       <section className="rvi-section rvi-changes" aria-label="Changes">
         <div className="rvi-toolbar">
           <div className="rvi-modes" role="tablist">

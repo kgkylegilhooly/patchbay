@@ -59,7 +59,7 @@ export function createTaskService(store: CanvasStore, dataDir: string, persist: 
       if (seen.has(t.id)) return
       seen.add(t.id)
       for (const check of t.requiredChecks) {
-        const attempt = data.attempts.filter((a): a is TaskVerification => a.taskId === t.id && a.kind === 'command' && a.checkId === check.id).at(-1)
+        const attempt = data.attempts.filter((a): a is TaskVerification => a.taskId === t.id && a.kind === 'command' && !a.comparison && a.checkId === check.id).at(-1)
         if (attempt?.status !== 'passed') continue
         try { if (!statSync(attempt.outputRef).isFile()) throw new Error('not a file') }
         catch { result.reasons.push(`${check.id}: saved command output is missing`) }

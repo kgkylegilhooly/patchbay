@@ -16,8 +16,11 @@ export interface AgentStops {
   /** The node's stop, while its status is still the `unknown` that StopFailure left. */
   get(id: string): AgentStop | undefined
   all(): Record<string, AgentStop>
-  /** Call with each hook after the status tracker has had it, journalled ones included. Only StopFailure records anything. */
-  noteHook(id: string, payload: Record<string, unknown>): void
+  /**
+   * Call with each hook after the status tracker has had it, journalled ones included. Only StopFailure records
+   * anything. `limits` replaces the status line's plan limits for the reset time, as Codex's own rollout gives them.
+   */
+  noteHook(id: string, payload: Record<string, unknown>, limits?: PlanUsage | null): void
   /** Messages for it wait now, even if it were idle. */
   holding(id: string): boolean
   /** Stopped at its prompt and no longer held, so a message may be typed though its status is `unknown`. */
@@ -173,14 +176,14 @@ export function createAgentStops({
       return stop && view(id, stop)
     },
     all: () => Object.fromEntries([...stops].map(([id, stop]) => [id, view(id, stop)])),
-    noteHook(id, payload) {
+    noteHook(id, payload, limits) {
       if (payload.hook_event_name !== 'StopFailure') return
       // Only a hook the tracker took: StopFailure sets `unknown`, and an exited or unknown node is left as it was.
       if (tracker.get(id) !== 'unknown') return
       // A journalled event says when it happened, which a reset time such as "12:30am" is read against.
       const at = typeof payload.at === 'number' && payload.at <= now() ? payload.at : now()
       const retryMs = Math.min(RETRY_MAX_MS, lastRetry.has(id) ? lastRetry.get(id)! * 2 : RETRY_FIRST_MS)
-      const stop = stopFromHook(payload, at, plan(), retryMs)
+      const stop = stopFromHook(payload, at, limits !== undefined ? limits : plan(), retryMs)
       if (stop.retry) lastRetry.set(id, retryMs)
       stops.set(id, stop)
       armRelease(id, stop)

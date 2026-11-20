@@ -278,7 +278,10 @@ and spends a little quota.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
 - **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
   its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
-  It goes under Need attention. The reset time comes from Claude's status line, or from its message.
+  It goes under Need attention. The reset time comes from Claude's status line, or from its message. A Codex turn
+  that fails gets the same badge and the same holding of messages: Patchbay reads the error from Codex's rollout file
+  (Codex has no hook for it), and the reset from Codex's own limits there. After Esc, a Codex window goes back to
+  Idle, since Codex reports the interrupt; a Claude window stays Unknown.
 - **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
   waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
   `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
@@ -319,12 +322,16 @@ first, then labels, and the text size folds into one button.
   with its type, task, how long it has run, its tool calls and its tokens (`~` while it runs: the size of its latest
   reply's context). Click a card to read its transcript. Finished cards stay 30 seconds, then fade. Eight show at most,
   the last as "+N more". The eye in the window's header counts this turn's subagents and hides or shows the cards. The
-  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows don't have them yet.
+  cards aren't windows: they aren't saved, undone, listed or sent to. Codex windows get cards from Codex's subagent
+  hooks: the type at first, then the task, tool calls and tokens once Codex says where the subagent's conversation is.
 
 ## Files each agent edited
 
 An agent's header and its row in the sidebar show **N files** once it has edited files with its own edit or patch
-calls. They're read from its transcript, so files a shell command changed aren't listed. The chip turns amber with ⚠
+calls, read from its transcript. A Claude agent's subagents' edits count too, labelled **by a subagent**. As a turn
+ends, Patchbay compares the checkout with the snapshot taken when the turn started: a file that changed with no such
+edit is listed as **changed during this turn (by a command or another process)**, never as the agent's own edit. That
+check is skipped, and the list says why, when another agent works in the same checkout. The chip turns amber with ⚠
 when another live agent edited one of the same files in the same checkout. Click it for the list, newest first: when,
 in which turn, and **unconfirmed** where the transcript never said whether the edit worked. **This turn** narrows it.
 
@@ -635,6 +642,11 @@ from the commit shown in the dialog, which is recorded.
   Each result keeps the command, exit code, time, the commit it ran at and its output, and says when the attempt has
   changed since.
 - **Choose A** or **B** only records the choice. Merge the branch yourself with Git.
+- **For a task:** a task card on the board has **Try two approaches…**, which starts a comparison for it (the start
+  dialog's **For task** field does the same). Its attempts and every verification run are recorded on the task, as
+  commands Patchbay ran with their output, and so is your choice. Those runs were in the attempts' worktrees, so they
+  never count as the task's required checks, and nothing is merged or accepted: you still merge, the task's agent
+  submits, and you accept. The board and the review inbox show the task's comparison.
 - **Remove worktree…** stops the sessions in it. Uncommitted changes, or (when also deleting the branch) commits no
   other branch has, are listed and need a second confirmation for that removal.
 
