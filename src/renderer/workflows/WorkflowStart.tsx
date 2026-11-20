@@ -4,7 +4,9 @@ import type { StepPreview, WorkflowEntry } from '../../shared/workflowBridge'
 import { useAgentChoice } from '../agentChoice'
 import { AGENT_NAMES, type AgentKind } from '../../shared/model'
 import { workflows } from '../workflowBridge'
-import { editWorkflow, loadWorkflows } from './workflowUi'
+import { editWorkflow, loadWorkflows, openRunPanel } from './workflowUi'
+import { RUN_STATE_LABEL, runSubject } from './runView'
+import type { WorkflowRun } from '../../shared/workflow'
 
 const SOURCE_LABEL = { 'built-in': 'Built-in', personal: 'Personal', repository: 'Repository' } as const
 const KIND_LABEL = { agent: 'Agent', command: 'Command', review: 'Your review' } as const
@@ -61,6 +63,11 @@ export function WorkflowStart({ projectId, entry, onStart, onCancel }: { project
   const [steps, setSteps] = useState<StepPreview[]>([])
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  const [history, setHistory] = useState<WorkflowRun[]>([])
+
+  useEffect(() => {
+    void workflows.runs(projectId).then((all) => setHistory(all.filter((r) => r.ref === entry.ref).slice(0, 8)))
+  }, [projectId, entry.ref])
 
   // Defaults, fresh for each workflow.
   useEffect(() => {
@@ -190,6 +197,28 @@ export function WorkflowStart({ projectId, entry, onStart, onCancel }: { project
             )}
           </section>
         </>
+      )}
+      {history.length > 0 && (
+        <section aria-label="Recent runs">
+          <h3>Recent runs</h3>
+          <ul className="workflow-history-list">
+            {history.map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  className="workflow-link"
+                  onClick={() => {
+                    openRunPanel(r.id)
+                    onCancel()
+                  }}
+                >
+                  {new Date(r.startedAt).toLocaleString()} — {runSubject(r) || 'no inputs'}
+                </button>{' '}
+                <span className={`workflow-state workflow-state-${r.state}`}>{RUN_STATE_LABEL[r.state]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {problem && <p className="field-problem" role="alert">{problem}</p>}
       {!problem && missing.length > 0 && <p className="recipe-dim">Fill in {missing.join(', ')}.</p>}
