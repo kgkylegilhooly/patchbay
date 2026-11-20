@@ -393,7 +393,7 @@ Copy as Markdown copies the whole handoff.
   then working ones, at the top left. Apply is one undo step; Esc cancels. Tidy keeps cabled nodes together (a lead
   beside its team, a trigger beside its target), moves groups whole, never overlaps anything, and running it again
   changes nothing. Agents can run `patchbay arrange --layout tidy`.
-- **Spawn a team**, on the canvas menu, opens one lead Claude with your task. The lead splits it up with `patchbay
+- **New team…**, on the canvas menu, opens one lead Claude with your task. The lead splits it up with `patchbay
   spawn-team`, then collects and reconciles the results.
 
 ## Usage, run commands and ports
@@ -556,7 +556,7 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 
 - **Knowing where it is.** An agent is told at the start of its session which node it is, who opened it, and what it can
   reach, and `patchbay whoami` tells it again. Codex is pointed at `whoami` instead.
-- **Teams.** **Spawn a team** in the canvas menu, or `patchbay spawn-team`, starts a lead that splits the task, writes each member a
+- **Teams.** **New team…** in the canvas menu, or `patchbay spawn-team`, starts a lead that splits the task, writes each member a
   brief, waits for them with `patchbay wait`, checks their work and closes them. A team's group header shows a light per
   agent and how many are working, idle or need you, with the team's latest message.
 - **Messages.** `patchbay send` between agents starts with a line naming the sender, so an agent can tell a lead from a

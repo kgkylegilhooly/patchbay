@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { sshHostProblem } from '../core/ssh/config'
 import { bridge } from './bridge'
+import { PopTitle, popKeys } from './popForm'
 
 /**
  * Picks a host from ~/.ssh/config, or takes one typed in, for a terminal that runs ssh to it. Signing in happens in
@@ -24,14 +25,13 @@ export function SshForm({ onCancel, onOpen }: { onCancel: () => void; onOpen: (f
     <form
       className="pop pop-terminal pop-ssh"
       aria-label="SSH to host"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+      onKeyDown={popKeys(onCancel)}
       onSubmit={(e) => {
         e.preventDefault()
         if (ready && listing) onOpen({ host: typed, home: listing.home })
       }}
     >
+      <PopTitle icon="server">SSH to host</PopTitle>
       <label className="field">
         <span className="field-label">Host</span>
         <input ref={inputRef} name="sshHost" placeholder="host or user@host" spellCheck={false} autoComplete="off" value={host} onChange={(e) => setHost(e.target.value)} />
@@ -56,7 +56,7 @@ export function SshForm({ onCancel, onOpen }: { onCancel: () => void; onOpen: (f
           Cancel
         </button>
         <button className="btn btn-solid" disabled={!ready}>
-          Open
+          Start SSH session
         </button>
       </div>
     </form>

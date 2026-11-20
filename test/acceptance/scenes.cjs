@@ -447,7 +447,7 @@ const scenes = {
   },
   'projects-manager': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.projects.suggestArchiveDays', '30'))
-    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'View').click())
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'File').click())
     await sleep(200)
     await page.click('.menu-panel [data-cmd="manage-projects"]')
     await sleep(1200)
@@ -695,3 +695,5 @@ Object.assign(scenes, require('./fileShelfScenes.cjs').scenes)
 Object.assign(seeds, require('./fileShelfScenes.cjs').seeds)
 Object.assign(scenes, require('./tidyScenes.cjs').scenes)
 Object.assign(seeds, require('./tidyScenes.cjs').seeds)
+Object.assign(scenes, require('./uxSettingsScenes.cjs').scenes)
+Object.assign(seeds, require('./uxSettingsScenes.cjs').seeds)

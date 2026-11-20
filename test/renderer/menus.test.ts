@@ -46,6 +46,18 @@ describe('menu bar', () => {
     expect(find(fileMenu(commands, { ...state, selectedCount: 2 }), 'group')?.label).toBe('Group selection')
   })
 
+  test('The same thing has the same name in every menu', () => {
+    const tab = projectMenu(commands, 'p', { sessionTitles: [], items: 0, canClose: true, last: false, rename: () => {} })
+    expect(find(tab, 'manage-projects')?.label).toBe('Projects…')
+    expect(find(fileMenu(commands, state), 'manage-projects')?.label).toBe('Projects…')
+    // Projects… lives in File only.
+    expect(find(viewMenu(commands, state), 'manage-projects')).toBeUndefined()
+    expect(find(editMenu(commands, state), 'select-all')?.label).toBe(find(canvasMenu(commands, state, { x: 0, y: 0 }), 'select-all')?.label)
+    expect(find(canvasMenu(commands, state, { x: 0, y: 0 }), 'spawn-team')?.label).toBe('New team…')
+    expect(ACTIONS.find((a) => a.id === 'spawn-team')?.label).toBe('New team…')
+    expect(ACTIONS.find((a) => a.id === 'manage-projects')?.label).toBe('Projects…')
+  })
+
   test('Close selected is off with nothing selected', () => {
     expect(find(fileMenu(commands, state), 'close-selected')?.disabled).toBe(true)
     expect(find(fileMenu(commands, { ...state, selectedCount: 1 }), 'close-selected')?.disabled).toBe(false)
@@ -251,6 +263,10 @@ describe('clampToViewport', () => {
 
   test('pulls a menu back inside at the right and bottom edges', () => {
     expect(clampToViewport({ x: 950, y: 750 }, { width: 200, height: 300 }, { width: 1000, height: 800 })).toEqual({ x: 792, y: 492 })
+  })
+
+  test('a menu taller than the window is placed at the height it scrolls at, from the top margin', () => {
+    expect(clampToViewport({ x: 100, y: 300 }, { width: 200, height: 900 }, { width: 1000, height: 600 })).toEqual({ x: 100, y: 8 })
   })
 
   test('never goes past the top left, even in a tiny window', () => {

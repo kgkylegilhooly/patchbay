@@ -259,6 +259,79 @@ export function SettingsPage({
         {section === 'claude' && draft && (
           <>
             <div className="set-group">
+              {AGENT_KINDS.map((kind) => {
+                const on = agents.enabled.includes(kind)
+                const last = on && agents.enabled.length === 1
+                const name = AGENT_NAMES[kind]
+                const help = last
+                  ? `On. At least one agent stays on, so turn another on before turning ${name} off.`
+                  : on
+                    ? `Patchbay may start ${name}. Turn it off, as when its usage has run out, and nothing new of it starts.`
+                    : `Off. No new ${name} windows, restarts or resumes, and agents can't open one. Ones running now keep running.`
+                return (
+                  <Row key={kind} title={name} htmlFor={`agent-${kind}`} help={help}>
+                    <Toggle id={`agent-${kind}`} checked={on} disabled={last} onChange={() => setAgentOn(kind, !on)} />
+                  </Row>
+                )
+              })}
+              <Row
+                title="Default agent"
+                htmlFor="defaultAgent"
+                help={
+                  <>
+                    Leads a new team, and is what agents open when they don't name one. New windows from the menus ask which you want.
+                    {fallback && (
+                      <span className="set-note" role="status" data-default-fallback>
+                        {' '}
+                        {fallback}
+                      </span>
+                    )}
+                  </>
+                }
+              >
+                <select id="defaultAgent" name="defaultAgent" value={agents.default} onChange={(e) => set('defaultAgent', e.target.value === 'codex' ? 'codex' : '')}>
+                  {AGENT_KINDS.map((kind) => (
+                    <option key={kind} value={kind} disabled={!agents.enabled.includes(kind)}>
+                      {AGENT_NAMES[kind]}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row title="Claude permissions" help="What Claude may do without asking." htmlFor="permissionMode">
+                <select id="permissionMode" name="permissionMode" value={mode} onChange={(e) => set('permissionMode', e.target.value)}>
+                  {modes.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row
+                title="Codex permissions"
+                htmlFor="codexApproval"
+                help="What Codex may do without asking. Never ask keeps Codex's sandbox, so anything it blocks comes back to Codex as a failure. Skip all runs every command with no sandbox and no question, so use it only in a folder you trust. New and restarted Codex windows use it."
+              >
+                <select id="codexApproval" name="codexApproval" value={CODEX_APPROVALS.some(([v]) => v === draft?.codexApproval) ? draft?.codexApproval : ''} onChange={(e) => set('codexApproval', e.target.value)}>
+                  {CODEX_APPROVALS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+              <Row
+                title="Claude's own messages"
+                htmlFor="claudeNativeMessaging"
+                help="Claude Code can find and message any other Claude session on this PC by itself. Off, Claude windows message only through Patchbay, to the windows they opened or that you linked, and refuse messages from other sessions. Subagents and teams inside a window work either way. New and restarted Claude windows use it."
+              >
+                <select id="claudeNativeMessaging" name="claudeNativeMessaging" value={draft?.claudeNativeMessaging === 'on' ? 'on' : ''} onChange={(e) => set('claudeNativeMessaging', e.target.value)}>
+                  <option value="">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </Row>
+            </div>
+            <h4 className="set-group-title">Advanced: how agents start</h4>
+            <div className="set-group">
               <Row
                 wide
                 title="Terminal program"
@@ -305,78 +378,6 @@ export function SettingsPage({
                 }
               >
                 <ProgramInput name="codexCommand" value={draft?.codexCommand ?? ''} placeholder="codex" onChange={(v) => set('codexCommand', v)} />
-              </Row>
-            </div>
-            <div className="set-group">
-              {AGENT_KINDS.map((kind) => {
-                const on = agents.enabled.includes(kind)
-                const last = on && agents.enabled.length === 1
-                const name = AGENT_NAMES[kind]
-                const help = last
-                  ? `On. At least one agent stays on, so turn another on before turning ${name} off.`
-                  : on
-                    ? `Patchbay may start ${name}. Turn it off, as when its usage has run out, and nothing new of it starts.`
-                    : `Off. No new ${name} windows, restarts or resumes, and agents can't open one. Ones running now keep running.`
-                return (
-                  <Row key={kind} title={name} htmlFor={`agent-${kind}`} help={help}>
-                    <Toggle id={`agent-${kind}`} checked={on} disabled={last} onChange={() => setAgentOn(kind, !on)} />
-                  </Row>
-                )
-              })}
-              <Row
-                title="Default agent"
-                htmlFor="defaultAgent"
-                help={
-                  <>
-                    Leads a new team, and is what agents open when they don't name one. New windows from the menus ask which you want.
-                    {fallback && (
-                      <span className="set-note" role="status" data-default-fallback>
-                        {' '}
-                        {fallback}
-                      </span>
-                    )}
-                  </>
-                }
-              >
-                <select id="defaultAgent" name="defaultAgent" value={agents.default} onChange={(e) => set('defaultAgent', e.target.value === 'codex' ? 'codex' : '')}>
-                  {AGENT_KINDS.map((kind) => (
-                    <option key={kind} value={kind} disabled={!agents.enabled.includes(kind)}>
-                      {AGENT_NAMES[kind]}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <Row
-                title="Codex permissions"
-                htmlFor="codexApproval"
-                help="What Codex may do without asking. Never ask keeps Codex's sandbox, so anything it blocks comes back to Codex as a failure. Skip all runs every command with no sandbox and no question, so use it only in a folder you trust. New and restarted Codex windows use it."
-              >
-                <select id="codexApproval" name="codexApproval" value={CODEX_APPROVALS.some(([v]) => v === draft?.codexApproval) ? draft?.codexApproval : ''} onChange={(e) => set('codexApproval', e.target.value)}>
-                  {CODEX_APPROVALS.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <Row title="Claude permissions" help="What Claude may do without asking." htmlFor="permissionMode">
-                <select id="permissionMode" name="permissionMode" value={mode} onChange={(e) => set('permissionMode', e.target.value)}>
-                  {modes.map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <Row
-                title="Claude's own messages"
-                htmlFor="claudeNativeMessaging"
-                help="Claude Code can find and message any other Claude session on this PC by itself. Off, Claude windows message only through Patchbay, to the windows they opened or that you linked, and refuse messages from other sessions. Subagents and teams inside a window work either way. New and restarted Claude windows use it."
-              >
-                <select id="claudeNativeMessaging" name="claudeNativeMessaging" value={draft?.claudeNativeMessaging === 'on' ? 'on' : ''} onChange={(e) => set('claudeNativeMessaging', e.target.value)}>
-                  <option value="">Off</option>
-                  <option value="on">On</option>
-                </select>
               </Row>
             </div>
           </>
@@ -547,7 +548,9 @@ function UpdateSettings({ draft, set }: { draft: Settings; set: (key: keyof Sett
           </>
         }
       >
-        <input id="updateFeed" name="updateFeed" placeholder="github:owner/repo" spellCheck={false} value={draft.updateFeed ?? ''} onChange={(e) => set('updateFeed', e.target.value)} />
+        <div className="set-input-row">
+          <input id="updateFeed" name="updateFeed" placeholder="github:owner/repo" spellCheck={false} value={draft.updateFeed ?? ''} onChange={(e) => set('updateFeed', e.target.value)} />
+        </div>
       </Row>
       <Row title="Check for updates by itself" htmlFor="set-update-check" help="Shortly after Patchbay starts, then every 6 hours. A new version downloads, and waits for you to restart.">
         <Toggle id="set-update-check" checked={draft.updateCheck !== 'off'} onChange={() => set('updateCheck', draft.updateCheck === 'off' ? '' : 'off')} />

@@ -39,6 +39,18 @@ export function MenuPanel({
   }
   const [active, setActive] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
+  const ownRef = useRef<HTMLDivElement | null>(null)
+  /** Set by the arrow keys, so a long menu scrolls to the row they reach, but not to a row under the mouse. */
+  const keyed = useRef(false)
+  const setPanel = (el: HTMLDivElement | null): void => {
+    ownRef.current = el
+    if (typeof panelRef === 'function') panelRef(el)
+    else if (panelRef) (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+  }
+
+  useEffect(() => {
+    if (keyed.current) ownRef.current?.querySelector('.menu-item-active')?.scrollIntoView({ block: 'nearest' })
+  }, [active])
 
   const choose = (item: MenuItem): void => {
     if (item.disabled) return
@@ -61,6 +73,7 @@ export function MenuPanel({
       const move = (by: number): void => {
         const at = m.usable.findIndex((i) => i.id === m.active)
         const next = at === -1 ? (by > 0 ? 0 : m.usable.length - 1) : (at + by + m.usable.length) % m.usable.length
+        keyed.current = true
         setActive(m.usable[next]?.id ?? null)
       }
       const handlers: Record<string, () => void> = {
@@ -86,7 +99,7 @@ export function MenuPanel({
 
   return (
     <div
-      ref={panelRef}
+      ref={setPanel}
       className="menu-panel"
       role="menu"
       aria-label={label}
@@ -110,7 +123,10 @@ export function MenuPanel({
               active === entry.id ? 'menu-item-active' : '',
               entry.danger ? 'menu-item-danger' : ''
             ].join(' ')}
-            onMouseEnter={() => setActive(entry.id)}
+            onMouseEnter={() => {
+              keyed.current = false
+              setActive(entry.id)
+            }}
             onClick={() => choose(entry)}
           >
             <span className="menu-check" aria-hidden="true">
@@ -149,12 +165,13 @@ export function ContextMenu({
     const onPress = (e: MouseEvent): void => {
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
+    // The wheel over the menu scrolls a long one. Anywhere else, it closes the menu.
     window.addEventListener('mousedown', onPress, true)
-    window.addEventListener('wheel', onClose, true)
+    window.addEventListener('wheel', onPress, true)
     window.addEventListener('blur', onClose)
     return () => {
       window.removeEventListener('mousedown', onPress, true)
-      window.removeEventListener('wheel', onClose, true)
+      window.removeEventListener('wheel', onPress, true)
       window.removeEventListener('blur', onClose)
     }
   }, [onClose])
