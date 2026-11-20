@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -9,6 +9,9 @@ import { foldMissedHooks, takeMissedHooks } from '../../src/main/sessions/missed
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import { RELEASE_MARGIN_MS } from '../../src/shared/agentStop'
 import { fakeHost } from '../control/fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const START = new Date(2026, 10, 19, 21, 40).getTime()
 const RESET = new Date(2026, 10, 20, 0, 30).getTime()
@@ -126,7 +129,7 @@ test('a StopFailure for a node that is not unknown afterwards, such as one exite
 })
 
 let dir: string
-afterEach(() => dir && rmSync(dir, { recursive: true, force: true }))
+afterEach(() => removeTemp(dir))
 
 test('the hook forwards why a turn failed, capped, and only for StopFailure; the journal keeps it for catching up', () => {
   dir = mkdtempSync(join(tmpdir(), 'pb-stop-'))
@@ -134,7 +137,7 @@ test('the hook forwards why a turn failed, capped, and only for StopFailure; the
     spawnSync(process.execPath, [resolve('resources/hook.cjs'), String(event.hook_event_name)], {
       input: JSON.stringify(event),
       encoding: 'utf8',
-      timeout: 10000,
+      timeout: 45_000,
       env: { ...process.env, PATCHBAY_ENDPOINT_FILE: join(dir, 'endpoint.json'), PATCHBAY_NODE_ID: 'n', PATCHBAY_TOKEN: 't' }
     })
   }

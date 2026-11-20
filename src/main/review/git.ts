@@ -15,6 +15,8 @@ export const isOid = (s: unknown): s is string => typeof s === 'string' && OID.t
 const READ = { timeoutMs: 20_000, maxBytes: 8 * 1024 * 1024 }
 const SNAPSHOT = { timeoutMs: 120_000, maxBytes: 1024 * 1024 }
 const DIFF = { timeoutMs: 20_000, maxBytes: 2 * 1024 * 1024 }
+/** Listing every object a snapshot holds: one id a line, for every file in the checkout. */
+const OBJECTS = { timeoutMs: 120_000, maxBytes: 64 * 1024 * 1024 }
 
 export type RunGit = (cwd: string, args: string[], limit: { timeoutMs: number; maxBytes: number }, extraEnv?: Record<string, string>) => Promise<RunResult>
 
@@ -67,6 +69,8 @@ export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewG
     }
     return env
   }
+  /** The review object folder of a repository: `<objectsRoot>/<16 hex of its git folder>`. */
+  const storeDir = async (root: string): Promise<string> => (await storeEnv(root)).GIT_OBJECT_DIRECTORY
   /** Every call on a repository sees its own objects and Patchbay's review objects. */
   const inRepo = async (root: string, args: string[], limit = READ, extraEnv: Record<string, string> = {}): Promise<RunResult> =>
     run(root, args, limit, { ...(await storeEnv(root)), ...extraEnv })
@@ -132,17 +136,28 @@ export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewG
     return maybe(root, ['cat-file', '-t', oid])
   }
 
-  /** The files changed between two revisions. Fails rather than return a list cut short. */
+  /**
+   * The files changed between two revisions, a renamed file once, as a rename (git's own detection: at least half the
+   * same). Fails rather than return a list cut short.
+   */
   async function changed(root: string, from: string, to: string, section: ChangeSection): Promise<ChangedFile[]> {
-    const out = await ok(root, ['diff', '--no-ext-diff', '--no-renames', '--name-status', '-z', from, to, '--'])
-    const parts = out.split('\0')
-    const files: ChangedFile[] = []
-    for (let i = 0; i + 1 < parts.length; i += 2) if (parts[i]) files.push({ status: parts[i].slice(0, 1), path: parts[i + 1], section })
-    return files
+    return parseNameStatus(await ok(root, ['diff', '--no-ext-diff', '-M', '--name-status', '-z', from, to, '--']), section)
   }
 
-  async function diff(root: string, from: string, to: string, path: string): Promise<{ text: string; truncated: boolean }> {
-    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-color', '--no-renames', from, to, '--', repoPath(path)], DIFF)
+  /** Where each file renamed between two revisions went: old path to new. Empty when either revision is gone. */
+  async function renames(root: string, from: string, to: string): Promise<Map<string, string>> {
+    const out = new Map<string, string>()
+    if (!isOid(from) || !isOid(to)) return out
+    const r = await inRepo(root, ['diff', '--no-ext-diff', '-M', '--diff-filter=R', '--name-status', '-z', from, to, '--'], READ)
+    if (r.code !== 0 || r.truncated) return out
+    for (const f of parseNameStatus(r.stdout, 'local')) if (f.oldPath) out.set(f.oldPath, f.path)
+    return out
+  }
+
+  /** One file's diff. A renamed file is named by both its paths, so git shows the rename and what changed in it. */
+  async function diff(root: string, from: string, to: string, path: string, oldPath?: string): Promise<{ text: string; truncated: boolean }> {
+    const paths = oldPath && oldPath !== path ? [repoPath(oldPath), repoPath(path)] : [repoPath(path)]
+    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-color', '-M', from, to, '--', ...paths], DIFF)
     if (r.code !== 0) throw new Error(r.stderr.trim() || 'git diff failed')
     return { text: r.stdout, truncated: r.truncated }
   }
@@ -173,7 +188,41 @@ export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewG
     return null
   }
 
-  return { toplevel, head, branch, snapshot, resolveCommit, mergeBase, isAncestor, objectType, changed, diff, fileAt, branches, defaultBase }
+  /**
+   * Every object the given revisions hold, through the repository and the review store both. Revisions or objects that
+   * are already gone are passed over, so a half-pruned snapshot can't stop the rest being listed.
+   */
+  async function reachable(root: string, revisions: string[]): Promise<Set<string>> {
+    const out = new Set<string>()
+    const valid = [...new Set(revisions.filter(isOid))]
+    // A few hundred at a time, well inside Windows' command line limit.
+    for (let i = 0; i < valid.length; i += 400) {
+      const text = await ok(root, ['rev-list', '--objects', '--no-object-names', '--ignore-missing', '--missing=allow-any', ...valid.slice(i, i + 400)], OBJECTS)
+      for (const line of text.split('\n')) if (isOid(line.trim())) out.add(line.trim())
+    }
+    return out
+  }
+
+  return { objectsRoot, toplevel, head, branch, snapshot, storeDir, reachable, renames, resolveCommit, mergeBase, isAncestor, objectType, changed, diff, fileAt, branches, defaultBase }
 }
 
 export type ReviewGit = ReturnType<typeof createReviewGit>
+
+/** `git diff --name-status -z` as files. A rename or copy (R or C, and a score) names the old path, then the new. */
+export function parseNameStatus(out: string, section: ChangeSection): ChangedFile[] {
+  const parts = out.split('\0')
+  const files: ChangedFile[] = []
+  for (let i = 0; i < parts.length; ) {
+    const status = parts[i]
+    if (!status) { i++; continue }
+    const letter = status.slice(0, 1)
+    if ((letter === 'R' || letter === 'C') && i + 2 < parts.length) {
+      files.push({ status: letter, oldPath: parts[i + 1], path: parts[i + 2], section })
+      i += 3
+    } else if (i + 1 < parts.length) {
+      files.push({ status: letter, path: parts[i + 1], section })
+      i += 2
+    } else break
+  }
+  return files
+}

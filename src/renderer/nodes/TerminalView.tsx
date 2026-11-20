@@ -19,6 +19,7 @@ import { noteShared, pinFiles } from '../fileShelfActions'
 import { fontStack, windowFontSize } from '../prefs'
 import { openTerminalBeside, useStore } from '../store'
 import { noteTerminalFocus, registerTerminal } from '../terminalRegistry'
+import { otherProfiles, pickedProfile } from '../terminalProfilesUi'
 import { findTerminalPathMatches } from '../terminalPaths'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { installZoomCompensation, screenPoint } from '../xtermZoom'
@@ -98,11 +99,13 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     const report = (r: { ok: true } | { ok: false; reason: string }): void => setNotice(r.ok ? null : r.reason)
     return {
       open: () => void bridge.openTerminalLink(nodeId, target).then(report),
-      newTerminal: () =>
+      newTerminal: (profileId) =>
         void bridge.resolveTerminalPath(nodeId, target).then((r) => {
           report(r)
-          if (r.ok) openTerminalBeside(nodeId, r.folder)
+          if (r.ok) openTerminalBeside(nodeId, r.folder, pickedProfile(profileId))
         }),
+      // As last read: Settings and the other menus read the list again when they open.
+      profiles: otherProfiles().map((p) => ({ id: p.id, name: p.name })),
       // The full Windows path when the file is there, and what was printed when it isn't, so something always copies.
       copy: () =>
         void bridge.resolveTerminalPath(nodeId, target).then((r) =>

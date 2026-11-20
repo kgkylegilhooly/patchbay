@@ -1,17 +1,20 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { sendToAgent } from '../../src/main/agentMessages'
 import { createSendQueue } from '../../src/main/control/sendQueue'
-import { createReviewGit } from '../../src/main/review/git'
+import { createReviewGit, systemReviewGit } from '../../src/main/review/git'
 import { createReviewService } from '../../src/main/review/service'
 import { createReviewStore } from '../../src/main/review/store'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import { createTaskService } from '../../src/main/tasks/service'
 import type { TaskRevision } from '../../src/shared/task'
 import { claudeNode, fakeHost, memoryStore } from '../control/fakes'
+import { patientGit, removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 let dir: string
 let repo: string
@@ -35,7 +38,7 @@ beforeEach(() => {
   git('commit', '-q', '-m', 'base')
   git('switch', '-q', '-c', 'feat/login')
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }))
+afterEach(() => removeTemp(dir))
 
 async function setup(opts: { status?: 'idle' | 'working' } = {}) {
   const nodes = [claudeNode('builder', { projectId: 'p', cwd: repo, title: 'Builder' }), claudeNode('helper', { projectId: 'p', cwd: repo, title: 'Helper' })]
@@ -54,7 +57,7 @@ async function setup(opts: { status?: 'idle' | 'working' } = {}) {
   }
   const queue = createSendQueue({ host, tracker, exists: () => true, timing: { enterDelayMs: 5, settleMs: 50 } })
   const file = join(dir, 'data', 'review-inbox.json')
-  const make = () => createReviewService({ store, tasks, data: createReviewStore(file, () => {}), git: createReviewGit(join(dir, 'data', 'review-objects')), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue }, id, text) })
+  const make = () => createReviewService({ store, tasks, data: createReviewStore(file, () => {}), git: createReviewGit(join(dir, 'data', 'review-objects'), patientGit(systemReviewGit())), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue }, id, text) })
   const review = make()
   /** What the window shows after loading the branch diff: what a review action is about. */
   const shownNow = async (r = review) => {

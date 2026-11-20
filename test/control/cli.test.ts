@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -9,6 +9,9 @@ import { createVerbs } from '../../src/main/control/verbs'
 import { cleanEnv } from '../../src/main/sessions/env'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import { claudeNode, fakeHost, fakeRunner, memoryStore } from './fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 const CLI_DIR = resolve('resources/cli')
 const CLI = join(CLI_DIR, 'patchbay.cjs')
@@ -39,7 +42,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await server.close()
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await removeTemp(dir)
 })
 
 interface Run {
@@ -59,7 +62,7 @@ function env(over: Record<string, string> = {}): Record<string, string> {
 
 function run(file: string, args: string[], envOver: Record<string, string> = {}, cwd = dir): Promise<Run> {
   return new Promise((done) => {
-    execFile(file, args, { env: env(envOver), cwd, windowsHide: true, timeout: 20000 }, (e, stdout, stderr) => {
+    execFile(file, args, { env: env(envOver), cwd, windowsHide: true, timeout: 45_000 }, (e, stdout, stderr) => {
       done({ code: e ? ((e as { code?: number }).code ?? -1) : 0, stdout, stderr })
     })
   })

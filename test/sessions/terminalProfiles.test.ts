@@ -213,6 +213,16 @@ describe('a terminal started with a profile', () => {
     expect(host.specs[1].initialScrollback).toBe('old output\r\n')
   })
 
+  test('restarted while running after its profile was deleted, it starts the default and says so, as a cold start does', async () => {
+    const { runner, host, change } = setup([terminal({ profile: 'custom:proj' })], { terminalProfiles: [vs, proj], defaultTerminalProfile: 'custom:vs' })
+    await runner.startNode('t')
+    expect(runner.errors().t).toBeUndefined()
+    change({ terminalProfiles: [vs], defaultTerminalProfile: 'custom:vs' })
+    await runner.restartNode('t')
+    expect(host.specs[1]).toMatchObject({ file: 'cmd.exe', args: ['/k', 'C:\\VS\\vcvars64.bat'] })
+    expect(runner.errors().t?.message).toBe('The terminal profile this window was opened with has been deleted, so it started with the default, VS prompt.')
+  })
+
   test('with no settings at all starts Git Bash --login -i, as before profiles', async () => {
     const { runner, host } = setup([terminal()], {})
     await runner.startNode('t')

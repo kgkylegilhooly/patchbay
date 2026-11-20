@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -9,6 +9,9 @@ import { taskVerb } from '../../src/main/tasks/verbs'
 import { startControlServer, tokenFor } from '../../src/main/control/server'
 import { cleanEnv } from '../../src/main/sessions/env'
 import { claudeNode, memoryStore } from '../control/fakes'
+import { removeTemp, usesRealProcesses } from '../support/realProcess'
+
+usesRealProcesses()
 
 test('CLI task verbs parse, execute through authenticated RPC, and preserve actionable refusals', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'patchbay-task-cli-'))
@@ -28,7 +31,7 @@ test('CLI task verbs parse, execute through authenticated RPC, and preserve acti
     await expect(cli('verify', '--task', task.id, '--check', 'check', '--command', 'evil')).rejects.toMatchObject({ stderr: expect.stringContaining('no --command flag') })
     const attempt = JSON.parse(await cli('verify', '--task', task.id, '--check', 'check'))
     expect(attempt).toMatchObject({ kind: 'command', status: 'running', command: 'echo actual-command' })
-    await vi.waitFor(async () => expect((await tasks.show('p', task.id)).attempts[0]).toMatchObject({ status: 'passed', exitCode: 0 }), { timeout: 5000 })
+    await vi.waitFor(async () => expect((await tasks.show('p', task.id)).attempts[0]).toMatchObject({ status: 'passed', exitCode: 0 }), { timeout: 30_000 })
     const submitted = JSON.parse(await cli('submit', '--task', task.id, '--summary', 'Executed the command'))
     expect(submitted.attempts.map((a: { kind: string }) => a.kind)).toEqual(['command', 'agent-report'])
     expect(JSON.parse(await cli('show', '--task', task.id)).task.acceptances).toEqual([])
@@ -36,6 +39,6 @@ test('CLI task verbs parse, execute through authenticated RPC, and preserve acti
     await expect(cli('show', '--task', 'missing')).rejects.toMatchObject({ stderr: expect.stringContaining('Task not found') })
   } finally {
     await server.close()
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+    await removeTemp(dir)
   }
 })

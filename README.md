@@ -316,8 +316,8 @@ first, then labels, and the text size folds into one button.
   the canvas. Each project keeps its own layout.
 - **Links and paths** in a terminal are underlined when you point at them. Clicking a web link opens it in your browser,
   including the hyperlinks Claude Code prints. Right-click one for **Copy link**, for a PC whose security settings stop
-  links opening from another app. Clicking or right-clicking a file path offers Open, New terminal here, Copy path and
-  Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
+  links opening from another app. Clicking or right-clicking a file path offers Open, New terminal here (and one for
+  each other terminal profile), Copy path and Show in File Explorer. Paths are understood however they're written: `C:\a\b.ts`, `C:/a/b.ts`, Git Bash's
   `/c/a/b.ts`, `~/b.ts`, relative to the terminal's folder, `file:///` links, quoted with spaces, and with `:12:5` or
   `#L12` after them. Copy path gives the full Windows path. Links in notes and the chat view have Copy link too.
 - **Subagents.** When a Claude window starts subagents, each one gets a small card beside it, joined by an Opened cable,
@@ -721,13 +721,15 @@ submitted with `patchbay task submit`, ready or not yet ready, newest first.
   fixes**, never with a time.
 - **+** on a diff line adds a comment. Comments are saved, with the file, side, revision and the code around the line.
   When the code moves, the comment follows and says where from; when the line changes or goes, it's marked outdated.
+  A renamed file shows once, as old → new, and a comment on it follows it to its new name.
   You resolve comments yourself; an agent's reply doesn't.
 - **Request fixes** sends every unresolved comment to an agent assigned to the task, through the same queue as
   `patchbay send`: a busy agent gets it when it's idle. **Accept** is the board's own acceptance, only for you.
 - What's recorded as reviewed is what you were looking at, not the files at the moment you click. If they changed after
   you loaded them, it says so, and those changes show under **Since last review**.
 - Snapshots go to Patchbay's own store (`review-objects\`), never into the repository: no objects, commits, refs or
-  index changes there.
+  index changes there. Patchbay cleans the store up: it keeps what open comments and each task's latest review (for 90
+  days) need, and keeps a repository's share under 512 MB by giving up the oldest reviews' snapshots first.
 - With unresolved comments, or fixes requested after the latest submission, **Accept** asks first.
 - Browser checks an agent recorded show beside the command runs, as the agent's claim.
 
