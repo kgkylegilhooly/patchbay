@@ -107,7 +107,24 @@ scenes.prepare = (name, cwdRoot) => {
   git('config', 'user.email', 'fixture@example.invalid')
   write('README.md', '# Login service\n')
   write('src/auth.js', 'export function login(token) {\n  return createSession(token)\n}\n')
-  if (rename) write('src/session.js', 'export function createSession(token) {\n  const id = newId()\n  sessions.set(id, { token, at: Date.now() })\n  return id\n}\n')
+  const SESSION = [
+    "import { randomUUID } from 'node:crypto'",
+    '',
+    'const sessions = new Map()',
+    '',
+    '/** A new session for a valid token. */',
+    'export function createSession(token) {',
+    '  const id = randomUUID()',
+    '  sessions.set(id, { token, at: Date.now() })',
+    '  return id',
+    '}',
+    '',
+    'export function endSession(id) {',
+    '  sessions.delete(id)',
+    '}',
+    ''
+  ].join('\n')
+  if (rename) write('src/session.js', SESSION)
   git('add', '-A')
   git('commit', '-q', '-m', 'Login service')
   git('switch', '-q', '-c', 'feat/token-checks')
@@ -115,7 +132,7 @@ scenes.prepare = (name, cwdRoot) => {
   if (rename) {
     // Moved into a folder of its own, with one line changed: one rename, not a deleted and an added file.
     git('mv', 'src/session.js', 'src/sessions-create.js')
-    write('src/sessions-create.js', 'export function createSession(token) {\n  const id = newId()\n  sessions.set(id, { token, at: Date.now(), expiresAt: Date.now() + 15 * 60_000 })\n  return id\n}\n')
+    write('src/sessions-create.js', SESSION.replace('at: Date.now() }', 'at: Date.now(), expiresAt: Date.now() + 15 * 60_000 }'))
   }
   write('src/token.js',"export function validToken(token) {\n  return typeof token === 'string' && /^[A-Za-z0-9._-]{20,}$/.test(token)\n}\n")
   git('add', '-A')

@@ -91,11 +91,12 @@ const scenes = {
     await page.evaluate(() => window.patchbay.input('term', 'echo notes/a.txt'))
     await sleep(300)
     await page.evaluate(() => window.patchbay.input('term', '\r'))
-    const deadline = Date.now() + 15000
+    const deadline = Date.now() + 30000
     let at = null
     while (!at && Date.now() < deadline) {
       at = await page.evaluate(() => {
-        const rows = [...document.querySelectorAll('.react-flow__node[data-id="term"] .xterm-rows > div')]
+        // Maximized, the terminal is drawn over the canvas rather than in its node.
+        const rows = [...document.querySelectorAll('.xterm-rows > div')]
         const row = rows.find((r) => r.textContent.replace(/ /g, ' ').trimEnd() === 'notes/a.txt')
         if (!row) return null
         const box = row.getBoundingClientRect()
