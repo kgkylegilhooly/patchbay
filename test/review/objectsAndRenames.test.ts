@@ -79,7 +79,8 @@ test('pruning keeps the latest review and open comments, and removes the snapsho
   const onComment = (await shownNow()).set.tree
   await review.addComment('p', task.id, { path: 'src/auth.js', side: 'new', line: 2, revision: onComment, text: 'Also check expiry', section: 'local' })
   const before = loose().length
-  later(1000)
+  // A day on by the service's clock, so every object written so far is past the grace, however slow this run is.
+  later(DAY)
 
   const r = await review.pruneObjects()
   expect(r.skipped).toEqual([])
@@ -129,7 +130,8 @@ test('over its size, a folder gives up the oldest reviews first, never an open c
   write('notes/b.txt', 'reviewed\n')
   const { shown } = await shownNow()
   await review.markReviewed('p', task.id, shown)
-  later(1000)
+  // A day on by the service's clock, so every object written so far is past the grace, however slow this run is.
+  later(DAY)
   const r = await review.pruneObjects()
   expect(r.reviewsDropped).toBe(1)
   expect(await reviewGit.objectType(repo, shown.tree)).toBeNull()
