@@ -571,7 +571,7 @@ async function boot(): Promise<void> {
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.
-  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs') })
+  setupCompare({ store, runner, git: work.git, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), persist: () => docStore.flush() })
   // The projects manager, and archiving, which stops a project's sessions first. See src/main/projects.
   setupProjects({
     dataDir, store, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id), disarmTrigger: (id) => triggers.disarm(id),
