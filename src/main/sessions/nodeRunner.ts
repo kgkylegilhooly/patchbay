@@ -15,7 +15,7 @@ import {
   type ClaudeLaunchContext,
   type ClaudeProgram
 } from './claudeLaunch'
-import { buildCodexLaunch, isLookingCall, resolveCodex } from './codexLaunch'
+import { buildCodexLaunch, codexKnowsNoDaemon, isLookingCall, resolveCodex } from './codexLaunch'
 import { SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
@@ -252,7 +252,9 @@ export function createNodeRunner({
     if (agentOf(node) === 'codex') {
       await ctx.beforeCodexStart?.()
       const codex = now.codexCommand?.trim() ? undefined : (ctx.codex ?? (ctx.locateCodex ?? resolveCodex)())
-      launch = buildCodexLaunch(node, { ...now, codex, token })
+      // Asked once per program, without holding up the main thread.
+      const noDaemon = await codexKnowsNoDaemon({ codex, codexCommand: now.codexCommand })
+      launch = buildCodexLaunch(node, { ...now, codex, token, noDaemon })
     } else {
       const custom = now.claudeTerminal || now.claudeCommand
       const claude = custom ? undefined : (ctx.claude ?? (ctx.locateClaude ?? resolveClaude)())

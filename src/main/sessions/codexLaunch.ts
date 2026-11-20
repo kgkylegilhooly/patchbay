@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { basename } from 'node:path'
 import type { ClaudeNode } from '../../shared/model'
 import { claudeAt, customLaunch, LOOKING_VERBS, programArgs, sessionEnv, type ClaudeLaunch, type ClaudeProgram, type SessionEnvContext } from './claudeLaunch'
 
@@ -11,6 +12,8 @@ export interface CodexLaunchContext extends SessionEnvContext {
   codexCommand?: string
   /** The codexApproval setting: '' for Codex's own default, 'never' or 'bypass'. */
   codexApproval?: string
+  /** Whether to pass --no-daemon, from codexKnowsNoDaemon. Defaults to true. */
+  noDaemon?: boolean
 }
 
 /**
@@ -71,6 +74,60 @@ export function codexApprovalArgs(mode: string | undefined): string[] {
   return []
 }
 
+/**
+ * Codex's shared background server (its "managed daemon", on by default since 0.157) runs hooks, MCP servers and shell
+ * commands with the environment of whichever terminal started it. Patchbay tells nodes apart by PATCHBAY_NODE_ID and
+ * PATCHBAY_TOKEN in that environment, so two nodes on one server could act as one another. Each node runs its own.
+ */
+export const CODEX_NO_DAEMON = '--no-daemon'
+
+type Ask = (file: string, args: string[]) => Promise<string>
+
+/** One answer per program and app run, shared by nodes that start together, as when a canvas reopens. */
+const noDaemonKnown = new Map<string, Promise<boolean>>()
+
+/**
+ * Whether this Codex knows --no-daemon. One older than the shared server would refuse the flag and not start at all.
+ * Asks its --help once per program, off the main thread's way: the answer can take seconds on a first run after login.
+ * A custom command is asked the same way it will be launched. When the answer can't be had, the flag is used: safer to
+ * fail visibly than to share.
+ */
+export function codexKnowsNoDaemon(launch: { codex?: ClaudeProgram; codexCommand?: string }, ask: Ask = helpText): Promise<boolean> {
+  let program: { file: string; args: string[] }
+  try {
+    program = launch.codexCommand?.trim()
+      ? customLaunch({ command: launch.codexCommand }, ['--help'])
+      : (() => {
+          const codex = launch.codex ?? resolveCodex()
+          return { file: codex.file, args: programArgs(codex, ['--help']) }
+        })()
+  } catch {
+    return Promise.resolve(true)
+  }
+  const key = [program.file, ...program.args].join('\0')
+  let known = noDaemonKnown.get(key)
+  if (!known) {
+    known = ask(program.file, program.args).then(
+      (text) => text.includes(CODEX_NO_DAEMON),
+      () => true
+    )
+    noDaemonKnown.set(key, known)
+  }
+  return known
+}
+
+function helpText(file: string, args: string[]): Promise<string> {
+  // programArgs builds cmd.exe's line as node-pty passes it: as written. Node would quote it again.
+  const verbatim = /^cmd(.exe)?$/i.test(basename(file))
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, windowsVerbatimArguments: verbatim }, (error, stdout, stderr) => {
+      // A program that exits non-zero still printed its help, or why it couldn't.
+      if (error && !stdout && !stderr) reject(error)
+      else resolve(`${stdout}${stderr}`)
+    })
+  })
+}
+
 /** The tool Codex calls Patchbay's MCP server by, as its permission requests name it. */
 export const CODEX_PATCHBAY_TOOL = 'mcp__patchbay__patchbay'
 
@@ -100,7 +157,11 @@ export function codexInstructions(): string {
 /** Describes how to launch a Codex node. Codex picks its own session id, which arrives with SessionStart. */
 export function buildCodexLaunch(node: ClaudeNode, ctx: CodexLaunchContext): ClaudeLaunch {
   const resumed = !!node.sessionId
+  const custom = !!ctx.codexCommand?.trim()
+  const codex = custom ? undefined : (ctx.codex ?? resolveCodex())
+  const noDaemon = ctx.noDaemon ?? true
   const options = [
+    ...(noDaemon ? [CODEX_NO_DAEMON] : []),
     ...codexHookArgs(ctx.hookScript),
     ...codexMcpArgs(ctx.cliDir),
     ...codexApprovalArgs(ctx.codexApproval),
@@ -112,10 +173,9 @@ export function buildCodexLaunch(node: ClaudeNode, ctx: CodexLaunchContext): Cla
   ]
   const args = resumed ? ['resume', ...options, node.sessionId as string] : [...options, ...(node.prompt?.trim() ? ['--', node.prompt] : [])]
   let program: { file: string; args: string[] }
-  if (ctx.codexCommand?.trim()) {
+  if (custom || !codex) {
     program = customLaunch({ command: ctx.codexCommand }, args)
   } else {
-    const codex = ctx.codex ?? resolveCodex()
     program = { file: codex.file, args: programArgs(codex, args) }
   }
   return { nodeId: node.id, ...program, cwd: node.cwd, env: sessionEnv(node.id, ctx.token, ctx), sessionId: node.sessionId ?? '', resumed }

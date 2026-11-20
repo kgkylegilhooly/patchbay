@@ -298,6 +298,8 @@ export type CanvasOp =
   | { op: 'setParent'; ids: string[]; parentId: string | null }
   | { op: 'setViewport'; viewport: CanvasDoc['viewport'] }
   | { op: 'arrange'; ids: string[]; layout: 'grid' | 'row' | 'column'; gap?: number }
+  /** Puts each node at a position relative to its parent and fits its group round it. Tidy sends this. */
+  | { op: 'moveNodes'; moves: { id: string; x: number; y: number }[] }
   /** Adds it and puts it on screen. */
   | { op: 'addProject'; project: Project }
   | { op: 'patchProject'; id: string; patch: Partial<Pick<Project, 'name' | 'folder'>> }

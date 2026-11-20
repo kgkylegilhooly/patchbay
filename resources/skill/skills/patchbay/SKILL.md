@@ -337,6 +337,8 @@ patchbay wait --nodes <id>,<id> --any --timeout 100
 ```sh
 patchbay group --ids <id>,<id> --label "Backend" --color "#3b6"
 patchbay arrange --ids <id>,<id>,<id> --layout grid --gap 40
+patchbay arrange --layout tidy             # your project: cabled nodes together, nothing overlapping
+patchbay arrange --layout tidy --group <group id> --status   # inside a group, agents that need the person first
 patchbay rename --node <id> --title "Parser tests"
 patchbay sticky --text "## Decisions so far" --title "Notes" --group <group id>
 patchbay note --node <note id> --append "- Parser: tests pass (Tester)"

@@ -7,6 +7,7 @@ import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
+import { nativeMessagingSettings } from './nativeMessaging'
 import { signalFile, SIGNAL_EVENTS, statusFile } from './signals'
 
 export interface ClaudeProgram {
@@ -40,6 +41,8 @@ export interface ClaudeLaunchContext extends SessionEnvContext {
   permissionMode?: string
   claudeTerminal?: string
   claudeCommand?: string
+  /** The claudeNativeMessaging setting: 'on' lets the node use Claude's own messaging between sessions. */
+  claudeNativeMessaging?: string
 }
 
 export interface ClaudeLaunch extends SessionSpec {
@@ -319,8 +322,13 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
   const command = statusLineCommand(node.id, ctx, own)
   const statusLine = command ? { statusLine: { type: 'command', command, ...(own?.padding === undefined ? {} : { padding: own.padding }) } } : {}
   const dataDir = dirname(ctx.sessionDir)
-  const permissions = { allow: patchbayPermissions([ctx.pluginDir, join(dataDir, 'whiteboards'), join(dataDir, 'browser-shots')]) }
-  writeFileSync(file, JSON.stringify({ hooks, ...statusLine, permissions }, null, 2))
+  const messaging = nativeMessagingSettings(ctx.claudeNativeMessaging)
+  const permissions = {
+    allow: patchbayPermissions([ctx.pluginDir, join(dataDir, 'whiteboards'), join(dataDir, 'browser-shots')]),
+    ...(messaging.deny.length ? { deny: messaging.deny } : {})
+  }
+  const inbound = messaging.crossSessionInbound ? { crossSessionInbound: messaging.crossSessionInbound } : {}
+  writeFileSync(file, JSON.stringify({ hooks, ...statusLine, permissions, ...inbound }, null, 2))
   return file
 }
 

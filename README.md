@@ -388,6 +388,11 @@ Copy as Markdown copies the whole handoff.
 - **Deleting a project** is separate and permanent, and asks first, naming what it ends.
 - **Undo and redo** cover moving, resizing, grouping, tidying, renaming, and adding or deleting notes and groups, one
   history per project, until the app closes. They never start or end a process, so closing a session isn't undoable.
+- **Tidy** (dock, View menu, canvas menu, or right-click a group) first shows dashed outlines where each node would
+  go. Pick the whole project, the selection or the group, and turn on Needs you first to put agents waiting on you,
+  then working ones, at the top left. Apply is one undo step; Esc cancels. Tidy keeps cabled nodes together (a lead
+  beside its team, a trigger beside its target), moves groups whole, never overlaps anything, and running it again
+  changes nothing. Agents can run `patchbay arrange --layout tidy`.
 - **Spawn a team**, on the canvas menu, opens one lead Claude with your task. The lead splits it up with `patchbay
   spawn-team`, then collects and reconciles the results.
 
@@ -560,6 +565,14 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
 - **What agents may do.** They read and message only nodes they opened or that you linked to them, stay in their own
   project, and can't answer a permission prompt. Patchbay lets them read its own skill and exports, and run the
   `patchbay` verbs that only look, without asking you; anything that changes or sends something still asks.
+- **Claude's own messages between sessions are off.** Claude Code can find and message any other Claude session on
+  the PC by itself, around the rule above. In Patchbay's Claude windows it's off: they refuse messages from other
+  sessions (`crossSessionInbound: "refuse"`) and can't list them (`ListAgents` is denied). Subagents and teams inside
+  one window still talk to each other. Settings > Agents > Claude's own messages, or `"claudeNativeMessaging": "on"`,
+  turns it back on for new and restarted windows, and Claude's own rules and yours then apply.
+- **Each node speaks for itself.** Hooks and the `patchbay` tool know their node from its environment. Codex nodes start
+  with `--no-daemon`, so a shared Codex server can't run one node's hooks with another's environment, and Patchbay
+  refuses a hook that names another node's session.
 - **Usage limits.** A message or trigger prompt for an agent stopped at its usage limit waits until the limit
   resets, then goes out by itself, even if Patchbay restarted meanwhile (messages queued before a restart are lost, as
   ever). A short rate limit that names no reset is tried again after a minute, then longer. You can still type to it any

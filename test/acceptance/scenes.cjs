@@ -404,6 +404,12 @@ const scenes = {
     await page.evaluate(() => document.getElementById('permissionMode')?.scrollIntoView({ block: 'end' }))
     await sleep(400)
   },
+  'settings-messaging': async (page) => {
+    await scenes['settings-agents'](page)
+    // The row's help runs below its select, so its whole group goes into view.
+    await page.evaluate(() => document.getElementById('claudeNativeMessaging')?.closest('.set-group')?.scrollIntoView({ block: 'end' }))
+    await sleep(400)
+  },
   // Codex chosen as the default, then turned off: Claude Code stands in, and its switch can't be turned off.
   'settings-agents-off': async (page) => {
     await page.keyboard.down('Control')
@@ -687,3 +693,5 @@ Object.assign(scenes, require('./placementScenes.cjs').scenes)
 Object.assign(seeds, require('./placementScenes.cjs').seeds)
 Object.assign(scenes, require('./fileShelfScenes.cjs').scenes)
 Object.assign(seeds, require('./fileShelfScenes.cjs').seeds)
+Object.assign(scenes, require('./tidyScenes.cjs').scenes)
+Object.assign(seeds, require('./tidyScenes.cjs').seeds)
