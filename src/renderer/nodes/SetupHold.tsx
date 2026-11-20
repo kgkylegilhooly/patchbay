@@ -2,6 +2,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { CanvasNode } from '../../shared/model'
 import { recipes } from '../recipeBridge'
 import { useStore } from '../store'
+import { runLook } from '../status/status'
 
 /**
  * On a recipe agent held for setup: which step it waits for and how that step is doing, or which one failed and why.
@@ -14,7 +15,9 @@ export function SetupHold({ node }: { node: CanvasNode }): React.JSX.Element | n
       (Array.isArray(wait?.steps) ? wait.steps : []).map((id) => {
         const step = s.doc?.nodes.find((n) => n.id === id)
         const run = s.runs[id]
-        const state = !step ? 'closed' : run?.running ? 'running' : run && run.exitCode !== null ? `exited with ${run.exitCode}` : 'not running'
+        // The run's own words, as its node and the sidebar say them.
+        // With no exit code it never finished, so it reads as not running, which is what the idle check below looks for.
+        const state = !step ? 'closed' : run && !run.running && run.exitCode === null ? 'not running' : runLook(run).label.toLowerCase()
         return `${step?.title ?? 'a closed step'} (${state})`
       })
     )

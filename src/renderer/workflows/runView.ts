@@ -1,27 +1,14 @@
 import { currentAttempt } from '../../core/workflow/engine'
 import type { RunState, StepAttempt, WorkflowRun } from '../../shared/workflow'
+import { attemptLook, workflowRunLook } from '../status/status'
 
-/** How a run and its steps read in the panel. Pure, so it's tested without a page. */
+/** How a run and its steps read in the panel. Pure, so it's tested without a page. The words are the status system's. */
 
-export const RUN_STATE_LABEL: Record<RunState, string> = {
-  running: 'Running',
-  'waiting-for-you': 'Waiting for you',
-  succeeded: 'Done',
-  failed: 'Failed',
-  stopped: 'Stopped',
-  'needs-attention': 'Needs you'
-}
+const RUN_STATES: RunState[] = ['running', 'waiting-for-you', 'succeeded', 'failed', 'stopped', 'needs-attention']
+export const RUN_STATE_LABEL = Object.fromEntries(RUN_STATES.map((s) => [s, workflowRunLook(s).label])) as Record<RunState, string>
 
-export const ATTEMPT_LABEL: Record<StepAttempt['state'] | 'pending', string> = {
-  pending: 'Not yet',
-  launching: 'Starting',
-  running: 'Running',
-  'waiting-for-you': 'Waiting for you',
-  succeeded: 'Done',
-  failed: 'Failed',
-  interrupted: 'Interrupted',
-  superseded: 'Replaced'
-}
+const ATTEMPT_STATES: (StepAttempt['state'] | 'pending')[] = ['pending', 'launching', 'running', 'waiting-for-you', 'succeeded', 'failed', 'interrupted', 'superseded']
+export const ATTEMPT_LABEL = Object.fromEntries(ATTEMPT_STATES.map((s) => [s, attemptLook(s).label])) as Record<StepAttempt['state'] | 'pending', string>
 
 /** The strip text: "Step 3 of 5 · Tests running", or how it ended. */
 export function runStrip(run: WorkflowRun): string {
@@ -31,7 +18,7 @@ export function runStrip(run: WorkflowRun): string {
   const i = steps.findIndex((s) => currentAttempt(run, s.key)?.state !== 'succeeded')
   if (i < 0) return RUN_STATE_LABEL[run.state]
   const a = currentAttempt(run, steps[i].key)
-  const what = a?.idle ? 'idle, no result' : a?.state === 'waiting-for-you' ? 'waiting for you' : (ATTEMPT_LABEL[a?.state ?? 'pending']).toLowerCase()
+  const what = attemptLook(a?.state ?? 'pending', a?.idle).label.toLowerCase()
   return `Step ${i + 1} of ${steps.length} · ${steps[i].title} ${what}`
 }
 

@@ -5,6 +5,7 @@ import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
 import { closeNodes, patchNode, useStore } from '../store'
 import { teamStatus } from '../teamStatus'
+import { StatusMark } from '../status/StatusMarks'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStops } from '../agentStops'
@@ -137,7 +138,7 @@ function Team({ groupId }: { groupId: string }): React.JSX.Element {
     <span className="team" role="status" aria-label={`Team: ${team.summary}`}>
       <span className="team-lights" aria-hidden="true">
         {team.members.map((m) => (
-          <span key={m.id} className={`team-light team-${m.status}`} title={`${m.title}: ${m.status}`} />
+          <StatusMark key={m.id} look={m.look} size={8} className="team-light" title={`${m.title}: ${m.look.label}`} />
         ))}
       </span>
       <span className="team-summary">{team.summary}</span>

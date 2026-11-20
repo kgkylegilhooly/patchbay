@@ -28,7 +28,13 @@ export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStat
     const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped)
     if (bucket === 'needs-you' || (includeUnread && bucket === 'unread')) entries.push({ id: node.id, bucket, since: waits[node.id]?.at ?? null, order })
   })
-  const rank = (e: QueueEntry): number => (e.bucket === 'needs-you' ? 0 : 1)
+  // Someone waiting on an answer first, then a stop only the person can clear (a failed login, an error), then a
+  // limit that resets by itself, then unread: the status system's needs, held and waits, in that order.
+  const rank = (e: QueueEntry): number => {
+    if (e.bucket === 'unread') return 3
+    if (statuses[e.id] === 'needs-you') return 0
+    return (stopped[e.id] as { holds?: unknown } | undefined)?.holds === 'reset' ? 2 : 1
+  }
   // Without a time it has waited at least as long as Patchbay has known, so it goes first.
   return entries
     .sort((a, b) => rank(a) - rank(b) || (a.since ?? -Infinity) - (b.since ?? -Infinity) || a.order - b.order)

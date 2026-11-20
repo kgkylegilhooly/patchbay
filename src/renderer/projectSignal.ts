@@ -1,14 +1,24 @@
 import { isSessionNode, type AgentStatus, type CanvasDoc } from '../shared/model'
+import type { Tone } from './status/status'
 
 export function projectSessions(doc: CanvasDoc, projectId: string): string[] {
   return doc.nodes.filter((n) => n.projectId === projectId && isSessionNode(n)).map((n) => n.id)
 }
 
-/** What a project's tab should show: someone waiting on you, then something to look at, then work still going. */
-export function projectSignal(doc: CanvasDoc, statuses: Record<string, AgentStatus>, projectId: string, attention: string[] = []): 'needs-you' | 'unseen' | 'working' | null {
+export type ProjectSignal = 'needs-you' | 'stopped' | 'unseen' | 'working'
+
+/**
+ * What a project's tab should show: someone waiting on you, then an agent stopped on a limit or an error, then
+ * something to look at, then work still going. `stopped` holds the agents whose turn ended on an API error.
+ */
+export function projectSignal(doc: CanvasDoc, statuses: Record<string, AgentStatus>, projectId: string, attention: string[] = [], stopped: Record<string, unknown> = {}): ProjectSignal | null {
   const sessions = projectSessions(doc, projectId)
   const seen = sessions.map((id) => statuses[id])
   if (seen.includes('needs-you')) return 'needs-you'
+  if (sessions.some((id) => statuses[id] === 'unknown' && id in stopped)) return 'stopped'
   if (sessions.some((id) => attention.includes(id))) return 'unseen'
   return seen.includes('working') ? 'working' : null
 }
+
+/** The status system's tone for a signal. Unseen has none: it's the white unread marker. */
+export const SIGNAL_TONE: Record<ProjectSignal, Tone | null> = { 'needs-you': 'needs', stopped: 'held', unseen: null, working: 'working' }

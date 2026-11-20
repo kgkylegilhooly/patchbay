@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { attemptLabel, changedByRun, describeLoss, verifyStanding, type Attempt, type AttemptKey, type AttemptState, type Comparison, type FileChange, type RemovalCheck } from '../shared/compare'
-import { AGENT_NAMES, type AgentStatus } from '../shared/model'
+import { AGENT_NAMES } from '../shared/model'
+import { StatusBadge, StatusDot } from './nodes/StatusBadge'
+import { StatusPair } from './status/StatusMarks'
 import { compare } from './compareBridge'
 import { parseDiff } from './reviewNotes'
 import { shortPath } from './shortPath'
@@ -8,7 +10,6 @@ import { useStore } from './store'
 
 const REFRESH_MS = 5000
 
-const STATUS_TEXT: Record<AgentStatus, string> = { queued: 'Queued', starting: 'Starting', working: 'Working', idle: 'Idle', 'needs-you': 'Needs you', exited: 'Exited', unknown: 'Unknown' }
 
 const short = (sha: string | null | undefined): string => (sha ? sha.slice(0, 7) : '—')
 const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -203,10 +204,14 @@ function AttemptColumn({ c, a, state, running, onRun, onChanged, onShow }: { c: 
       <header className="compare-attempt-head">
         <span className="compare-badge">{attemptLabel(a.key)}</span>
         <span className="compare-agent-name">{AGENT_NAMES[a.agent]}</span>
-        <span className={`compare-status compare-status-${agentState}`}>
-          <i />
-          {agentState === 'closed' ? 'Closed' : STATUS_TEXT[agentState as AgentStatus]}
-        </span>
+        {agentState === 'closed' ? (
+          <StatusPair look={{ tone: 'ended', label: 'Closed' }} className="compare-status" />
+        ) : (
+          <span className="st-pair compare-status">
+            <StatusDot status={agentState} nodeId={a.nodeId} />
+            <StatusBadge status={agentState} nodeId={a.nodeId} />
+          </span>
+        )}
         {node && (
           <button type="button" className="btn compare-small" onClick={() => onShow(a.nodeId)}>
             Show
