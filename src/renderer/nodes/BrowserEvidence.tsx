@@ -109,7 +109,7 @@ function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
 }
 
 /** A browser node's recorded checks. Only a count travels with the node; the checks are fetched while this is open. */
-export function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Element {
+export function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Element | null {
   const summary = useStore((s) => s.browsers[nodeId]?.evidence)
   const [expanded, setExpanded] = useState(false)
   const [attempts, setAttempts] = useState<BrowserAttempt[] | null>(null)
@@ -127,6 +127,8 @@ export function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Eleme
   }, [expanded, nodeId, version])
   const count = summary?.count ?? 0
   const open = selected ?? attempts?.[0]?.id
+  // A page nothing has checked yet has nothing to show here, unless a capture is starting or something went wrong.
+  if (count === 0 && !summary?.recording && !summary?.problem) return null
   return (
     <details
       className="browser-evidence nodrag nopan nowheel"
@@ -136,7 +138,7 @@ export function BrowserEvidence({ nodeId }: { nodeId: string }): React.JSX.Eleme
       }}
     >
       <summary>
-        Evidence · {count} {count === 1 ? 'attempt' : 'attempts'}
+        Checks ({count})
         {summary?.recording && ' · recording'}
       </summary>
       {expanded && (

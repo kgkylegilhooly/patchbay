@@ -158,7 +158,7 @@ async function main() {
 
     // Close a Claude node and reopen it from recent conversations, with real clicks.
     const closingSession = (await L.nodeOf(page, 'a')).sessionId
-    await button(page, `${node('a')} .unit-head`, '×')
+    await page.evaluate((s) => document.querySelector(s).click(), `${node('a')} .unit-head [data-tool="close"]`)
     await L.waitFor('the node to go', async () => !(await L.nodeOf(page, 'a')), 8000)
     const history = (await L.doc(page)).closed
     c.check('DM9: closing adds it to the history', history.length === 1 && history[0].sessionId === closingSession, history[0]?.title)

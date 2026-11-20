@@ -4,14 +4,14 @@ import { createPortal } from 'react-dom'
 import type { PendingApproval } from '../../shared/contract'
 import { isSessionNode, whereShown, type AgentStatus, type CanvasNode } from '../../shared/model'
 import { bridge } from '../bridge'
-import { KindIcon } from '../icons'
+import { Icon, KindIcon } from '../icons'
 import { PortChips } from '../PortChips'
 import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
 import { runDot, runFailed, runLabel } from './runView'
 import { StatusBadge, StatusDot } from './StatusBadge'
-import { WindowTools } from './WindowTools'
+import { MaximizeTool, WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
@@ -174,12 +174,13 @@ function CloseControl({ node, status }: { node: CanvasNode; status: AgentStatus 
   }
   return (
     <button
-      className="icon-btn nodrag"
+      className="icon-btn tool-btn nodrag"
+      data-tool="close"
       aria-label={`Close ${node.title}`}
       title="Close"
       onClick={() => (busy ? setConfirming(true) : closeNodes([node.id]))}
     >
-      ×
+      <Icon name="close" size={15} />
     </button>
   )
 }
@@ -253,6 +254,8 @@ export function NodeChrome({
         )}
         <WindowTools node={node} />
         <CloseControl node={node} status={status} />
+        {/* Maximized, Restore is the rightmost control, where a window's own restore button is, so it isn't Close. */}
+        {maximized && <MaximizeTool node={node} />}
       </header>
       {error && (
         <div className="strip strip-error" role="alert">

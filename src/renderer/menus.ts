@@ -208,7 +208,7 @@ export function fileMenu(c: Commands, s: MenuState): MenuEntry[] {
     ...addMenu(c),
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group() },
     'separator',
-    { id: 'recent', label: 'Recent conversations', icon: 'recent', run: c.toggleRecent },
+    { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent },
     ...closed.slice(0, 5).map((p): MenuItem => ({ id: `reopen-project-${p.id}`, label: `Reopen project: ${p.name}`, icon: 'folder-open', run: () => c.reopenProject(p.id) })),
     'separator',
     { id: 'close-selected', label: 'Close selected', icon: 'close', disabled: s.selectedCount === 0, run: c.closeSelected },
@@ -297,7 +297,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
     { id: 'tidy', label: s.selectedCount > 1 ? 'Tidy selection' : 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
     'separator',
-    { id: 'recent', label: 'Recent conversations', icon: 'recent', run: c.toggleRecent }
+    { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent }
   ]
 }
 
