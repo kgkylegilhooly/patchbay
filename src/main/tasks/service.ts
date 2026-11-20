@@ -182,6 +182,31 @@ export function createTaskService(store: CanvasStore, dataDir: string, persist: 
       })().catch((e: unknown) => console.error('Task verification could not be saved:', e))
       return attempt
     },
+    /**
+     * Evidence from a run Patchbay itself made of exactly a declared check, as a workflow's command step, so the check
+     * isn't run a second time. The exit code is the session host's, never a caller's claim: only main calls this, never
+     * the agent router. The command and folder must be the declared ones, character for character.
+     */
+    async recordRun(projectId: string, id: string, sessionId: string, run: { checkId: string; command: string; cwd: string; startedAt: number; endedAt: number; exitCode: number; revision: TaskRevision; endRevision: TaskRevision; outputRef: string }): Promise<TaskVerification> {
+      const task = find(projectId, id)
+      mutable(task)
+      const declared = task.requiredChecks.find((c) => c.id === run.checkId)
+      if (!declared) throw new Error(`Task has no check "${run.checkId}"`)
+      if (declared.command !== run.command || declared.cwd !== run.cwd) throw new Error('Required check command and cwd must match its definition')
+      const attempt: TaskVerification = {
+        id: randomUUID(), taskId: id, sessionId, kind: 'command', checkId: declared.id, command: declared.command, cwd: declared.cwd,
+        startedAt: run.startedAt, endedAt: run.endedAt, exitCode: run.exitCode, status: run.exitCode === 0 ? 'passed' : 'failed',
+        outputRef: run.outputRef, revision: run.revision, endRevision: run.endRevision
+      }
+      fresh()
+      const data = records(projectId)
+      save(projectId, { ...data, attempts: [...data.attempts, attempt] })
+      const view = await show(projectId, id)
+      const current = find(projectId, id)
+      if (current.submissionId && current.state !== 'cancelled' && current.state !== 'accepted') replace(projectId, { ...current, state: view.readiness.ready ? 'ready-for-review' : 'blocked', updatedAt: Date.now() })
+      await persist()
+      return attempt
+    },
     /** Registered only on the trusted application UI IPC channel, never in the agent router. */
     async accept(projectId: string, id: string, submissionId: string): Promise<Task> {
       // Accepting reads the tree as it is now, never a cached identity.

@@ -1,12 +1,14 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { createReadStream, mkdirSync, writeFileSync } from 'node:fs'
-import { copyFile, mkdir, realpath, rm, stat } from 'node:fs/promises'
-import { extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { copyFile, mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
+import { DEFAULT_PRUNE, planPrune, type PruneLimits } from '../../core/workflow/prune'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { CanvasStore, RunResult } from '../../shared/contract'
 import { isProjectArchived, type AgentStatus, type CanvasNode, type ClaudeNode, type GroupNode, type RunNode } from '../../shared/model'
 import type { TaskRevision } from '../../shared/task'
 import { branchFor, showArgv } from '../../shared/recipe'
-import { SHELL_ACTS_ON, STEP_KEY, stepOutputs, templateRefs, workflowIssues, type OutputValue, type Workflow, type WorkflowRun } from '../../shared/workflow'
+import { SHELL_ACTS_ON, STEP_KEY, stepOutputs, templateRefs, workflowIssues, type CommandStep, type OutputValue, type Workflow, type WorkflowRun } from '../../shared/workflow'
 import { advance, checkRunInputs, createRun, currentAttempt, deadline, planStep, type Effect, type RunEvent } from '../../core/workflow/engine'
 import { placeInGroup, placeInProject, placeNear } from '../../core/canvas/place'
 import { agentsNow } from '../agentsAllowed'
@@ -46,6 +48,8 @@ export interface WorkflowServiceDeps {
     create(projectId: string, input: { brief: string; acceptanceCriteria: string[]; assignedSessionIds: string[]; cwd: string; requiredChecks: Array<{ id: string; command: string; cwd: string }>; dependsOn: string[] }): Promise<{ id: string }>
     submit(projectId: string, id: string, sessionId: string, summary: string): Promise<unknown>
     verify(projectId: string, id: string, sessionId: string, checkId: string): Promise<unknown>
+    /** Records Patchbay's own run of exactly a declared check, so it isn't run twice. See tasks/service.ts. */
+    recordRun?(projectId: string, id: string, sessionId: string, run: { checkId: string; command: string; cwd: string; startedAt: number; endedAt: number; exitCode: number; revision: TaskRevision; endRevision: TaskRevision; outputRef: string }): Promise<unknown>
   }
   /** Through the send queue, as a person's message. */
   send(nodeId: string, text: string): { ok: boolean; reason?: string }
@@ -80,6 +84,15 @@ export type WorkflowService = ReturnType<typeof createWorkflowService>
 
 const quoted = (p: string): string => `"${p.replace(/\\/g, '/')}"`
 
+/**
+ * A task-check step as the deliverable task declares it: one command line (the task service runs it through cmd) and
+ * its folder. The same text is used when the task is made and when the step's run is recorded as its evidence.
+ */
+export function checkOf(step: CommandStep, inputs: Record<string, unknown>, runCwd: string): { command: string; cwd: string } {
+  const fill = (a: string): string => a.replace(/\{\{\s*in:([A-Za-z][A-Za-z0-9_-]*)\s*\}\}/g, (_w, k: string) => (inputs[k] === undefined ? '' : String(inputs[k])))
+  return { command: showArgv(step.run.map(fill).filter((a, i) => i === 0 || a !== '')), cwd: step.folder ? resolve(runCwd, step.folder) : runCwd }
+}
+
 /** A file's size and sha256, read as a stream so a large one doesn't hold up the main process. */
 function hashFile(path: string): Promise<{ size: number; sha256: string }> {
   return new Promise((done, fail) => {
@@ -109,6 +122,8 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
 
   const loaded = d.runStore.load()
   const runs = new Map(loaded.runs.map((r) => [r.id, r]))
+  /** The folder's identity when each task-check step started, for its evidence. In memory: after a restart it reruns. */
+  const startRevisions = new Map<string, TaskRevision>()
   /** Time each attempt has spent held at a usage limit, added to its time limit. In memory: a restart forgives it. */
   const held = new Map<string, number>()
   /** One queue per run, so events apply one at a time, in order. */
@@ -223,6 +238,11 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
         return
       }
       case 'launch-command': {
+        // A check on the deliverable records the folder as it was when it started, as the task service would.
+        const step = run.definition.steps.find((s) => s.key === e.step)
+        if (step?.kind === 'command' && step.taskCheck && run.taskId) {
+          try { startRevisions.set(e.attemptId, await d.revision(e.cwd)) } catch { /* Evidence then comes from running the check. */ }
+        }
         mkdirSync(plansDir, { recursive: true })
         const planFile = join(plansDir, `${e.nodeId}.json`)
         const logFile = join(artifactsDir, run.id, e.attemptId.replace(/:/g, '_'), 'log.txt')
@@ -254,9 +274,23 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
         if (!r.ok) log(`Workflow run ${run.id}: couldn't send to ${e.nodeId}: ${r.reason}`)
         return
       }
-      case 'task-check':
-        if (run.taskId && d.tasks) await d.tasks.verify(run.projectId, run.taskId, lastAgentNode(run) ?? 'workflow', e.step)
+      case 'task-check': {
+        if (!run.taskId || !d.tasks) return
+        const session = lastAgentNode(run) ?? 'workflow'
+        const step = run.definition.steps.find((s) => s.key === e.step)
+        const a = run.attempts.find((x) => x.id === e.attemptId)
+        const start = startRevisions.get(e.attemptId)
+        const log = a?.outputs?.log
+        // The step's own run is the check's evidence: the same command in the same folder, run by Patchbay, with its
+        // exit code from the host. Run again only when that evidence is missing, as after a restart.
+        if (d.tasks.recordRun && step?.kind === 'command' && a && start && log?.type === 'file' && a.exitCode !== undefined && a.endedAt !== undefined) {
+          const check = checkOf(step, run.inputs, run.cwd)
+          const end = await d.revision(check.cwd)
+          await d.tasks.recordRun(run.projectId, run.taskId, session, { checkId: step.key, ...check, startedAt: a.startedAt, endedAt: a.endedAt, exitCode: a.exitCode, revision: start, endRevision: end, outputRef: log.path })
+        } else await d.tasks.verify(run.projectId, run.taskId, session, e.step)
+        startRevisions.delete(e.attemptId)
         return
+      }
       case 'finished':
         if (e.state === 'succeeded' && run.taskId && d.tasks) {
           const summary = lastAgentSummary(run) ?? `Workflow "${run.definition.name}" finished every step.`
@@ -329,8 +363,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
       try {
         const checked = checkRunInputs(wf, req.inputs)
         const values = checked.ok ? checked.inputs : {}
-        const fill = (a: string): string => a.replace(/\{\{\s*in:([A-Za-z][A-Za-z0-9_-]*)\s*\}\}/g, (_w, k: string) => (values[k] === undefined ? '' : String(values[k])))
-        const requiredChecks = wf.steps.flatMap((s) => (s.kind === 'command' && s.taskCheck ? [{ id: s.key, command: showArgv(s.run.map(fill).filter((a, i) => i === 0 || a !== '')), cwd: s.folder ? resolve(cwd, s.folder) : cwd }] : []))
+        const requiredChecks = wf.steps.flatMap((s) => (s.kind === 'command' && s.taskCheck ? [{ id: s.key, ...checkOf(s, values, cwd) }] : []))
         const task = await d.tasks.create(project.id, { brief: `${wf.name}${firstText ? `: ${firstText}` : ''}`, acceptanceCriteria: wf.deliverable.criteria, assignedSessionIds: [], cwd, requiredChecks, dependsOn: [] })
         taskId = task.id
       } catch (e) {
@@ -572,6 +605,74 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     return null
   }
 
+  /** Bytes under a folder, 0 when it isn't there. */
+  const folderBytes = async (dir: string): Promise<number> => {
+    let total = 0
+    let entries: Dirent[]
+    try { entries = await readdir(dir, { withFileTypes: true }) } catch { return 0 }
+    for (const e of entries) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) total += await folderBytes(p)
+      else if (e.isFile()) total += await stat(p).then((s) => s.size, () => 0)
+    }
+    return total
+  }
+
+  /**
+   * Deletes finished runs past the age or size limit, with their kept files and command plans; and files left by runs
+   * no longer recorded. Never an open run's, nor one whose deliverable task is still in play (its check evidence is
+   * the run's log). See core/workflow/prune.ts.
+   */
+  const prune = async (limits: PruneLimits = DEFAULT_PRUNE): Promise<{ removed: string[]; skipped?: string }> => {
+    // Deleting rests on knowing every run there is. If they couldn't all be listed, nothing is deleted.
+    if (loaded.failed) {
+      log(`Workflows: not pruning, because ${loaded.failed}.`)
+      return { removed: [], skipped: loaded.failed }
+    }
+    /**
+     * Whether a run's deliverable task still needs its files: its check's evidence is the run's log, and an accepted
+     * task's evidence is kept as long as the task. Only a cancelled task, or one whose project is gone, lets them go.
+     * A task missing from a project that is there may just have failed to load, so it counts as needed.
+     */
+    const taskNeeds = (run: WorkflowRun): boolean => {
+      if (!run.taskId) return false
+      const project = d.store.get().projects.find((p) => p.id === run.projectId)
+      if (!project) return false
+      const t = project.tasks?.tasks.find((x) => x.id === run.taskId)
+      return !t || t.state !== 'cancelled'
+    }
+    let removed: string[]
+    try {
+      const sized = await Promise.all([...runs.values()].map(async (run) => ({ run, bytes: await folderBytes(join(artifactsDir, run.id)) })))
+      removed = planPrune(sized, now(), limits, taskNeeds)
+    } catch (e) {
+      log(`Workflows: not pruning, because planning it failed: ${(e as Error).message}`)
+      return { removed: [], skipped: (e as Error).message }
+    }
+    const present = new Set(d.store.get().nodes.map((n) => n.id))
+    for (const id of removed) {
+      const run = runs.get(id)!
+      await (queues.get(id) ?? Promise.resolve())
+      runs.delete(id)
+      await d.runStore.remove(id)
+      await rm(join(artifactsDir, id), { recursive: true, force: true })
+      for (const a of run.attempts) if (a.nodeId && !present.has(a.nodeId)) await rm(join(plansDir, `${a.nodeId}.json`), { force: true })
+    }
+    // Kept files of runs no longer recorded, and plans of command nodes that are gone and no run still uses.
+    const used = new Set([...runs.values()].flatMap((r) => r.attempts.flatMap((a) => (a.nodeId ? [a.nodeId] : []))))
+    // A run file this version couldn't read (damaged, or a newer Patchbay's) still owns its files.
+    const unread = new Set(loaded.unavailable.map((u) => basename(u.file).replace(/\.json$/i, '')))
+    for (const name of await readdir(artifactsDir).catch(() => [] as string[])) {
+      if (!runs.has(name) && !unread.has(name)) await rm(join(artifactsDir, name), { recursive: true, force: true })
+    }
+    for (const name of await readdir(plansDir).catch(() => [] as string[])) {
+      const id = name.replace(/\.json$/, '')
+      if (name.endsWith('.json') && !present.has(id) && !used.has(id)) await rm(join(plansDir, name), { force: true })
+    }
+    if (removed.length) log(`Workflows: removed ${removed.length} finished run(s) past the age or size limit, with their files.`)
+    return { removed }
+  }
+
   const save = async (a: { projectId: string; workflow: unknown; where: 'personal' | 'repository'; overwrite?: boolean; file?: string }) => {
     let dir = personalDir
     if (a.where === 'repository') {
@@ -608,6 +709,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     get: (runId: string): WorkflowRun | undefined => runs.get(runId),
     runOfNode,
     reviewFor,
+    prune,
     unavailable: loaded.unavailable,
     stepOutputs,
     async flush(): Promise<void> {
