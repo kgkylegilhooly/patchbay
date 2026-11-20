@@ -311,6 +311,8 @@
 .handoff .shell-foot {
   flex-direction: column;
   align-items: stretch;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   gap: 10px;
 }
 
