@@ -43,11 +43,11 @@ describe('agents', () => {
 })
 
 describe('runs, subagents and workflow steps use the same tones', () => {
-  test('a run command: amber while running, a red ring on failure, dim when over, a square before it ever ran', () => {
+  test('a run command: amber while running, green on exit 0, a red ring on failure, dim when stopped, a square before it ever ran', () => {
     expect(runLook(undefined)).toEqual({ tone: 'none', label: 'Not running' })
     expect(runLook(run({ running: true }))).toEqual({ tone: 'working', label: 'Running' })
     expect(runLook(run({ exitCode: 1 }))).toEqual({ tone: 'held', label: 'Exited 1' })
-    expect(runLook(run({ exitCode: 0 }))).toEqual({ tone: 'ended', label: 'Exited 0' })
+    expect(runLook(run({ exitCode: 0 }))).toEqual({ tone: 'done', label: 'Exited 0' })
     expect(runLook(run({ exitCode: 1, stoppedByYou: true }))).toEqual({ tone: 'ended', label: 'Stopped' })
     expect(runFailed(run({ exitCode: 2 }))).toBe(true)
     expect(runFailed(run({ exitCode: 2, stoppedByYou: true }))).toBe(false)

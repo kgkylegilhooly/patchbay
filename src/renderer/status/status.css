@@ -12,7 +12,10 @@
   /* Text on a filled red pill. */
   --status-needs-on: #1f0c0a;
   --status-quiet: #8e8e96;
-  --status-ended: #5c5c63;
+  /* 3:1 on --face-raised, so the small dot still reads as a mark. */
+  --status-ended: #77777f;
+  /* The minimap's held stop: darker than needs-you, so the most urgent stays brightest there. */
+  --status-held-map: #a8322b;
   --status-unread: #ececee;
 
   /* The blues that were status tokens, kept for what they really were: interaction. */

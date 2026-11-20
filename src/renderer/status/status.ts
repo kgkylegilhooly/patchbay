@@ -69,13 +69,13 @@ export function agentLook(status: AgentStatus | null | undefined, stop?: AgentSt
   return { tone: AGENT_TONES[status], label: AGENT_LABELS[status] }
 }
 
-/** A run command: amber while it runs, a red ring when it failed, dim once it's over. */
+/** A run command: amber while it runs, green when it exited 0, a red ring when it failed, dim when stopped. */
 export function runLook(run: RunResult | undefined): Look {
   if (!run) return { tone: 'none', label: 'Not running' }
   if (run.running) return { tone: 'working', label: 'Running' }
   if (run.stoppedByYou) return { tone: 'ended', label: 'Stopped' }
   if (run.exitCode === null) return { tone: 'ended', label: 'Exited' }
-  return { tone: run.exitCode === 0 ? 'ended' : 'held', label: `Exited ${run.exitCode}` }
+  return { tone: run.exitCode === 0 ? 'done' : 'held', label: `Exited ${run.exitCode}` }
 }
 
 export function runFailed(run: RunResult | undefined): boolean {
@@ -142,7 +142,8 @@ export const TOKEN_FALLBACK: Record<string, string> = {
   '--status-done': '#34c759',
   '--status-needs': '#ff453a',
   '--status-quiet': '#8e8e96',
-  '--status-ended': '#5c5c63'
+  '--status-ended': '#77777f',
+  '--status-held-map': '#a8322b'
 }
 
 /** Most pressing first: the order the team lights and summaries list tones in. */

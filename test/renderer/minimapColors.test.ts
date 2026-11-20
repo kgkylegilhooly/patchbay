@@ -37,7 +37,8 @@ test('no status yet, and no status at all (a terminal), are told apart', () => {
 
 test('without a stylesheet it uses the values status.css sets, and no tone is blue', () => {
   expect(statusMapColor('needs-you', undefined)).toBe('#ff453a')
-  expect(TONE_FALLBACK.held).toBe(TONE_FALLBACK.needs)
+  // A held stop is a darker red than needs-you, so the most urgent stays the brightest on the map.
+  expect(TONE_FALLBACK.held).not.toBe(TONE_FALLBACK.needs)
   expect(TONE_FALLBACK.waits).toBe(TONE_FALLBACK.working)
   for (const colour of Object.values(TONE_FALLBACK)) expect(['#7da7ff', '#2f7bf6', '#3d8bfd']).not.toContain(colour)
 })

@@ -6,8 +6,11 @@ import { agentLook, runLook, TONE_TOKENS, TOKEN_FALLBACK, type Tone } from './st
 /** The colour of each status tone, read from the same CSS tokens the marks use, so the minimap never disagrees. */
 export type ToneColors = Record<Tone, string>
 
+/** The marks' tokens, except a held stop, which is a darker red on the map so needs-you stays the brightest thing. */
+const MAP_TOKENS: Record<Tone, string> = { ...TONE_TOKENS, held: '--status-held-map' }
+
 const toneColors = (read: (token: string) => string): ToneColors =>
-  Object.fromEntries((Object.keys(TONE_TOKENS) as Tone[]).map((tone) => [tone, read(TONE_TOKENS[tone])])) as ToneColors
+  Object.fromEntries((Object.keys(MAP_TOKENS) as Tone[]).map((tone) => [tone, read(MAP_TOKENS[tone])])) as ToneColors
 
 /** What status.css sets, for where there's no stylesheet to read, as in tests. */
 export const TONE_FALLBACK: ToneColors = toneColors((token) => TOKEN_FALLBACK[token])

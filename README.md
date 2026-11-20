@@ -285,7 +285,7 @@ and spends a little quota.
   (Codex has no hook for it), and the reset from Codex's own limits there. After Esc, a Codex window goes back to
   Idle, since Codex reports the interrupt; a Claude window stays at No status yet.
 - **Status marks** mean the same everywhere: windows, the sidebar, tabs, the minimap, team lights, subagent cards
-  and workflow steps. Amber dot: working or running. Green: idle or done. Red, blinking, with a red label: needs you.
+  and workflow steps. Amber dot: working or running. Green: idle or done, or a command that exited 0. Red, blinking, with a red label: needs you.
   Grey ring: starting or queued (dashed: no status yet). Red ring: stopped until you act, as on a failed login, an
   error or a failed command. Amber ring: stopped until a limit resets. Small dim dot: exited. Grey square: a terminal,
   which has no status. A white dot is unread. Blue is never a status: it marks focus, selection and links.
