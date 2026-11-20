@@ -380,6 +380,11 @@
   overflow-wrap: anywhere;
 }
 
+.workflow-asks {
+  color: var(--led-needs);
+  font-size: 12.5px;
+}
+
 .workflow-file {
   font-size: 12px;
 }

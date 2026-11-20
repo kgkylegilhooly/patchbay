@@ -105,6 +105,7 @@ function StepActions({ run, attempt, act }: { run: WorkflowRun; attempt: StepAtt
 
 function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): React.JSX.Element {
   const flow = useReactFlow()
+  const statuses = useStore((s) => s.statuses)
   const [problem, setProblem] = useState<string | null>(null)
   const act = async (a: PersonAction): Promise<void> => {
     setProblem(null)
@@ -145,6 +146,11 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
                 )}
               </div>
               {a?.why && a.state !== 'succeeded' && <p className="recipe-dim">{a.why}</p>}
+              {a?.nodeId && (a.state === 'running' || a.state === 'launching') && statuses[a.nodeId] === 'needs-you' && (
+                <p className="workflow-asks" data-workflow-asks>
+                  Its agent is asking you something in its window, such as whether to trust the run's new folder. Show it to answer.
+                </p>
+              )}
               {a?.outputs && Object.keys(a.outputs).length > 0 && (
                 <dl className="workflow-outputs">
                   {Object.entries(a.outputs).map(([k, v]) => (

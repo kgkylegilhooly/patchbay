@@ -53,6 +53,23 @@ const scenes = {
     await page.type('[data-workflow-start] textarea', 'Add dark mode to the settings page')
     await sleep(500)
   },
+  // A workflow that opts out of its own worktree says so plainly in its run form.
+  'workflow-no-worktree': async (page) => {
+    if (!(await page.evaluate(() => !!window.patchbayWorkflows))) return
+    await page.evaluate(async () => {
+      const projectId = (await window.patchbay.getDoc()).activeProjectId
+      const workflow = {
+        schema: 1, name: 'Lint here', worktree: false, inputs: [],
+        steps: [{ kind: 'command', key: 'lint', title: 'Lint', run: ['npm', 'run', 'lint'] }]
+      }
+      await window.patchbayWorkflows.save({ projectId, workflow, where: 'personal', overwrite: true })
+    })
+    if (!(await openPicker(page))) return
+    await page.waitForSelector('[data-workflow="Lint here"]', { timeout: 5000 })
+    await page.click('[data-workflow="Lint here"]')
+    await page.waitForSelector('[data-workflow-no-worktree]', { timeout: 5000 })
+    await sleep(300)
+  },
   // The outline editor, building a workflow: an agent, a command and a review, with values picked, not typed.
   'workflow-editor': async (page) => {
     await gitRepoProject(page)

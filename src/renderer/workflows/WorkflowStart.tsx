@@ -164,8 +164,16 @@ export function WorkflowStart({ projectId, entry, onStart, onCancel }: { project
             </p>
           ))}
 
+          {wf.worktree === false ? (
+            <p className="recipe-warning" data-workflow-no-worktree>
+              This workflow runs in the project's folder itself, not in a worktree of its own. Its steps change your
+              checkout directly, and nothing keeps other work there out of their way.
+            </p>
+          ) : (
+            <p className="recipe-dim" data-workflow-worktree>Each run gets a new worktree and branch of its own; the steps work there.</p>
+          )}
           <section aria-label="Steps">
-            <h3>Runs these steps in order{wf.worktree !== false && <>, in a new worktree of its own</>}</h3>
+            <h3>Runs these steps in order{wf.worktree !== false ? <>, in its own worktree</> : <>, in the project folder</>}</h3>
             <ol className="recipe-nodes workflow-steps">
               {(steps.length ? steps : wf.steps.map((s) => ({ key: s.key, kind: s.kind, title: s.title }) as StepPreview)).map((s, n) => (
                 <li key={s.key} className="recipe-node" data-workflow-step={s.key}>

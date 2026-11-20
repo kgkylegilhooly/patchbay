@@ -104,6 +104,7 @@ export function withWorkflowVerbs(verbs: Verbs, { store, service }: { store: Can
     if (verb === 'workflows') {
       return {
         workflow: entry.name, source: entry.source, ...(entry.file ? { file: entry.file } : {}),
+        runsIn: entry.workflow.worktree === false ? "the project's folder itself (no worktree of its own: its steps change that checkout directly)" : 'a new worktree and branch of its own',
         inputs: entry.workflow.inputs, steps: service.preview(entry.workflow, inputs), hash: entry.hash,
         note: 'Nothing has run. Use patchbay workflow-run with the same --name and --input flags, and --hash, to start exactly this.'
       }
