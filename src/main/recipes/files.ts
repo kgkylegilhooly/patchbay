@@ -6,7 +6,7 @@ import { readRecipe, recipeFileName, type Recipe, type RecipeEntry, type RecipeS
 import { BUILT_IN_RECIPES } from '../../shared/recipeBuiltins'
 
 /** Names a recipe's content as read, so what a preview showed can be told from what's in the file now. */
-export function recipeHash(recipe: Recipe): string {
+export function recipeHash(recipe: Recipe | object): string {
   return createHash('sha256').update(JSON.stringify(recipe)).digest('hex').slice(0, 16)
 }
 
@@ -15,22 +15,33 @@ export const REPO_RECIPES = join('.patchbay', 'recipes')
 /** At most this many files are read from one folder. */
 const MAX_FILES = 100
 
-/** Reads every recipe in a folder. Reading runs nothing. A file that can't be used is listed with the reason. */
-export function readRecipeFolder(dir: string, source: Exclude<RecipeSource, 'built-in'>): RecipeEntry[] {
+/**
+ * Reads every JSON definition in a folder with `read`, which throws when one can't be used. Reading runs nothing. A
+ * file that can't be used comes back with the reason. Recipes and workflows both use this.
+ */
+export function readDefinitionFolder<T>(dir: string, read: (raw: unknown) => T): Array<{ file: string; fileName: string; value: T } | { file: string; fileName: string; problem: string }> {
   let files: string[]
   try {
     files = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.json')).sort().slice(0, MAX_FILES)
   } catch {
     return []
   }
-  return files.map((f): RecipeEntry => {
-    const file = join(dir, f)
+  return files.map((fileName) => {
+    const file = join(dir, fileName)
     try {
-      const recipe = readRecipe(JSON.parse(readFileSync(file, 'utf8')))
-      return { ref: `${source}:${recipe.name}`, source, name: recipe.name, ...(recipe.description ? { description: recipe.description } : {}), file, recipe, hash: recipeHash(recipe) }
+      return { file, fileName, value: read(JSON.parse(readFileSync(file, 'utf8'))) }
     } catch (e) {
-      return { ref: `${source}:${f}`, source, name: f.replace(/\.json$/i, ''), file, problem: (e as Error).message }
+      return { file, fileName, problem: (e as Error).message }
     }
+  })
+}
+
+/** Reads every recipe in a folder. Reading runs nothing. A file that can't be used is listed with the reason. */
+export function readRecipeFolder(dir: string, source: Exclude<RecipeSource, 'built-in'>): RecipeEntry[] {
+  return readDefinitionFolder(dir, readRecipe).map((r): RecipeEntry => {
+    if ('problem' in r) return { ref: `${source}:${r.fileName}`, source, name: r.fileName.replace(/\.json$/i, ''), file: r.file, problem: r.problem }
+    const recipe = r.value
+    return { ref: `${source}:${recipe.name}`, source, name: recipe.name, ...(recipe.description ? { description: recipe.description } : {}), file: r.file, recipe, hash: recipeHash(recipe) }
   })
 }
 

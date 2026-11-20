@@ -1,82 +1,33 @@
-import type { DefinitionRevision, WorkflowDefinition } from '../../src/shared/workflow'
-import { snapshotRevision } from '../../src/core/workflow/revision'
+import type { Workflow } from '../../src/shared/workflow'
 
-/** The design's proving workflow: brief → Claude plan → approve → Codex implement → tests → review. */
-export function featureWorkflow(): WorkflowDefinition {
+/** The proving workflow: brief → Claude plan → review → Codex implement → npm test, with a deliverable. */
+export function featureWorkflow(): Workflow {
   return {
     schema: 1,
-    id: 'feature',
     name: 'Feature',
-    description: 'Plan, approve, implement, test and review a feature.',
+    description: 'Plan, review, implement and test a feature.',
+    worktree: true,
     inputs: [
-      { key: 'repo', label: 'Repository', type: 'workspace' },
-      { key: 'brief', label: 'Feature brief', type: 'text', description: 'What to build.' },
+      { key: 'brief', label: 'Feature brief', type: 'text' },
       { key: 'implementer', label: 'Implementer', type: 'enum', options: ['claude', 'codex'], default: 'codex' },
-      { key: 'testArgs', label: 'Extra test arguments', type: 'text', required: false }
+      { key: 'filter', label: 'Test filter', type: 'text', required: false },
+      { key: 'attempts', label: 'Attempts', type: 'number', default: 1 }
     ],
-    jobs: [
+    steps: [
       {
-        id: 'plan',
-        name: 'Plan',
-        action: 'agent',
-        inputs: {
-          agent: { from: 'const', value: 'claude' },
-          instructions: { from: 'template', parts: ['Write a plan for: ', { input: 'brief' }] },
-          workspace: { from: 'input', input: 'repo' }
-        },
-        outputs: [{ key: 'plan', label: 'Plan document', type: 'file' }]
+        kind: 'agent', key: 'plan', title: 'Plan', agent: 'claude',
+        prompt: 'Write a plan for: {{in:brief}}',
+        outputs: [{ key: 'doc', label: 'Plan document', type: 'file' }, { key: 'summary', type: 'text' }]
       },
+      { kind: 'review', key: 'approve', title: 'Approve plan', question: 'Is this plan right?', show: [{ input: 'brief' }, { step: 'plan', output: 'doc' }] },
       {
-        id: 'approve',
-        name: 'Approve plan',
-        action: 'human-review',
-        inputs: {
-          question: { from: 'const', value: 'Approve this plan?' },
-          material: { from: 'template', parts: [{ job: 'plan', output: 'plan' }] }
-        }
+        kind: 'agent', key: 'implement', title: 'Implement', agent: 'codex',
+        prompt: 'Implement the plan in {{out:plan.doc}}. Summary: {{ out:plan.summary }} Reviewer said: {{out:approve.note}}',
+        outputs: [{ key: 'summary', type: 'text' }],
+        timeoutMin: 60
       },
-      {
-        id: 'implement',
-        name: 'Implement',
-        action: 'agent',
-        inputs: {
-          agent: { from: 'input', input: 'implementer' },
-          instructions: { from: 'template', parts: ['Implement ', { job: 'plan', output: 'plan' }, '. Feedback: ', { job: 'approve', output: 'feedback' }] },
-          workspace: { from: 'input', input: 'repo' }
-        }
-      },
-      {
-        id: 'tests',
-        name: 'Integration tests',
-        action: 'command',
-        inputs: {
-          program: { from: 'const', value: 'npm' },
-          args: { from: 'list', items: [{ from: 'const', value: 'test' }, { from: 'input', input: 'testArgs' }] },
-          folder: { from: 'input', input: 'repo' }
-        },
-        after: ['implement'],
-        limits: { timeoutMs: 600000, retries: 1 }
-      },
-      {
-        id: 'review',
-        name: 'Review',
-        action: 'agent',
-        inputs: {
-          instructions: { from: 'template', parts: ['Review the change. Summary: ', { job: 'implement', output: 'summary' }] },
-          workspace: { from: 'input', input: 'repo' }
-        },
-        after: ['tests'],
-        outputs: [{ key: 'verdict', type: 'enum', options: ['ship', 'fix'] }]
-      }
+      { kind: 'command', key: 'tests', title: 'Tests', run: ['npm', 'test', '--', '{{in:filter}}'], timeoutMin: 10, taskCheck: true }
     ],
-    outputs: [{ key: 'review', label: 'Review summary', from: { job: 'review', output: 'summary' } }]
+    deliverable: { criteria: ['The feature works', 'Tests pass'] }
   }
 }
-
-export function featureRevision(def = featureWorkflow(), n = 1): DefinitionRevision {
-  const snap = snapshotRevision(def, n, 1000)
-  if (!snap.ok) throw new Error(JSON.stringify(snap.issues, null, 2))
-  return snap.revision
-}
-
-export const repo = { kind: 'workspace' as const, path: 'C:/work/app' }

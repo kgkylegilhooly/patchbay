@@ -1,224 +1,155 @@
 import { readdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
-import { BUILT_IN_ACTIONS, type ActionCatalog } from '../../core/workflow/catalog'
-import { readDraftRecord, readRevisionRecord, WORKFLOW_ID, type RecordProblem } from '../../core/workflow/records'
-import { snapshotRevision } from '../../core/workflow/revision'
-import { validateDefinition } from '../../core/workflow/validate'
-import { readDefinition, WORKFLOW_SCHEMA, WorkflowShapeError, type DefinitionRevision, type DraftRecord, type ValidationIssue } from '../../shared/workflow'
+import {
+  ACTIVE_STATES, readWorkflowShape, WORKFLOW_SCHEMA, type AttemptState, type OutputValue, type RunState, type StepAttempt, type WorkflowRun
+} from '../../shared/workflow'
 
 /**
- * Workflow drafts and published revisions under the profile, apart from the canvas document:
- *   <dir>/drafts/<id>.json            the editable draft (DraftRecord)
- *   <dir>/revisions/<id>/<n>.json     published revisions, written once and never changed
- * Every write is atomic, and writes to one workflow are queued so two saves can't interleave. Saving never runs
- * anything. Reading never throws: a damaged file is moved aside to `<file>.bad-<time>` and reported, and a newer
- * Patchbay's file is reported and left as it is.
+ * Workflow runs, one JSON file each, and the hashes the person has started ("trusted"), apart from the canvas
+ * document:
+ *   <dir>/runs/<runId>.json
+ *   <dir>/trusted.json
+ * Each file is written whole, atomically, one write at a time (as agentStops.ts's stopFile). Loading never throws: a
+ * damaged run file is moved to `<file>.bad-<time>` and reported, and a newer Patchbay's is left where it is.
  */
 
-export interface WorkflowListing {
-  id: string
-  name?: string
-  version?: number
-  updatedAt?: number
-  published?: number[]
-  /** How many validation issues the draft has. A draft with issues can be saved but not published or run. */
-  issues?: number
-  /** Why it can't be used, when it can't. */
-  problem?: string
-  /** Where a damaged file was moved to. */
-  setAside?: string
+type Raw = Record<string, unknown>
+const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isText = (v: unknown): v is string => typeof v === 'string'
+const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const ATTEMPT_STATES: readonly AttemptState[] = ['launching', 'running', 'waiting-for-you', 'succeeded', 'failed', 'interrupted', 'superseded']
+const RUN_STATES: readonly RunState[] = ['running', 'waiting-for-you', 'succeeded', 'failed', 'stopped', 'needs-attention']
+
+function isOutput(v: unknown): v is OutputValue {
+  if (!isObject(v)) return false
+  if (v.type === 'text') return isText(v.text)
+  return v.type === 'file' && isText(v.path) && isText(v.sha256) && isText(v.source)
 }
 
-export type SaveResult =
-  | { ok: true; record: DraftRecord; issues: ValidationIssue[] }
-  | { ok: false; code: 'shape' | 'bad-id' | 'conflict' | 'newer'; message: string; current?: DraftRecord }
+function isAttempt(v: unknown): v is StepAttempt {
+  if (!isObject(v)) return false
+  return isText(v.id) && isText(v.step) && Number.isInteger(v.n) && (v.nodeId === null || isText(v.nodeId)) &&
+    ATTEMPT_STATES.includes(v.state as AttemptState) && isTime(v.startedAt) && (v.endedAt === undefined || isTime(v.endedAt)) &&
+    (v.outputs === undefined || (isObject(v.outputs) && Object.values(v.outputs).every(isOutput))) &&
+    (v.exitCode === undefined || Number.isInteger(v.exitCode)) && (v.why === undefined || isText(v.why)) &&
+    (v.decidedBy === undefined || v.decidedBy === 'person') && (v.via === undefined || v.via === 'retry' || v.via === 'changes')
+}
 
-export type PublishResult =
-  | { ok: true; revision: DefinitionRevision; record: DraftRecord }
-  | { ok: false; code: 'missing' | 'conflict' | 'invalid'; message: string; issues?: ValidationIssue[] }
+/** A run from parsed JSON, or why it can't be used. */
+export function readRun(raw: unknown): { ok: true; run: WorkflowRun } | { ok: false; newer: boolean; problem: string } {
+  if (!isObject(raw)) return { ok: false, newer: false, problem: 'Not a workflow run.' }
+  if (raw.schema !== WORKFLOW_SCHEMA) {
+    const newer = typeof raw.schema === 'number' && raw.schema > WORKFLOW_SCHEMA
+    return { ok: false, newer, problem: newer ? `Saved by a newer Patchbay (schema ${raw.schema}).` : `Unknown schema ${JSON.stringify(raw.schema)}.` }
+  }
+  try { readWorkflowShape(raw.definition) } catch (e) { return { ok: false, newer: false, problem: `Its definition: ${(e as Error).message}` } }
+  const wt = raw.worktree
+  const ok = isText(raw.id) && RUN_ID.test(raw.id) && isText(raw.projectId) && isText(raw.ref) && isText(raw.hash) && isText(raw.cwd) &&
+    (wt === null || (isObject(wt) && isText(wt.path) && isText(wt.branch))) && (raw.groupId === null || isText(raw.groupId)) &&
+    (raw.taskId === undefined || isText(raw.taskId)) && RUN_STATES.includes(raw.state as RunState) && isObject(raw.inputs) &&
+    Object.values(raw.inputs).every((v) => ['string', 'number', 'boolean'].includes(typeof v)) &&
+    Array.isArray(raw.attempts) && raw.attempts.every(isAttempt) && isTime(raw.startedAt) && (raw.endedAt === undefined || isTime(raw.endedAt)) &&
+    (raw.stopped === undefined || typeof raw.stopped === 'boolean')
+  if (!ok) return { ok: false, newer: false, problem: 'A field is missing or of the wrong kind.' }
+  return { ok: true, run: raw as unknown as WorkflowRun }
+}
 
-type Loaded = { ok: true; record: DraftRecord } | { ok: false; missing: true } | { ok: false; missing?: false; problem: RecordProblem; setAside?: string }
+export interface RunStoreLoad {
+  runs: WorkflowRun[]
+  /** Files that couldn't be used: moved aside (damaged) or left (newer). */
+  unavailable: Array<{ file: string; problem: string; setAside?: string }>
+}
 
-export function createWorkflowStore(dir: string, opts: { now?: () => number; log?: (line: string) => void; catalog?: ActionCatalog } = {}) {
+export function createRunStore(dir: string, opts: { now?: () => number; log?: (line: string) => void } = {}) {
   const now = opts.now ?? Date.now
   const log = opts.log ?? ((line: string) => console.error(line))
-  const catalog = opts.catalog ?? BUILT_IN_ACTIONS
-  const draftsDir = join(dir, 'drafts')
-  const draftFile = (id: string): string => join(draftsDir, `${id}.json`)
-  const revisionsDir = (id: string): string => join(dir, 'revisions', id)
-  const revisionFile = (id: string, n: number): string => join(revisionsDir(id), `${n}.json`)
+  const runsDir = join(dir, 'runs')
+  const trustFile = join(dir, 'trusted.json')
+  const writes = new Map<string, Promise<void>>()
 
-  const setAside = (file: string, why: string): string | undefined => {
-    let target = `${file}.bad-${now()}`
-    for (let n = 1; readIfPresentSync(target) !== null; n++) target = `${file}.bad-${now()}-${n}`
-    try {
-      renameSync(file, target)
-      log(`Workflows: ${file} couldn't be used (${why}); it was moved to ${target}.`)
-      return target
-    } catch (e) {
-      log(`Workflows: ${file} couldn't be used (${why}), and couldn't be moved aside (${(e as Error).message}).`)
-      return undefined
-    }
-  }
-
-  const load = (id: string): Loaded => {
-    const file = draftFile(id)
-    let text: string | null
-    try { text = readIfPresentSync(file) } catch (e) {
-      return { ok: false, problem: { kind: 'damaged', message: `Couldn't be read: ${(e as Error).message}` } }
-    }
-    if (text === null) return { ok: false, missing: true }
-    let raw: unknown
-    try { raw = JSON.parse(text) } catch (e) {
-      const problem: RecordProblem = { kind: 'damaged', message: `Not valid JSON: ${(e as Error).message}` }
-      return { ok: false, problem, setAside: setAside(file, problem.message) }
-    }
-    const read = readDraftRecord(raw, id)
-    if (read.ok) return read
-    if (read.problem.kind === 'newer') return { ok: false, problem: read.problem }
-    return { ok: false, problem: read.problem, setAside: setAside(file, read.problem.message) }
-  }
-
-  /** One queue per workflow, so saves and publishes of it happen one at a time, in order. */
-  const queues = new Map<string, Promise<unknown>>()
-  const serial = <T>(id: string, work: () => Promise<T>): Promise<T> => {
-    const prev = queues.get(id) ?? Promise.resolve()
-    const next = prev.then(work, work)
-    const tail = next.catch(() => undefined)
-    queues.set(id, tail)
-    void tail.then(() => { if (queues.get(id) === tail) queues.delete(id) })
+  /** Queues a whole-file write after any earlier one to the same file. Resolves when it is on disk. */
+  const write = (file: string, text: string): Promise<void> => {
+    const next = (writes.get(file) ?? Promise.resolve()).then(() => writeAtomic(file, text))
+    const tail = next.catch((e: unknown) => log(`Workflows: ${file} couldn't be saved: ${String(e)}`))
+    writes.set(file, tail)
+    void tail.then(() => { if (writes.get(file) === tail) writes.delete(file) })
     return next
   }
 
-  const write = (record: DraftRecord): Promise<void> => writeAtomic(draftFile(record.id), `${JSON.stringify(record, null, 2)}\n`)
-
-  const revisionNumbers = (id: string): number[] => {
+  let trusted: Set<string> | null = null
+  const trust = (): Set<string> => {
+    if (trusted) return trusted
+    trusted = new Set()
     try {
-      return readdirSync(revisionsDir(id)).flatMap((f) => (/^\d+\.json$/.test(f) ? [Number(f.slice(0, -5))] : []))
-    } catch {
-      return []
+      const raw = JSON.parse(readIfPresentSync(trustFile) ?? 'null') as { hashes?: unknown } | null
+      if (raw && Array.isArray(raw.hashes)) for (const h of raw.hashes) if (isText(h)) trusted.add(h)
+    } catch (e) {
+      log(`Workflows: the trusted list couldn't be read (${(e as Error).message}); agents can't start workflows until you start them again.`)
     }
+    return trusted
   }
 
   return {
-    /** Every draft, each with its validation issue count or why it can't be used. Also lists files already set aside. */
-    list(): { workflows: WorkflowListing[]; setAside: string[] } {
+    /** Every saved run. Damaged files are moved aside; none of this stops the app. */
+    load(): RunStoreLoad {
+      const out: RunStoreLoad = { runs: [], unavailable: [] }
       let files: string[] = []
-      try { files = readdirSync(draftsDir) } catch { /* No drafts yet. */ }
-      const workflows: WorkflowListing[] = []
-      for (const f of files.filter((f) => f.endsWith('.json')).sort()) {
-        const id = f.slice(0, -5)
-        if (!WORKFLOW_ID.test(id)) continue
-        const got = load(id)
-        if (got.ok) {
-          const { record } = got
-          workflows.push({ id, name: record.definition.name, version: record.version, updatedAt: record.updatedAt, published: record.published, issues: validateDefinition(record.definition, catalog).length })
-        } else if (!got.missing) {
-          workflows.push({ id, problem: got.problem.message, ...(got.setAside ? { setAside: got.setAside } : {}) })
+      try { files = readdirSync(runsDir).filter((f) => f.endsWith('.json')).sort() } catch { return out }
+      for (const f of files) {
+        const file = join(runsDir, f)
+        let raw: unknown
+        let problem: string
+        let newer = false
+        try {
+          raw = JSON.parse(readIfPresentSync(file) ?? 'null')
+          const read = readRun(raw)
+          if (read.ok && `${read.run.id}.json` === f) { out.runs.push(read.run); continue }
+          problem = read.ok ? `The file is named ${f} but holds run ${read.run.id}.` : read.problem
+          newer = !read.ok && read.newer
+        } catch (e) {
+          problem = `Not valid JSON: ${(e as Error).message}`
+        }
+        if (newer) { out.unavailable.push({ file, problem }); continue }
+        const target = `${file}.bad-${now()}`
+        try {
+          renameSync(file, target)
+          log(`Workflows: the run file ${file} couldn't be used (${problem}); it was moved to ${target}.`)
+          out.unavailable.push({ file, problem, setAside: target })
+        } catch (e) {
+          log(`Workflows: the run file ${file} couldn't be used (${problem}) or moved aside (${(e as Error).message}).`)
+          out.unavailable.push({ file, problem })
         }
       }
-      const aside = files.filter((f) => /\.json\.bad-/.test(f)).map((f) => join(draftsDir, f)).sort()
-      return { workflows, setAside: aside }
+      return out
     },
 
-    get(id: string): { ok: true; record: DraftRecord; issues: ValidationIssue[] } | { ok: false; message: string; setAside?: string } {
-      if (!WORKFLOW_ID.test(id)) return { ok: false, message: `"${id}" isn't a workflow id.` }
-      const got = load(id)
-      if (got.ok) return { ok: true, record: got.record, issues: validateDefinition(got.record.definition, catalog) }
-      if (got.missing) return { ok: false, message: `There's no workflow ${id}.` }
-      return { ok: false, message: got.problem.message, ...(got.setAside ? { setAside: got.setAside } : {}) }
+    /** Saves a run. Resolves once it is on disk: effects are only carried out after that. */
+    save(run: WorkflowRun): Promise<void> {
+      if (!RUN_ID.test(run.id)) return Promise.reject(new Error(`Bad run id ${run.id}`))
+      return write(join(runsDir, `${run.id}.json`), `${JSON.stringify(run)}\n`)
     },
 
-    /**
-     * Saves a draft. `expectedVersion` is the version the edit was made against (null for a new workflow), so an
-     * edit made against an older copy is refused rather than overwriting someone else's change. A draft with
-     * validation issues still saves; they come back with it.
-     */
-    saveDraft(raw: unknown, expectedVersion: number | null): Promise<SaveResult> {
-      let definition: DraftRecord['definition']
-      try { definition = readDefinition(raw) } catch (e) {
-        if (e instanceof WorkflowShapeError) return Promise.resolve({ ok: false, code: 'shape', message: e.message })
-        throw e
-      }
-      if (!WORKFLOW_ID.test(definition.id)) {
-        return Promise.resolve({ ok: false, code: 'bad-id', message: `"${definition.id}" can't be a workflow id: use letters, digits, - and _ (up to 64).` })
-      }
-      return serial(definition.id, async (): Promise<SaveResult> => {
-        const got = load(definition.id)
-        if (!got.ok && !got.missing && got.problem.kind === 'newer') {
-          return { ok: false, code: 'newer', message: `${definition.id} was saved by a newer Patchbay, so this one won't overwrite it. ${got.problem.message}` }
-        }
-        const current = got.ok ? got.record : null
-        if ((current?.version ?? null) !== expectedVersion) {
-          return {
-            ok: false,
-            code: 'conflict',
-            message: current
-              ? `The workflow changed since this edit was made (now version ${current.version}, the edit was against ${expectedVersion ?? 'a new workflow'}). Reload it and make the edit again.`
-              : `There's no saved workflow ${definition.id} to update; save it as new.`,
-            ...(current ? { current } : {})
-          }
-        }
-        const at = now()
-        const record: DraftRecord = {
-          schema: WORKFLOW_SCHEMA,
-          id: definition.id,
-          version: (current?.version ?? 0) + 1,
-          createdAt: current?.createdAt ?? at,
-          updatedAt: at,
-          published: current?.published ?? [],
-          definition
-        }
-        await write(record)
-        return { ok: true, record, issues: validateDefinition(definition, catalog) }
-      })
+    isTrusted(hash: string): boolean {
+      return trust().has(hash)
     },
 
-    /** Publishes the draft at `expectedVersion` as the next revision. Refused while it has validation issues. */
-    publish(id: string, expectedVersion: number): Promise<PublishResult> {
-      if (!WORKFLOW_ID.test(id)) return Promise.resolve({ ok: false, code: 'missing', message: `"${id}" isn't a workflow id.` })
-      return serial(id, async (): Promise<PublishResult> => {
-        const got = load(id)
-        if (!got.ok) return { ok: false, code: 'missing', message: got.missing ? `There's no workflow ${id}.` : got.problem.message }
-        const { record } = got
-        if (record.version !== expectedVersion) {
-          return { ok: false, code: 'conflict', message: `The workflow changed since it was checked (now version ${record.version}, not ${expectedVersion}). Check it again before publishing.` }
-        }
-        const n = Math.max(0, ...record.published, ...revisionNumbers(id)) + 1
-        const snap = snapshotRevision(record.definition, n, now(), catalog)
-        if (!snap.ok) return { ok: false, code: 'invalid', message: `Fix ${snap.issues.length} problem(s) before publishing.`, issues: snap.issues }
-        // The revision first: a crash before the draft is updated leaves an extra revision, never a missing one.
-        await writeAtomic(revisionFile(id, n), `${JSON.stringify(snap.revision, null, 2)}\n`)
-        const next: DraftRecord = { ...record, published: [...record.published, n] }
-        await write(next)
-        return { ok: true, revision: snap.revision, record: next }
-      })
+    /** Records that the person started this exact content. */
+    trust(hash: string): Promise<void> {
+      const set = trust()
+      if (set.has(hash)) return Promise.resolve()
+      set.add(hash)
+      return write(trustFile, `${JSON.stringify({ hashes: [...set] })}\n`)
     },
 
-    /** A published revision, checked against its hash. A damaged one is set aside; it is never repaired. */
-    getRevision(id: string, n: number): { ok: true; revision: DefinitionRevision } | { ok: false; message: string } {
-      if (!WORKFLOW_ID.test(id) || !Number.isInteger(n) || n < 1) return { ok: false, message: 'Not a workflow revision.' }
-      const file = revisionFile(id, n)
-      let text: string | null
-      try { text = readIfPresentSync(file) } catch (e) { return { ok: false, message: (e as Error).message } }
-      if (text === null) return { ok: false, message: `Workflow ${id} has no revision ${n}.` }
-      let raw: unknown
-      try { raw = JSON.parse(text) } catch (e) {
-        setAside(file, (e as Error).message)
-        return { ok: false, message: `Revision ${n} of ${id} is damaged.` }
-      }
-      const read = readRevisionRecord(raw, id, n)
-      if (read.ok) return read
-      if (read.problem.kind === 'damaged') setAside(file, read.problem.message)
-      return { ok: false, message: read.problem.message }
-    },
-
-    /** Resolves when every queued write has finished. */
     async flush(): Promise<void> {
-      await Promise.all([...queues.values()])
+      await Promise.all([...writes.values()])
     }
   }
 }
 
-export type WorkflowStore = ReturnType<typeof createWorkflowStore>
+export type RunStore = ReturnType<typeof createRunStore>
+
+/** Whether a run still has anything going on. */
+export const isLive = (run: WorkflowRun): boolean => run.attempts.some((a) => ACTIVE_STATES.includes(a.state))
