@@ -56,7 +56,7 @@ export function registerSearchIpc(s: {
   const saveHandoff = createHandoffSaver({
     store: s.store,
     home: homedir(),
-    writeFile: (p, text) => writeFile(p, text, 'utf8'),
+    writeFile: (p, text, exclusive) => writeFile(p, text, { encoding: 'utf8', flag: exclusive ? 'wx' : 'w' }),
     async pickFile(defaultPath) {
       // Screenshot scenes answer the dialog this way (see test/acceptance/readerPictureScenes.cjs). Never when installed.
       if (!app.isPackaged && process.env.PB_SCENE_SAVE_AS) return process.env.PB_SCENE_SAVE_AS

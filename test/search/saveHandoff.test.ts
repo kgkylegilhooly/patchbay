@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,7 +41,7 @@ describe('saveHandoff', () => {
       store,
       home: 'C:\\Users\\me',
       system: SYSTEM,
-      writeFile: (p, t) => writeFile(p, t, 'utf8'),
+      writeFile: (p, t, exclusive) => writeFile(p, t, { encoding: 'utf8', flag: exclusive ? 'wx' : 'w' }),
       pickFile: async (p) => {
         asked.push(p)
         return answer(p)
@@ -74,6 +74,17 @@ describe('saveHandoff', () => {
     expect(await save({ text: '  ', title: 'T' })).toMatchObject({ ok: false, reason: 'The handoff is empty.' })
     expect(await save(null as never)).toMatchObject({ ok: false })
     expect(asked).toEqual([])
+  })
+
+  it('never replaces a file under a name the dialog did not ask about', async () => {
+    writeFileSync(join(dir, 'plan.txt.md'), 'keep me')
+    const r = await make(() => join(dir, 'plan.txt'))({ text: 'x', title: 'T' })
+    expect(r).toMatchObject({ ok: false, reason: expect.stringContaining('plan.txt.md already exists') })
+    expect(readFileSync(join(dir, 'plan.txt.md'), 'utf8')).toBe('keep me')
+    // The name the dialog gave, which it asked about, is replaced.
+    writeFileSync(join(dir, 'b.md'), 'old')
+    expect(await make(() => join(dir, 'b.md'))({ text: 'new', title: 'T' })).toMatchObject({ ok: true })
+    expect(readFileSync(join(dir, 'b.md'), 'utf8')).toBe('new' + String.fromCharCode(10))
   })
 
   it('says why a write failed', async () => {

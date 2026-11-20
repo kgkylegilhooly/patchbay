@@ -59,7 +59,10 @@ describe('imagePath', () => {
 
   it('resolves against the document folder, and takes drive paths and file URLs', () => {
     expect(imagePath(doc, 'shots/a.png')).toEqual({ ok: true, path: 'C:\\work\\docs\\shots\\a.png' })
-    expect(imagePath(doc, '../assets/a%20b.png?raw=1#top')).toEqual({ ok: true, path: 'C:\\work\\assets\\a b.png' })
+    expect(imagePath(doc, '../assets/a%20b.png?raw=1')).toEqual({ ok: true, path: 'C:\\work\\assets\\a b.png' })
+    // A # can be part of a folder's name; when no such file is there, it's read as a fragment.
+    expect(imagePath(doc, '../C# samples/ui.png')).toEqual({ ok: true, path: 'C:\\work\\C# samples\\ui.png', bare: 'C:\\work\\C' })
+    expect(imagePath(doc, 'ui.png#dark')).toEqual({ ok: true, path: 'C:\\work\\docs\\ui.png#dark', bare: 'C:\\work\\docs\\ui.png' })
     expect(imagePath(doc, 'D:\\pics\\x.jpg')).toEqual({ ok: true, path: 'D:\\pics\\x.jpg' })
     expect(imagePath(doc, 'file:///C:/work/x.png')).toEqual({ ok: true, path: 'C:\\work\\x.png' })
   })

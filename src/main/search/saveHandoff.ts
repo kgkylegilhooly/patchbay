@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import type { CanvasStore } from '../../shared/contract'
 import type { SaveHandoff, SaveHandoffResult } from '../../shared/searchBridge'
 import { checkDocPath, systemFolders } from '../reader/policy'
@@ -29,7 +29,8 @@ export interface HandoffSaverDeps {
   home: string
   /** The system save dialog, which asks before replacing a file. */
   pickFile(defaultPath: string): Promise<string | null>
-  writeFile(path: string, text: string): Promise<void>
+  /** `exclusive` fails with EEXIST rather than replace a file. */
+  writeFile(path: string, text: string, exclusive: boolean): Promise<void>
   system?: string[]
 }
 
@@ -48,9 +49,12 @@ export function createHandoffSaver(d: HandoffSaverDeps) {
     if (!picked) return { ok: false, cancelled: true, reason: 'Not saved.' }
     const check = checkDocPath(asMarkdownPath(picked), system)
     if (!check.ok) return { ok: false, reason: check.reason }
+    // The dialog asked before replacing the name it gave. A name changed here wasn't asked about, so it never replaces.
+    const changed = check.path.toLowerCase() !== resolve(picked).toLowerCase()
     try {
-      await d.writeFile(check.path, a.text.endsWith('\n') ? a.text : `${a.text}\n`)
+      await d.writeFile(check.path, a.text.endsWith('\n') ? a.text : `${a.text}\n`, changed)
     } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') return { ok: false, reason: `${basename(check.path)} already exists. Save again and pick another name.` }
       return { ok: false, reason: `The handoff couldn't be saved: ${(e as Error).message}` }
     }
     return { ok: true, path: check.path }
