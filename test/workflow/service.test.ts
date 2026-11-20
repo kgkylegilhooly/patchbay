@@ -560,3 +560,67 @@ describe('L1 and L2 through the service', () => {
     expect(open.ok && later.service.get(open.run.id)).toBeTruthy()
   })
 })
+
+describe('prune review fixes', () => {
+  const DAY = 24 * 60 * 60_000
+
+  /** A finished run with kept files, then a later service over the same data. */
+  async function finishedRun(wf: Workflow = featureWorkflow()) {
+    const w = world(wf)
+    await startByPerson(w)
+    await submitPlan(w)
+    const id = w.run().id
+    await w.service.act(id, { type: 'stop' })
+    await w.settle()
+    w.service.dispose()
+    return { w, id, artifacts: join(w.dataDir, 'workflow-artifacts', id) }
+  }
+
+  test('H: if the runs can\'t be listed, nothing at all is pruned', async () => {
+    const { w, artifacts } = await finishedRun()
+    // runs/ as a file: listing it fails with something other than "not there".
+    const runsDir = join(w.dataDir, 'workflow-runs', 'runs')
+    rmSync(runsDir, { recursive: true, force: true })
+    writeFileSync(runsDir, 'not a folder')
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    later.advanceClock(400 * DAY)
+    expect(later.service.unavailable).toEqual([])
+    const r = await later.service.prune()
+    expect(r).toMatchObject({ removed: [], skipped: expect.stringContaining("couldn't be listed") })
+    expect(existsSync(artifacts)).toBe(true)
+  })
+
+  test('a run file that can\'t be read is left in place, and its files are kept', async () => {
+    const { w, id, artifacts } = await finishedRun()
+    const file = join(w.dataDir, 'workflow-runs', 'runs', `${id}.json`)
+    rmSync(file)
+    mkdirSync(file) // Reading it now fails, as a locked file would.
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    later.advanceClock(400 * DAY)
+    await later.service.prune()
+    expect(existsSync(file)).toBe(true)
+    expect(existsSync(artifacts)).toBe(true)
+  })
+
+  test('M: an accepted task keeps its run\'s evidence; a cancelled one, or a gone project, lets it go', async () => {
+    const setTask = (w: ReturnType<typeof world>, state: string) =>
+      w.store.dispatch({ op: 'setTasks', projectId: 'p1', tasks: { tasks: [{ id: 'task1', state } as never], attempts: [] } } as never)
+    for (const [state, kept] of [['accepted', true], ['ready-for-review', true], ['cancelled', false]] as const) {
+      const { w, id, artifacts } = await finishedRun()
+      setTask(w, state)
+      const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+      later.advanceClock(400 * DAY)
+      const r = await later.service.prune()
+      expect([state, existsSync(artifacts)]).toEqual([state, kept])
+      expect(r.removed).toEqual(kept ? [] : [id])
+    }
+  })
+
+  test('M: a task missing from a project that is there counts as needed', async () => {
+    const { w, artifacts } = await finishedRun()
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    later.advanceClock(400 * DAY)
+    expect((await later.service.prune()).removed).toEqual([])
+    expect(existsSync(artifacts)).toBe(true)
+  })
+})

@@ -623,14 +623,32 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
    * no longer recorded. Never an open run's, nor one whose deliverable task is still in play (its check evidence is
    * the run's log). See core/workflow/prune.ts.
    */
-  const prune = async (limits: PruneLimits = DEFAULT_PRUNE): Promise<{ removed: string[] }> => {
-    const taskInPlay = (run: WorkflowRun): boolean => {
-      if (!run.taskId) return false
-      const t = d.store.get().projects.find((p) => p.id === run.projectId)?.tasks?.tasks.find((x) => x.id === run.taskId)
-      return !!t && t.state !== 'accepted' && t.state !== 'cancelled'
+  const prune = async (limits: PruneLimits = DEFAULT_PRUNE): Promise<{ removed: string[]; skipped?: string }> => {
+    // Deleting rests on knowing every run there is. If they couldn't all be listed, nothing is deleted.
+    if (loaded.failed) {
+      log(`Workflows: not pruning, because ${loaded.failed}.`)
+      return { removed: [], skipped: loaded.failed }
     }
-    const sized = await Promise.all([...runs.values()].map(async (run) => ({ run, bytes: await folderBytes(join(artifactsDir, run.id)) })))
-    const removed = planPrune(sized, now(), limits, taskInPlay)
+    /**
+     * Whether a run's deliverable task still needs its files: its check's evidence is the run's log, and an accepted
+     * task's evidence is kept as long as the task. Only a cancelled task, or one whose project is gone, lets them go.
+     * A task missing from a project that is there may just have failed to load, so it counts as needed.
+     */
+    const taskNeeds = (run: WorkflowRun): boolean => {
+      if (!run.taskId) return false
+      const project = d.store.get().projects.find((p) => p.id === run.projectId)
+      if (!project) return false
+      const t = project.tasks?.tasks.find((x) => x.id === run.taskId)
+      return !t || t.state !== 'cancelled'
+    }
+    let removed: string[]
+    try {
+      const sized = await Promise.all([...runs.values()].map(async (run) => ({ run, bytes: await folderBytes(join(artifactsDir, run.id)) })))
+      removed = planPrune(sized, now(), limits, taskNeeds)
+    } catch (e) {
+      log(`Workflows: not pruning, because planning it failed: ${(e as Error).message}`)
+      return { removed: [], skipped: (e as Error).message }
+    }
     const present = new Set(d.store.get().nodes.map((n) => n.id))
     for (const id of removed) {
       const run = runs.get(id)!
