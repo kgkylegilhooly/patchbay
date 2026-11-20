@@ -13,6 +13,8 @@ export function WorkflowList({ projectId, onPick }: { projectId: string; onPick:
   const repo = useWorkflowUi((s) => s.repo)
 
   useEffect(() => {
+    // A list from the last time the picker was open would be shown, then replaced: start from none.
+    useWorkflowUi.setState({ entries: null })
     void loadWorkflows(projectId)
   }, [projectId])
 
@@ -21,6 +23,7 @@ export function WorkflowList({ projectId, onPick }: { projectId: string; onPick:
       <span className="field-label workflow-list-label">Workflows</span>
       {!entries && <p className="recipe-dim">Reading workflows…</p>}
       {entries?.length === 0 && <p className="recipe-dim">None yet.</p>}
+      {/* Nothing clickable until the list is in: a button drawn early moves when it arrives, under a quick click. */}
       {entries?.map((e) => (
         <button
           type="button"
@@ -39,7 +42,7 @@ export function WorkflowList({ projectId, onPick }: { projectId: string; onPick:
           {e.problem && <span className="recipe-why">{e.problem}</span>}
         </button>
       ))}
-      <button
+      {entries && <button
         type="button"
         className={`recipe-item workflow-new${editing && !editing.file && !chosen ? ' recipe-item-on' : ''}`}
         data-workflow-new
@@ -50,7 +53,7 @@ export function WorkflowList({ projectId, onPick }: { projectId: string; onPick:
         }}
       >
         <span className="recipe-item-name">+ New workflow</span>
-      </button>
+      </button>}
       <p className="workflow-list-foot">
         Files:{' '}
         <button type="button" className="workflow-link" onClick={() => void workflows.openFolder(projectId, 'personal')}>

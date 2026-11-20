@@ -144,7 +144,8 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
             {e.problem && <span className="recipe-why">{e.problem}</span>}
           </button>
         ))}
-        <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />
+        {/* Once the recipes are in, so the workflows below them never move under a click. */}
+        {listing && <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />}
         <div className="recipe-list-foot">
           <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
             Open personal recipes folder
