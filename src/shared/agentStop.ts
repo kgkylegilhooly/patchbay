@@ -37,16 +37,17 @@ const MESSAGE_CHARS = 500
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 const RESET_TEXT =
-  /\bresets?\s+(?:at\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i
+  /\b(?:resets?|try again)\s+(?:at\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(?:(\d{4})\s+)?(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i
 
 /**
  * The next local time a message such as "resets 12:30am" or "resets Nov 21, 9am" names, after `after`. Null when it
- * names none. A bare number needs am/pm or minutes to count, so "resets 5" isn't read as 5 o'clock.
+ * names none. A bare number needs am/pm or minutes to count, so "resets 5" isn't read as 5 o'clock. Codex says it as
+ * "try again at 3:45 PM" or "try again at Nov 21st, 2026 3:45 PM", which reads the same way.
  */
 export function parseResetTime(text: string, after: number, localZone = localTimeZone()): number | null {
   const m = RESET_TEXT.exec(text)
   if (!m) return null
-  const [, month, day, hourText, minuteText, half] = m
+  const [, month, day, year, hourText, minuteText, half] = m
   if (!half && minuteText === undefined) return null
   let hour = Number(hourText)
   const minute = minuteText === undefined ? 0 : Number(minuteText)
@@ -57,9 +58,9 @@ export function parseResetTime(text: string, after: number, localZone = localTim
   if (zone && zone !== localZone) return inZone(zone, after, month ? MONTHS.indexOf(month.toLowerCase()) : null, Number(day), hour, minute)
   const base = new Date(after)
   if (month) {
-    const at = new Date(base.getFullYear(), MONTHS.indexOf(month.toLowerCase()), Number(day), hour, minute)
-    // "Jan 2" seen on Dec 30 is next year's.
-    if (at.getTime() <= after) at.setFullYear(at.getFullYear() + 1)
+    const at = new Date(year ? Number(year) : base.getFullYear(), MONTHS.indexOf(month.toLowerCase()), Number(day), hour, minute)
+    // "Jan 2" seen on Dec 30 is next year's. A year that's given is taken as it is.
+    if (!year && at.getTime() <= after) at.setFullYear(at.getFullYear() + 1)
     return at.getTime()
   }
   const at = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, minute)

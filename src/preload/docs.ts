@@ -19,6 +19,7 @@ const docsBridge: DocsBridge & {
   comments: call('comments'),
   saveComments: call('saveComments'),
   openLink: call('openLink'),
+  image: call('image'),
   onChanged(cb) {
     const handler = (_e: unknown, path: string): void => cb(path)
     ipcRenderer.on('pb:docs:changed', handler)

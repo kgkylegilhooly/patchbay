@@ -433,3 +433,24 @@
   display: block;
   margin: 4px auto 10px;
 }
+
+/* Where "Save as file" put the handoff, with Open in Reader while the file matches the editor. */
+.handoff-saved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  border-top: 1px solid var(--line);
+}
+
+.handoff-saved span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}

@@ -555,7 +555,8 @@ export function createNodeRunner({
       // Any later hook means the prompt was answered in the terminal. The exceptions aren't answers:
       // the permission notification arrives about 6 s into the same prompt, and a further request
       // can come from a tool running in parallel.
-      if (name !== 'Notification' && name !== 'PermissionRequest') approvals?.clearNode(id)
+      // Nor are a subagent starting or ending (Codex), which can happen while the window waits on a prompt.
+      if (name !== 'Notification' && name !== 'PermissionRequest' && name !== 'SubagentStart' && name !== 'SubagentStop') approvals?.clearNode(id)
 
       tracker.apply(id, {
         type: 'hook',

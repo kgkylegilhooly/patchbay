@@ -555,7 +555,8 @@ const scenes = {
   ...require('./needsYouScenes.cjs').scenes,
   ...require('./filesScenes.cjs').scenes,
   ...require('./stopScenes.cjs').scenes,
-  ...require('./readerScenes.cjs').scenes
+  ...require('./readerScenes.cjs').scenes,
+  ...require('./readerPictureScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -655,7 +656,8 @@ const seeds = {
   ...require('./needsYouScenes.cjs').seeds,
   ...require('./filesScenes.cjs').seeds,
   ...require('./stopScenes.cjs').seeds,
-  ...require('./readerScenes.cjs').seeds
+  ...require('./readerScenes.cjs').seeds,
+  ...require('./readerPictureScenes.cjs').seeds
 }
 
 const launchJsonExample = `{
