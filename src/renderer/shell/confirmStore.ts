@@ -58,7 +58,7 @@ export function settleConfirm(id: number, ok: boolean): void {
   emit()
 }
 
-/** Cancels every waiting confirmation, as when the app's view changes under them. */
+/** Cancels every waiting confirmation. App calls it when the project on screen changes. */
 export function cancelAllConfirms(): void {
   const was = queue
   queue = []

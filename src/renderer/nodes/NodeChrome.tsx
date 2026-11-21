@@ -15,6 +15,7 @@ import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
+import { confirmThen } from '../shell/confirmStore'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -156,28 +157,26 @@ function Held({ node }: { node: CanvasNode }): React.JSX.Element | null {
 }
 
 function CloseControl({ node, status }: { node: CanvasNode; status: AgentStatus | null }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false)
   const busy = status === 'working' || status === 'needs-you'
-  if (confirming && busy) {
-    return (
-      <span className="confirm">
-        <span>{status === 'working' ? 'Still working.' : 'Waiting on you.'} Close it?</span>
-        <button className="btn btn-danger nodrag" onClick={() => closeNodes([node.id])}>
-          Close
-        </button>
-        <button className="btn nodrag" onClick={() => setConfirming(false)}>
-          Keep
-        </button>
-      </span>
+  // The same question the canvas menu's Close asks, in the one confirmation dialog.
+  const askClose = (): void =>
+    void confirmThen(
+      {
+        title: 'Close window?',
+        message: status === 'working' ? 'Still working. Close anyway?' : 'Waiting on you. Close anyway?',
+        verb: 'Close window',
+        cancelLabel: 'Keep',
+        attrs: { 'data-confirm': 'close' }
+      },
+      () => closeNodes([node.id])
     )
-  }
   return (
     <button
       className="icon-btn tool-btn nodrag"
       data-tool="close"
       aria-label={`Close ${node.title}`}
       title="Close"
-      onClick={() => (busy ? setConfirming(true) : closeNodes([node.id]))}
+      onClick={() => (busy ? askClose() : closeNodes([node.id]))}
     >
       <Icon name="close" size={15} />
     </button>

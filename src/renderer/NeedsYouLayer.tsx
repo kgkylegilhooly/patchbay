@@ -16,7 +16,8 @@ export function NeedsYouLayer({ commands }: { commands: Commands }): React.JSX.E
     if (!peek) return
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || keyFocusOf(e.target as Element | null) !== 'canvas') return
-      if (document.querySelector('.menu-panel, .palette, .settings, .shell-modal, .shell-view')) return
+      // A modal sits above the peek and keeps its Esc; a view sits below it, so the peek, on top, takes the Esc first.
+      if (document.querySelector('.menu-panel, .palette, .settings, .shell-modal')) return
       e.preventDefault()
       e.stopPropagation()
       closePeek()

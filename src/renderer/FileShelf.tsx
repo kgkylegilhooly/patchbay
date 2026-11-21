@@ -192,7 +192,18 @@ function Shelf(): React.JSX.Element {
   return (
     <Panel kind="drawer" title={`Files${project ? ` in ${project.name}` : ''}`} icon="file" label="Files shelf" className="shelf-drawer" closeLabel="Close the Files shelf" onClose={closeFileShelf} initialFocus="none" flush>
       <div className="shelf-controls">
-        <input ref={input} className="shelf-search" type="search" placeholder="Search by name or folder" aria-label="Search files" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input ref={input} className="shelf-search" type="search" placeholder="Search by name or folder" aria-label="Search files"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          // Focus starts here, so Esc here closes the shelf, as it does from anywhere else in it.
+          data-own-esc=""
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            e.stopPropagation()
+            closeFileShelf()
+          }}
+        />
         <select aria-label="Type of file" value={kind} onChange={(e) => setKind(e.target.value as KindFilter)}>
           {KIND_FILTERS.map((k) => (
             <option key={k.id} value={k.id}>

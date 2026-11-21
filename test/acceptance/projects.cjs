@@ -169,9 +169,11 @@ async function main() {
     await (await tab(page, 'Renamed')).click({ button: 'right' })
     await lib.sleep(200)
     await menuItem(page, 'delete-project')
-    const asked = await page.$eval('.menu-panel [data-cmd="delete-project"]', (b) => b.textContent)
+    // The menu closes and a confirmation asks; Cancel is first and holds focus, the red verb deletes.
+    await page.waitForSelector('[data-confirm="delete-project"]', { timeout: 5000 })
+    const asked = await page.$eval('[data-confirm="delete-project"] .confirm-message', (b) => b.textContent)
     check('Deleting a project with sessions asks first, and names them', asked.includes('Ends') && /for good/.test(asked), asked)
-    await menuItem(page, 'delete-project')
+    await page.click('[data-confirm="delete-project"] .btn-danger')
     await lib.waitFor('the tab to go', async () => (await tabNames(page)).length === 1, 10000)
     const final = await lib.doc(page)
     check('Deleting removes its windows and leaves the other project alone', !final.nodes.some((n) => n.id === fresh.id) && final.nodes.some((n) => n.id === 'old'))

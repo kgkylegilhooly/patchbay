@@ -33,7 +33,10 @@ export interface PanelProps {
   onSubmit?: (e: React.FormEvent<HTMLFormElement>) => void
   /** Where focus starts: the element marked data-autofocus, else the first field (forms, modals) or the panel. */
   initialFocus?: 'auto' | 'panel' | 'none'
-  /** Answer Esc even when focus isn't inside the panel. On for modals and views, which cover what's behind them. */
+  /**
+   * Answer Esc even when focus isn't inside the panel (only the top panel does, and never from a text box or terminal).
+   * On for modals, views and drawers; off for the small forms, so typed work isn't lost to an Esc meant for the canvas.
+   */
   globalEsc?: boolean
   /** Clicking the dim layer around a modal closes it. Off by default, so typed work isn't lost to a stray click. */
   scrimCloses?: boolean
@@ -89,7 +92,7 @@ export function Panel({
   const latest = useRef({ onClose, busy })
   latest.current = { onClose, busy }
   const modalish = kind === 'modal' || kind === 'view'
-  const answersWindow = globalEsc ?? modalish
+  const answersWindow = globalEsc ?? kind !== 'form'
 
   // Focus in on open, back out on close: only when focus would otherwise fall to the page.
   useEffect(() => {
@@ -104,7 +107,7 @@ export function Panel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The top modal or view answers Esc that reaches the window, as when focus was left on the page.
+  // The top panel answers Esc that reaches the window, as when focus was left on the page or the canvas.
   useEffect(() => {
     if (!answersWindow) return
     const id = panelStack.push()
@@ -135,7 +138,7 @@ export function Panel({
     } else if (action === 'submit') {
       e.preventDefault()
       ;(e.currentTarget as HTMLFormElement).requestSubmit()
-    } else if (e.key === 'Tab' && kind === 'modal') trapTab(e)
+    } else if (e.key === 'Tab' && modalish) trapTab(e)
   }
 
   const head = (
@@ -189,7 +192,7 @@ export function Panel({
   return host ? createPortal(layer, host) : layer
 }
 
-/** Tab and Shift+Tab stay inside a modal. */
+/** Tab and Shift+Tab stay inside a modal or view, which say they are modal. */
 function trapTab(e: React.KeyboardEvent<HTMLElement>): void {
   const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null)
   if (!items.length) return

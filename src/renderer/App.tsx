@@ -78,6 +78,7 @@ import type { UsageMode } from './usageView'
 import './styles.css'
 import './shell/shell.css'
 import { ConfirmHost } from './shell/Confirm'
+import { cancelAllConfirms } from './shell/confirmStore'
 
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
@@ -208,12 +209,14 @@ function Canvas(): React.JSX.Element | null {
     useStore.setState({ triggerAsk: null })
   }, [triggerAsk])
 
-  // Each project keeps its own view. Nothing waiting to save may land on the project just shown.
+  // Each project keeps its own view. Nothing waiting to save, and no open confirmation, may land on the project just shown.
   const activeProjectId = doc?.activeProjectId
   const shownProject = useRef(activeProjectId)
   useEffect(() => {
     if (shownProject.current === activeProjectId) return
     shownProject.current = activeProjectId
+    // A question asked about the project that was on screen is cancelled, not left standing over the next one.
+    cancelAllConfirms()
     clearTimeout(viewportTimer.current)
     const viewport = useStore.getState().doc?.viewport
     if (viewport) void flow.setViewport(viewport)

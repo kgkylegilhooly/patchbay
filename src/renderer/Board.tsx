@@ -394,7 +394,7 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
           <p>
             This writes to GitHub as you, on {issues?.repo}: {ask.kind === 'comment' ? 'the comment below is posted publicly where the issue can be seen.' : `issue #${ask.issue.number} "${ask.issue.title}" will be ${ask.kind === 'close' ? 'closed' : 'reopened'}.`}
           </p>
-          {ask.kind === 'comment' && <textarea aria-label="Comment" rows={5} value={ask.body} onChange={(e) => setAsk({ ...ask, body: e.target.value })} autoFocus />}
+          {ask.kind === 'comment' && <textarea aria-label="Comment" data-own-esc="" rows={5} value={ask.body} onChange={(e) => setAsk({ ...ask, body: e.target.value })} autoFocus />}
         </Panel>
       )}
       {start && (

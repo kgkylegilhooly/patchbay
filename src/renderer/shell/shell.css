@@ -25,10 +25,8 @@
 
 /* ---------- Buttons ---------- */
 
-.btn,
-.git-btn,
-.git-mini,
-.compare-small {
+/* The base carries no weight (:where), so a feature rule of any kind, a display: none hide included, still wins. */
+:where(.btn, .git-btn, .git-mini, .compare-small) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -148,8 +146,7 @@
 }
 
 /* An icon-only control, as in every panel header. */
-.icon-btn {
-  display: inline-grid;
+:where(.icon-btn) {
   place-items: center;
   border-radius: var(--r-md);
 }
@@ -291,6 +288,8 @@
 }
 
 .shell-close {
+  display: inline-grid;
+  place-items: center;
   flex: none;
   width: 28px;
   height: 28px;
