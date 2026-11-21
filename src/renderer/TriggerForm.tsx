@@ -5,7 +5,7 @@ import { describeSchedule, nextRuns, scheduleError } from '../core/trigger/sched
 import { windowError, type TriggerWindow } from '../core/trigger/window'
 import type { TriggerLimits, TriggerNode, TriggerPreflight, TriggerSchedule } from '../shared/model'
 import { bridge } from './bridge'
-import { PopTitle, popKeys, SubmitHint } from './popForm'
+import { FormShell } from './shell/FormShell'
 import { useStore } from './store'
 import { draftOf, extrasDraftOf, extrasOf, scheduleOf, windowDraftOf, windowFieldsOf, type ExtrasDraft, type IntervalUnit, type ScheduleDraft, type WindowDraft } from './triggerView'
 import { upcomingText } from './upcomingText'
@@ -68,17 +68,18 @@ export function TriggerForm({
   const setX = (patch: Partial<ExtrasDraft>): void => setExtras((d) => ({ ...d, ...patch }))
 
   return (
-    <form
-      className="pop pop-trigger"
-      aria-label={title}
-      onKeyDown={popKeys(onCancel)}
-      onSubmit={(e) => {
-        e.preventDefault()
+    <FormShell
+      title={title}
+      icon="trigger"
+      className="pop-trigger"
+      onCancel={onCancel}
+      blocked={!!problem && (tried || !whenProblem)}
+      submitLabel={editing ? 'Save' : 'Create trigger'}
+      onSubmit={() => {
         setTried(true)
         if (!problem) onSave({ schedule, prompt, targetId, preflight, limits, ...windowFields })
       }}
     >
-      <PopTitle icon="trigger">{title}</PopTitle>
       <p className="pop-note">
         {editing ? 'Saving a change disarms it, so it fires only after you arm it again.' : 'It starts disarmed. Nothing is sent until you arm it.'} It runs only while Patchbay is open.
       </p>
@@ -222,16 +223,7 @@ export function TriggerForm({
           {limitsProblem && <p className="field-problem">{limitsProblem}</p>}
         </div>
       )}
-      <div className="pop-actions">
-        <SubmitHint />
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" disabled={!!problem && (tried || !whenProblem)}>
-          {editing ? 'Save' : 'Create trigger'}
-        </button>
-      </div>
-    </form>
+    </FormShell>
   )
 }
 
@@ -245,16 +237,16 @@ export function ArmReview({ node, target, onClose }: { node: TriggerNode; target
   const limits = limitsOf(node)
   const name = (id: string): string | undefined => nodes?.find((n) => n.id === id)?.title
   return (
-    <form
-      className="pop pop-trigger"
-      aria-label="Arm trigger"
-      onKeyDown={popKeys(onClose)}
-      onSubmit={(e) => {
-        e.preventDefault()
-        void bridge.armTrigger(node.id, shown).then((r) => (r.ok ? onClose() : setProblem(r.reason)))
-      }}
+    <FormShell
+      title="Arm trigger"
+      icon="trigger"
+      className="pop-trigger"
+      onCancel={onClose}
+      hint={false}
+      submitLabel="Arm"
+      submitAttrs={{ name: 'arm' }}
+      onSubmit={() => void bridge.armTrigger(node.id, shown).then((r) => (r.ok ? onClose() : setProblem(r.reason)))}
     >
-      <PopTitle icon="trigger">Arm trigger</PopTitle>
       <p className="pop-note">Arming lets this trigger type into another session by itself, while Patchbay is open. Check each part.</p>
       <dl className="arm-review">
         <dt>When</dt>
@@ -292,14 +284,6 @@ export function ArmReview({ node, target, onClose }: { node: TriggerNode; target
           {problem}
         </p>
       )}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" name="arm">
-          Arm
-        </button>
-      </div>
-    </form>
+    </FormShell>
   )
 }

@@ -1,18 +1,8 @@
 /* Event triggers: the extra form fields, and skipped runs. See src/core/trigger/events.ts. */
 
+/* On a short screen the form's body scrolls; the shell keeps its buttons pinned at the bottom. */
 .pop-trigger {
   max-height: calc(100vh - 120px);
-  overflow: auto;
-}
-
-/* On a short screen the form scrolls, and its buttons stay in view at the bottom. */
-.pop-trigger .pop-actions {
-  position: sticky;
-  bottom: -14px;
-  margin: 0 -14px -14px;
-  padding: 10px 14px 14px;
-  background: inherit;
-  border-top: 1px solid var(--line);
 }
 
 .trigger-when select {
@@ -38,7 +28,7 @@
 .trigger-unit {
   align-self: center;
   color: var(--ink-dim);
-  font-size: 13px;
+  font-size: var(--fs-md);
   white-space: nowrap;
 }
 
@@ -46,7 +36,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--fs-md);
 }
 
 .trigger-run-skipped .trigger-run-outcome {
@@ -64,15 +54,15 @@
   max-height: 4.2em;
   overflow: auto;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--ink-dim);
   background: var(--well);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
 }
 
 .arm-review code {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }

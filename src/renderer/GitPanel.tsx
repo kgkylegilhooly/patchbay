@@ -6,10 +6,11 @@ import { ReviewBar, ReviewDiff } from './ReviewDiff'
 import { shortPath } from './shortPath'
 import { useStore } from './store'
 import { work } from './workBridge'
+import { Panel } from './shell/Panel'
+import { confirmThen } from './shell/confirmStore'
 import './work.css'
 
 type Tab = 'changes' | 'branches' | 'history'
-type Confirm = { kind: 'discard'; entries: ChangeEntry[]; text: string } | { kind: 'switch'; branch: string; text: string } | { kind: 'pull-merge' }
 
 const LANE_COLORS = ['#3d8bfd', '#ff9f43', '#34c759', '#bf7af0', '#ff453a', '#49c2c9', '#e6c84a', '#ff6fae']
 const ROW = 26
@@ -57,7 +58,6 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   const [busy, setBusy] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [newBranch, setNewBranch] = useState('')
-  const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [file, setFile] = useState<{ path: string; staged: boolean } | null>(null)
   const [diff, setDiff] = useState<DiffResult | string | null>(null)
   const lastRefresh = useRef(0)
@@ -110,7 +110,6 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
     setFile(null)
     setDiff(null)
     setOutput(null)
-    setConfirm(null)
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root])
@@ -136,7 +135,6 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   const act = async (what: string, run: () => Promise<GitOutcome>, after?: () => void): Promise<void> => {
     if (busy) return
     setBusy(what)
-    setConfirm(null)
     try {
       const r = await run()
       setOutput(r.ok ? { ok: true, text: r.output, what } : { ok: false, text: r.error, what })
@@ -161,16 +159,37 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
 
   const switchTo = (branch: string): void => {
     const warning = status ? switchWarning(status, branch) : null
-    if (warning) setConfirm({ kind: 'switch', branch, text: warning })
-    else void act(`Switch to ${branch}`, () => work.gitSwitch(r, branch))
+    const run = (): Promise<void> => act(`Switch to ${branch}`, () => work.gitSwitch(r, branch))
+    if (warning) void confirmThen({ title: `Switch to ${branch}?`, message: warning, verb: 'Switch anyway', ...hooks('switch') }, run)
+    else void run()
   }
+  /** The confirmation's hooks, as the scripts know them. */
+  const hooks = (kind: string): { attrs: Record<string, string>; verbAttrs: Record<string, string>; cancelAttrs: Record<string, string> } => ({
+    attrs: { 'data-git-confirm': kind },
+    verbAttrs: { 'data-git': 'confirm' },
+    cancelAttrs: { 'data-git': 'cancel' }
+  })
+  const askDiscard = (entries: ChangeEntry[]): void =>
+    void confirmThen(
+      { title: entries.length > 1 ? 'Discard all changes?' : entries[0]?.area === 'untracked' ? 'Delete this file?' : 'Discard these changes?', message: discardWarning(entries), verb: entries.length === 1 && entries[0]?.area === 'untracked' ? 'Delete file' : 'Discard', ...hooks('discard') },
+      () => act('Discard', () => work.gitDiscard(r, entries.map((e) => e.path)), () => setFile(null))
+    )
+  const askPullMerge = (): void =>
+    void confirmThen(
+      { title: 'Pull with a merge?', message: "Pull and merge the remote branch into yours, making a merge commit if they've split. A conflict stops it partway for you to resolve.", verb: 'Pull and merge', tone: 'neutral', ...hooks('pull-merge') },
+      () => act('Pull with merge', () => work.gitPull(r, 'merge'))
+    )
 
   return (
-    <aside className="git-panel" aria-label="Git">
-      <div className="git-head">
-        <h2>
-          <Icon name="branch" size={15} /> Git
-        </h2>
+    <Panel
+      kind="drawer"
+      title="Git"
+      icon="branch"
+      className="git-panel"
+      closeLabel="Hide the git panel"
+      onClose={close}
+      flush
+      sub={
         <select className="git-repo" aria-label="Repository" title={root ?? undefined} value={root ?? ''} onChange={(e) => setRoot(e.target.value || null)} disabled={!repos?.length}>
           {(repos ?? []).map((x) => (
             <option key={x.root} value={x.root} title={x.root}>
@@ -178,13 +197,13 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
             </option>
           ))}
         </select>
+      }
+      actions={
         <button type="button" className="icon-btn" data-git="refresh" title="Refresh" aria-label="Refresh" onClick={() => void refresh()}>
           <Icon name="refresh" size={14} />
         </button>
-        <button type="button" className="icon-btn" aria-label="Hide the git panel" title="Hide the git panel" onClick={close}>
-          ×
-        </button>
-      </div>
+      }
+    >
       {repos && repos.length === 0 && <p className="git-empty">No git repository here. Set the project's folder, or select a session or worktree group in one.</p>}
       {root && (
         <>
@@ -198,9 +217,9 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
               </span>
             )}
             <span className="git-spacer" />
-            <button type="button" className="git-btn" data-git="fetch" disabled={!!busy} onClick={() => void act('Fetch', () => work.gitFetch(r))}>Fetch</button>
-            <button type="button" className="git-btn" data-git="pull" title="Fast-forward only. If the branches have split, you'll be offered a merge" disabled={!!busy} onClick={() => void act('Pull', () => work.gitPull(r, 'ff-only'))}>Pull</button>
-            <button type="button" className="git-btn" data-git="push" title={status?.upstream ? `Push to ${status.upstream}` : 'The first push sets an upstream on origin'} disabled={!!busy} onClick={() => void act('Push', () => work.gitPush(r))}>Push</button>
+            <button type="button" className="btn btn-sm" data-git="fetch" disabled={!!busy} onClick={() => void act('Fetch', () => work.gitFetch(r))}>Fetch</button>
+            <button type="button" className="btn btn-sm" data-git="pull" title="Fast-forward only. If the branches have split, you'll be offered a merge" disabled={!!busy} onClick={() => void act('Pull', () => work.gitPull(r, 'ff-only'))}>Pull</button>
+            <button type="button" className="btn btn-sm" data-git="push" title={status?.upstream ? `Push to ${status.upstream}` : 'The first push sets an upstream on origin'} disabled={!!busy} onClick={() => void act('Push', () => work.gitPush(r))}>Push</button>
           </div>
           {busy && <p className="git-busy" role="status">{busy}…</p>}
           {output && (
@@ -208,34 +227,12 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
               <strong>{output.what}{output.ok ? ' done' : ' failed'}</strong>
               {output.text && <pre>{output.text}</pre>}
               {!output.ok && output.what === 'Pull' && /fast-forward|diverg/i.test(output.text) && (
-                <button type="button" className="git-btn" data-git="pull-merge" onClick={() => setConfirm({ kind: 'pull-merge' })}>Pull with a merge…</button>
+                <button type="button" className="btn btn-sm" data-git="pull-merge" onClick={askPullMerge}>Pull with a merge…</button>
               )}
-              <button type="button" className="icon-btn git-output-x" aria-label="Dismiss" onClick={() => setOutput(null)}>×</button>
+              <button type="button" className="icon-btn git-output-x" aria-label="Dismiss" onClick={() => setOutput(null)}><Icon name="close" size={13} /></button>
             </div>
           )}
           {error && <p className="git-output git-output-bad" role="alert">{error}</p>}
-          {confirm && (
-            <div className="git-confirm" role="alertdialog" aria-label="Confirm" data-git-confirm={confirm.kind}>
-              {confirm.kind === 'discard' && <p>{confirm.text}</p>}
-              {confirm.kind === 'switch' && <p>{confirm.text}</p>}
-              {confirm.kind === 'pull-merge' && <p>Pull and merge the remote branch into yours, making a merge commit if they've split. A conflict stops it partway for you to resolve.</p>}
-              <div className="git-confirm-row">
-                <button
-                  type="button"
-                  className="git-btn git-btn-danger"
-                  data-git="confirm"
-                  onClick={() => {
-                    if (confirm.kind === 'discard') void act('Discard', () => work.gitDiscard(r, confirm.entries.map((e) => e.path)), () => setFile(null))
-                    else if (confirm.kind === 'switch') void act(`Switch to ${confirm.branch}`, () => work.gitSwitch(r, confirm.branch))
-                    else void act('Pull with merge', () => work.gitPull(r, 'merge'))
-                  }}
-                >
-                  {confirm.kind === 'discard' ? 'Discard' : confirm.kind === 'switch' ? 'Switch anyway' : 'Pull and merge'}
-                </button>
-                <button type="button" className="git-btn" data-git="cancel" onClick={() => setConfirm(null)}>Cancel</button>
-              </div>
-            </div>
-          )}
           <div className="git-tabs" role="tablist">
             {(['changes', 'branches', 'history'] as const).map((t) => (
               <button key={t} type="button" role="tab" aria-selected={tab === t} data-git-tab={t} className={`sidebar-tab${tab === t ? ' sidebar-tab-on' : ''}`} onClick={() => setTab(t)}>
@@ -249,7 +246,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                 <ReviewBar root={r} />
                 <div className="git-commit">
                   <textarea aria-label="Commit message" placeholder={`Message for the commit on ${status.branch ?? 'detached HEAD'}`} value={message} onChange={(e) => setMessage(e.target.value)} rows={2} />
-                  <button type="button" className="git-btn git-btn-main" data-git="commit" disabled={!!busy || !message.trim() || status.staged.length === 0} onClick={() => void act('Commit', () => work.gitCommit(r, message), () => setMessage(''))}>
+                  <button type="button" className="btn btn-sm btn-solid" data-git="commit" disabled={!!busy || !message.trim() || status.staged.length === 0} onClick={() => void act('Commit', () => work.gitCommit(r, message), () => setMessage(''))}>
                     Commit {status.staged.length ? `${status.staged.length} staged` : ''}
                   </button>
                 </div>
@@ -258,7 +255,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                     <h3 className="git-section">Conflicts <span className="sidebar-count">{status.conflicts.length}</span></h3>
                     <ul>
                       {status.conflicts.map((e) => (
-                        <Entry key={e.path} entry={e} selected={file?.path === e.path} onSelect={() => void showDiff(e.path, false)} actions={<button type="button" className="git-mini" title="Mark resolved by staging it" onClick={() => void act('Stage', () => work.gitStage(r, [e.path]))}>Stage</button>} />
+                        <Entry key={e.path} entry={e} selected={file?.path === e.path} onSelect={() => void showDiff(e.path, false)} actions={<button type="button" className="btn btn-sm btn-quiet" title="Mark resolved by staging it" onClick={() => void act('Stage', () => work.gitStage(r, [e.path]))}>Stage</button>} />
                       ))}
                     </ul>
                   </section>
@@ -266,11 +263,11 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                 <section>
                   <h3 className="git-section">
                     Staged <span className="sidebar-count">{status.staged.length}</span>
-                    {status.staged.length > 0 && <button type="button" className="git-mini" data-git="unstage-all" onClick={() => void act('Unstage all', () => work.gitUnstage(r, 'all'))}>Unstage all</button>}
+                    {status.staged.length > 0 && <button type="button" className="btn btn-sm btn-quiet" data-git="unstage-all" onClick={() => void act('Unstage all', () => work.gitUnstage(r, 'all'))}>Unstage all</button>}
                   </h3>
                   <ul>
                     {status.staged.map((e) => (
-                      <Entry key={e.path} entry={e} selected={file?.path === e.path && file.staged} onSelect={() => void showDiff(e.path, true)} actions={<button type="button" className="git-mini" data-git="unstage" title="Unstage" onClick={() => void act('Unstage', () => work.gitUnstage(r, [e.path]))}>−</button>} />
+                      <Entry key={e.path} entry={e} selected={file?.path === e.path && file.staged} onSelect={() => void showDiff(e.path, true)} actions={<button type="button" className="btn btn-sm btn-quiet" data-git="unstage" title="Unstage" onClick={() => void act('Unstage', () => work.gitUnstage(r, [e.path]))}>−</button>} />
                     ))}
                   </ul>
                 </section>
@@ -279,8 +276,8 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                     Changes <span className="sidebar-count">{tracked.length}</span>
                     {tracked.length > 0 && (
                       <>
-                        <button type="button" className="git-mini" data-git="stage-all" onClick={() => void act('Stage all', () => work.gitStage(r, 'all'))}>Stage all</button>
-                        <button type="button" className="git-mini git-mini-danger" data-git="discard-all" onClick={() => setConfirm({ kind: 'discard', entries: tracked, text: discardWarning(tracked) })}>Discard all…</button>
+                        <button type="button" className="btn btn-sm btn-quiet" data-git="stage-all" onClick={() => void act('Stage all', () => work.gitStage(r, 'all'))}>Stage all</button>
+                        <button type="button" className="btn btn-sm btn-quiet btn-risky" data-git="discard-all" onClick={() => askDiscard(tracked)}>Discard all…</button>
                       </>
                     )}
                   </h3>
@@ -294,8 +291,8 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                         onSelect={() => void showDiff(e.path, false)}
                         actions={
                           <>
-                            <button type="button" className="git-mini git-mini-danger" data-git="discard" title={e.area === 'untracked' ? 'Delete this untracked file…' : 'Discard these changes…'} onClick={() => setConfirm({ kind: 'discard', entries: [e], text: discardWarning([e]) })}>↺</button>
-                            <button type="button" className="git-mini" data-git="stage" title="Stage" onClick={() => void act('Stage', () => work.gitStage(r, [e.path]))}>+</button>
+                            <button type="button" className="btn btn-sm btn-quiet btn-risky" data-git="discard" title={e.area === 'untracked' ? 'Delete this untracked file…' : 'Discard these changes…'} onClick={() => askDiscard([e])}>↺</button>
+                            <button type="button" className="btn btn-sm btn-quiet" data-git="stage" title="Stage" onClick={() => void act('Stage', () => work.gitStage(r, [e.path]))}>+</button>
                           </>
                         }
                       />
@@ -306,7 +303,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                   <section className="git-diff" aria-label={`Changes in ${file.path}`}>
                     <h3 className="git-section git-diff-title">
                       {file.path} {file.staged ? '(staged)' : ''}
-                      <button type="button" className="icon-btn" aria-label="Hide the diff" onClick={() => setFile(null)}>×</button>
+                      <button type="button" className="icon-btn" aria-label="Hide the diff" onClick={() => setFile(null)}><Icon name="close" size={14} /></button>
                     </h3>
                     {diff === null && <p className="git-empty">Loading…</p>}
                     {typeof diff === 'string' && <p className="git-output git-output-bad">{diff}</p>}
@@ -332,7 +329,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                   }}
                 >
                   <input aria-label="New branch name" placeholder="New branch from here" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} />
-                  <button type="submit" className="git-btn" data-git="create-branch" disabled={!!busy || !newBranch.trim()}>Create and switch</button>
+                  <button type="submit" className="btn btn-sm" data-git="create-branch" disabled={!!busy || !newBranch.trim()}>Create and switch</button>
                 </form>
                 <h3 className="git-section">Local</h3>
                 <ul>
@@ -340,7 +337,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                     <li key={b.name} className={`git-branch${b.current ? ' git-branch-current' : ''}`} data-git-branch-row={b.name}>
                       <span className="git-path">{b.current ? '● ' : ''}{b.name}</span>
                       <span className="git-ab">{b.upstream ? `${b.gone ? 'upstream gone' : `↑${b.ahead} ↓${b.behind}`}` : 'local only'}</span>
-                      {!b.current && <button type="button" className="git-mini" data-git="switch" disabled={!!busy} onClick={() => switchTo(b.name)}>Switch</button>}
+                      {!b.current && <button type="button" className="btn btn-sm btn-quiet" data-git="switch" disabled={!!busy} onClick={() => switchTo(b.name)}>Switch</button>}
                     </li>
                   ))}
                 </ul>
@@ -349,7 +346,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
                   {branches.filter((b) => b.remote && !followed.has(b.name) && !localNames.has(b.name.split('/').slice(1).join('/'))).map((b) => (
                     <li key={b.name} className="git-branch" data-git-branch-row={b.name}>
                       <span className="git-path">{b.name}</span>
-                      <button type="button" className="git-mini" disabled={!!busy} title="Make a local branch that follows it, and switch to it" onClick={() => switchTo(b.name)}>Check out</button>
+                      <button type="button" className="btn btn-sm btn-quiet" disabled={!!busy} title="Make a local branch that follows it, and switch to it" onClick={() => switchTo(b.name)}>Check out</button>
                     </li>
                   ))}
                 </ul>
@@ -378,6 +375,6 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
           </div>
         </>
       )}
-    </aside>
+    </Panel>
   )
 }

@@ -5,6 +5,7 @@ import { compare } from './compareBridge'
 import { useAgentChoice } from './agentChoice'
 import { useStore } from './store'
 import { taskComparisonBrief } from '../shared/taskCompare'
+import { Panel } from './shell/Panel'
 
 const SHOWN_FILES = 8
 
@@ -62,24 +63,31 @@ export function CompareStart({ projectId, source, brief: initialBrief, taskId: i
   const shownBlocked = req && info?.ok && dirty > 0 && !leaveOut ? startProblem({ ...req, leaveOutUncommitted: true }, info, agents) : blocked
 
   return (
-    <form
-      className="pop compare-start"
-      aria-label="Try another approach"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+    <Panel
+      kind="modal"
+      title="Try another approach"
+      icon="branch"
+      sub="Two attempts at one brief, each with its own worktree, branch and agent, from the same commit."
+      className="compare-start"
+      bodyClassName="compare-start-body"
+      onClose={onCancel}
+      busy={busy}
       onSubmit={(e) => {
         e.preventDefault()
         void start()
       }}
+      footer={
+        <>
+          {problem || (shownBlocked && info) ? <p className="field-problem compare-start-problem shell-foot-hint">{problem ?? shownBlocked}</p> : <span className="shell-foot-hint">Ctrl+Enter</span>}
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-solid" disabled={!!blocked || busy}>
+            {busy ? 'Starting…' : 'Start both'}
+          </button>
+        </>
+      }
     >
-      <header className="compare-head">
-        <h2>Try another approach</h2>
-        <p className="compare-dim">Two attempts at one brief. Each gets its own worktree, branch and agent, from the same commit.</p>
-      </header>
-
-      {/* Only the middle scrolls: the title and Start both stay in view on a short screen. */}
-      <div className="compare-start-body">
       <section className="compare-base" aria-label="Base">
         <span className="field-label">Base</span>
         {!info && <p className="compare-dim">Reading {source}…</p>}
@@ -93,7 +101,7 @@ export function CompareStart({ projectId, source, brief: initialBrief, taskId: i
             <span className="compare-dim">
               {info.branch ? `on ${info.branch}` : 'detached HEAD'} · {info.repo}
             </span>
-            <button type="button" className="btn compare-small" onClick={read}>
+            <button type="button" className="btn btn-sm" onClick={read}>
               Read again
             </button>
           </div>
@@ -191,17 +199,6 @@ export function CompareStart({ projectId, source, brief: initialBrief, taskId: i
         <span className="field-label">Verification command (optional, run in each worktree when you ask, with no shell)</span>
         <input value={verify} spellCheck={false} placeholder="npm test" onChange={(e) => setVerify(e.target.value)} />
       </label>
-      </div>
-
-      {(problem || (shownBlocked && info)) && <p className="field-problem compare-start-problem">{problem ?? shownBlocked}</p>}
-      <div className="pop-actions compare-start-foot">
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" disabled={!!blocked || busy}>
-          {busy ? 'Starting…' : 'Start both'}
-        </button>
-      </div>
-    </form>
+    </Panel>
   )
 }

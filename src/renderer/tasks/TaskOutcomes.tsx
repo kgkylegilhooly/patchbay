@@ -80,9 +80,9 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
       {view.readiness.ready ? 'Ready for review now: the submission and every required check match the files as they are.' : `Not ready: ${view.readiness.reasons.join('; ')}`}
     </p>}
     {view && view.readiness.warnings.length > 0 && <p className="task-warning">{view.readiness.warnings.join('; ')}</p>}
-    <div className="task-card-tools"><span>{commands.length} command {commands.length === 1 ? 'attempt' : 'attempts'}</span><span className="task-card-buttons">{task.state !== 'accepted' && task.state !== 'cancelled' && <button className="git-btn" data-try-approaches={task.id} title="Two attempts at this task, each in its own worktree. Their runs and your choice are recorded here" onClick={() => tryApproachesFor(task)}>Try two approaches…</button>}<button className="git-btn" disabled={busy} onClick={() => { setExpanded(true); void refresh() }}>{busy ? 'Checking…' : expanded ? 'Refresh evidence' : 'Review outcome'}</button></span></div>
+    <div className="task-card-tools"><span>{commands.length} command {commands.length === 1 ? 'attempt' : 'attempts'}</span><span className="task-card-buttons">{task.state !== 'accepted' && task.state !== 'cancelled' && <button className="btn btn-sm" data-try-approaches={task.id} title="Two attempts at this task, each in its own worktree. Their runs and your choice are recorded here" onClick={() => tryApproachesFor(task)}>Try two approaches…</button>}<button className="btn btn-sm" disabled={busy} onClick={() => { setExpanded(true); void refresh() }}>{busy ? 'Checking…' : expanded ? 'Refresh evidence' : 'Review outcome'}</button></span></div>
     {expanded && <div className="task-details">
-      <button className="git-mini" onClick={() => setExpanded(false)}>Hide details</button>
+      <button className="btn btn-sm btn-quiet" onClick={() => setExpanded(false)}>Hide details</button>
       <ul>{task.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
       {attempts.map((a) => <div className="task-attempt" key={a.id}>
         {a.kind === 'agent-report' ? <><strong>Agent self-report</strong><p>{a.summary}</p></> : a.kind === 'comparison' ? <>
@@ -101,12 +101,12 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
       </div>)}
       {task.acceptances.map((a, i) => <p key={i}>Accepted by you on {new Date(a.at).toLocaleString()} (submission {a.submissionId}).</p>)}
     </div>}
-    {task.state !== 'accepted' && task.state !== 'cancelled' && <button className="git-btn git-btn-main" disabled={busy || !view?.readiness.ready} onClick={() => void accept()}>Accept this submission</button>}
+    {task.state !== 'accepted' && task.state !== 'cancelled' && <button className="btn btn-sm btn-solid" disabled={busy || !view?.readiness.ready} onClick={() => void accept()}>Accept this submission</button>}
     {error && <p role="alert">{error}</p>}
   </article>
 }
 
 export function TaskOutcomes({ records }: { records?: TaskRecords }): React.JSX.Element | null {
   if (!records?.tasks.length) return null
-  return <section className="task-outcomes" aria-label="Task outcomes"><h3>Task outcomes <span>{records.tasks.length}</span> <button className="git-mini" data-cmd="review-inbox" onClick={() => openReviewInbox()}>Review inbox</button></h3><div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div></section>
+  return <section className="task-outcomes" aria-label="Task outcomes"><h3>Task outcomes <span>{records.tasks.length}</span> <button className="btn btn-sm btn-quiet" data-cmd="review-inbox" onClick={() => openReviewInbox()}>Review inbox</button></h3><div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div></section>
 }

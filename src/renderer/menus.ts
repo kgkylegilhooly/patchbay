@@ -26,7 +26,7 @@ export interface MenuItem {
   disabled?: boolean
   /** A toggle's current state. */
   checked?: boolean
-  /** Asks in place before running: the first click swaps the label to this. */
+  /** Asks before running, in the confirmation dialog: what happens, in a sentence. */
   confirm?: string
   danger?: boolean
   /** The menu stays open after it runs, so it can be used again, as when stepping a size. */

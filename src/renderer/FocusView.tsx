@@ -4,6 +4,7 @@ import { closePane, leaves, setRatio, showIn, splitPane, type Pane, type PanePat
 import { focusSoon, leaveFocus, registerSlot, setFocusLayout } from './focusState'
 import { Icon, KindIcon } from './icons'
 import { useStore } from './store'
+import { Panel } from './shell/Panel'
 
 /** Where a window in a pane is drawn. Its card moves in here, so there's still only one view of each session. */
 function Slot({ nodeId }: { nodeId: string }): React.JSX.Element {
@@ -126,20 +127,22 @@ function FocusViewView(): React.JSX.Element | null {
   const focus = useStore((s) => s.focus)
   if (!focus) return null
   return (
-    <section className="focus-view" aria-label="Focus view">
-      <header className="focus-head">
-        <Icon name="grid" size={14} />
-        <strong>Focus view</strong>
-        <span className="focus-hint">Split a pane with the buttons on its bar, drag the dividers, and move between panes with Ctrl+Shift+arrows.</span>
-        <span className="focus-pane-space" />
-        <button type="button" className="btn" data-focus="leave" onClick={leaveFocus}>
-          Back to canvas
-        </button>
-      </header>
+    <Panel
+      kind="view"
+      title="Focus view"
+      icon="grid"
+      sub="Split a pane with the buttons on its bar, drag the dividers, and move between panes with Ctrl+Shift+arrows."
+      className="focus-view"
+      closeLabel="Back to canvas"
+      closeAttrs={{ 'data-focus': 'leave' }}
+      onClose={leaveFocus}
+      initialFocus="none"
+      flush
+    >
       <div className="focus-root">
         <PaneView root={focus} path={[]} pane={focus} />
       </div>
-    </section>
+    </Panel>
   )
 }
 

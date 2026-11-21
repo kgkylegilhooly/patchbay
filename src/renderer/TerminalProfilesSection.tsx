@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { argsFromLines, launchLine, newProfileId, startupLines, type ProfileList, type TerminalProfile } from '../shared/terminalProfiles'
 import { bridge } from './bridge'
+import { confirmThen } from './shell/confirmStore'
 import { setTerminalProfiles, terminalProfileBridge, useTerminalProfiles } from './terminalProfilesUi'
 import './terminalProfiles.css'
 
@@ -117,7 +118,6 @@ function ProfileForm({ draft, taken, onChange, onSave, onCancel }: { draft: Draf
 export function TerminalProfilesSection(): React.JSX.Element {
   const list = useTerminalProfiles()
   const [editing, setEditing] = useState<Draft | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
 
   const save = async (profiles: TerminalProfile[], defaultId: string): Promise<boolean> => {
@@ -152,8 +152,19 @@ export function TerminalProfilesSection(): React.JSX.Element {
     setEditing(toDraft({ ...p, id: newProfileId(), name, builtIn: undefined }, true))
   }
 
+  const askRemove = (p: TerminalProfile): void =>
+    void confirmThen(
+      {
+        title: `Delete "${p.name}"?`,
+        message: list.defaultId === p.id ? 'New terminals go back to the automatic choice. Terminals open now keep running.' : 'Terminals open now keep running.',
+        verb: 'Delete profile',
+        attrs: { 'data-tp-confirm': p.id },
+        verbAttrs: { 'data-tp': 'delete-confirm' }
+      },
+      () => remove(p.id)
+    )
+
   const remove = (id: string): void => {
-    setConfirmDelete(null)
     // Deleting the default hands it back to the automatic choice.
     void save(
       custom(list).filter((p) => p.id !== id),
@@ -213,16 +224,11 @@ export function TerminalProfilesSection(): React.JSX.Element {
                 <button type="button" className="btn" data-tp="duplicate" onClick={() => duplicate(p)}>
                   Duplicate
                 </button>
-                {!p.builtIn &&
-                  (confirmDelete === p.id ? (
-                    <button type="button" className="btn btn-danger" data-tp="delete-confirm" onClick={() => remove(p.id)} onBlur={() => setConfirmDelete(null)} autoFocus>
-                      Delete it?
-                    </button>
-                  ) : (
-                    <button type="button" className="btn" data-tp="delete" onClick={() => setConfirmDelete(p.id)}>
-                      Delete
-                    </button>
-                  ))}
+                {!p.builtIn && (
+                  <button type="button" className="btn btn-risky" data-tp="delete" onClick={() => askRemove(p)}>
+                    Delete…
+                  </button>
+                )}
               </div>
             </li>
           )

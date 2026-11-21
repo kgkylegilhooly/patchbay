@@ -3,7 +3,7 @@ import { needsTerminal, type Settings } from '../shared/settings'
 import { bridge } from './bridge'
 import { playChime } from './chime'
 import { HostSection } from './HostSection'
-import { ClaudeIcon, TerminalIcon } from './icons'
+import { ClaudeIcon, Icon, TerminalIcon } from './icons'
 import type { Overrides } from './keys'
 import type { UpdateState } from '../shared/contract'
 import { cleanTerminalLook, FONT_SIZE, SCROLLBACK, type Prefs, type TerminalLook, type TogglePref } from './prefs'
@@ -13,6 +13,7 @@ import type { UsageMode } from './usageView'
 import { AGENT_KINDS, agentChoice, defaultAgentNote, withAgent } from '../shared/agents'
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { noteAgentSettings } from './agentChoice'
+import { confirmThen } from './shell/confirmStore'
 import './agents.css'
 
 /** Suggestions only. Any installed font can be typed. */
@@ -163,7 +164,7 @@ export function SettingsPage({
     // A menu never takes focus, so a terminal behind this page would otherwise still get what's typed.
     rootRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || (e.target as HTMLElement).closest?.('.project-rename')) return
+      if (e.key !== 'Escape' || (e.target as HTMLElement).closest?.('.project-rename, .shell')) return
       e.preventDefault()
       e.stopPropagation()
       close.current()
@@ -222,8 +223,8 @@ export function SettingsPage({
           <span className={saved && !saved.ok ? 'set-saved set-saved-bad' : 'set-saved'} role="status">
             {saved?.text}
           </span>
-          <button type="button" className="icon-btn set-close" aria-label="Close settings" title="Close (Esc)" onClick={onClose}>
-            ×
+          <button type="button" className="icon-btn shell-close set-close" aria-label="Close settings" title="Close (Esc)" onClick={onClose}>
+            <Icon name="close" size={16} />
           </button>
         </header>
 
@@ -530,7 +531,6 @@ function updateText(s: UpdateState | null): string {
 /** Where updates come from, whether to look for them by itself, and the restart that installs one. */
 function UpdateSettings({ draft, set }: { draft: Settings; set: (key: keyof Settings, value: string) => void }): React.JSX.Element {
   const [state, setState] = useState<UpdateState | null>(null)
-  const [confirming, setConfirming] = useState(false)
   useEffect(() => {
     void bridge.getUpdateState().then(setState)
     return bridge.onUpdateState(setState)
@@ -557,31 +557,33 @@ function UpdateSettings({ draft, set }: { draft: Settings; set: (key: keyof Sett
       </Row>
       <Row title="Status" help={<span data-update-status>{updateText(state)}</span>}>
         {state?.phase === 'ready' ? (
-          confirming ? (
-            <span className="set-input-row">
-              <button type="button" className="btn" onClick={() => setConfirming(false)}>
-                Not now
-              </button>
-              <button type="button" className="btn btn-solid" data-update="restart-confirm" onClick={() => void bridge.restartToUpdate()}>
-                End sessions and restart
-              </button>
-            </span>
-          ) : (
-            <button type="button" className="btn btn-solid" data-update="restart" title="Running sessions end. Agents resume their conversations in the new version." onClick={() => setConfirming(true)}>
-              Restart to update
-            </button>
-          )
+          <button
+            type="button"
+            className="btn btn-solid"
+            data-update="restart"
+            title="Running sessions end. Agents resume their conversations in the new version."
+            onClick={() =>
+              void confirmThen(
+                {
+                  title: 'Restart to update?',
+                  message: 'Installing ends every running session. Claude and Codex windows resume their conversations when the new version opens. Terminals start again in their folders.',
+                  verb: 'End sessions and restart',
+                  cancelLabel: 'Not now',
+                  attrs: { 'data-update-confirm': 'restart' },
+                  verbAttrs: { 'data-update': 'restart-confirm' }
+                },
+                () => bridge.restartToUpdate()
+              )
+            }
+          >
+            Restart to update…
+          </button>
         ) : (
           <button type="button" className="btn" data-update="check" disabled={busy} onClick={() => void bridge.checkForUpdates()}>
             Check now
           </button>
         )}
       </Row>
-      {confirming && (
-        <p className="set-help set-warning" role="alert">
-          Installing ends every running session. Claude and Codex windows resume their conversations when the new version opens. Terminals start again in their folders.
-        </p>
-      )}
     </div>
   )
 }

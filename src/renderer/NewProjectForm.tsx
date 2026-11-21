@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { bridge } from './bridge'
-import { PopTitle, popKeys } from './popForm'
+import { FormShell } from './shell/FormShell'
 
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).pop() ?? ''
 
@@ -9,17 +9,17 @@ export function NewProjectForm({ onCancel, onCreate }: { onCancel: () => void; o
   const [folder, setFolder] = useState('')
 
   return (
-    <form
-      className="pop"
-      aria-label="New project"
-      onKeyDown={popKeys(onCancel)}
-      onSubmit={(e) => {
-        e.preventDefault()
+    <FormShell
+      title="New project"
+      icon="project"
+      onCancel={onCancel}
+      blocked={!name.trim() && !folder}
+      submitLabel="Create project"
+      onSubmit={() => {
         const chosen = name.trim() || lastPart(folder)
         if (chosen) onCreate({ name: chosen, folder })
       }}
     >
-      <PopTitle icon="project">New project</PopTitle>
       <div className="field">
         <span className="field-label">Folder</span>
         <div className="folder-row">
@@ -35,14 +35,6 @@ export function NewProjectForm({ onCancel, onCreate }: { onCancel: () => void; o
         <span className="field-label">Name</span>
         <input name="projectName" autoFocus placeholder={lastPart(folder) || 'For example, Patchbay'} value={name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" disabled={!name.trim() && !folder}>
-          Create project
-        </button>
-      </div>
-    </form>
+    </FormShell>
   )
 }
