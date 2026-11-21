@@ -12,6 +12,8 @@ export interface HostWelcome {
   pid: number
   startedAt: number
   running: number
+  /** Where this host serves sessions' hooks over http, if it does. See hostHooks.ts. */
+  hookPort?: number
 }
 
 export class HostRequestError extends Error {
@@ -51,6 +53,7 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
   let nextId = 1
   const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; timer: NodeJS.Timeout }>()
   const messageListeners: Array<(m: HostMessage) => void> = []
+  const early: HostMessage[] = []
   const closeListeners: Array<() => void> = []
 
   reader.takeOver((message) => {
@@ -63,6 +66,8 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
       else waiting.reject(new HostRequestError(message.message, message.reason))
       return
     }
+    // What comes right behind the welcome, such as hook events kept for an app, can arrive before anyone listens.
+    if (messageListeners.length === 0) early.push(message)
     for (const cb of messageListeners) cb(message)
   })
 
@@ -96,6 +101,7 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
     },
     onMessage(cb) {
       messageListeners.push(cb)
+      for (const message of early.splice(0)) cb(message)
     },
     onClose(cb) {
       closeListeners.push(cb)
@@ -107,7 +113,7 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
 }
 
 /** One attempt, which never rejects. Both sides prove they hold the secret, and it never crosses the pipe. */
-export function connectToHost(opts: { pipe: string; secret: string; protocol: number }): Promise<ConnectResult> {
+export function connectToHost(opts: { pipe: string; secret: string; protocol: number; hooks?: boolean }): Promise<ConnectResult> {
   return new Promise((resolve) => {
     const socket = connect(opts.pipe)
     const nonce = randomBytes(32).toString('hex')
@@ -140,15 +146,16 @@ export function connectToHost(opts: { pipe: string; secret: string; protocol: nu
 
     handler = (message) => {
       if (message.t === 'challenge') {
-        socket.write(encodeFrame({ t: 'hello', proof: proofFor(opts.secret, 'app', message.nonce), nonce, protocol: opts.protocol }))
+        socket.write(encodeFrame({ t: 'hello', proof: proofFor(opts.secret, 'app', message.nonce), nonce, protocol: opts.protocol, ...(opts.hooks ? { hooks: true } : {}) }))
         return
       }
       if (message.t !== 'welcome' || !proofMatches(message.proof, proofFor(opts.secret, 'host', nonce))) {
         settle({ kind: 'refused' })
         return
       }
-      const { protocol, version, pid, startedAt, running } = message
-      const connection = wrap(socket, { protocol, version, pid, startedAt, running }, { takeOver: (cb) => void (handler = cb) })
+      const { protocol, version, pid, startedAt, running, hookPort } = message
+      const welcome = { protocol, version, pid, startedAt, running, ...(typeof hookPort === 'number' ? { hookPort } : {}) }
+      const connection = wrap(socket, welcome, { takeOver: (cb) => void (handler = cb) })
       settle(protocol === opts.protocol ? { kind: 'ok', connection } : { kind: 'other-protocol', connection })
     }
   })

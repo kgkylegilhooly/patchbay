@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { createServer, type Server, type Socket } from 'node:net'
 import type { SessionSpec } from '../../shared/contract'
 import { SessionStartError, type PtyHost } from './host'
+import type { HookForwarder, HostHooks } from './hostHooks'
 import {
   createFrameReader,
   encodeFrame,
@@ -36,6 +37,8 @@ export interface HostServerOptions {
   onSessionStarted?(spec: SessionSpec): void
   onSessionForgotten?(id: string): void
   log?(message: string): void
+  /** Sessions' hook events, served over http and handed to an app that takes them. See hostHooks.ts. */
+  hooks?: HostHooks
   highWaterBytes?: number
   stallMs?: number
 }
@@ -51,6 +54,10 @@ interface Client {
   attached: Set<string>
   /** It speaks another protocol, so all it can do is learn about this host and stop it. */
   limited: boolean
+  /** Set when it takes sessions' hook events. */
+  forwarder?: HookForwarder
+  /** It doesn't, being from before they were served: hooks go to the journal it reads. */
+  withoutHooks?: boolean
 }
 
 export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
@@ -112,6 +119,9 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
         if (!args.spec) throw new Error('start needs a spec.')
         if (args.size) sessions.resize(args.spec.nodeId, args.size.cols, args.size.rows)
         sessions.start(args.spec)
+        // Its hooks prove themselves with the token its own environment has.
+        const token = args.spec.env?.PATCHBAY_TOKEN
+        if (token) opts.hooks?.allow(args.spec.nodeId, token)
         current.attached.add(args.spec.nodeId)
         opts.onSessionStarted?.(args.spec)
         return { pid: sessions.pid(args.spec.nodeId) }
@@ -121,6 +131,7 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
       case 'forget':
         current.attached.delete(id)
         opts.onSessionForgotten?.(id)
+        if (!sessions.isRunning(id)) opts.hooks?.disallow(id)
         return sessions.forget(id)
       default:
         throw new Error(`Unknown request: ${op}`)
@@ -151,13 +162,27 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
           version: opts.version,
           pid: process.pid,
           startedAt: opts.startedAt,
-          running: sessions.list().filter((s) => s.running).length
+          running: sessions.list().filter((s) => s.running).length,
+          ...(opts.hooks ? { hookPort: opts.hooks.port } : {})
         })
         opts.onConnectionChange?.(true)
+        // Only an app that says it takes them gets hook events. Any other leaves them to the journal.
+        if (opts.hooks && message.hooks === true && !current.limited) {
+          current.forwarder = {
+            forward: (hid, id, payload, live) => send(socket, { t: 'hook', hid, id, payload, live }),
+            cancel: (hid) => send(socket, { t: 'hook-cancel', hid })
+          }
+          opts.hooks.connect(current.forwarder)
+        } else if (opts.hooks) {
+          current.withoutHooks = true
+          opts.hooks.appWithoutHooks(true)
+        }
         return
       }
       const me = current
-      if (message.t === 'w') {
+      if (message.t === 'hook-res') {
+        if (me.forwarder) opts.hooks?.answer(message.hid, message.body)
+      } else if (message.t === 'w') {
         if (!me.limited) sessions.write(message.id, message.d)
       } else if (message.t === 'r') {
         if (!me.limited) sessions.resize(message.id, message.cols, message.rows)
@@ -193,6 +218,8 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
     socket.on('error', () => socket.destroy())
     socket.on('close', () => {
       clearTimeout(handshake)
+      if (current?.forwarder) opts.hooks?.disconnect(current.forwarder)
+      if (current?.withoutHooks) opts.hooks?.appWithoutHooks(false)
       if (client?.socket !== socket) return
       client = null
       resumeAll()

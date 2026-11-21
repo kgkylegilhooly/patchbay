@@ -7,7 +7,9 @@ import type { SessionSpec } from '../../shared/contract'
  * can differ, and the app must then ask rather than assume.
  *
  * Frozen for every version, so any app can always identify and stop any older host:
- * the challenge, hello and welcome messages, and the `stop-host` request.
+ * the challenge, hello and welcome messages, and the `stop-host` request. Fields added to those since are optional,
+ * and each side acts only on one the other has sent: hooks (docs/plans/host-hooks.md) are offered by the app's `hooks`
+ * in hello and the host's `hookPort` in welcome, so a host or app from before them simply goes without.
  */
 export const HOST_PROTOCOL = 1
 
@@ -34,13 +36,18 @@ export interface HostedSession {
 export type HostMessage =
   // Host to app.
   | { t: 'challenge'; nonce: string; protocol: number }
-  | { t: 'welcome'; proof: string; protocol: number; version: string; pid: number; startedAt: number; running: number }
+  | { t: 'welcome'; proof: string; protocol: number; version: string; pid: number; startedAt: number; running: number; hookPort?: number }
   | { t: 'res'; id: number; ok: true; result?: unknown }
   | { t: 'res'; id: number; ok: false; reason?: 'cwd-missing' | 'spawn-failed'; message: string }
   | { t: 'o'; id: string; d: string }
   | { t: 'x'; id: string; code: number }
+  /** A session's hook event, for the app to answer with hook-res. `live`: Claude is waiting for that answer. */
+  | { t: 'hook'; hid: number; id: string; payload: Record<string, unknown>; live: boolean }
+  /** Claude stopped waiting for that answer. */
+  | { t: 'hook-cancel'; hid: number }
   // App to host.
-  | { t: 'hello'; proof: string; nonce: string; protocol: number }
+  | { t: 'hello'; proof: string; nonce: string; protocol: number; hooks?: boolean }
+  | { t: 'hook-res'; hid: number; body?: unknown }
   | { t: 'req'; id: number; op: HostOp; args?: HostRequestArgs }
   | { t: 'w'; id: string; d: string }
   | { t: 'r'; id: string; cols: number; rows: number }

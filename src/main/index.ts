@@ -75,6 +75,7 @@ import { createSessionHost } from './sessions/host'
 import { pipeNameFor } from './sessions/hostProtocol'
 import { guardExit, hostRuntime, lastHostLogLine, pruneHostRuntimes, spawnSessionHost } from './sessions/hostSpawn'
 import { missedHooksDir, takeMissedHooks } from './sessions/missedHooks'
+import { onClaudeNodesRemoved, pruneSessionSettings, removeSessionSettings } from './sessions/sessionSettingsFiles'
 import { createNodeRunner } from './sessions/nodeRunner'
 import { createStatusTracker } from './sessions/statusTracker'
 import { createPortWatcher, readConsoleMembers, runNetstat, runProcessList } from './ports/ports'
@@ -393,7 +394,9 @@ async function boot(): Promise<void> {
       // Journalled while Patchbay was closed, so checked here as onHook checks live ones.
       takeMissedHooks: (id) =>
         takeMissedHooks(journalDir, id).filter((e) => !hookFromAnotherNode(id, { session_id: e.session_id }, store.get().nodes, (n) => host.isRunning(n))),
-      onMissedStopFailure: (id, event) => stops.noteHook(id, event)
+      onMissedStopFailure: (id, event) => stops.noteHook(id, event),
+      // Sessions in the background host post their hooks to it, and start nothing. See docs/plans/host-hooks.md.
+      hostHookPort: () => host.hookPort()
     }
   })
   const usage = createUsageService({ dataDir })
@@ -501,12 +504,16 @@ async function boot(): Promise<void> {
   const adopted = adoptLive()
   // A node at its usage limit before the app restarted still is, if its session came back.
   stops.retain(adopted)
+  // A Claude node's settings hold its hook token, so they go with the node. Never those of a session still running.
+  const sessionDir = join(dataDir, 'sessions')
+  // After a damaged save the canvas may be what's missing, so nothing is pruned then.
+  if (!store.loaded.quarantined) pruneSessionSettings(sessionDir, (id) => store.get().nodes.some((n) => n.id === id) || host.isRunning(id))
+  onClaudeNodesRemoved(store, (id) => {
+    if (!host.isRunning(id)) removeSessionSettings(sessionDir, id)
+  })
 
   const noteRefusal = refusalLog((line) => log?.write(line))
-  const server: ControlServer = await startControlServer({
-    secret,
-    endpointFile,
-    onHook: async (id, payload, signal) => {
+  const onHook = async (id: string, payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {
       const owner = hookFromAnotherNode(id, payload, store.get().nodes, (n) => host.isRunning(n))
       if (owner) {
         noteRefusal(id, owner, payload.hook_event_name)
@@ -524,7 +531,11 @@ async function boot(): Promise<void> {
       // An agent learns where it is on the canvas as its session starts. hook.cjs hands this on as context.
       const context = await verbs(id, 'whoami', {}).then((w) => (w as { text?: string }).text, () => undefined)
       return { ...((answer as object | undefined) ?? {}), context }
-    },
+  }
+  const server: ControlServer = await startControlServer({
+    secret,
+    endpointFile,
+    onHook,
     onRpc: (caller, verb, args) => allVerbs(caller, verb, args),
     onUsage: (id, report) => usage.report(id, report)
   })
@@ -549,6 +560,8 @@ async function boot(): Promise<void> {
   const testNotification = () => showToast({ title: 'Patchbay', body: 'Notifications are working.', click: focusWindow })
   // The server is up, so from here on hooks are delivered. What came before is in the journals.
   for (const id of adopted) runner.catchUpHooks(id)
+  // Hooks the host served since this app connected waited for this, so they come after the journal's, in order.
+  host.serveHooks(onHook)
   setTimeout(() => {
     for (const id of adopted) runner.catchUpHooks(id)
   }, LATE_JOURNAL_CHECK_MS).unref()

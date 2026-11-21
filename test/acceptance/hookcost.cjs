@@ -2,7 +2,9 @@
 // Hooks on the real app, the way Claude Code runs them: with a Claude Code new enough, Patchbay has Claude start Node
 // itself for each Node hook, with no Git Bash in front of it, and every status still comes through. With an older one
 // the hooks stay the command lines they were, as sessions started before this have them, and those still work too. A
-// custom Claude command from Settings is never run to ask its version, and keeps the command line.
+// custom Claude command from Settings is never run to ask its version, and keeps the command line. Since the session
+// host serves hooks (docs/plans/host-hooks.md), a Claude with http hooks (2.1.63+) posts every event but SessionStart to
+// it, so this now checks SessionStart's form, and that the others went over http.
 //
 // The agent is fake-claude.cjs, which runs the hooks from its settings as Claude Code would: no quota is used. For the
 // first two runs it is the `claude` on the app's PATH, through a claude.cmd in a folder of its own, and every other
@@ -32,7 +34,7 @@ function fakeClaudePath() {
   return { [key]: value }
 }
 
-async function run(label, { version, custom, expectForm }) {
+async function run(label, { version, custom, expectForm, others }) {
   const cwd = L.workDir(`hookcost-${version}-${custom ? 'custom' : 'path'}`)
   const settings = { notifications: 'off', sound: 'off', ...(custom ? { claudeCommand: `node "${fakeClaude.replace(/\\/g, '/')}"` } : {}) }
   const profile = L.newProfile(settings)
@@ -55,9 +57,9 @@ async function run(label, { version, custom, expectForm }) {
     const held = await L.approvals(page, 'asks')
     c.check(`${label}: the held permission request waits for an answer in Patchbay`, held.length === 1)
     const hooks = JSON.parse(fs.readFileSync(path.join(profile, 'sessions', 'work.settings.json'), 'utf8')).hooks
-    const stop = hooks.Stop[0].hooks[0]
+    const stop = hooks.SessionStart[0].hooks[0]
     c.check(
-      `${label}: the settings ${expectForm === 'exec' ? 'start Node directly' : 'keep the command line'}`,
+      `${label}: SessionStart ${expectForm === 'exec' ? 'starts Node directly' : 'keeps the command line'}`,
       expectForm === 'exec' ? Array.isArray(stop.args) && /node\.exe$/i.test(stop.command) : !stop.args && /^node "/.test(stop.command),
       stop
     )
@@ -68,7 +70,8 @@ async function run(label, { version, custom, expectForm }) {
       askedTimes
     )
     const ran = readLog(log).filter((e) => e.name !== 'PermissionRequest')
-    c.check(`${label}: every hook ran ${expectForm === 'exec' ? 'with no shell' : 'through Git Bash'} and exited 0`, ran.length >= 6 && ran.every((e) => e.form === expectForm && e.code === 0), ran)
+    const formOf = (e) => (e.name === 'SessionStart' ? expectForm : others)
+    c.check(`${label}: SessionStart ran ${expectForm === 'exec' ? 'with no shell' : 'through Git Bash'}, the rest ${others === 'http' ? 'over http' : 'the same way'}, all fine`, ran.length >= 6 && ran.every((e) => e.form === formOf(e) && e.code === (e.form === 'http' ? 200 : 0)), ran)
     c.check(
       `${label}: limits: 30 s, 10 s for SessionEnd, 600 s for a held request`,
       ran.every((e) => e.timeout === 30) && hooks.SessionEnd[0].hooks[0].timeout === 10 && hooks.PermissionRequest[0].hooks[0].timeout === 600
@@ -77,15 +80,17 @@ async function run(label, { version, custom, expectForm }) {
     console.log(`      ${label}: ${ran.length} hooks, median ${ms[Math.floor(ms.length / 2)]} ms, slowest ${ms[ms.length - 1]} ms`)
     c.check(`${label}: no errors in the page`, app.problems.length === 0, app.problems)
   } finally {
-    await app.quit().catch(() => {})
+    // A quit would first ask about the agents still working: the app and this profile's host are ended directly.
+    await app.forceKill().catch(() => {})
     L.cleanup(profile)
   }
 }
 
 async function main() {
-  await run('Claude Code 2.1.330', { version: '2.1.330', expectForm: 'exec' })
-  await run('Claude Code 2.1.100', { version: '2.1.100', expectForm: 'shell' })
-  await run('A custom Claude command', { version: '2.1.330', custom: true, expectForm: 'shell' })
+  await run('Claude Code 2.1.330', { version: '2.1.330', expectForm: 'exec', others: 'http' })
+  await run('Claude Code 2.1.100', { version: '2.1.100', expectForm: 'shell', others: 'http' })
+  await run('Claude Code 2.1.50', { version: '2.1.50', expectForm: 'shell', others: 'shell' })
+  await run('A custom Claude command', { version: '2.1.330', custom: true, expectForm: 'shell', others: 'shell' })
   c.finish()
 }
 

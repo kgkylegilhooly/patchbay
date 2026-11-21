@@ -1,4 +1,4 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { nextStatus } from '../../core/status/machine'
 import type { AgentStatus } from '../../shared/model'
@@ -89,8 +89,17 @@ function parseLines(file: string): MissedHook[] {
 export function takeMissedHooks(dir: string, nodeId: string): MissedHook[] {
   const file = join(dir, `${encodeURIComponent(nodeId)}.jsonl`)
   const older = `${file}.old`
-  const events = [...parseLines(older), ...parseLines(file)]
-  for (const f of [older, file]) {
+  // Moved aside first, so lines appended while it's read go to a new file, read next time, rather than being deleted.
+  const taking = `${file}.taking`
+  let current = file
+  try {
+    renameSync(file, taking)
+    current = taking
+  } catch {
+    // Missing, or held open by a hook writing to it: read where it is, as before.
+  }
+  const events = [...parseLines(older), ...parseLines(taking), ...(current === file ? parseLines(file) : [])]
+  for (const f of [older, taking, ...(current === file ? [file] : [])]) {
     try {
       rmSync(f, { force: true })
     } catch {

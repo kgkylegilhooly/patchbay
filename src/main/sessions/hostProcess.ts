@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { createScrollbackStore } from '../../core/persist/scrollbackStore'
 import { createSessionHost } from './host'
 import { limitsFrom, startPolicy, stepPolicy } from './hostPolicy'
+import { startHostHooks, type HostHooks } from './hostHooks'
 import { HOST_PROTOCOL, pipeNameFor } from './hostProtocol'
 import { startHostServer, type HostServer } from './hostServer'
 
@@ -62,6 +63,11 @@ async function main(): Promise<void> {
   const saved = new Set<string>()
   const dirty = new Set<string>()
   let server: HostServer | null = null
+  // Sessions' hooks come here over http, so an event starts no process. Without it, sessions keep command hooks.
+  const hooks: HostHooks | null = await startHostHooks({ journalDir: join(controlDir, 'missed'), log }).catch((e: unknown) => {
+    log(`Could not serve hooks: ${String(e)}`)
+    return null
+  })
 
   const saveDirty = async (): Promise<void> => {
     // Writing into a deleted profile would bring its folders back.
@@ -96,7 +102,10 @@ async function main(): Promise<void> {
       for (const id of saved) dirty.add(id)
       await saveDirty()
     }
+    // Events still waiting for an app go in the journal, for the next one to read.
+    await hooks?.flush()
     await server?.close()
+    await hooks?.close()
     finish()
   }
 
@@ -108,6 +117,7 @@ async function main(): Promise<void> {
     startedAt,
     sessions,
     log,
+    ...(hooks ? { hooks } : {}),
     onStopRequested: () => void stop('the app asked'),
     onSessionStarted(spec) {
       if (spec.saveScrollback) saved.add(spec.nodeId)
@@ -123,9 +133,9 @@ async function main(): Promise<void> {
 
   mkdirSync(controlDir, { recursive: true })
   const tmp = `${infoFile}.tmp`
-  writeFileSync(tmp, JSON.stringify({ pid: process.pid, protocol, version, startedAt }))
+  writeFileSync(tmp, JSON.stringify({ pid: process.pid, protocol, version, startedAt, ...(hooks ? { hookPort: hooks.port } : {}) }))
   renameSync(tmp, infoFile)
-  log(`Started: protocol ${protocol}, version ${version}.`)
+  log(`Started: protocol ${protocol}, version ${version}${hooks ? `, hooks on port ${hooks.port}` : ''}.`)
 
   setInterval(() => {
     if (!server?.connected()) void saveDirty()

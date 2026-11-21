@@ -58,13 +58,64 @@ function runCommand(command, payload, execArgs) {
   })
 }
 
+/**
+ * Posts an http hook as Claude Code 2.1.330 does: the event as the JSON body, headers with `$VAR` / `${VAR}` taken
+ * from the environment only for names in allowedEnvVars (others become empty), cancelled at its timeout. Resolves to
+ * the status, or -1 when it couldn't connect or was cancelled, and the answer's body.
+ *
+ * Like 2.1.330, it goes through HTTPS_PROXY / HTTP_PROXY unless the URL's host is listed, exactly, in NO_PROXY:
+ * `localhost` doesn't cover 127.0.0.1. Through a proxy it asks for a tunnel (CONNECT), as Claude does.
+ */
+function postHook(entry, payload) {
+  const http = require('node:http')
+  const allowed = new Set(entry.allowedEnvVars ?? [])
+  const fill = (v) => String(v).replace(/\$\{(\w+)\}|\$(\w+)/g, (_, a, b) => (allowed.has(a ?? b) ? (process.env[a ?? b] ?? '') : ''))
+  const headers = Object.fromEntries(Object.entries(entry.headers ?? {}).map(([k, v]) => [k, fill(v)]))
+  const body = JSON.stringify(payload)
+  const env = (name) => process.env[name] ?? process.env[name.toLowerCase()]
+  const proxy = env('HTTPS_PROXY') || env('HTTP_PROXY')
+  const target = new URL(entry.url)
+  const bypass = (env('NO_PROXY') ?? '').split(',').map((h) => h.trim()).includes(target.hostname)
+  if (proxy && !bypass) {
+    const via = new URL(proxy)
+    return new Promise((resolve) => {
+      const req = http.request({ host: via.hostname, port: via.port, method: 'CONNECT', path: `${target.hostname}:${target.port}` })
+      req.on('connect', (res, socket) => {
+        socket.destroy()
+        resolve({ code: res.statusCode === 200 ? -2 : -1, answer: '', proxied: true })
+      })
+      req.on('response', () => resolve({ code: -1, answer: '', proxied: true }))
+      req.on('error', () => resolve({ code: -1, answer: '', proxied: true }))
+      req.end()
+    })
+  }
+  return new Promise((resolve) => {
+    const req = http.request(entry.url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) }, timeout: (entry.timeout ?? 600) * 1000 }, (res) => {
+      let text = ''
+      res.on('data', (c) => (text += c))
+      res.on('end', () => resolve({ code: res.statusCode, answer: text }))
+    })
+    req.on('timeout', () => req.destroy())
+    req.on('error', () => resolve({ code: -1, answer: '' }))
+    req.end(body)
+  })
+}
+
 const hook = (name, extra = {}) => {
   const entry = settings.hooks[name]?.[0]?.hooks?.[0]
   if (!entry) return Promise.resolve()
   const started = Date.now()
-  return runCommand(entry.command, { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra }, entry.args).then((code) => {
+  const payload = { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra }
+  if (entry.type === 'http') {
+    return postHook(entry, payload).then(({ code, answer, proxied }) => {
+      const noProxy = process.env.NO_PROXY ?? process.env.no_proxy
+      if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ node: process.env.PATCHBAY_NODE_ID, name, form: 'http', code, answer, ms: Date.now() - started, at: Date.now(), timeout: entry.timeout, proxied: !!proxied, noProxy })}\n`)
+      return code === 200 ? 0 : 1
+    })
+  }
+  return runCommand(entry.command, payload, entry.args).then((code) => {
     // Which way each hook ran and how long it took, for a check to read back.
-    if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ name, form: entry.args ? 'exec' : 'shell', code, ms: Date.now() - started, timeout: entry.timeout })}\n`)
+    if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ node: process.env.PATCHBAY_NODE_ID, name, form: entry.args ? 'exec' : 'shell', code, ms: Date.now() - started, timeout: entry.timeout })}\n`)
     return code
   })
 }
@@ -193,6 +244,13 @@ async function main() {
     // Asks to run a long command, and isn't waited for: the request is held until someone answers it.
     await hook('UserPromptSubmit')
     void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND } })
+  } else if (/\blater=(\d+)\b/.test(prompt)) {
+    // Works for that many seconds, then asks to run a command and ends its turn, as when the app may have closed.
+    await hook('UserPromptSubmit')
+    setTimeout(async () => {
+      await hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'npm test' } })
+      await hook('Stop')
+    }, Number(/\blater=(\d+)\b/.exec(prompt)[1]) * 1000)
   } else if (/\bworking\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     if (fanout) fanOut(fanout)

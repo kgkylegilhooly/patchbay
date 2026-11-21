@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import { runProgram } from '../../core/git/run'
 import { programArgs, type ClaudeProgram } from './claudeLaunch'
+import { loadRegistryPolicy } from './httpHookSafety'
 
 /**
  * Which Node runs Patchbay's hooks, when Claude Code can start it itself.
@@ -32,10 +33,24 @@ export function parseClaudeVersion(text: string): [number, number, number] | nul
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
-export function runsExecHooks(version: readonly number[] | null): boolean {
+/**
+ * The first Claude Code with http hooks. Its changelog, under 2.1.63: "Added HTTP hooks, which can POST JSON to a URL and
+ * receive JSON instead of running a shell command". See docs/plans/host-hooks.md.
+ */
+export const HTTP_HOOKS_SINCE: readonly [number, number, number] = [2, 1, 63]
+
+function atLeast(version: readonly number[] | null, since: readonly number[]): boolean {
   if (!version) return false
-  for (let i = 0; i < 3; i++) if (version[i] !== EXEC_HOOKS_SINCE[i]) return version[i] > EXEC_HOOKS_SINCE[i]
+  for (let i = 0; i < 3; i++) if (version[i] !== since[i]) return version[i] > since[i]
   return true
+}
+
+export function runsExecHooks(version: readonly number[] | null): boolean {
+  return atLeast(version, EXEC_HOOKS_SINCE)
+}
+
+export function runsHttpHooks(version: readonly number[] | null): boolean {
+  return atLeast(version, HTTP_HOOKS_SINCE)
 }
 
 export type Ask = (file: string, args: string[]) => Promise<string>
@@ -48,7 +63,7 @@ export interface HookLaunch {
 }
 
 /** One answer per program and app run, shared by nodes that start together, as when a canvas reopens. */
-const execKnown = new Map<string, Promise<boolean>>()
+const versionKnown = new Map<string, Promise<[number, number, number] | null>>()
 let nodeKnown: Promise<string | null> | null = null
 
 /**
@@ -59,16 +74,26 @@ let nodeKnown: Promise<string | null> | null = null
  * that, and Claude inside another terminal program, keep the command line, as anything unclear does.
  */
 export function claudeRunsExecHooks(launch: HookLaunch, ask: Ask = output): Promise<boolean> {
-  if (launch.claudeTerminal?.trim() || launch.claudeCommand?.trim() || !launch.claude) return Promise.resolve(false)
+  return claudeVersion(launch, ask).then(runsExecHooks)
+}
+
+/**
+ * Whether this Claude has http hooks, asked as claudeRunsExecHooks asks. A custom command or a terminal program can
+ * run Claude on another machine or in WSL, where the host's 127.0.0.1 isn't this PC, so those never do.
+ */
+export function claudeRunsHttpHooks(launch: HookLaunch, ask: Ask = output): Promise<boolean> {
+  return claudeVersion(launch, ask).then(runsHttpHooks)
+}
+
+/** The version of the `claude` program Patchbay found itself, or null for a custom one or anything unclear. */
+function claudeVersion(launch: HookLaunch, ask: Ask): Promise<[number, number, number] | null> {
+  if (launch.claudeTerminal?.trim() || launch.claudeCommand?.trim() || !launch.claude) return Promise.resolve(null)
   const program = { file: launch.claude.file, args: programArgs(launch.claude, ['--version']) }
   const key = [program.file, ...program.args].join('\0')
-  let known = execKnown.get(key)
+  let known = versionKnown.get(key)
   if (!known) {
-    known = ask(program.file, program.args).then(
-      (text) => runsExecHooks(parseClaudeVersion(text)),
-      () => false
-    )
-    execKnown.set(key, known)
+    known = ask(program.file, program.args).then(parseClaudeVersion, () => null)
+    versionKnown.set(key, known)
   }
   return known
 }
@@ -111,7 +136,7 @@ export async function hookNodeFor(launch: HookLaunch, ask: Ask = output): Promis
 
 /** For tests. */
 export function forgetHookRunners(): void {
-  execKnown.clear()
+  versionKnown.clear()
   nodeKnown = null
 }
 
@@ -124,4 +149,13 @@ function output(file: string, args: string[]): Promise<string> {
     if (r.code !== 0 && !r.stdout) throw new Error(r.stderr.trim() || (r.missing ? `${file} was not found` : `${file} ended with code ${r.code}`))
     return r.stdout
   })
+}
+
+/**
+ * Whether a launch may have http hooks: a Claude that has them, with Claude's registry policy read for
+ * httpHooksBlocked (httpHookSafety.ts). Both are asked once per app run.
+ */
+export async function httpHooksPossible(launch: HookLaunch, ask: Ask = output): Promise<boolean> {
+  const [runs] = await Promise.all([claudeRunsHttpHooks(launch, ask), loadRegistryPolicy().catch(() => {})])
+  return runs
 }
