@@ -3,6 +3,7 @@ import {
   createSessionSync,
   OUTPUT_QUIET_MS,
   planSync,
+  RECENT_EXIT_MS,
   STALE_STARTING_MS,
   STALE_WORKING_MS,
   statusFromTranscript,
@@ -34,9 +35,15 @@ describe('planSync', () => {
   })
 
   test('shown as ended while the host runs it and its process is there: shown again', () => {
-    const plan = planSync(input({ nodes: [agent('a', 'exited'), { id: 't', kind: 'terminal', title: 't', shown: 'exited' }], sessions: [live('a'), live('t')] }))
+    const plan = planSync(input({ nodes: [agent('a', 'exited'), { id: 't', kind: 'terminal', title: 't', shown: 'exited' }], sessions: [live('a'), live('t')], lastHeard: () => NOW - RECENT_EXIT_MS }))
     expect(plan.reattach).toEqual(['a', 't'])
     expect(plan.rows.map((r) => r.problem)).toEqual(['shown-exited', 'shown-exited'])
+  })
+
+  test('an agent that said it was ending a moment ago is left to finish, not shown as still running', () => {
+    const plan = planSync(input({ nodes: [agent('a', 'exited')], sessions: [live('a')], lastHeard: () => NOW - 2000 }))
+    expect(plan.reattach).toEqual([])
+    expect(plan.rows).toEqual([expect.objectContaining({ id: 'a', problem: null })])
   })
 
   test('counted as running with its process gone: marked as ended, whatever the canvas shows', () => {
@@ -141,6 +148,17 @@ describe('the sync service', () => {
     expect(report?.hostReached).toBe(true)
     expect(report?.rows.find((r) => r.id === 'ghost')?.problem).toBe('orphan')
     expect(deps.onReport).toHaveBeenCalledWith(report)
+  })
+
+  test('a stale start is set to unknown, never to idle from an older run\'s transcript', async () => {
+    const { sync, deps } = service({
+      nodes: [agent('slow', 'starting')],
+      sessions: [live('slow')],
+      transcript: [JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Done last time.' }] } })]
+    })
+    await sync.check('test')
+    expect(deps.seed).toHaveBeenCalledExactlyOnceWith('slow', 'unknown')
+    expect(deps.transcript).not.toHaveBeenCalled()
   })
 
   test('the orphan is never ended by a check', async () => {

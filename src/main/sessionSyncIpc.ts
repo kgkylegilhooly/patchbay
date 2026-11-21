@@ -8,7 +8,7 @@ import type { SyncReport } from '../shared/sessionSync'
 import { broadcast } from './ipc'
 import type { BackgroundHost } from './sessions/backgroundHost'
 import type { NodeRunner } from './sessions/nodeRunner'
-import { CHECK_EVERY_MS, createSessionSync, type SessionSync, type SyncNodeView } from './sessions/sessionSync'
+import { CHECK_EVERY_MS, createSessionSync, pidAlive, type SessionSync, type SyncNodeView } from './sessions/sessionSync'
 import type { StatusTracker } from './sessions/statusTracker'
 
 /** Where a session with no node is shown when adopted: near the top left of what's on screen. */
@@ -123,7 +123,8 @@ export function setupSessionSync(deps: {
     appOnly(async (id: unknown) => {
       const sid = orphan(id)
       const pid = host.pid(sid)
-      if (pid !== null) await taskkillTree(pid)
+      // Its tree, only while the host still says that pid is this session's and it's there: never a reused pid.
+      if (pid !== null && host.isRunning(sid) && host.pid(sid) === pid && pidAlive(pid)) await taskkillTree(pid)
       await host.kill(sid)
       host.forget(sid)
       await sync.check('ended a session with no node', true)

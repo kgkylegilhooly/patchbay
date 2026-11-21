@@ -19,6 +19,8 @@ import { Icon } from './icons'
 import { noteTarget, parseDiff, type DiffLine } from './reviewNotes'
 import { ago, closeReviewInbox, commentsByLine, reviewBridge, useReviewInbox } from './reviewInboxUi'
 import { useStore } from './store'
+import { Panel } from './shell/Panel'
+import { askConfirm } from './shell/confirmStore'
 import { TaskComparisons } from './tasks/TaskComparisons'
 import './reviewInbox.css'
 
@@ -53,21 +55,20 @@ function ReviewInbox(): React.JSX.Element {
     if (r.ok) { setItems(r.value); setError('') } else setError(r.error)
   }, [projectId])
   useEffect(() => { void load() }, [load, signature])
-  useEffect(() => {
-    const key = (e: KeyboardEvent): void => { if (e.key === 'Escape' && !(e.target instanceof HTMLTextAreaElement)) closeReviewInbox() }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [])
   const selected = items?.find((i) => i.view.task.id === chosen) ?? items?.[0]
   return (
-    // "drawer" too, so canvas shortcuts such as Esc to zoom back leave it to the inbox.
-    <div className="rvi drawer" role="dialog" aria-label="Review inbox">
-      <header className="drawer-head rvi-head">
-        <h2>Review inbox</h2>
-        <span className="rvi-sub">Submitted task work, its changes, and your comments. Comments are saved.</span>
-        <button className="git-mini" onClick={() => void load()}>Refresh</button>
-        <button className="icon-btn" aria-label="Close the review inbox" onClick={closeReviewInbox}><Icon name="close" size={16} /></button>
-      </header>
+    <Panel
+      kind="view"
+      title="Review inbox"
+      icon="check"
+      sub="Submitted task work, its changes, and your comments. Comments are saved."
+      className="rvi"
+      closeLabel="Close the review inbox"
+      onClose={closeReviewInbox}
+      initialFocus="panel"
+      flush
+      actions={<button className="btn btn-sm" onClick={() => void load()}>Refresh</button>}
+    >
       <div className="rvi-body">
         {/* Empty: one message across the whole view, not a sentence in the queue beside a blank pane. */}
         {items?.length === 0 && !error ? (
@@ -99,7 +100,7 @@ function ReviewInbox(): React.JSX.Element {
         {selected ? <ReviewItem key={selected.view.task.id} item={selected} onChanged={load} /> : <div className="rvi-detail" />}
         </>)}
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -164,7 +165,6 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [to, setTo] = useState(item.agents[0]?.id ?? '')
   const [busy, setBusy] = useState(false)
-  const [confirming, setConfirming] = useState(false)
   const call = async <T,>(p: Promise<{ ok: true; value: T } | { ok: false; error: string }>): Promise<T | null> => {
     const r = await p
     if (!r.ok) { setResult({ ok: false, text: r.error }); return null }
@@ -228,18 +228,21 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
     if (r) { setResult({ ok: true, text: `Recorded as reviewed: ${short(r.mark.head)}, snapshot ${short(r.mark.tree)}.${changedNote(r.changedSince)}` }); void onChanged() }
   }
   const unresolved = comments.filter((c) => c.state !== 'resolved')
+  const agentName = item.agents.find((a) => a.id === to)?.title ?? 'the agent'
   const pending = fixesPending(item.view, item.lastReview)
   const accept = async (anyway = false): Promise<void> => {
     if (!task.submissionId) return
     // Acceptance stays the person's; with feedback still open, they say so first.
-    if (!anyway && (unresolved.length > 0 || pending)) { setConfirming(true); return }
-    setConfirming(false)
+    if (!anyway && (unresolved.length > 0 || pending)) {
+      const open = [unresolved.length > 0 ? `${unresolved.length} unresolved comment${unresolved.length === 1 ? '' : 's'}` : '', pending ? `fixes requested from ${agentName} after this submission` : ''].filter(Boolean)
+      if (await askConfirm({ title: 'Accept with feedback open?', lines: open.map((l) => l[0].toUpperCase() + l.slice(1) + '.'), message: 'Accepting closes the task as it is now.', verb: 'Accept anyway', tone: 'neutral', attrs: { 'data-review-confirm': 'accept' }, verbAttrs: { 'data-review': 'accept-anyway' } })) void accept(true)
+      return
+    }
     setBusy(true)
     try { await bridge.taskAccept(task.projectId, task.id, task.submissionId); setResult({ ok: true, text: 'Accepted.' }); void onChanged() }
     catch (e) { setResult({ ok: false, text: String(e instanceof Error ? e.message : e) }) }
     finally { setBusy(false) }
   }
-  const agentName = item.agents.find((a) => a.id === to)?.title ?? 'the agent'
 
   const sections = (['committed', 'local', 'since-review'] as ChangeSection[]).filter((s) => changes?.ranges[s])
   return (
@@ -268,7 +271,7 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
               {[...new Set([base, ...bases].filter(Boolean))].map((b) => <option key={b} value={b}>{b}</option>)}
             </select></label>
           )}
-          <button className="git-mini" onClick={() => void loadChanges()}>Refresh changes</button>
+          <button className="btn btn-sm btn-quiet" onClick={() => void loadChanges()}>Refresh changes</button>
         </div>
         {changes && (
           <p className="rvi-dim rvi-compare" data-compare={mode}>
@@ -313,8 +316,8 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
               <span className="rvi-text">{c.text}</span>
               <span className="rvi-comment-meta">Written {ago(c.createdAt)} on {c.anchor.revisionKind === 'commit' ? 'commit' : 'snapshot'} <code>{short(c.anchor.revision)}</code>{c.sentAt ? ` · sent ${ago(c.sentAt)}` : ''}</span>
               <span className="rvi-comment-actions">
-                {c.status === 'open' ? <button className="git-mini" onClick={() => void setStatus(c, 'resolved')}>Resolve</button> : <button className="git-mini" onClick={() => void setStatus(c, 'open')}>Reopen</button>}
-                <button className="git-mini" aria-label="Delete this comment" onClick={() => void remove(c)}>Delete</button>
+                {c.status === 'open' ? <button className="btn btn-sm btn-quiet" onClick={() => void setStatus(c, 'resolved')}>Resolve</button> : <button className="btn btn-sm btn-quiet" onClick={() => void setStatus(c, 'open')}>Reopen</button>}
+                <button className="btn btn-sm btn-quiet" aria-label="Delete this comment" onClick={() => void remove(c)}>Delete</button>
               </span>
             </li>
           ))}
@@ -326,22 +329,14 @@ function ReviewItem({ item, onChanged }: { item: InboxItem; onChanged: () => Pro
             <select aria-label="Send fixes to" value={to} onChange={(e) => setTo(e.target.value)}>
               {item.agents.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
             </select>
-            <button className="git-btn" data-review="request-fixes" disabled={busy || unresolved.length === 0} onClick={() => void requestFixes()}>Request fixes ({unresolved.length})</button>
+            <button className="btn btn-sm" data-review="request-fixes" disabled={busy || unresolved.length === 0} onClick={() => void requestFixes()}>Request fixes ({unresolved.length})</button>
           </>
         )}
-        <button className="git-btn" data-review="mark" disabled={busy || !changes} title={changes ? 'Record what is shown as reviewed' : 'Load the changes first'} onClick={() => void markReviewed()}>Mark reviewed</button>
+        <button className="btn btn-sm" data-review="mark" disabled={busy || !changes} title={changes ? 'Record what is shown as reviewed' : 'Load the changes first'} onClick={() => void markReviewed()}>Mark reviewed</button>
         <span className="rvi-spacer" />
-        {confirming ? (
-          <span className="rvi-confirm" role="alertdialog" aria-label="Accept with feedback open?">
-            {[unresolved.length > 0 ? `${unresolved.length} unresolved comment${unresolved.length === 1 ? '' : 's'}` : '', pending ? `fixes requested from ${agentName} after this submission` : ''].filter(Boolean).join('; ')}. Accept anyway?
-            <button className="git-mini" onClick={() => setConfirming(false)}>Cancel</button>
-            <button className="git-btn git-btn-main" data-review="accept-anyway" disabled={busy} onClick={() => void accept(true)}>Accept anyway</button>
-          </span>
-        ) : (
-          <button className="git-btn git-btn-main" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? "Before accepting, Patchbay checks the files haven't changed since the required checks passed." : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
-        )}
+        <button className="btn btn-sm btn-solid" data-review="accept" disabled={busy || !item.view.readiness.ready} title={item.view.readiness.ready ? "Before accepting, Patchbay checks the files haven't changed since the required checks passed." : 'Not ready: see above'} onClick={() => void accept()}>Accept this submission</button>
       </footer>
-      {result && <p className={result.ok ? 'rvi-result' : 'rvi-result rvi-result-bad'} role="status">{result.text} <button className="git-mini" aria-label="Dismiss" onClick={() => setResult(null)}>×</button></p>}
+      {result && <p className={result.ok ? 'rvi-result' : 'rvi-result rvi-result-bad'} role="status">{result.text} <button className="btn btn-sm btn-quiet" aria-label="Dismiss" onClick={() => setResult(null)}>×</button></p>}
     </div>
   )
 }
@@ -359,8 +354,8 @@ function CommentEditor({ onSave, onCancel }: { onSave: (text: string) => Promise
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save()
       }} />
       <span className="review-edit-actions">
-        <button type="button" className="git-mini" onClick={onCancel}>Cancel</button>
-        <button type="button" className="git-mini review-save" disabled={!draft.trim()} onClick={save}>Add comment</button>
+        <button type="button" className="btn btn-sm btn-quiet" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn-sm btn-quiet review-save" disabled={!draft.trim()} onClick={save}>Add comment</button>
       </span>
       {'\n'}
     </span>
@@ -432,7 +427,7 @@ function InboxDiff({ shown, changes, comments, onAdd }: { shown: ShownDiff; chan
           return <DiffRow key={i} line={line} index={i} here={target ? byLine.get(`${target.side}:${target.line}`) : undefined} editing={editing === i} onEdit={setEditing} onSave={save} onCancel={cancel} />
         })}
       </pre>
-      {lines.length > limit && <button className="git-mini rvi-more" onClick={() => setLimit((n) => n + PAGE_LINES)}>Show {Math.min(PAGE_LINES, lines.length - limit)} more of {lines.length - limit} lines</button>}
+      {lines.length > limit && <button className="btn btn-sm btn-quiet rvi-more" onClick={() => setLimit((n) => n + PAGE_LINES)}>Show {Math.min(PAGE_LINES, lines.length - limit)} more of {lines.length - limit} lines</button>}
     </div>
   )
 }

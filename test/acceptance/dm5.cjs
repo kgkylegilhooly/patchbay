@@ -77,9 +77,9 @@ async function main() {
 
     // The real confirmation, drawn where it can be read.
     await page.evaluate(() => [...document.querySelectorAll('.wt-bound .btn')].find((b) => b.textContent === 'Remove worktree…').click())
-    await page.waitForSelector('.wt-confirm', { timeout: 3000 })
+    await page.waitForSelector('[data-wt-confirm]', { timeout: 3000 })
     console.log('screenshot:', await L.shot(page, 'dm5-remove-confirm'))
-    await page.evaluate(() => [...document.querySelectorAll('.wt-confirm .btn')].find((b) => b.textContent === 'Keep').click())
+    await page.evaluate(() => [...document.querySelectorAll('[data-wt-confirm] .btn')].find((b) => b.textContent === 'Keep').click())
 
     fs.writeFileSync(path.join(wt.path, 'uncommitted.txt'), 'work in progress\n')
     const refused = await page.evaluate(() => window.patchbay.removeWorktree('g1'))

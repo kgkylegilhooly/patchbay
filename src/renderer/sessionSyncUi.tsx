@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { JOINED_NOTICE, type SyncReport, type SyncRow } from '../shared/sessionSync'
 import { noteJoined, useJoined } from './sessionSync'
+import { confirmThen } from './shell/confirmStore'
+import { AGENT_LABELS } from './status/status'
 import './sessionSync.css'
 
 /**
@@ -8,47 +10,44 @@ import './sessionSync.css'
  * session still running, and the list in Settings > Background sessions. See docs/plans/session-sync.md.
  */
 
-/** On a node whose Restart found its session still running: says so, and offers ending it first, asked twice. */
+/** On a node whose session was found still running: says so, and offers ending it first, through the confirm dialog. */
 export function JoinedStrip({ id }: { id: string }): React.JSX.Element | null {
   const joined = useJoined((s) => !!s.joined[id])
-  const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   if (!joined) return null
-  const end = (): void => {
+  const end = (): Promise<void> => {
     setBusy(true)
-    void window.patchbaySync
-      ?.endAndRestart(id)
-      .finally(() => {
-        setBusy(false)
-        setConfirming(false)
-        noteJoined(id, undefined)
-      })
+    return Promise.resolve(window.patchbaySync?.endAndRestart(id)).finally(() => {
+      setBusy(false)
+      noteJoined(id, undefined)
+    })
   }
+  const ask = (): void =>
+    void confirmThen(
+      {
+        title: 'End and restart this session?',
+        message: 'It and everything it started end now, then it starts again. An agent resumes its conversation.',
+        verb: 'End and restart',
+        tone: 'danger',
+        cancelLabel: 'Keep it',
+        attrs: { 'data-joined-confirm': '' },
+        verbAttrs: { 'data-joined-action': 'end' },
+        cancelAttrs: { 'data-joined-action': 'keep' }
+      },
+      end
+    )
   return (
     <div className="strip strip-held" role="status" data-joined>
       <div className="strip-text">
-        <span>{confirming ? 'End this session and everything it started, then start it again? An agent resumes its conversation.' : JOINED_NOTICE}</span>
+        <span>{JOINED_NOTICE}</span>
       </div>
       <div className="strip-actions">
-        {confirming ? (
-          <>
-            <button className="btn nodrag" data-joined-action="keep" autoFocus onClick={() => setConfirming(false)}>
-              Keep it
-            </button>
-            <button className="btn btn-danger nodrag" data-joined-action="end" disabled={busy} onClick={end}>
-              {busy ? 'Ending…' : 'End and restart'}
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="btn nodrag" data-joined-action="dismiss" onClick={() => noteJoined(id, undefined)}>
-              OK
-            </button>
-            <button className="btn nodrag" data-joined-action="ask" onClick={() => setConfirming(true)}>
-              End and restart…
-            </button>
-          </>
-        )}
+        <button className="btn nodrag" data-joined-action="dismiss" onClick={() => noteJoined(id, undefined)}>
+          OK
+        </button>
+        <button className="btn nodrag" data-joined-action="ask" disabled={busy} onClick={ask}>
+          {busy ? 'Ending…' : 'End and restart…'}
+        </button>
       </div>
     </div>
   )
@@ -63,41 +62,42 @@ const NOTES: Record<NonNullable<SyncRow['problem']>, string> = {
 
 function shownText(row: SyncRow): string {
   if (!row.title) return '—'
-  return row.shown ?? (row.running ? 'running' : 'ended')
+  // The canvas's own words. A terminal has no agent status, only running or ended.
+  return row.shown ? AGENT_LABELS[row.shown] : row.running ? 'Running' : 'Ended'
 }
 
-/** One session with no node: show it as a terminal, or end it, asked twice. Never ended without asking. */
+/** One session with no node: show it as a terminal, or end it, asked first. Never ended without asking. */
 function OrphanActions({ id, onDone }: { id: string; onDone(): void }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
-  const act = (fn: () => Promise<void> | undefined): void => {
+  const act = (fn: () => Promise<void> | undefined): Promise<void> => {
     setBusy(true)
-    void Promise.resolve(fn())
+    return Promise.resolve(fn())
       .catch(() => {})
       .finally(() => {
         setBusy(false)
-        setConfirming(false)
         onDone()
       })
   }
-  if (confirming) {
-    return (
-      <span className="sync-actions">
-        <button type="button" className="btn" data-sync-action="keep" autoFocus onClick={() => setConfirming(false)}>
-          Keep it
-        </button>
-        <button type="button" className="btn btn-danger" data-sync-action="end" disabled={busy} onClick={() => act(() => window.patchbaySync?.endOrphan(id))}>
-          End it
-        </button>
-      </span>
+  const askEnd = (): void =>
+    void confirmThen(
+      {
+        title: 'End this session?',
+        message: 'No node shows it. It and everything it started end now.',
+        verb: 'End session',
+        tone: 'danger',
+        cancelLabel: 'Keep it',
+        attrs: { 'data-sync-confirm': '' },
+        verbAttrs: { 'data-sync-action': 'end' },
+        cancelAttrs: { 'data-sync-action': 'keep' }
+      },
+      () => act(() => window.patchbaySync?.endOrphan(id))
     )
-  }
   return (
     <span className="sync-actions">
-      <button type="button" className="btn" data-sync-action="adopt" disabled={busy} onClick={() => act(() => window.patchbaySync?.adoptOrphan(id))}>
+      <button type="button" className="btn" data-sync-action="adopt" disabled={busy} onClick={() => void act(() => window.patchbaySync?.adoptOrphan(id))}>
         Show it
       </button>
-      <button type="button" className="btn" data-sync-action="ask-end" disabled={busy} onClick={() => setConfirming(true)}>
+      <button type="button" className="btn" data-sync-action="ask-end" disabled={busy} onClick={askEnd}>
         End…
       </button>
     </span>

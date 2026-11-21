@@ -166,7 +166,7 @@ async function main() {
     await page.evaluate(() => document.querySelector('.dock [data-cmd="work"]').click())
     await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
     await page.evaluate(() => document.querySelector('.dock .menu-panel [data-cmd="recent"]').click())
-    await page.waitForSelector('.drawer .recent-entry', { timeout: 5000 })
+    await page.waitForSelector('.shell-drawer .recent-entry', { timeout: 5000 })
     await button(page, '.recent-entry', 'View transcript')
     await page.waitForSelector('.viewer-text', { timeout: 5000 })
     const viewed = await L.waitFor('the transcript', () => page.evaluate(() => {
@@ -175,7 +175,7 @@ async function main() {
     }), 5000)
     c.check('DM9: View transcript shows the conversation', viewed.includes('a.txt'))
     console.log('screenshot:', await L.shot(page, 'dm9-recent'))
-    await button(page, '.viewer', '×')
+    await page.click('.viewer [data-shell="close"]')
     await button(page, '.recent-entry', 'Reopen')
     const reopened = await L.waitFor('the reopened node', async () => (await L.doc(page)).nodes.find((n) => n.kind === 'claude' && n.sessionId === closingSession), 8000)
     c.check('DM9: Reopen adds a new node with that session and removes the entry', reopened.id !== 'a' && (await L.doc(page)).closed.length === 0)

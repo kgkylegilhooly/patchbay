@@ -41,6 +41,12 @@ const scenes = {
     await page.evaluate(() => document.querySelector('.react-flow__node[data-id="old"]')?.scrollIntoView())
     await sleep(300)
   },
+  'sync-confirm': async (page, { profile }) => {
+    await behindItsBack(page, profile)
+    await page.click('.react-flow__node[data-id="old"] [data-joined-action="ask"]')
+    await page.waitForSelector('[data-joined-confirm]', { timeout: 5000 }).catch(() => {})
+    await sleep(300)
+  },
   'sync-settings': async (page, { profile }) => {
     await behindItsBack(page, profile)
     await page.keyboard.down('Control')

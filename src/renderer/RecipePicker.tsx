@@ -8,6 +8,7 @@ import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { WorkflowList } from './workflows/WorkflowList'
 import { WorkflowPane, useWorkflowShown } from './workflows/WorkflowPane'
 import { leaveWorkflows } from './workflows/workflowUi'
+import { Panel } from './shell/Panel'
 
 type Listing = { entries: RecipeEntry[]; repo: string | null; folder: string }
 
@@ -115,17 +116,20 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
   }
 
   return (
-    <form
-      className="pop recipe-sheet"
-      aria-label="New from recipe"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+    <Panel
+      kind="modal"
+      title="New from recipe"
+      icon="team"
+      className="recipe-sheet"
+      onClose={onCancel}
+      initialFocus="none"
+      flush
       onSubmit={(e) => {
         e.preventDefault()
         void start()
       }}
     >
+      <div className="recipe-body">
       <div className="recipe-list" role="listbox" aria-label="Recipes">
         <span className="field-label">Recipes</span>
         {!listing && <p className="recipe-dim">Reading recipes…</p>}
@@ -343,6 +347,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
           </button>
         </div>
       </div>}
-    </form>
+      </div>
+    </Panel>
   )
 }

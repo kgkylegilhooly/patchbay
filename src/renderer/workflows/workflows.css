@@ -18,7 +18,7 @@
   margin: 4px 0 0;
   padding: 0 9px;
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-link {
@@ -72,12 +72,12 @@
 .workflow-key {
   flex: 0 1 110px !important;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-uses {
   flex-basis: 100%;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-add {
@@ -96,7 +96,7 @@
   padding: 6px 8px;
   background: var(--well);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .workflow-cards {
@@ -111,7 +111,7 @@
 .workflow-card {
   background: var(--well);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
 }
 
 .workflow-card-open {
@@ -144,9 +144,9 @@
 .workflow-card-issues {
   padding: 0 7px;
   color: var(--led-needs);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .workflow-details {
@@ -164,7 +164,7 @@
   align-items: center;
   gap: 4px;
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-chip {
@@ -172,7 +172,7 @@
   color: var(--ink);
   background: var(--face-raised);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 
 .workflow-chip-bad {
@@ -215,11 +215,11 @@
   padding: 7px 12px;
   color: var(--ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-md);
   text-align: left;
   background: var(--face-raised);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
   cursor: pointer;
   pointer-events: auto;
@@ -238,21 +238,13 @@
   color: var(--ink-dim);
 }
 
-.pop.workflow-panel {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  left: auto;
+/* A drawer at the right, above the canvas chips. */
+.workflow-panel {
+  --shell-w: 420px;
+}
+
+.shell-drawer.workflow-panel {
   z-index: 40;
-  transform: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(420px, calc(100vw - 32px));
-  padding: 14px 16px;
-  overflow-y: auto;
-  scrollbar-width: thin;
 }
 
 .workflow-panel-head {
@@ -268,7 +260,7 @@
 
 .workflow-panel-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-lg);
 }
 
 .workflow-panel-head p {
@@ -277,12 +269,12 @@
 
 .workflow-panel code {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   word-break: break-all;
 }
 
 .workflow-state {
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-run-chip .st {
@@ -306,7 +298,7 @@
   padding: 8px 10px;
   background: var(--well);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
 }
 
 .workflow-run-step-pending {
@@ -332,7 +324,7 @@
   width: 20px;
   height: 20px;
   color: var(--ink-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   border: 1px solid var(--line);
   border-radius: 50%;
 }
@@ -352,7 +344,7 @@
 
 .workflow-outputs dt {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-outputs dd {
@@ -363,11 +355,11 @@
 
 .workflow-asks {
   color: var(--led-needs);
-  font-size: 12.5px;
+  font-size: var(--fs-md);
 }
 
 .workflow-file {
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .workflow-actions {
@@ -390,6 +382,6 @@
 .workflow-history summary,
 .workflow-mark-done summary {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }

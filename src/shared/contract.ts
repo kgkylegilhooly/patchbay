@@ -205,7 +205,8 @@ export interface PatchbayBridge {
   devCopy: boolean
   /** A launch.json run that can't run as its file now says gives back the reason, and nothing starts. */
   startNode(id: string): Promise<void | Refusal>
-  restartNode(id: string): Promise<void | Refusal>
+  /** `shownExited`: the window showed it as ended, so a session found still running is shown again, never ended. */
+  restartNode(id: string, opts?: { shownExited?: boolean }): Promise<void | Refusal>
   /** Arms exactly the spec that was shown. Refused if the trigger has changed since, or isn't complete. */
   armTrigger(id: string, shownSpec: string): Promise<{ ok: true } | Refusal>
   disarmTrigger(id: string): Promise<void>

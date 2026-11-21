@@ -20,7 +20,8 @@
 
 /* ...and the panel it runs under keeps its last rows (a long list, the commit button) clear of it. */
 .stage[data-dock-raised] > .git-panel,
-.stage[data-dock-raised] > .drawer:not(.rvi) {
+.stage[data-dock-raised] > .drawer:not(.rvi),
+.stage[data-dock-raised] > .shell-drawer:not(.shell-beside) {
   padding-bottom: var(--dock-room, 0px);
 }
 

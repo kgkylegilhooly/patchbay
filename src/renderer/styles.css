@@ -3369,6 +3369,11 @@ circle.wb-eraser {
   background: #0e0e10;
 }
 
+/* Under drawers such as Git, as before the shell. */
+.focus-view.shell-view {
+  z-index: 9;
+}
+
 .stage:has(> .sidebar) > .focus-view {
   left: 314px;
 }

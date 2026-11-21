@@ -10,6 +10,7 @@ import { attemptLook, workflowRunLook } from '../status/status'
 import { StatusMark, StatusPair } from '../status/StatusMarks'
 import { openRunPanel, useWorkflowUi } from './workflowUi'
 import './workflows.css'
+import { Panel } from '../shell/Panel'
 import { safePadding } from '../safeArea'
 
 function Value({ value }: { value: OutputValue }): React.JSX.Element {
@@ -118,15 +119,25 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
   const show = (id: string): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
   const ended = run.state === 'succeeded' || run.state === 'stopped'
   return (
-    <aside className="workflow-panel pop" aria-label={`Workflow run ${run.definition.name}`} data-workflow-panel={run.state}>
-      <header className="workflow-panel-head">
-        <div>
-          <h2>{run.definition.name}</h2>
-          {runSubject(run) && <p className="recipe-dim">{runSubject(run)}</p>}
-        </div>
-        <StatusPair look={workflowRunLook(run.state)} className={`workflow-state workflow-state-${run.state}`} />
-        <button type="button" className="btn" aria-label="Close" onClick={onClose}>✕</button>
-      </header>
+    <Panel
+      kind="drawer"
+      title={run.definition.name}
+      icon="launch"
+      sub={runSubject(run) || undefined}
+      label={`Workflow run ${run.definition.name}`}
+      className="workflow-panel"
+      onClose={onClose}
+      initialFocus="none"
+      attrs={{ 'data-workflow-panel': run.state }}
+      actions={<StatusPair look={workflowRunLook(run.state)} className={`workflow-state workflow-state-${run.state}`} />}
+      footer={
+        !ended && (
+          <button type="button" className="btn btn-risky" onClick={() => void act({ type: 'stop' })} data-workflow-stop>
+            Stop run
+          </button>
+        )
+      }
+    >
       <p className="recipe-dim workflow-where">
         {run.worktree ? <>Branch <code>{run.worktree.branch}</code> in <code>{run.worktree.path}</code></> : <>In <code>{run.cwd}</code></>}
       </p>
@@ -182,14 +193,7 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
       </ol>
       {problem && <p className="field-problem" role="alert">{problem}</p>}
       <p className="recipe-dim">Steps run while Patchbay is open (or in the tray). If it fully quits, steps in progress are checked when it opens again; nothing is taken as done without its result.</p>
-      {!ended && (
-        <div className="pop-actions">
-          <button type="button" className="btn" onClick={() => void act({ type: 'stop' })} data-workflow-stop>
-            Stop run
-          </button>
-        </div>
-      )}
-    </aside>
+    </Panel>
   )
 }
 

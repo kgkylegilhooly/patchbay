@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { bridge } from './bridge'
 import type { IconName } from './iconPaths'
-import { PopTitle, popKeys, SubmitHint } from './popForm'
+import { FormShell } from './shell/FormShell'
 import { ProfilePicker } from './TerminalProfilePicker'
 
 /** The same words as the menu items that open each form. */
@@ -36,28 +36,19 @@ export function NewSessionForm({
   const agentName = kind === 'codex' ? 'Codex' : 'Claude Code'
   const run = kind === 'run'
   const blocked = team ? !cwd || !text.trim() : claude ? !cwd : run && !text.trim()
-  const taskRef = useRef<HTMLTextAreaElement>(null)
-  const commandRef = useRef<HTMLInputElement>(null)
   const title = run && editing ? 'Edit command' : NAMES[kind]
 
-  useEffect(() => {
-    // The folder is already filled in, so typing goes to the prompt or the command.
-    if (claude) taskRef.current?.focus()
-    else commandRef.current?.focus()
-  }, [claude])
-
   return (
-    <form
-      className={`pop ${claude ? 'pop-claude' : 'pop-terminal'}`}
-      aria-label={title}
-      onKeyDown={popKeys(onCancel)}
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (blocked) return
-        onOpen({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}) })
-      }}
+    <FormShell
+      title={title}
+      icon={run && editing ? 'edit' : ICONS[kind]}
+      className={claude ? 'pop-claude' : 'pop-terminal'}
+      onCancel={onCancel}
+      blocked={blocked}
+      hint={claude}
+      submitLabel={team ? 'Start team lead' : claude ? `Start ${agentName}` : run ? (editing ? 'Save command' : 'Start run') : 'Start terminal'}
+      onSubmit={() => onOpen({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}) })}
     >
-      <PopTitle icon={run && editing ? 'edit' : ICONS[kind]}>{title}</PopTitle>
       {team && <p className="pop-note">One lead Claude opens here. It splits the task into workstreams, starts a team for them, and brings the results together.</p>}
       <div className="field">
         <span className="field-label">Folder</span>
@@ -87,20 +78,12 @@ export function NewSessionForm({
       <label className="field">
         <span className="field-label">{team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}</span>
         {claude ? (
-          <textarea ref={taskRef} name={team ? 'task' : undefined} rows={team ? 5 : 3} value={text} onChange={(e) => setText(e.target.value)} />
+          // The folder is already filled in, so typing goes to the prompt or the command.
+          <textarea data-autofocus name={team ? 'task' : undefined} rows={team ? 5 : 3} value={text} onChange={(e) => setText(e.target.value)} />
         ) : (
-          <input ref={commandRef} name="command" placeholder={run ? 'For example, npm run dev' : 'For example, codex'} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
+          <input data-autofocus name="command" placeholder={run ? 'For example, npm run dev' : 'For example, codex'} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
         )}
       </label>
-      <div className="pop-actions">
-        {claude && <SubmitHint />}
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" disabled={blocked}>
-          {team ? 'Start team lead' : claude ? `Start ${agentName}` : run ? (editing ? 'Save command' : 'Start run') : 'Start terminal'}
-        </button>
-      </div>
-    </form>
+    </FormShell>
   )
 }

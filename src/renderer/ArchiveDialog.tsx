@@ -4,6 +4,7 @@ import { projectsBridge } from './projectsBridge'
 import { archiveLines, plural } from './projectsView'
 import { archivedToast } from './archiveToast'
 import { showArchived } from './projectsUi'
+import { Panel } from './shell/Panel'
 
 export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClose: () => void }): React.JSX.Element {
   const [preview, setPreview] = useState<ArchivePreview | null>(null)
@@ -36,79 +37,87 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
     } else setResult(result)
   }
 
-  const keys = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      e.stopPropagation()
-      if (!busy) onClose()
-    }
-  }
+  const done = (
+    <button type="button" className="btn btn-solid" data-autofocus onClick={onClose}>
+      Done
+    </button>
+  )
 
   if (result) {
     return (
-      <div className="pop archive-dialog" role="dialog" aria-label="Project archived" onKeyDown={keys}>
+      <Panel kind="modal" title={result.ok ? 'Archived' : "Couldn't archive"} label="Project archived" className="archive-dialog" onClose={onClose} footer={done}>
         {result.ok ? (
-          <>
-            <h2>Archived</h2>
-            <ul className="archive-lines">
-              <li>{result.stopped ? `Stopped ${plural(result.stopped, 'session')}.` : 'Nothing was running.'}</li>
-              {result.stillRunning.length > 0 && (
-                <li className="archive-warn">
-                  Still running: {result.stillRunning.join(', ')}. Stop {result.stillRunning.length === 1 ? 'it' : 'them'} from the project after unarchiving.
-                </li>
-              )}
-              {clearScrollback && <li>Cleared {formatBytes(result.freedBytes)} of saved terminal output.</li>}
-              {result.clearedSites.length > 0 && <li>Cleared storage and cookies for {result.clearedSites.join(', ')}. Sign-ins set for a wider domain may remain.</li>}
-              {result.keptSites.length > 0 && <li>Left alone, since another project shows them: {result.keptSites.join(', ')}.</li>}
-              {result.problem && <li className="archive-warn">{result.problem}</li>}
-            </ul>
-          </>
+          <ul className="archive-lines">
+            <li>{result.stopped ? `Stopped ${plural(result.stopped, 'session')}.` : 'Nothing was running.'}</li>
+            {result.stillRunning.length > 0 && (
+              <li className="archive-warn">
+                Still running: {result.stillRunning.join(', ')}. Stop {result.stillRunning.length === 1 ? 'it' : 'them'} from the project after unarchiving.
+              </li>
+            )}
+            {clearScrollback && <li>Cleared {formatBytes(result.freedBytes)} of saved terminal output.</li>}
+            {result.clearedSites.length > 0 && <li>Cleared storage and cookies for {result.clearedSites.join(', ')}. Sign-ins set for a wider domain may remain.</li>}
+            {result.keptSites.length > 0 && <li>Left alone, since another project shows them: {result.keptSites.join(', ')}.</li>}
+            {result.problem && <li className="archive-warn">{result.problem}</li>}
+          </ul>
         ) : (
           <p className="archive-warn">{result.reason}</p>
         )}
-        <div className="pop-actions">
-          <button type="button" className="btn btn-solid" autoFocus onClick={onClose}>
-            Done
-          </button>
-        </div>
-      </div>
+      </Panel>
     )
   }
 
   if (!preview)
     return (
-      <div className="pop archive-dialog" role="dialog" aria-label="Archive project" aria-busy="true" onKeyDown={keys}>
+      <Panel kind="modal" title="Archive project" className="archive-dialog" onClose={onClose} attrs={{ 'aria-busy': true }}>
         <p className="pop-note">Checking what runs in it…</p>
-      </div>
+      </Panel>
     )
 
   if (!preview.ok) {
     return (
-      <div className="pop archive-dialog" role="dialog" aria-label="Archive project" onKeyDown={keys}>
-        <h2>Can't archive this project</h2>
-        <p className="pop-note">{preview.reason}</p>
-        <div className="pop-actions">
-          <button type="button" className="btn" autoFocus onClick={onClose}>
+      <Panel
+        kind="modal"
+        title="Can't archive this project"
+        label="Archive project"
+        className="archive-dialog"
+        onClose={onClose}
+        footer={
+          <button type="button" className="btn" data-autofocus onClick={onClose}>
             Close
           </button>
-        </div>
-      </div>
+        }
+      >
+        <p className="pop-note">{preview.reason}</p>
+      </Panel>
     )
   }
 
   const clearable = preview.sites.filter((s) => !s.sharedWith.length)
   const shared = preview.sites.filter((s) => s.sharedWith.length)
   return (
-    <form
-      className="pop archive-dialog"
-      role="dialog"
-      aria-label={`Archive ${preview.name}`}
-      onKeyDown={keys}
+    <Panel
+      kind="modal"
+      title={`Archive “${preview.name}”?`}
+      icon="archive"
+      label={`Archive ${preview.name}`}
+      className="archive-dialog"
+      onClose={onClose}
+      busy={busy}
       onSubmit={(e) => {
         e.preventDefault()
         if (!busy) void archive()
       }}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-solid" data-autofocus disabled={busy}>
+            {busy ? 'Archiving…' : 'Archive'}
+          </button>
+        </>
+      }
     >
-      <h2>Archive “{preview.name}”?</h2>
       <ul className="archive-lines">
         {archiveLines(preview).map((line) => (
           <li key={line}>{line}</li>
@@ -138,14 +147,6 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
           </span>
         </label>
       )}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={onClose} disabled={busy}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" autoFocus disabled={busy}>
-          {busy ? 'Archiving…' : 'Archive'}
-        </button>
-      </div>
-    </form>
+    </Panel>
   )
 }

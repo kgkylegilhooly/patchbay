@@ -63,7 +63,7 @@ const bridge: PatchbayBridge = {
   watchOutput: (ids) => ipcRenderer.send('pb:watchOutput', ids),
   devCopy: process.argv.includes('--patchbay-dev-copy'),
   startNode: (id) => invoke('startNode', id),
-  restartNode: (id) => invoke('restartNode', id),
+  restartNode: (id, opts) => invoke('restartNode', id, opts),
   armTrigger: (id, shownSpec) => invoke('armTrigger', id, shownSpec),
   disarmTrigger: (id) => invoke('disarmTrigger', id),
   runTriggerNow: (id) => invoke('runTriggerNow', id),

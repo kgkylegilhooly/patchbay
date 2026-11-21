@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { recipeFromSelection, RecipeError, type SavedRecipe } from '../shared/recipe'
 import { recipes } from './recipeBridge'
 import { useStore } from './store'
+import { Panel } from './shell/Panel'
 
 /**
  * Saves the selected nodes as a recipe: what each is, where it sits, its prompt and its connections. It shows what
@@ -58,18 +59,33 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
   }
 
   return (
-    <form
-      className="pop recipe-save"
-      aria-label="Save selection as recipe"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onCancel()
-      }}
+    <Panel
+      kind="modal"
+      title="Save as recipe"
+      label="Save selection as recipe"
+      className="recipe-save"
+      onClose={onCancel}
       onSubmit={(e) => {
         e.preventDefault()
         void save(false)
       }}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          {exists ? (
+            <button type="button" className="btn btn-danger" disabled={busy || blockedBySecrets} onClick={() => void save(true)}>
+              Replace it
+            </button>
+          ) : (
+            <button type="submit" className="btn btn-solid" disabled={busy || !name.trim() || 'error' in saved || blockedBySecrets}>
+              Save recipe
+            </button>
+          )}
+        </>
+      }
     >
-      <h2>Save as recipe</h2>
       <label className="field">
         <span className="field-label">Recipe name</span>
         <input autoFocus value={name} placeholder="Implement and review" onChange={(e) => (setName(e.target.value), setExists(false))} />
@@ -157,20 +173,6 @@ export function RecipeSave({ projectId, selected, onDone, onCancel }: { projectI
         </>
       )}
       {problem && <p className="field-problem" role="alert">{problem}</p>}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        {exists ? (
-          <button type="button" className="btn btn-danger" disabled={busy || blockedBySecrets} onClick={() => void save(true)}>
-            Replace it
-          </button>
-        ) : (
-          <button className="btn btn-solid" disabled={busy || !name.trim() || 'error' in saved || blockedBySecrets}>
-            Save recipe
-          </button>
-        )}
-      </div>
-    </form>
+    </Panel>
   )
 }

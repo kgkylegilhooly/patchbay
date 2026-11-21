@@ -17,6 +17,8 @@ export const STALE_STARTING_MS = 2 * 60_000
 export const STALE_WORKING_MS = 10 * 60_000
 /** A program waiting at its prompt draws nothing. Claude's spinner redraws several times a second while it works. */
 export const OUTPUT_QUIET_MS = 60_000
+/** An agent's SessionEnd says exited a moment before its process has gone, longer when it has servers to shut down. */
+export const RECENT_EXIT_MS = 10_000
 
 export interface SyncNodeView {
   id: string
@@ -75,6 +77,11 @@ export function planSync(input: SyncInput): SyncPlan {
       continue
     }
     if (node.shown === 'exited' && alive) {
+      const said = input.lastHeard(node.id)
+      if (said !== undefined && input.now - said < RECENT_EXIT_MS) {
+        row(node.id, node, session, alive, null)
+        continue
+      }
       plan.reattach.push(node.id)
       row(node.id, node, session, alive, 'shown-exited')
       continue
@@ -204,7 +211,9 @@ export function createSessionSync(deps: SessionSyncDeps): SessionSync {
       void deps.host.kill(id).catch(() => {})
     }
     for (const id of plan.stale) {
-      const status = statusFromTranscript(await deps.transcript(id).catch(() => null))
+      // A start's transcript, when it resumed one, ends with the previous run's last word, which says nothing of now.
+      const starting = plan.rows.find((r) => r.id === id)?.shown === 'starting'
+      const status = starting ? 'unknown' : statusFromTranscript(await deps.transcript(id).catch(() => null))
       deps.log?.(`Session sync (${reason}): ${id} had heard nothing for a long while at its prompt, so its status is now ${status}.`)
       deps.seed(id, status)
     }

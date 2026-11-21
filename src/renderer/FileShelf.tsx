@@ -13,6 +13,7 @@ import { useStore } from './store'
 import { visibleArea } from './viewArea'
 import { FileGlyph } from './nodes/FileNode'
 import './fileShelf.css'
+import { Panel } from './shell/Panel'
 
 /** The node a point on screen is over, other than the one being dragged, and its kind. */
 function nodeAt(x: number, y: number, except?: string): { id: string; el: Element } | null {
@@ -59,7 +60,7 @@ function useExplorerDrop(): void {
       if (!hasFiles(e) || e.defaultPrevented) return
       if (!(e.target instanceof Element) || !e.target.closest('.stage')) return
       // A drawer or form over the canvas isn't the canvas.
-      if (e.target.closest('.drawer, .pop, .settings, .board')) return
+      if (e.target.closest('.drawer, .pop, .settings, .board, .shell')) return
       const files = filesBridge()
       const paths = [...(e.dataTransfer?.files ?? [])].map((f) => files?.pathForFile(f) ?? '').filter(Boolean)
       if (!paths.length) return
@@ -189,15 +190,20 @@ function Shelf(): React.JSX.Element {
   const shown = useMemo(() => filterEntries(entries ?? [], query, kind), [entries, query, kind])
   const now = Date.now()
   return (
-    <aside className="drawer shelf-drawer" aria-label="Files shelf" onKeyDown={(e) => e.key === 'Escape' && closeFileShelf()}>
-      <header className="drawer-head">
-        <h2>Files{project ? ` in ${project.name}` : ''}</h2>
-        <button className="icon-btn" aria-label="Close the Files shelf" onClick={closeFileShelf}>
-          <Icon name="close" size={16} />
-        </button>
-      </header>
+    <Panel kind="drawer" title={`Files${project ? ` in ${project.name}` : ''}`} icon="file" label="Files shelf" className="shelf-drawer" closeLabel="Close the Files shelf" onClose={closeFileShelf} initialFocus="none" flush>
       <div className="shelf-controls">
-        <input ref={input} className="shelf-search" type="search" placeholder="Search by name or folder" aria-label="Search files" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input ref={input} className="shelf-search" type="search" placeholder="Search by name or folder" aria-label="Search files"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          // Focus starts here, so Esc here closes the shelf, as it does from anywhere else in it.
+          data-own-esc=""
+          onKeyDown={(e) => {
+            if (e.key !== 'Escape') return
+            e.preventDefault()
+            e.stopPropagation()
+            closeFileShelf()
+          }}
+        />
         <select aria-label="Type of file" value={kind} onChange={(e) => setKind(e.target.value as KindFilter)}>
           {KIND_FILTERS.map((k) => (
             <option key={k.id} value={k.id}>
@@ -222,7 +228,7 @@ function Shelf(): React.JSX.Element {
           {shown.length > ROW_LIMIT && <li className="drawer-empty">{shown.length - ROW_LIMIT} more. Search to narrow it down.</li>}
         </ul>
       )}
-    </aside>
+    </Panel>
   )
 }
 
@@ -247,8 +253,23 @@ function SendPicker({ path }: { path: string }): React.JSX.Element {
     close()
   }
   return (
-    <div className="pop shelf-send" role="dialog" aria-label="Send path to agent" onKeyDown={(e) => e.key === 'Escape' && close()}>
-      <strong>Send path to agent</strong>
+    <Panel
+      kind="modal"
+      title="Send path to agent"
+      icon="arrow-right"
+      className="shelf-send"
+      onClose={close}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={close}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-solid" disabled={!chosen} onClick={() => void send()}>
+            Send
+          </button>
+        </>
+      }
+    >
       <code className="shelf-send-path">{withoutLongPrefix(path)}</code>
       {agents.length ? (
         <label className="field">
@@ -265,15 +286,7 @@ function SendPicker({ path }: { path: string }): React.JSX.Element {
         <p className="drawer-empty">There's no agent in this project to send it to.</p>
       )}
       {problem && <p className="shelf-problem">{problem}</p>}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={close}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn-solid" disabled={!chosen} onClick={() => void send()}>
-          Send
-        </button>
-      </div>
-    </div>
+    </Panel>
   )
 }
 

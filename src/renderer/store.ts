@@ -294,7 +294,8 @@ export function closeNodes(ids: string[]): void {
 }
 
 export async function restartNode(id: string): Promise<void> {
-  const result = await bridge.restartNode(id)
+  // What it showed is sent along: a revive that lands just before the click mustn't turn Restart into ending it.
+  const result = await bridge.restartNode(id, { shownExited: useStore.getState().statuses[id] === 'exited' })
   // Still running unseen, so shown again: its own notice says so. See sessionSyncUi.tsx.
   if (!noteJoined(id, result)) noteRunProblem(id, result)
   useStore.setState((s) => ({ epochs: { ...s.epochs, [id]: (s.epochs[id] ?? 0) + 1 } }))

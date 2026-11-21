@@ -116,3 +116,40 @@ describe('Restart on a node whose session the host still runs', () => {
     expect(tracker.get('c')).toBe('starting')
   })
 })
+
+describe('Restart clicked on a node shown as ended, just after a revive', () => {
+  test('a revive the runner never heard of: the live session is shown, never ended', async () => {
+    const { fake, app, tracker, runner, reattached } = await scene()
+    // A focus check reconnects and revives it in the moment before the click lands.
+    await app.connect()
+    expect(app.isRunning('c')).toBe(true)
+    expect(tracker.get('c')).toBe('exited')
+
+    expect(await runner.restartOrJoin('c', { shownExited: true })).toBe('joined')
+    expect(fake.specs).toHaveLength(1)
+    expect(app.isRunning('c')).toBe(true)
+    expect(tracker.get('c')).toBe('unknown')
+    expect(reattached).toEqual(['c'])
+  })
+
+  test('a revive already taken on: still only shown, and not adopted twice', async () => {
+    const { fake, app, tracker, runner, reattached } = await scene()
+    app.onRevive((id) => runner.reattachNode(id))
+    await app.connect()
+    expect(reattached).toEqual(['c'])
+    await runner.handleHook('c', { hook_event_name: 'UserPromptSubmit' })
+
+    expect(await runner.restartOrJoin('c', { shownExited: true })).toBe('joined')
+    expect(fake.specs).toHaveLength(1)
+    expect(reattached).toEqual(['c'])
+    // What a hook said since isn't wiped by a second adoption.
+    expect(tracker.get('c')).toBe('working')
+  })
+
+  test('a Restart on a node the person saw running still restarts it', async () => {
+    const { fake, app, runner } = await scene()
+    await app.connect()
+    expect(await runner.restartOrJoin('c')).toBeUndefined()
+    expect(fake.specs).toHaveLength(2)
+  })
+})

@@ -298,7 +298,16 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     return connecting
   }
 
-  const connectionLost = async (): Promise<void> => {
+  /** A reconnect under way, which attaches every session: a refresh waits for it rather than attach them over it. */
+  let reconnecting: Promise<void> | null = null
+  const connectionLost = (): Promise<void> => {
+    reconnecting = reconnect().finally(() => {
+      reconnecting = null
+    })
+    return reconnecting
+  }
+
+  const reconnect = async (): Promise<void> => {
     if (leaving) return
     const patience = Date.now() + UNRESPONSIVE_PATIENCE_MS
     for (let i = 0; i < RECONNECT_TRIES || Date.now() < patience; i++) {
@@ -352,6 +361,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     },
 
     async refresh() {
+      if (reconnecting) await reconnecting
       const conn = connection
       if (mode !== 'background' || !conn) return null
       const asked = generation

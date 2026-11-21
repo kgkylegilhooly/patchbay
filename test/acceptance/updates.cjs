@@ -63,7 +63,7 @@ async function main() {
     c.check('It asked the feed and fetched the file', feed.asked.includes('/latest.yml') && feed.asked.some((u) => u.endsWith('.exe')), feed.asked)
     console.log('SHOT', await L.shot(page, 'updates-after-ready'))
     await page.click('[data-update="restart"]')
-    const warning = await page.$eval('.set-warning', (e) => e.textContent).catch(() => '')
+    const warning = await page.$eval('[data-update-confirm="restart"] .confirm-message', (e) => e.textContent).catch(() => '')
     c.check('Restart to update first says that sessions end, and asks again', /ends every running session/.test(warning) && !!(await page.$('[data-update="restart-confirm"]')), warning)
     console.log('SHOT', await L.shot(page, 'updates-after-confirm'))
     c.check('No errors in the page', app.problems.length === 0, app.problems)

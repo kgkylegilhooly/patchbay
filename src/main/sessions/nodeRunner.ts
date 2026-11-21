@@ -99,8 +99,12 @@ export interface NodeRunner {
   /** A session the host still runs that this app had lost track of: taken on again, caught up, and its views rebuilt. */
   reattachNode(id: string): void
   restartNode(id: string): Promise<void>
-  /** As restartNode. `joined` means the session it would have ended was still running unseen, so it's shown again instead. */
-  restartOrJoin(id: string): Promise<'joined' | void>
+  /**
+   * As restartNode. `joined` means the session it would have ended was still running unseen, so it's shown again
+   * instead. With `shownExited`, the person was looking at it as ended: one running by now, as after a revive that
+   * landed just before the click, is shown, never ended.
+   */
+  restartOrJoin(id: string, opts?: { shownExited?: boolean }): Promise<'joined' | void>
   /** Ends the session's whole process tree, then starts it again. An agent resumes its conversation. */
   endAndRestart(id: string): Promise<void>
   /** Ends a session on purpose, as when its node closes. */
@@ -502,8 +506,13 @@ export function createNodeRunner({
       await api.restartOrJoin(id)
     },
 
-    async restartOrJoin(id) {
+    async restartOrJoin(id, opts = {}) {
       const node = nodeById(id)
+      if (opts.shownExited && (node?.kind === 'claude' || node?.kind === 'terminal') && host.isRunning(id)) {
+        // Already taken on again by the revive, or not yet: either way it's live, and Restart only shows it.
+        if (!started.has(id)) api.reattachNode(id)
+        return 'joined'
+      }
       if (node?.kind === 'run') {
         await stopTree(id)
         return launch(id)
