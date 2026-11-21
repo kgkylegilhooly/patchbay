@@ -49,6 +49,13 @@ describe('unloading windows far off-screen', () => {
     expect([...next.parked]).toEqual(['far'])
   })
 
+  test('zoomed far out, unloaded windows stay unloaded even when near, unless one is on show', () => {
+    const plan = planParking({ boxes: new Map([['a', ON], ['b', ON], ['c', ON]]), screen, keep: new Set(['b']), hold: new Set(['a', 'b']), lastNear: new Map(), now: 50 })
+    expect([...plan.parked]).toEqual(['a'])
+    // Zoomed back in, it comes back at once.
+    expect(planParking({ boxes: new Map([['a', ON]]), screen, keep: new Set(), lastNear: plan.lastNear, now: 51 }).parked.size).toBe(0)
+  })
+
   test('windows that went away drop out of the record', () => {
     const plan = planParking({ boxes: new Map([['a', ON]]), screen, keep: new Set(), lastNear: new Map([['gone', 0]]), now: 1 })
     expect([...plan.lastNear.keys()]).toEqual(['a'])

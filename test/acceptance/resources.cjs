@@ -43,6 +43,16 @@ async function main() {
       await L.waitFor('the far window to be drawn again', () => xterm('far'), 25000)
       await L.waitFor('its output to show again', async () => (await L.screen(page, 'far')).join('\n').includes('far-marker-42'), 10000)
       c.check('Brought near, it is drawn again from its session, with its output', true)
+
+      // In the Focus view every pane is on show, wherever its node sits on the canvas underneath.
+      await page.click('.dock [data-cmd="toggle-focus"]')
+      await page.waitForSelector('.focus-view', { timeout: 5000 })
+      const inPane = (id) => page.evaluate((i) => !!document.querySelector(`.focus-view .term[data-term-node="${i}"]`), id)
+      c.check('The far window is in a Focus view pane', await inPane('far'))
+      await page.evaluate(() => window.patchbay.dispatch({ op: 'patchNode', id: 'far', patch: { x: 30000 } }))
+      await L.sleep(3.5 * 60_000)
+      const shown = await page.evaluate(() => ({ parked: document.querySelectorAll('.focus-view [data-parked]').length, drawn: document.querySelectorAll('.focus-view .xterm').length }))
+      c.check('After 3.5 min, every Focus view pane still shows its window', shown.parked === 0 && shown.drawn >= 2, shown)
     }
     c.check('No errors in the page', app.problems.length === 0, app.problems.slice(0, 3))
   } finally {

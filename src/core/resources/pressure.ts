@@ -9,7 +9,10 @@ export const PRESSURE = {
   commitFree: 0.1,
   /** Warn when less than this share of RAM is available. */
   physFree: 0.06,
-  /** A warning shown once isn't shown again for this long, even if memory recovers and runs low again. */
+  /**
+   * A warning shown once is shown again only after its shortage has ended and come back, and not within this long of
+   * the last time. A shortage that simply lasts is said once.
+   */
   rearmMs: 60 * 60_000,
   /** The most idle sessions suggested. */
   suggestions: 3
@@ -23,14 +26,19 @@ export function pressureNow(system: SystemMemory | null, agents: { running: numb
   return null
 }
 
-/** When each kind of warning was last shown. */
-export type WarnedAt = Partial<Record<PressureKind, number>>
+/** When each kind of warning was last shown, and whether its shortage has ended since. */
+export type WarnedAt = Partial<Record<PressureKind, { at: number; cleared: boolean }>>
 
-/** Whether to show a warning for `kind` now: once, and again only after the re-arm time. Never blocks anything. */
+/** Whether to show a warning for `kind` now: once, and again only once it has ended, come back, and the re-arm time has passed. */
 export function shouldWarn(kind: PressureKind | null, warned: WarnedAt, now: number): boolean {
   if (!kind) return false
   const last = warned[kind]
-  return last === undefined || now - last >= PRESSURE.rearmMs
+  return last === undefined || (last.cleared && now - last.at >= PRESSURE.rearmMs)
+}
+
+/** Notes that every kind other than `kind`, the shortage now, has ended. */
+export function noteCleared(warned: WarnedAt, kind: PressureKind | null): void {
+  for (const [k, last] of Object.entries(warned) as Array<[PressureKind, { at: number; cleared: boolean }]>) if (k !== kind) last.cleared = true
 }
 
 /** Agents at their prompt with nothing to do, worth closing to free memory: the longest idle first, then the largest. */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { agentLimitReason, parseAgentLimit } from '../../src/core/resources/agentLimit'
 import { cpuPercent, parseProcessRows, treeUse, type ProcessRow } from '../../src/core/resources/processes'
-import { buildWarning, idleSuggestions, PRESSURE, pressureNow, shouldWarn } from '../../src/core/resources/pressure'
+import { buildWarning, idleSuggestions, noteCleared, PRESSURE, pressureNow, shouldWarn, type WarnedAt } from '../../src/core/resources/pressure'
 import type { SessionUse, SystemMemory } from '../../src/shared/resources'
 
 const GB = 1024 ** 3
@@ -77,13 +77,20 @@ describe('when to warn', () => {
     expect(pressureNow(sys(PRESSURE.commitFree - 0.01), none)).toBe('commit')
   })
 
-  test('said once, and again only after the re-arm time', () => {
+  test('said once; again only after it ended, came back, and the re-arm time passed', () => {
     const t = 1_000_000
     expect(shouldWarn('commit', {}, t)).toBe(true)
-    expect(shouldWarn('commit', { commit: t }, t + 60_000)).toBe(false)
-    expect(shouldWarn('commit', { commit: t }, t + PRESSURE.rearmMs)).toBe(true)
-    // Each kind keeps its own time.
-    expect(shouldWarn('physical', { commit: t }, t + 1)).toBe(true)
+    const warned: WarnedAt = { commit: { at: t, cleared: false } }
+    expect(shouldWarn('commit', warned, t + 60_000)).toBe(false)
+    // A shortage that simply lasts is said once.
+    noteCleared(warned, 'commit')
+    expect(shouldWarn('commit', warned, t + 5 * PRESSURE.rearmMs)).toBe(false)
+    // It ended, and came back: said again, but not within the re-arm time.
+    noteCleared(warned, null)
+    expect(shouldWarn('commit', warned, t + 60_000)).toBe(false)
+    expect(shouldWarn('commit', warned, t + PRESSURE.rearmMs)).toBe(true)
+    // Each kind keeps its own record.
+    expect(shouldWarn('physical', { commit: { at: t, cleared: false } }, t + 1)).toBe(true)
     expect(shouldWarn(null, {}, t)).toBe(false)
   })
 

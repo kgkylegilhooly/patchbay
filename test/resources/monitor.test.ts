@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createResourceMonitor, PROCESS_MIN_GAP_MS, systemMemoryFrom, type ResourceMonitorDeps, type SessionInfo } from '../../src/main/resources/monitor'
+import { COMMIT_SPARED, createResourceMonitor, PROCESS_MIN_GAP_MS, systemMemoryFrom, type ResourceMonitorDeps, type SessionInfo } from '../../src/main/resources/monitor'
 import type { PressureKind, ResourceReading, ResourceWarning, SystemMemory } from '../../src/shared/resources'
 import { PRESSURE } from '../../src/core/resources/pressure'
 
@@ -90,38 +90,73 @@ describe('the resource monitor', () => {
     expect(m.queries).toHaveLength(2)
   })
 
-  test('low commit: one warning naming the idle agents (longest idle first), and the window told once', async () => {
+  test('low commit: one warning naming idle agents, longest idle first, without starting PowerShell; the window told once', async () => {
     const m = setup()
     m.setSystem(short)
     await m.monitor.tick()
+    expect(m.queries).toHaveLength(0)
     expect(m.warnings).toHaveLength(1)
     expect(m.warnings[0].kind).toBe('commit')
-    expect(m.warnings[0].suggestions.map((s) => s.id)).toEqual(['small', 'big'])
-    expect(m.warnings[0].suggestions[1].memory).toBe(500 * 1024 ** 2)
+    expect(m.warnings[0].suggestions.map((s) => [s.id, s.memory])).toEqual([
+      ['small', null],
+      ['big', null]
+    ])
     expect(m.lows).toEqual(['commit'])
-    m.advance(60_000)
+    // A shortage that lasts is said once, however long it lasts.
+    m.advance(2 * PRESSURE.rearmMs)
     await m.monitor.tick()
     expect(m.warnings).toHaveLength(1)
     expect(m.lows).toEqual(['commit'])
-    // Recovered, then short again within the hour: the window lets go again, but no second warning.
+    // Recovered, then short again: the window lets go again; said again once the re-arm time has passed.
     m.setSystem(plenty)
     await m.monitor.tick()
     m.setSystem(short)
     await m.monitor.tick()
     expect(m.lows).toEqual(['commit', 'commit'])
-    expect(m.warnings).toHaveLength(1)
-    m.advance(PRESSURE.rearmMs)
+    expect(m.warnings).toHaveLength(2)
+    m.setSystem(plenty)
+    await m.monitor.tick()
+    m.setSystem(short)
+    m.advance(60_000)
     await m.monitor.tick()
     expect(m.warnings).toHaveLength(2)
   })
 
-  test("a query that can't start, as when Windows is out of commit, still warns and says why it has no processes", async () => {
+  test('low commit uses the last process reading for sizes, and an open view reads only on Refresh', async () => {
+    const m = setup()
+    m.monitor.watch(true)
+    await m.monitor.tick()
+    expect(m.queries).toHaveLength(1)
+    m.setSystem(short)
+    m.advance(PROCESS_MIN_GAP_MS)
+    const r = await m.monitor.tick()
+    expect(m.queries).toHaveLength(1)
+    expect(r.processesProblem).toBe(COMMIT_SPARED)
+    expect(m.warnings[0].suggestions.map((s) => [s.id, s.memory])).toEqual([
+      ['small', 50 * 1024 ** 2],
+      ['big', 500 * 1024 ** 2]
+    ])
+    await m.monitor.tick({ processes: true })
+    expect(m.queries).toHaveLength(2)
+  })
+
+  test('low RAM reads processes to size the suggestions', async () => {
+    const m = setup()
+    m.setSystem({ ...plenty, availPhys: 0.5 * GB })
+    await m.monitor.tick()
+    expect(m.queries).toHaveLength(1)
+    expect(m.warnings[0].kind).toBe('physical')
+    expect(m.warnings[0].suggestions[1].memory).toBe(500 * 1024 ** 2)
+    expect(m.lows).toEqual(['physical'])
+  })
+
+  test("a query that can't start still warns and says why it has no processes", async () => {
     const m = setup({
       listProcesses: async () => {
         throw new Error('spawn powershell.exe EAGAIN')
       }
     })
-    m.setSystem(short)
+    m.setSystem({ ...plenty, availPhys: 0.5 * GB })
     const r = await m.monitor.tick()
     expect(m.warnings).toHaveLength(1)
     expect(r.processesProblem).toContain('EAGAIN')

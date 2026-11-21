@@ -558,7 +558,8 @@ async function boot(): Promise<void> {
       const held = plan.endedInHost.includes(id) ? host.snapshot(id).data : ''
       await runner.startNode(id, { initialScrollback: restoreSeed('terminal', held || scrollback.read(id)), restored: true })
     }
-    for (const id of plan.claude) await runner.startNode(id)
+    // They were running when Patchbay last saw them, so the soft limit on agents at once doesn't hold them back.
+    for (const id of plan.claude) await runner.startNode(id, { restored: true })
     gate.evaluate()
     setupGate.evaluate()
     void workflows.recover()

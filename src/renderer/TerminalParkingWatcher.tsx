@@ -21,6 +21,8 @@ const MOVE_CHECK_MS = 150
 export function TerminalParkingWatcher(): null {
   const transform = useFlowStore((s) => s.transform)
   const enabled = useParkingEnabled()
+  // A window moved into a Focus view pane or maximized is on show at once.
+  const shownElsewhere = useStore((s) => `${s.maximized ?? ''}|${s.focus ? Object.keys(s.focusSlots).join(',') : ''}`)
   const lastNear = useRef(new Map<string, number>())
   const check = useRef<(urgent?: boolean) => void>(() => {})
 
@@ -34,16 +36,22 @@ export function TerminalParkingWatcher(): null {
     const boxes = new Map<string, Box | null>()
     for (const n of doc.nodes) {
       if (!TERMINAL_KINDS.has(n.kind) || !inActiveProject(doc, n)) continue
-      const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`)
+      // The terminal itself, wherever its card is drawn: on the canvas, maximized, or in a Focus view pane.
+      const el = document.querySelector(`.term[data-term-node="${CSS.escape(n.id)}"]`)
       const r = el?.getBoundingClientRect()
       boxes.set(n.id, r && r.width > 0 ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null)
     }
     const keep = new Set<string>()
     const focused = focusedTerminalId()
     if (focused) keep.add(focused)
-    const maximized = useStore.getState().maximized
+    const { maximized, focus, focusSlots } = useStore.getState()
     if (maximized) keep.add(maximized)
-    const plan = planParking({ boxes, screen: { width: window.innerWidth, height: window.innerHeight }, keep, lastNear: lastNear.current, now: Date.now(), urgent })
+    // Every window in a Focus view pane is on show.
+    if (focus) for (const id of Object.keys(focusSlots)) keep.add(id)
+    // Zoomed out so far that windows are flat status fills: those unloaded stay so, rather than all drawn again at once.
+    const overview = document.querySelector<HTMLElement>('.react-flow')?.dataset.zoomTier === 'overview'
+    const hold = overview ? new Set(parkedIds()) : undefined
+    const plan = planParking({ boxes, screen: { width: window.innerWidth, height: window.innerHeight }, keep, hold, lastNear: lastNear.current, now: Date.now(), urgent })
     lastNear.current = plan.lastNear
     setParked(plan.parked)
   }
@@ -62,7 +70,7 @@ export function TerminalParkingWatcher(): null {
     if (!parkedIds().size && enabled) return
     const timer = setTimeout(() => check.current(), MOVE_CHECK_MS)
     return () => clearTimeout(timer)
-  }, [transform, enabled])
+  }, [transform, enabled, shownElsewhere])
 
   return null
 }

@@ -1,4 +1,4 @@
-import { buildWarning, pressureNow, shouldWarn, type WarnedAt } from '../../core/resources/pressure'
+import { buildWarning, noteCleared, pressureNow, shouldWarn, type WarnedAt } from '../../core/resources/pressure'
 import { cpuPercent, parseProcessRows, treeUse } from '../../core/resources/processes'
 import type { PressureKind, ResourceReading, ResourceWarning, SessionKind, SessionUse, SystemMemory } from '../../shared/resources'
 
@@ -11,6 +11,7 @@ export const PROCESS_MIN_GAP_MS = 25_000
 export const PROCESS_TIMEOUT_MS = 20_000
 /** Asked for by hand, as by Refresh, they're still read at most this often. */
 export const PROCESS_ASKED_GAP_MS = 3_000
+export const COMMIT_SPARED = "Processes aren't read by themselves while Windows is nearly out of memory to give programs, since reading them takes some. Refresh reads them now."
 
 export interface SessionInfo {
   id: string
@@ -150,14 +151,20 @@ export function createResourceMonitor(d: ResourceMonitorDeps): ResourceMonitor {
     const memoryShort = kind === 'commit' || kind === 'physical'
     if (memoryShort && lastKind !== kind) d.onLow?.(kind)
     lastKind = kind
+    noteCleared(warned, kind)
     const warn = shouldWarn(kind, warned, now())
-    if (opts.processes || watchers > 0 || warn) {
+    // PowerShell takes ~80 MB of commit, which an agent's next command may need when commit is what's short. Then only
+    // Refresh reads processes, and a warning names idle agents from the last reading, or by idle time alone.
+    const spare = kind === 'commit'
+    if (opts.processes || (!spare && (watchers > 0 || warn))) {
       await ensureProcesses(!!opts.processes)
       next = build()
+    } else if (spare && watchers > 0 && !next.processesProblem) {
+      next = { ...next, processesProblem: COMMIT_SPARED }
     }
     reading = next
     if (warn && kind) {
-      warned[kind] = now()
+      warned[kind] = { at: now(), cleared: false }
       d.onWarning?.(buildWarning(kind, next.system, next.agents, next.sessions))
     }
     if (watchers > 0) d.onReading?.(next)

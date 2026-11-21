@@ -409,7 +409,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
   }
 
   return (
-    <div className="term nodrag nowheel nopan">
+    <div className="term nodrag nowheel nopan" data-term-node={nodeId}>
       <div className="term-host" ref={hostRef} />
       {parked && <div className="term-parked" data-parked>Unloaded while off-screen</div>}
       {findOpen && (

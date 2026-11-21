@@ -40,6 +40,11 @@ export interface ParkingInput {
   now: number
   /** Memory is short: unload every far window at once. */
   urgent?: boolean
+  /**
+   * Windows that stay unloaded even if near: those on a canvas zoomed so far out that its windows are flat status fills,
+   * so zooming out doesn't draw every window again at once. `keep` wins over this.
+   */
+  hold?: Set<string>
   afterMs?: number
 }
 
@@ -49,6 +54,11 @@ export function planParking(input: ParkingInput): { parked: Set<string>; lastNea
   const parked = new Set<string>()
   const lastNear = new Map<string, number>()
   for (const [id, box] of input.boxes) {
+    if (input.hold?.has(id) && !input.keep.has(id)) {
+      lastNear.set(id, Math.min(input.lastNear.get(id) ?? input.now, input.now - afterMs))
+      parked.add(id)
+      continue
+    }
     const near = !box || input.keep.has(id) || nearScreen(box, input.screen)
     let since = near ? input.now : (input.lastNear.get(id) ?? input.now)
     // Unloaded in a hurry, it stays unloaded until it comes near, as if it had waited its time.

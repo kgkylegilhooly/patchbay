@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ResourceWarning } from '../../shared/resources'
+import { Icon } from '../icons'
 import type { Commands } from '../menus'
 import { idleText, resourcesBridge, sizeText } from './resourcesUi'
 import './resources.css'
@@ -14,7 +15,16 @@ export function ResourceNotice({ commands }: { commands: Pick<Commands, 'revealN
   if (!warning) return null
   const now = Date.now()
   return (
-    <div className="res-notice" role="status" data-resource-warning={warning.kind}>
+    <div
+      className="res-notice"
+      role="status"
+      data-resource-warning={warning.kind}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        e.stopPropagation()
+        setWarning(null)
+      }}
+    >
       <div className="res-notice-text">
         <p className="res-notice-head">{warning.kind === 'agents' ? 'More agents than your limit' : 'Memory is running low'}</p>
         <p>{warning.text}</p>
@@ -37,8 +47,8 @@ export function ResourceNotice({ commands }: { commands: Pick<Commands, 'revealN
         )}
         <p className="res-notice-foot">Settings &gt; Background sessions shows what each session uses.</p>
       </div>
-      <button type="button" className="icon-btn res-notice-close" aria-label="Dismiss" onClick={() => setWarning(null)}>
-        ×
+      <button type="button" className="icon-btn res-notice-close" aria-label="Close memory note" title="Close (Esc)" onClick={() => setWarning(null)}>
+        <Icon name="close" size={16} />
       </button>
     </div>
   )
