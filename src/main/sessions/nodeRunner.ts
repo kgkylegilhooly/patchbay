@@ -5,6 +5,7 @@ import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../share
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
 import type { Settings } from '../../shared/settings'
 import { agentChoice, agentOffReason } from '../../shared/agents'
+import { agentLimitReason, parseAgentLimit } from '../../core/resources/agentLimit'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -376,6 +377,10 @@ export function createNodeRunner({
   /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
   const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
 
+  /** Settings > Background sessions: why another agent may not start now, counting those already running. */
+  const overAgentLimit = (id: string): string | null =>
+    agentLimitReason(parseAgentLimit(ctx.settings?.().agentLimit), store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== id && (started.has(n.id) || host.isRunning(n.id))).length)
+
   const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
@@ -387,6 +392,12 @@ export function createNodeRunner({
     if (off) {
       tracker.apply(id, { type: 'process-exit' })
       return setError(id, { code: 'spawn-failed', message: off })
+    }
+    // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
+    const limited = node.kind === 'claude' && !opts.restored ? overAgentLimit(id) : null
+    if (limited) {
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: limited })
     }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.

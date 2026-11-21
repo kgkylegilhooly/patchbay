@@ -23,6 +23,7 @@ import { otherProfiles, pickedProfile } from '../terminalProfilesUi'
 import { findTerminalPathMatches } from '../terminalPaths'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { installZoomCompensation, screenPoint } from '../xtermZoom'
+import { useParked } from '../terminalParking'
 
 const SEARCH_COLORS = {
   matchBackground: '#49c2c955',
@@ -75,6 +76,8 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
   const epoch = useStore((s) => s.epochs[nodeId] ?? 0)
   const refresh = useStore((s) => s.refreshes[nodeId] ?? 0)
   const shownRefresh = useRef(refresh)
+  // Far off-screen for a while, the terminal is let go to save memory, and drawn again from the session when it's near.
+  const parked = useParked(nodeId)
   const fontSize = useStore((s) => windowFontSize(s.doc?.nodes.find((n) => n.id === nodeId)?.fontSize, s.terminalFontSize))
   const fontSizeRef = useRef(fontSize)
   fontSizeRef.current = fontSize
@@ -137,7 +140,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
 
   useEffect(() => {
     const host = hostRef.current
-    if (!host) return
+    if (!host || parked) return
     const term = new Terminal({
       fontFamily: fontStack(lookRef.current.fontFamily),
       fontSize: fontSizeRef.current,
@@ -361,7 +364,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       termRef.current = null
       searchRef.current = null
     }
-  }, [nodeId, epoch, refresh])
+  }, [nodeId, epoch, refresh, parked])
 
   // A new look applies to open windows straight away. A font change refits, since the character size changes.
   useEffect(() => {
@@ -408,6 +411,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
   return (
     <div className="term nodrag nowheel nopan">
       <div className="term-host" ref={hostRef} />
+      {parked && <div className="term-parked" data-parked>Unloaded while off-screen</div>}
       {findOpen && (
         <form
           className="find"

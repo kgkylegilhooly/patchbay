@@ -108,6 +108,12 @@ meanwhile. The host holds the newest 1 MB of each session's output.
 
 Quitting asks first if a Claude node is working or waiting on you.
 
+**Memory.** Settings > Background sessions shows what the PC, Patchbay, the host and each running session (with every
+program it started) use. When Windows is nearly out of memory, a note says so once and names the idle agents worth
+closing. **Most agents at once** (off by default) stops a new agent starting past it, with a note in its window; it never
+stops a running one. A window far off-screen for 3 minutes lets go of what it has drawn and draws it again from its
+session when you come back.
+
 **While the app is closed,** nothing notifies you. A permission request goes to Claude's own prompt in its terminal,
 which you can answer once you reconnect. The `patchbay` command says the app is closed and fails straight away.
 

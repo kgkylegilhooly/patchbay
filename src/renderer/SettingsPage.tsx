@@ -3,6 +3,7 @@ import { needsTerminal, type Settings } from '../shared/settings'
 import { bridge } from './bridge'
 import { playChime } from './chime'
 import { HostSection } from './HostSection'
+import { ResourceSection } from './resources/ResourceSection'
 import { ClaudeIcon, TerminalIcon } from './icons'
 import type { Overrides } from './keys'
 import type { UpdateState } from '../shared/contract'
@@ -473,6 +474,7 @@ export function SettingsPage({
               </div>
             )}
             <HostSection />
+            <ResourceSection agentLimit={draft?.agentLimit ?? ''} onAgentLimit={draft ? (v) => set('agentLimit', v) : undefined} />
           </>
         )}
 
