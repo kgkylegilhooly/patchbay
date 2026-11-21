@@ -63,6 +63,8 @@ export interface ClaudeLaunch extends SessionSpec {
  * showed the person a red "timed out" line and lost the event. 30 s is Claude Code's own default for UserPromptSubmit.
  */
 export const HOOK_TIMEOUT_S = 30
+/** Claude waits this long for SessionEnd hooks as it quits, so a slow start can't make /exit seem to hang for long. */
+export const SESSION_END_TIMEOUT_S = 10
 /** A held permission request needs longer than the approvals hold of 540 s. */
 export const HELD_HOOK_TIMEOUT_S = 600
 /**
@@ -299,7 +301,7 @@ export interface CommandHook {
  * prompt could arrive the wrong way round, and the node would show the wrong status.
  */
 export function hookEntry(event: string, nodeId: string, ctx: ClaudeLaunchContext): CommandHook {
-  const timeout = event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : HOOK_TIMEOUT_S
+  const timeout = event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : event === 'SessionEnd' ? SESSION_END_TIMEOUT_S : HOOK_TIMEOUT_S
   const signalled = !!ctx.signalDir && (SIGNAL_EVENTS as readonly string[]).includes(event)
   if (!ctx.hookNode || signalled) return { type: 'command', command: hookCommand(event, nodeId, ctx), timeout }
   return { type: 'command', command: ctx.hookNode, args: [ctx.hookScript, event], timeout }

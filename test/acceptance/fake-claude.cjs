@@ -11,6 +11,7 @@ const args = process.argv.slice(2)
 
 // Patchbay asks which Claude Code this is, to know whether it can start a hook's program directly (exec form).
 if (args[0] === '--version') {
+  if (process.env.FAKE_VERSION_LOG) fs.appendFileSync(process.env.FAKE_VERSION_LOG, 'asked\n')
   process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION || '2.1.330'} (Claude Code)\n`)
   process.exit(0)
 }
