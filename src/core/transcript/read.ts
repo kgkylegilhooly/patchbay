@@ -7,6 +7,8 @@ const LOCAL_COMMAND = /^\s*<(command-|local-command-)/
 export interface TranscriptMessage {
   role: 'user' | 'assistant'
   text: string
+  /** Codex only: a note it wrote on its way through a turn ("I'll run the tests"), not its answer. */
+  commentary?: true
 }
 type Message = TranscriptMessage
 
@@ -19,6 +21,14 @@ function textOf(content: unknown): string {
     .join('\n')
 }
 
+/** A Codex item's text parts: `text` in a UserMessage, `Text` in an AgentMessage. */
+function codexText(content: unknown[]): string {
+  return content
+    .filter((b): b is { text: string } => !!b && typeof b === 'object' && ((b as { type?: unknown }).type === 'text' || (b as { type?: unknown }).type === 'Text') && typeof (b as { text?: unknown }).text === 'string')
+    .map((b) => b.text)
+    .join('\n')
+}
+
 /** One transcript line as a message, or null for anything else. Also used by the search index. */
 export function parseLine(line: string): Message | null {
   let entry
@@ -27,9 +37,17 @@ export function parseLine(line: string): Message | null {
   } catch {
     return null // A session still writing leaves a partial final line.
   }
-  // Codex's rollout files say each turn twice. Its events are the plain conversation, without system text.
+  // Codex's rollout files say each turn twice. Its events are the plain conversation, without system text: since 0.167
+  // `item_completed` with a UserMessage or AgentMessage item (test/fixtures/codex-0.170), before that
+  // `user_message` / `agent_message`. Its `response_item` messages also hold the context Codex adds, so aren't read.
   if (entry?.type === 'event_msg') {
-    const { type, message } = entry.payload ?? {}
+    const { type, message, item } = entry.payload ?? {}
+    if (type === 'item_completed') {
+      const role = item?.type === 'UserMessage' ? 'user' : item?.type === 'AgentMessage' ? 'assistant' : null
+      const said = role && Array.isArray(item.content) ? codexText(item.content) : ''
+      if (!role || !said.trim()) return null
+      return role === 'assistant' && item.phase === 'commentary' ? { role, text: said, commentary: true } : { role, text: said }
+    }
     const role = type === 'user_message' ? 'user' : type === 'agent_message' ? 'assistant' : null
     return role && typeof message === 'string' && message.trim() ? { role, text: message } : null
   }
@@ -126,7 +144,8 @@ export async function readMessagesTail(path: string, tail: number): Promise<Tran
   }
 }
 
-const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}]\n${m.text}\n`).join('\n')
+/** As `patchbay read` shows it. A Codex note on the way is marked, so it isn't taken for the answer. */
+const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}${m.commentary ? ', on the way' : ''}]\n${m.text}\n`).join('\n')
 
 /** How much of a whole transcript is parsed before giving everything else waiting on the thread a turn. */
 const WHOLE_CHUNK_BYTES = 512 * 1024
@@ -177,9 +196,7 @@ export async function readTranscriptAsync(path: string, tail?: number): Promise<
 
 /** The conversation as plain text. `tail` keeps the last N messages. Throws if the file can't be read. */
 export function readTranscript(path: string, tail?: number): string {
-  return readMessages(path, tail)
-    .map((m) => `[${m.role}]\n${m.text}\n`)
-    .join('\n')
+  return asText(readMessages(path, tail))
 }
 
 // Order matters: strings first, so their contents can't be mistaken for shorter sequences.
