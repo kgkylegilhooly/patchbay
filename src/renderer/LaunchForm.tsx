@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { LaunchListing } from '../shared/contract'
 import type { LaunchItem } from '../shared/launch'
 import { bridge } from './bridge'
-import { PopTitle, popKeys } from './popForm'
+import { FormShell } from './shell/FormShell'
 
 export type LaunchChoice = { folder: string; item: LaunchItem }
 
@@ -33,16 +33,15 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
   const picked = items.find((i) => key(i) === chosen && !i.problem)
 
   return (
-    <form
-      className="pop pop-terminal pop-launch"
-      aria-label="New run configuration"
-      onKeyDown={popKeys(onCancel)}
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (picked) onRun({ folder, item: picked })
-      }}
+    <FormShell
+      title="New run configuration"
+      icon="launch"
+      className="pop-terminal pop-launch"
+      onCancel={onCancel}
+      blocked={!picked}
+      submitLabel="Start run"
+      onSubmit={() => picked && onRun({ folder, item: picked })}
     >
-      <PopTitle icon="launch">New run configuration</PopTitle>
       <div className="field">
         <span className="field-label">Folder with .vscode\launch.json</span>
         <div className="folder-row">
@@ -77,14 +76,6 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
           ))}
         </ul>
       )}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn btn-solid" disabled={!picked}>
-          Start run
-        </button>
-      </div>
-    </form>
+    </FormShell>
   )
 }

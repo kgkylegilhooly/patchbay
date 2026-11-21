@@ -128,7 +128,7 @@ export function createResourceMonitor(d: ResourceMonitorDeps): ResourceMonitor {
       .filter((s) => s.pid)
       .map((s) => {
         const use = perSession.get(s.id)
-        return { id: s.id, title: s.title, projectId: s.projectId, kind: s.kind, status: s.status, idleSince: s.idleSince, memory: use?.memory ?? null, cpu: use?.cpu ?? null, processes: use?.processes ?? null }
+        return { id: s.id, title: s.title, projectId: s.projectId, kind: s.kind, status: s.status, pid: s.pid, idleSince: s.idleSince, memory: use?.memory ?? null, cpu: use?.cpu ?? null, processes: use?.processes ?? null }
       })
       .sort((a, b) => (b.memory ?? 0) - (a.memory ?? 0))
     const hostPid = d.hostPid()

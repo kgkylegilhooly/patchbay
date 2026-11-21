@@ -1,17 +1,11 @@
 import { useStore as useFlowStore } from '@xyflow/react'
 import { useEffect, useRef } from 'react'
 import { inActiveProject } from '../shared/model'
-import type { ResourcesBridge } from '../shared/resources'
+import { resourcesBridge } from './resources/resourcesUi'
 import { useStore } from './store'
 import { focusedTerminalId } from './terminalRegistry'
 import './resources/resources.css'
 import { PARKING, parkedIds, parkingEnabled, planParking, setParked, useParkingEnabled, type Box } from './terminalParking'
-
-declare global {
-  interface Window {
-    patchbayResources?: ResourcesBridge
-  }
-}
 
 const TERMINAL_KINDS = new Set(['claude', 'terminal', 'run'])
 /** A pan or zoom is looked at this soon after it, so a window coming into view is drawn again before it arrives. */
@@ -58,7 +52,7 @@ export function TerminalParkingWatcher(): null {
 
   useEffect(() => {
     const timer = setInterval(() => check.current(), PARKING.everyMs)
-    const offLow = window.patchbayResources?.onLowMemory(() => check.current(true))
+    const offLow = resourcesBridge()?.onLowMemory(() => check.current(true))
     return () => {
       clearInterval(timer)
       offLow?.()

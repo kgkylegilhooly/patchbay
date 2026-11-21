@@ -17,7 +17,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 })
 
-function runnerWith(nodes: CanvasNode[], settings: () => Settings) {
+function runnerWith(nodes: CanvasNode[], settings: () => Settings, refreshHost?: (host: ReturnType<typeof fakeHost>) => Promise<unknown>) {
   const store = memoryStore(nodes)
   const tracker = createStatusTracker({ notify: () => {} })
   const host = fakeHost()
@@ -47,7 +47,8 @@ function runnerWith(nodes: CanvasNode[], settings: () => Settings) {
       claude: { file: 'C:\\bin\\claude.exe', prefixArgs: [] },
       codex: { file: 'C:\\bin\\codex.exe', prefixArgs: [] },
       baseEnv: { PATH: 'C:\\Windows' },
-      settings
+      settings,
+      ...(refreshHost ? { refreshHost: () => refreshHost(host) } : {})
     }
   })
   return { runner, host, specs }
@@ -98,4 +99,30 @@ test('terminals are not agents, and no limit means no limit', async () => {
   await free.runner.startNode('x')
   await free.runner.startNode('y')
   expect(started(free.specs)).toEqual(['x', 'y'])
+})
+
+test('at the limit, a session the host already runs out of sight is joined, not refused (session-sync)', async () => {
+  let asked = 0
+  const nodes = ['a', 'b'].map((id) => claudeNode(id, { cwd: dir }))
+  const { runner, specs, host } = runnerWith(nodes, () => ({ agentLimit: '1' }), async (h) => {
+    asked++
+    // The host's list shows b running: the mirror is brought up to date.
+    h.running.add('b')
+    return [{ id: 'b', running: true }]
+  })
+  await runner.startNode('a')
+  await runner.startNode('b')
+  expect(asked).toBe(1)
+  expect(started(specs)).toEqual(['a'])
+  expect(host.isRunning('b')).toBe(true)
+  expect(runner.errors().b).toBeUndefined()
+})
+
+test("at the limit, one the host doesn't run is still refused after asking", async () => {
+  const nodes = ['a', 'b'].map((id) => claudeNode(id, { cwd: dir }))
+  const { runner, specs } = runnerWith(nodes, () => ({ agentLimit: '1' }), async () => [])
+  await runner.startNode('a')
+  await runner.startNode('b')
+  expect(started(specs)).toEqual(['a'])
+  expect(runner.errors().b?.message).toMatch(/^Not started: 1 agent is already running/)
 })

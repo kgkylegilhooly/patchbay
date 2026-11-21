@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { HostInfo } from '../shared/contract'
 import { bridge } from './bridge'
+import { confirmThen } from './shell/confirmStore'
 
 const count = (n: number): string => `${n} session${n === 1 ? '' : 's'}`
 
@@ -19,10 +20,12 @@ function stateLine(info: HostInfo): string {
   }
 }
 
-/** The background session host: whether it's there, what's in it, and the way to end it. */
-export function HostSection(): React.JSX.Element {
+/**
+ * The background session host: whether it's there, what's in it, and the way to end it. What it runs is listed above it,
+ * with each session's memory, in resources/ResourceSection.tsx.
+ */
+export function HostSection({ memory }: { memory?: string } = {}): React.JSX.Element {
   const [info, setInfo] = useState<HostInfo | null>(null)
-  const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -34,9 +37,21 @@ export function HostSection(): React.JSX.Element {
 
   const stop = (): void => {
     setBusy(true)
-    setConfirming(false)
     void bridge.stopHost().finally(() => setBusy(false))
   }
+  const askStop = (): void =>
+    void confirmThen(
+      {
+        title: 'Stop the session host?',
+        message: `This ends ${count(info.running)} now. Claude nodes can resume their conversations from their Restart button, and terminals can restart below their saved output.`,
+        verb: `Stop ${count(info.running)}`,
+        cancelLabel: 'Keep running',
+        attrs: { 'data-host-confirm': 'stop' },
+        verbAttrs: { 'data-host-action': 'stop-confirm' },
+        cancelAttrs: { 'data-host-action': 'stop-cancel' }
+      },
+      stop
+    )
   const hostIsThere = info.mode === 'background' || info.mode === 'other-version'
 
   return (
@@ -70,6 +85,7 @@ export function HostSection(): React.JSX.Element {
             <span className="set-value">
               Process {info.pid}, version {info.version}, protocol {info.protocol}
               {info.protocol !== info.expectedProtocol ? ` (this app needs ${info.expectedProtocol})` : ''}
+              {memory ? `, ${memory} of its own` : ''}
             </span>
           </div>
         </div>
@@ -82,11 +98,11 @@ export function HostSection(): React.JSX.Element {
             <p className="set-help">Stopping ends those sessions. Claude nodes resume their conversations, and terminals come back as new shells below their saved output. Quitting leaves them running, so you can finish in the older version first.</p>
           </div>
           <div className="set-control set-input-row">
-            <button type="button" className="btn btn-danger" data-host-action="stop-other" onClick={() => void bridge.resolveOtherHost('stop-it')}>
-              Stop them and continue
-            </button>
             <button type="button" className="btn" data-host-action="quit-other" onClick={() => void bridge.resolveOtherHost('quit')}>
               Quit and leave them
+            </button>
+            <button type="button" className="btn btn-danger" data-host-action="stop-other" onClick={() => void bridge.resolveOtherHost('stop-it')}>
+              Stop them and continue
             </button>
           </div>
         </div>
@@ -96,27 +112,12 @@ export function HostSection(): React.JSX.Element {
         <div className="set-row">
           <div className="set-text">
             <span className="set-title">Stop the host</span>
-            <p className="set-help">
-              {confirming
-                ? `This ends ${count(info.running)} now. Claude nodes can resume their conversations from their Restart button, and terminals can restart below their saved output.`
-                : 'Ends every session in it. Patchbay stays open.'}
-            </p>
+            <p className="set-help">Ends every session in it. Patchbay stays open.</p>
           </div>
           <div className="set-control set-input-row">
-            {confirming ? (
-              <>
-                <button type="button" className="btn btn-danger" data-host-action="stop-confirm" disabled={busy} onClick={stop}>
-                  Stop {count(info.running)}
-                </button>
-                <button type="button" className="btn" data-host-action="stop-cancel" onClick={() => setConfirming(false)}>
-                  Keep running
-                </button>
-              </>
-            ) : (
-              <button type="button" className="btn" data-host-action="stop" disabled={busy} onClick={() => setConfirming(true)}>
-                {busy ? 'Stopping…' : 'Stop…'}
-              </button>
-            )}
+            <button type="button" className="btn btn-risky" data-host-action="stop" disabled={busy} onClick={askStop}>
+              {busy ? 'Stopping…' : 'Stop…'}
+            </button>
           </div>
         </div>
       )}

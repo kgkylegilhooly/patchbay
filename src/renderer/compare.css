@@ -1,43 +1,21 @@
 /* "Try another approach" and the comparison view. */
 
-/* Header, scrolling body, footer: like the recipe picker, Cancel and Start both never scroll away. */
-.pop.compare-start {
-  width: min(760px, calc(100vw - 32px));
-  max-height: calc(100% - 28px);
-  overflow: hidden;
-}
-
-.compare-start-body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  /* Out to the dialog's edges, so the scrollbar sits there and focus rings aren't clipped. */
-  margin: 0 -14px;
-  padding: 2px 14px;
-  overflow: auto;
-}
-
-.compare-start .compare-head,
-.compare-start-problem,
-.compare-start-foot {
-  flex: none;
+/* The shell pins the header and the footer, so Cancel and Start both never scroll away. */
+.compare-start {
+  --shell-w: 760px;
 }
 
 .compare-start-problem {
   margin: 0;
 }
 
-.pop.compare-sheet {
+/* The comparison view: the list of comparisons, then the one shown. */
+.compare-body {
   display: grid;
+  flex: 1;
   grid-template-columns: minmax(170px, 220px) 1fr;
   grid-template-rows: minmax(0, 1fr);
-  gap: 0;
-  width: min(1240px, calc(100vw - 32px));
-  height: calc(100% - 28px);
-  padding: 0;
-  overflow: hidden;
+  min-height: 0;
 }
 
 .compare-start,
@@ -50,39 +28,27 @@
   scrollbar-color: #4a4a50 transparent;
 }
 
-.compare-head h2,
-.compare-topbar h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
 .compare-dim {
   margin: 0;
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .compare-warn {
   color: var(--led-working);
 }
 
-.compare-small {
-  padding: 2px 9px;
-  font-size: 12px;
-}
-
 .compare-sha,
 .compare-cmd,
 .compare-path {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .compare-sheet code,
 .compare-start code {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* Start dialog */
@@ -101,7 +67,7 @@
   padding: 8px 10px;
   background: var(--well);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .compare-sha {
@@ -120,7 +86,7 @@
   padding: 10px 12px;
   background: rgb(255 159 67 / 0.08);
   border: 1px solid rgb(255 159 67 / 0.45);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .compare-dirty p {
@@ -158,7 +124,7 @@
   margin: 0;
   padding: 10px 12px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
 }
 
 .compare-attempt-form legend {
@@ -175,10 +141,10 @@
   width: 20px;
   height: 20px;
   color: #161618;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   background: var(--cable-trigger);
-  border-radius: 5px;
+  border-radius: var(--r-md);
 }
 
 [data-attempt='b'] .compare-badge {
@@ -195,7 +161,7 @@
   padding: 5px 8px;
   text-align: center;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 
@@ -238,7 +204,7 @@
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 
@@ -266,13 +232,6 @@
   overflow: auto;
 }
 
-.compare-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .compare-summary {
   display: flex;
   flex-direction: column;
@@ -286,7 +245,7 @@
 .compare-brief summary,
 .compare-output summary {
   color: var(--ink-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -297,11 +256,11 @@
   max-height: 200px;
   overflow: auto;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.45;
   white-space: pre-wrap;
   background: var(--well);
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
 .compare-verify-all {
@@ -319,7 +278,7 @@
   padding: 8px 12px;
   background: rgb(52 199 89 / 0.08);
   border: 1px solid rgb(52 199 89 / 0.45);
-  border-radius: 7px;
+  border-radius: var(--r-md);
 }
 
 .compare-chosen span {
@@ -342,7 +301,7 @@
   padding: 12px;
   background: var(--face);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--r-lg);
 }
 
 .compare-attempt-chosen {
@@ -362,12 +321,12 @@
 
 .compare-status {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .compare-approach {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-style: italic;
   color: var(--ink-dim);
 }
@@ -377,7 +336,7 @@
   grid-template-columns: auto 1fr;
   gap: 3px 10px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .compare-facts dt {
@@ -395,7 +354,7 @@
 .compare-commits {
   margin: 0;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   list-style: none;
 }
 
@@ -427,7 +386,7 @@
 
 .compare-side,
 .compare-section {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -437,7 +396,7 @@
   height: 7px;
   margin-right: 6px;
   content: '';
-  border-radius: 2px;
+  border-radius: var(--r-sm);
 }
 
 .compare-side-committed::before {
@@ -462,11 +421,11 @@
   padding: 2px 6px;
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 
@@ -484,13 +443,13 @@
 .compare-counts {
   flex: none;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .compare-new {
   flex: none;
   color: var(--led-working);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .compare-diff {
@@ -514,9 +473,9 @@
 .compare-exit {
   flex: none;
   padding: 1px 7px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
-  border-radius: 5px;
+  border-radius: var(--r-md);
 }
 
 .compare-exit-pass {
@@ -545,27 +504,20 @@
 .compare-chosen-mark {
   padding: 2px 9px;
   color: #0d2414;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   background: var(--led-idle);
-  border-radius: 6px;
+  border-radius: var(--r-md);
 }
 
-.compare-remove {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  padding: 10px;
-  font-size: 12px;
-  background: var(--well);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-}
-
+/* Removing an attempt's worktree: a confirmation in the shell, with what would be lost. */
 .compare-remove p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.compare-remove .compare-check {
+  font-size: var(--fs-md);
 }
 
 .compare-loss {
@@ -573,17 +525,9 @@
   font-weight: 600;
 }
 
-.compare-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .compare-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .compare-loss p {
@@ -592,7 +536,7 @@
 
 .compare-loss-list {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--ink-dim);
   overflow-wrap: anywhere;

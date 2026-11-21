@@ -1,39 +1,39 @@
 .task-outcomes { padding: 12px 20px; border-bottom: 1px solid var(--line); max-height: 42vh; overflow: auto; flex-shrink: 0; }
-.task-outcomes h3 { margin: 0 0 10px; font-size: 13px; }
+.task-outcomes h3 { margin: 0 0 10px; font-size: var(--fs-md); }
 .task-outcomes h3 span { opacity: .65; }
 .task-outcome-list { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-.task-outcome-card { padding: 12px; border: 1px solid var(--line); border-radius: 8px; width: 420px; max-width: 100%; font-size: 12px; background: var(--face); color: var(--ink); }
+.task-outcome-card { padding: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); width: 420px; max-width: 100%; font-size: var(--fs-sm); background: var(--face); color: var(--ink); }
 .task-card-heading, .task-card-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .task-card-heading strong { overflow-wrap: anywhere; }
-.task-card-tools { margin-top: 10px; font-size: 11px; }
-.task-state { display: inline-block; border: 1px solid currentColor; border-radius: 5px; padding: 2px 6px; font-size: 11px; white-space: nowrap; }
+.task-card-tools { margin-top: 10px; font-size: var(--fs-xs); }
+.task-state { display: inline-block; border: 1px solid currentColor; border-radius: var(--r-md); padding: 2px 6px; font-size: var(--fs-xs); white-space: nowrap; }
 .task-ready-for-review { color: #b4a6f5; }
 .task-accepted, .task-ready { color: #83d4ad; }
 .task-blocked { color: #efbd70; }
 .task-cancelled { opacity: .6; }
 .task-session-outcomes { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.task-evidence-label { color: var(--ink-dim); font-size: 11px; }
-.task-attempt { margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+.task-evidence-label { color: var(--ink-dim); font-size: var(--fs-xs); }
+.task-attempt { margin: 10px 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--r-sm); }
 .task-attempt > * { display: block; overflow-wrap: anywhere; white-space: pre-wrap; margin: 3px 0; }
 .task-details ul { padding-left: 18px; }
 .task-checks { margin-top: 8px; }
 .task-checks ul { margin: 4px 0 0; padding-left: 16px; }
 .task-checks li { margin: 2px 0; overflow-wrap: anywhere; }
-.task-checks code { font-family: var(--mono); font-size: 11px; }
+.task-checks code { font-family: var(--mono); font-size: var(--fs-xs); }
 .task-check-passed { color: #83d4ad; }
 .task-check-failed, .task-check-interrupted { color: #ef8a70; }
 .task-check-none, .task-check-running { opacity: .7; }
-.task-warning { color: #efbd70; font-size: 11px; }
+.task-warning { color: #efbd70; font-size: var(--fs-xs); }
 .task-card-buttons { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .task-comparisons { margin-top: 8px; }
-.task-comparison { margin-top: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.task-comparison { margin-top: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-md); }
 .task-comparison-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .task-comparison-head strong { overflow-wrap: anywhere; }
-.task-comparison-head .git-mini { margin-left: auto; }
+.task-comparison-head .btn { margin-left: auto; }
 .task-comparison ul { list-style: none; margin: 4px 0 0; padding: 0; }
 .task-comparison li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; margin: 3px 0; overflow-wrap: anywhere; }
-.task-comparison code { font-family: var(--mono); font-size: 11px; }
-.task-comparison p { margin: 4px 0 0; font-size: 11px; }
-.task-comparison-key { display: inline-block; min-width: 16px; text-align: center; border-radius: 4px; background: var(--line); font-weight: 600; font-size: 10px; }
-.task-comparison-chosen { color: #83d4ad; border: 1px solid currentColor; border-radius: 5px; padding: 0 5px; font-size: 10px; }
+.task-comparison code { font-family: var(--mono); font-size: var(--fs-xs); }
+.task-comparison p { margin: 4px 0 0; font-size: var(--fs-xs); }
+.task-comparison-key { display: inline-block; min-width: 16px; text-align: center; border-radius: var(--r-sm); background: var(--line); font-weight: 600; font-size: var(--fs-xs); }
+.task-comparison-chosen { color: #83d4ad; border: 1px solid currentColor; border-radius: var(--r-md); padding: 0 5px; font-size: var(--fs-xs); }
 .task-dim { opacity: .65; }

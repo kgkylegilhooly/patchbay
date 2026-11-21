@@ -14,11 +14,7 @@ export function ProjectsLayer({ commands }: { commands: Commands }): React.JSX.E
   return (
     <>
       {manager && <ProjectsManager commands={commands} onClose={closeProjects} />}
-      {archive && (
-        <div className="projects-scrim">
-          <ArchiveDialog key={archive} projectId={archive} onClose={closeArchive} />
-        </div>
-      )}
+      {archive && <ArchiveDialog key={archive} projectId={archive} onClose={closeArchive} />}
       <ArchivedToastView commands={commands} />
     </>
   )

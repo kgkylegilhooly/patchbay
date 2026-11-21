@@ -6,6 +6,7 @@ import { agentOf, AGENT_NAMES, type ReaderNode } from '../../shared/model'
 import type { CommentAnchor, ReaderComment } from '../../shared/reader'
 import { bridge } from '../bridge'
 import { useStore } from '../store'
+import { confirmThen } from '../shell/confirmStore'
 import { changedAgo, readerTargets } from './targets'
 import { requestChanges, useReviewFor } from '../workflows/useReviewFor'
 
@@ -38,10 +39,10 @@ function Composer({ draft, onSave, onCancel }: { draft: Draft; onSave: (text: st
       />
       <div className="reader-c-actions">
         <span className="reader-c-hint">Ctrl+Enter</span>
-        <button type="button" className="git-mini" onClick={onCancel}>
+        <button type="button" className="btn btn-sm btn-quiet" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="git-mini reader-primary" disabled={!text.trim()} onClick={() => onSave(text)}>
+        <button type="button" className="btn btn-sm btn-quiet reader-primary" disabled={!text.trim()} onClick={() => onSave(text)}>
           Add comment
         </button>
       </div>
@@ -65,7 +66,6 @@ function Card({
   update: (change: (list: ReaderComment[]) => ReaderComment[]) => void
 }): React.JSX.Element {
   const [editing, setEditing] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const p = place(c.anchor, doc)
   const where = p.state === 'document' ? 'Whole document' : p.state === 'anchored' ? sectionLabel(doc.sections[p.section].path) : sectionLabel(c.anchor?.section ?? [])
   return (
@@ -104,12 +104,12 @@ function Card({
         </span>
         {editing !== null ? (
           <>
-            <button type="button" className="git-mini" onClick={() => setEditing(null)}>
+            <button type="button" className="btn btn-sm btn-quiet" onClick={() => setEditing(null)}>
               Cancel
             </button>
             <button
               type="button"
-              className="git-mini reader-primary"
+              className="btn btn-sm btn-quiet reader-primary"
               disabled={!editing.trim()}
               onClick={() => {
                 update((l) => editComment(l, c.id, editing))
@@ -122,20 +122,20 @@ function Card({
         ) : (
           <>
             {!c.resolved && (
-              <button type="button" className="git-mini" onClick={() => setEditing(c.text)}>
+              <button type="button" className="btn btn-sm btn-quiet" onClick={() => setEditing(c.text)}>
                 Edit
               </button>
             )}
-            <button type="button" className="git-mini" data-comment-action={c.resolved ? 'reopen' : 'resolve'} onClick={() => update((l) => (c.resolved ? reopenComment(l, c.id) : resolveComment(l, c.id)))}>
+            <button type="button" className="btn btn-sm btn-quiet" data-comment-action={c.resolved ? 'reopen' : 'resolve'} onClick={() => update((l) => (c.resolved ? reopenComment(l, c.id) : resolveComment(l, c.id)))}>
               {c.resolved ? 'Reopen' : 'Resolve'}
             </button>
             <button
               type="button"
-              className={`git-mini${confirmDelete ? ' reader-danger' : ''}`}
-              onBlur={() => setConfirmDelete(false)}
-              onClick={() => (confirmDelete ? update((l) => removeComment(l, c.id)) : setConfirmDelete(true))}
+              className="btn btn-sm btn-quiet btn-risky"
+              data-comment-action="delete"
+              onClick={() => void confirmThen({ title: 'Delete this comment?', message: c.text.length > 140 ? `“${c.text.slice(0, 139)}…”` : `“${c.text}”`, verb: 'Delete comment' }, () => update((l) => removeComment(l, c.id)))}
             >
-              {confirmDelete ? 'Delete?' : 'Delete'}
+              Delete…
             </button>
           </>
         )}
@@ -247,7 +247,7 @@ export function ReaderComments({
             ))}
           </select>
         )}
-        <button type="button" className="git-btn reader-send-btn" data-reader-send disabled={(!chosen && !review) || sending.length === 0} onClick={() => void send()}>
+        <button type="button" className="btn btn-sm reader-send-btn" data-reader-send disabled={(!chosen && !review) || sending.length === 0} onClick={() => void send()}>
           {review ? `Request changes (${sending.length})` : sending.length ? `Send ${sending.length} ${sending.length === 1 ? 'comment' : 'comments'}` : 'Send comments'}
         </button>
         {result && (

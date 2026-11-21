@@ -10,7 +10,8 @@ import { askArchive, readSuggestDays, saveSuggestDays, SUGGEST_CHOICES, useProje
 import { daysAgo, projectRows, sortRows, type ProjectRow, type SortKey } from './projectsView'
 import { projectBadge } from './sidebarView'
 import { shortPath } from './shortPath'
-import { Icon } from './icons'
+import { Panel } from './shell/Panel'
+import { confirmThen } from './shell/confirmStore'
 import { useStore } from './store'
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
@@ -37,7 +38,6 @@ function Row({
 }): React.JSX.Element {
   const { project, state, active } = row
   const [draft, setDraft] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const badge = projectBadge(project)
   const inside = useStore.getState().doc?.nodes.filter((n) => n.projectId === project.id) ?? []
 
@@ -100,12 +100,12 @@ function Row({
         <div className="projects-actions">
           {state === 'archived' ? (
             <>
-              <button type="button" className="btn compare-small" onClick={() => unarchiveProject(project.id)}>
+              <button type="button" className="btn btn-sm" onClick={() => unarchiveProject(project.id)}>
                 Unarchive
               </button>
               <button
                 type="button"
-                className="btn compare-small"
+                className="btn btn-sm"
                 onClick={() => {
                   unarchiveProject(project.id)
                   commands.reopenProject(project.id)
@@ -119,7 +119,7 @@ function Row({
               {!active && (
                 <button
                   type="button"
-                  className="btn compare-small"
+                  className="btn btn-sm"
                   onClick={() => (state === 'closed' ? commands.reopenProject(project.id) : commands.switchProject(project.id))}
                 >
                   Open
@@ -128,7 +128,7 @@ function Row({
               {state === 'open' && (
                 <button
                   type="button"
-                  className="btn compare-small"
+                  className="btn btn-sm"
                   onClick={() => commands.closeProject(project.id)}
                   disabled={!refusals.close}
                   title={refusals.close ? 'Takes it off the tabs. Its sessions keep running.' : 'The last open project stays open.'}
@@ -138,7 +138,7 @@ function Row({
               )}
               <button
                 type="button"
-                className={`btn compare-small${row.unusedDays !== null ? ' projects-suggested' : ''}`}
+                className={`btn btn-sm${row.unusedDays !== null ? ' projects-suggested' : ''}`}
                 disabled={!!refusals.archive}
                 title={refusals.archive ?? 'Stops its sessions and puts it away. Asks first.'}
                 onClick={() => askArchive(project.id)}
@@ -147,25 +147,31 @@ function Row({
               </button>
             </>
           )}
-          <button type="button" className="btn compare-small" onClick={() => setDraft(project.name)}>
+          <button type="button" className="btn btn-sm" onClick={() => setDraft(project.name)}>
             Rename
           </button>
           <button
             type="button"
-            className={`btn compare-small${confirmDelete ? ' btn-danger' : ' projects-delete'}`}
+            className="btn btn-sm btn-risky"
+            data-project-action="delete"
             disabled={!!refusals.remove}
-            title={
-              confirmDelete
-                ? deleteProjectWarning(
+            title={refusals.remove ?? 'Removes it and everything in it, for good. Asks first.'}
+            onClick={() =>
+              void confirmThen(
+                {
+                  title: `Delete "${project.name}"?`,
+                  message: deleteProjectWarning(
                     inside.filter(isSessionNode).map((n) => n.title),
                     inside.filter((n) => !isSessionNode(n)).length
-                  )
-                : (refusals.remove ?? 'Removes it and everything in it, for good. Asks first.')
+                  ),
+                  verb: 'Delete project',
+                  attrs: { 'data-confirm': 'delete-project' }
+                },
+                () => commands.deleteProject(project.id)
+              )
             }
-            onBlur={() => setConfirmDelete(false)}
-            onClick={() => (confirmDelete ? commands.deleteProject(project.id) : setConfirmDelete(true))}
           >
-            {confirmDelete ? 'Delete for good?' : 'Delete…'}
+            Delete…
           </button>
         </div>
       </td>
@@ -215,26 +221,63 @@ export function ProjectsManager({ commands, onClose }: { commands: Commands; onC
   const browser = report?.browser
 
   return (
-    <div
-      className="pop projects-sheet"
-      role="dialog"
-      aria-label="Projects"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && !archiving) {
-          e.stopPropagation()
-          onClose()
-        }
-      }}
+    <Panel
+      kind="modal"
+      title="Projects"
+      icon="project"
+      className="projects-sheet"
+      closeLabel="Close projects"
+      onClose={onClose}
+      busy={!!archiving}
+      initialFocus="none"
+      sub={`${counts.open} open, ${counts.closed} closed, ${counts.archived} archived`}
+      footer={
+        <>
+          <p className="compare-dim projects-storage">
+            {browser ? (
+              <>
+                Browser data is shared by every project: {formatBytes(browser.personBytes + browser.agentBytes)}, of which {formatBytes(browser.cacheBytes)} is
+                cache that pages fill again as needed. Agents' conversations are kept by Claude Code and Codex, outside Patchbay.
+              </>
+            ) : (
+              'Measuring…'
+            )}
+            {cacheNote && <span className="projects-note"> {cacheNote}</span>}
+          </p>
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={!browser || browser.cacheBytes === 0}
+            title="Clears the browser cache of every project's pages. Sign-ins and site data stay."
+            onClick={() =>
+              void projectsBridge.clearBrowserCache().then((r) => {
+                setCacheNote(r.ok ? `Cleared ${formatBytes(r.freedBytes)}.` : r.reason)
+                measure()
+              })
+            }
+          >
+            Clear browser cache
+          </button>
+          <label className="projects-suggest">
+            Suggest archiving after
+            <select
+              value={suggestDays}
+              onChange={(e) => {
+                const days = Number(e.target.value)
+                setSuggestDays(days)
+                saveSuggestDays(days)
+              }}
+            >
+              {SUGGEST_CHOICES.map((d) => (
+                <option key={d} value={d}>
+                  {d === 0 ? 'Off' : `${d} days unused`}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      }
     >
-      <div className="projects-head">
-        <h2>Projects</h2>
-        <p className="compare-dim">
-          {counts.open} open · {counts.closed} closed · {counts.archived} archived
-        </p>
-        <button type="button" className="icon-btn projects-close" aria-label="Close projects" title="Close (Esc)" onClick={onClose}>
-          <Icon name="close" size={16} />
-        </button>
-      </div>
       {notice && (
         <p className="projects-notice" role="status">
           {notice}
@@ -281,50 +324,6 @@ export function ProjectsManager({ commands, onClose }: { commands: Commands; onC
           </tbody>
         </table>
       </div>
-      <div className="projects-foot">
-        <p className="compare-dim projects-storage">
-          {browser ? (
-            <>
-              Browser data is shared by every project: {formatBytes(browser.personBytes + browser.agentBytes)}, of which {formatBytes(browser.cacheBytes)} is
-              cache that pages fill again as needed. Agents' conversations are kept by Claude Code and Codex, outside Patchbay.
-            </>
-          ) : (
-            'Measuring…'
-          )}
-          {cacheNote && <span className="projects-note"> {cacheNote}</span>}
-        </p>
-        <button
-          type="button"
-          className="btn compare-small"
-          disabled={!browser || browser.cacheBytes === 0}
-          title="Clears the browser cache of every project's pages. Sign-ins and site data stay."
-          onClick={() =>
-            void projectsBridge.clearBrowserCache().then((r) => {
-              setCacheNote(r.ok ? `Cleared ${formatBytes(r.freedBytes)}.` : r.reason)
-              measure()
-            })
-          }
-        >
-          Clear browser cache
-        </button>
-        <label className="projects-suggest">
-          Suggest archiving after
-          <select
-            value={suggestDays}
-            onChange={(e) => {
-              const days = Number(e.target.value)
-              setSuggestDays(days)
-              saveSuggestDays(days)
-            }}
-          >
-            {SUGGEST_CHOICES.map((d) => (
-              <option key={d} value={d}>
-                {d === 0 ? 'Off' : `${d} days unused`}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-    </div>
+    </Panel>
   )
 }

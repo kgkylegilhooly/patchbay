@@ -39,7 +39,7 @@ export function TaskComparisons({ attempts, compact = false }: { attempts: TaskA
             <span className="task-dim">from {short(c.base)}</span>
             <button
               type="button"
-              className="git-mini"
+              className="btn btn-sm btn-quiet"
               onClick={() => {
                 showOverCanvas()
                 openComparisons(c.comparisonId)

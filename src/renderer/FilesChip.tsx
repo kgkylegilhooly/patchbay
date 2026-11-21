@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { DiffScope, FileDiff, SessionFiles, TouchedFile } from '../shared/filesTouched'
 import { bridge } from './bridge'
+import { Icon } from './icons'
 import { chipLabel, endCheckNote, files, listenForFiles, originTags, splitPath, useFilesSummary, visibleFiles } from './filesView'
 import { relativeTime } from './sidebarView'
 import './files.css'
@@ -156,8 +157,8 @@ function FilesPopover({ nodeId, at, onClose }: { nodeId: string; at: { x: number
             This turn
           </button>
         </span>
-        <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
-          ×
+        <button type="button" className="icon-btn shell-close" aria-label="Close" title="Close (Esc)" onClick={onClose}>
+          <Icon name="close" size={15} />
         </button>
       </div>
       {latest && (

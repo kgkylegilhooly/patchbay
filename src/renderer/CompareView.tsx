@@ -7,6 +7,8 @@ import { compare } from './compareBridge'
 import { parseDiff } from './reviewNotes'
 import { shortPath } from './shortPath'
 import { useStore } from './store'
+import { Panel } from './shell/Panel'
+import { confirmThen } from './shell/confirmStore'
 
 const REFRESH_MS = 5000
 
@@ -83,7 +85,7 @@ function Verification({ c, a, state, running, onRun }: { c: Comparison; a: Attem
       <div className="compare-changes-head">
         <span className="compare-section">Verification</span>
         {c.verify && !a.removed && (
-          <button type="button" className="btn compare-small" disabled={running} onClick={onRun}>
+          <button type="button" className="btn btn-sm" disabled={running} onClick={onRun}>
             {running ? 'Running…' : standing.kind === 'not-run' ? 'Run' : 'Run again'}
           </button>
         )}
@@ -144,14 +146,39 @@ function Removal({ c, a, onDone }: { c: Comparison; a: Attempt; onDone: () => vo
   if (a.removed) return <p className="compare-dim">Worktree removed {when(a.removed.at)}. {a.removed.branchDeleted ? `Branch ${a.branch} deleted.` : `Branch ${a.branch} kept.`}</p>
   if (!asking) {
     return (
-      <button type="button" className="btn compare-small" data-remove={a.key} onClick={() => setAsking(true)}>
+      <button type="button" className="btn btn-sm btn-risky" data-remove={a.key} onClick={() => setAsking(true)}>
         Remove worktree…
       </button>
     )
   }
   return (
-    <div className="compare-remove" role="alertdialog" aria-label={`Remove attempt ${attemptLabel(a.key)}'s worktree?`}>
-      <p>Deletes the folder {a.path}, including git-ignored files. Sessions in it stop.</p>
+    <Panel
+      kind="modal"
+      title={`Remove attempt ${attemptLabel(a.key)}'s worktree?`}
+      icon="trash"
+      className="shell-confirm shell-confirm-danger compare-remove"
+      layerClassName="shell-layer-confirm"
+      onClose={() => (setAsking(false), setNeeds(null))}
+      busy={busy}
+      attrs={{ role: 'alertdialog' }}
+      footer={
+        <>
+          <button type="button" className="btn" data-autofocus onClick={() => (setAsking(false), setNeeds(null))}>
+            Keep
+          </button>
+          {needs ? (
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void go(needs)}>
+              Remove and lose them
+            </button>
+          ) : (
+            <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void go()}>
+              Remove worktree
+            </button>
+          )}
+        </>
+      }
+    >
+      <p className="confirm-message">Deletes the folder {a.path}, including git-ignored files. Sessions in it stop.</p>
       <label className="compare-check">
         <input type="checkbox" checked={deleteBranch} onChange={(e) => (setDeleteBranch(e.target.checked), setNeeds(null))} />
         <span>Also delete branch {a.branch}</span>
@@ -174,21 +201,7 @@ function Removal({ c, a, onDone }: { c: Comparison; a: Attempt; onDone: () => vo
         </div>
       )}
       {problem && <p className="field-problem">{problem}</p>}
-      <div className="pop-actions">
-        <button type="button" className="btn" onClick={() => (setAsking(false), setNeeds(null))}>
-          Keep
-        </button>
-        {needs ? (
-          <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void go(needs)}>
-            Remove and lose them
-          </button>
-        ) : (
-          <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void go()}>
-            Remove
-          </button>
-        )}
-      </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -213,7 +226,7 @@ function AttemptColumn({ c, a, state, running, onRun, onChanged, onShow }: { c: 
           </span>
         )}
         {node && (
-          <button type="button" className="btn compare-small" onClick={() => onShow(a.nodeId)}>
+          <button type="button" className="btn btn-sm" onClick={() => onShow(a.nodeId)}>
             Show
           </button>
         )}
@@ -272,7 +285,7 @@ function AttemptColumn({ c, a, state, running, onRun, onChanged, onShow }: { c: 
         {chosen ? (
           <span className="compare-chosen-mark">Chosen</span>
         ) : (
-          <button type="button" className="btn compare-small" data-choose={a.key} onClick={() => void compare.choose(c.id, a.key).then((r) => onChanged(r.ok ? r.comparison : undefined))}>
+          <button type="button" className="btn btn-sm" data-choose={a.key} onClick={() => void compare.choose(c.id, a.key).then((r) => onChanged(r.ok ? r.comparison : undefined))}>
             Choose {attemptLabel(a.key)}
           </button>
         )}
@@ -292,9 +305,6 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
   const [states, setStates] = useState<Partial<Record<AttemptKey, AttemptState>>>({})
   const [running, setRunning] = useState<Partial<Record<AttemptKey, boolean>>>({})
   const [problem, setProblem] = useState<string | null>(notice ?? null)
-  const [forgetting, setForgetting] = useState(false)
-  const sheet = useRef<HTMLDivElement>(null)
-  useEffect(() => sheet.current?.focus(), [])
 
   const loadList = useCallback(async (): Promise<void> => {
     const l = await compare.list(projectId)
@@ -320,7 +330,6 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
     shownId.current = id
     setStates({})
     setProblem(null)
-    setForgetting(false)
   }, [id])
   // The record and git are both read again while the view is open, so what it shows doesn't go stale.
   useEffect(() => {
@@ -357,16 +366,34 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
   const anyRunning = Object.values(running).some(Boolean)
 
   return (
-    <div
-      ref={sheet}
-      className="pop compare-sheet"
-      role="dialog"
-      aria-label="Comparisons"
-      tabIndex={-1}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose()
-      }}
+    <Panel
+      kind="view"
+      title={c ? c.title : 'Comparisons'}
+      icon="branch"
+      label="Comparisons"
+      className="compare-sheet"
+      onClose={onClose}
+      initialFocus="panel"
+      flush
+      actions={
+        c && (
+          <button
+            type="button"
+            className="btn btn-sm btn-risky"
+            data-compare="forget"
+            onClick={() =>
+              void confirmThen(
+                { title: 'Forget this comparison?', message: 'Its worktrees, branches and agents stay as they are. Only this record goes.', verb: 'Forget comparison', attrs: { 'data-compare-confirm': 'forget' } },
+                () => compare.forget(c.id).then(() => loadList())
+              )
+            }
+          >
+            Forget comparison…
+          </button>
+        )
+      }
     >
+      <div className="compare-body">
       <nav className="compare-list" aria-label="Comparisons in this project">
         <span className="field-label">Comparisons</span>
         {list && !list.length && <p className="compare-dim">None yet. Use Try another approach to start one.</p>}
@@ -383,12 +410,6 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
       </nav>
 
       <div className="compare-main">
-        <div className="compare-topbar">
-          <h2>{c ? c.title : 'Comparisons'}</h2>
-          <button type="button" className="btn compare-small" onClick={onClose} aria-label="Close">
-            Close
-          </button>
-        </div>
         {c && (
           <>
             <div className="compare-summary">
@@ -406,7 +427,7 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
                   <>
                     <span className="field-label">Verification</span>
                     <code className="compare-cmd">{shown(c.verify)}</code>
-                    <button type="button" className="btn compare-small" disabled={anyRunning} onClick={() => void run(c.attempts.filter((a) => !a.removed).map((a) => a.key))}>
+                    <button type="button" className="btn btn-sm" disabled={anyRunning} onClick={() => void run(c.attempts.filter((a) => !a.removed).map((a) => a.key))}>
                       {anyRunning ? 'Running…' : 'Run in both'}
                     </button>
                   </>
@@ -420,7 +441,7 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
                     Chosen: attempt {attemptLabel(c.chosen.key)} ({chosenAttempt.branch}, at {short(c.chosen.head)}), {when(c.chosen.at)}. Nothing has been merged. To use it, merge{' '}
                     <code>{chosenAttempt.branch}</code> yourself with Git.
                   </span>
-                  <button type="button" className="btn compare-small" onClick={() => void compare.choose(c.id, null).then((r) => replace(r.ok ? r.comparison : undefined))}>
+                  <button type="button" className="btn btn-sm" onClick={() => void compare.choose(c.id, null).then((r) => replace(r.ok ? r.comparison : undefined))}>
                     Clear choice
                   </button>
                 </div>
@@ -436,26 +457,10 @@ export function CompareView({ projectId, initial, notice, onShow, onClose }: { p
               {!!c.unreadable?.length && <p className="compare-warn">{c.unreadable.length} attempt record{c.unreadable.length === 1 ? '' : 's'} couldn't be read by this version. {c.unreadable.length === 1 ? 'It is' : 'They are'} kept as written.</p>}
             </div>
 
-            <footer className="compare-foot">
-              {forgetting ? (
-                <>
-                  <span className="compare-dim">Forget this comparison? Its worktrees, branches and agents stay as they are.</span>
-                  <button type="button" className="btn" onClick={() => setForgetting(false)}>
-                    Keep
-                  </button>
-                  <button type="button" className="btn btn-danger" onClick={() => void compare.forget(c.id).then(() => loadList())}>
-                    Forget
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="btn compare-small" onClick={() => setForgetting(true)}>
-                  Forget comparison…
-                </button>
-              )}
-            </footer>
           </>
         )}
       </div>
-    </div>
+      </div>
+    </Panel>
   )
 }

@@ -59,7 +59,7 @@ describe("a session's process tree", () => {
 })
 
 const sys = (commitFreeShare: number, physFreeShare = 0.5): SystemMemory => ({ totalPhys: 16 * GB, availPhys: 16 * GB * physFreeShare, commitLimit: 24 * GB, commitAvail: 24 * GB * commitFreeShare })
-const session = (id: string, idleSince: number | null, memory: number | null, kind: SessionUse['kind'] = 'agent'): SessionUse => ({ id, title: id, projectId: null, kind, status: idleSince === null ? 'working' : 'idle', idleSince, memory, cpu: null, processes: null })
+const session = (id: string, idleSince: number | null, memory: number | null, kind: SessionUse['kind'] = 'agent'): SessionUse => ({ id, title: id, projectId: null, kind, status: idleSince === null ? 'working' : 'idle', pid: null, idleSince, memory, cpu: null, processes: null })
 const none = { running: 2, limit: null }
 
 describe('when to warn', () => {

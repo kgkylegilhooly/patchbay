@@ -67,7 +67,9 @@ const ghCalls = (log) => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').spli
 const writes = (log) => ghCalls(log).filter((a) => a[0] === 'issue' && ['close', 'reopen', 'comment', 'edit'].includes(a[1]))
 
 async function clickGit(page, name) {
-  await page.click(`.git-panel [data-git="${name}"]`)
+  // A confirmation opens in its own dialog over the stage, outside the panel.
+  const scope = name === 'confirm' || name === 'cancel' ? '[data-git-confirm]' : '.git-panel'
+  await page.click(`${scope} [data-git="${name}"]`)
 }
 
 async function waitEntry(page, key, present = true) {

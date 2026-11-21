@@ -84,10 +84,10 @@ export function ReviewDiff({ root, path, text }: { root: string; path: string; t
                   }}
                 />
                 <span className="review-edit-actions">
-                  <button type="button" className="git-mini" onClick={() => setEditing(null)}>
+                  <button type="button" className="btn btn-sm btn-quiet" onClick={() => setEditing(null)}>
                     Cancel
                   </button>
-                  <button type="button" className="git-mini review-save" disabled={!draft.trim()} onClick={() => save(i)}>
+                  <button type="button" className="btn btn-sm btn-quiet review-save" disabled={!draft.trim()} onClick={() => save(i)}>
                     Add note
                   </button>
                 </span>
@@ -138,10 +138,10 @@ export function ReviewBar({ root }: { root: string }): React.JSX.Element | null 
               ))}
             </select>
           )}
-          <button type="button" className="git-btn" data-review="send" disabled={!chosen} onClick={() => void send()}>
+          <button type="button" className="btn btn-sm" data-review="send" disabled={!chosen} onClick={() => void send()}>
             Send review
           </button>
-          <button type="button" className="git-mini" data-review="clear" onClick={() => setNotes(root, () => [])}>
+          <button type="button" className="btn btn-sm btn-quiet" data-review="clear" onClick={() => setNotes(root, () => [])}>
             Clear
           </button>
         </>
@@ -149,7 +149,7 @@ export function ReviewBar({ root }: { root: string }): React.JSX.Element | null 
       {result && (
         <span className={result.ok ? 'review-result' : 'review-result review-result-bad'} role="status">
           {result.text}
-          <button type="button" className="git-mini" aria-label="Dismiss" onClick={() => setResult(null)}>
+          <button type="button" className="btn btn-sm btn-quiet" aria-label="Dismiss" onClick={() => setResult(null)}>
             ×
           </button>
         </span>

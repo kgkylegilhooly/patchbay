@@ -105,7 +105,7 @@ const scenes = {
     await dockClick(page, 'work')
     await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
     await page.evaluate(() => document.querySelector('.dock .menu-panel [data-cmd="recent"]').click())
-    await page.waitForSelector('.drawer .recent-entry', { timeout: 5000 })
+    await page.waitForSelector('.shell-drawer .recent-entry', { timeout: 5000 })
     await sleep(300)
   },
   // At 1024x700 with the sidebar open the minimap folds into the dock; this shows it opened from there.

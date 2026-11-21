@@ -79,6 +79,9 @@ import { EmptyCanvas } from './EmptyCanvas'
 import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
+import './shell/shell.css'
+import { ConfirmHost } from './shell/Confirm'
+import { cancelAllConfirms } from './shell/confirmStore'
 
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
@@ -209,12 +212,14 @@ function Canvas(): React.JSX.Element | null {
     useStore.setState({ triggerAsk: null })
   }, [triggerAsk])
 
-  // Each project keeps its own view. Nothing waiting to save may land on the project just shown.
+  // Each project keeps its own view. Nothing waiting to save, and no open confirmation, may land on the project just shown.
   const activeProjectId = doc?.activeProjectId
   const shownProject = useRef(activeProjectId)
   useEffect(() => {
     if (shownProject.current === activeProjectId) return
     shownProject.current = activeProjectId
+    // A question asked about the project that was on screen is cancelled, not left standing over the next one.
+    cancelAllConfirms()
     clearTimeout(viewportTimer.current)
     const viewport = useStore.getState().doc?.viewport
     if (viewport) void flow.setViewport(viewport)
@@ -254,7 +259,7 @@ function Canvas(): React.JSX.Element | null {
       if (s.capturingKey) return
       const focus = keyFocusOf(e.target as Element | null)
       // A focused terminal keeps Esc, which is how Claude is interrupted. Anything open on top goes first.
-      if (e.key === 'Escape' && s.maximized && focus === 'canvas' && !document.querySelector('.menu-panel, .palette, .pop, .settings')) {
+      if (e.key === 'Escape' && s.maximized && focus === 'canvas' && !document.querySelector('.menu-panel, .palette, .pop, .settings, .shell')) {
         e.preventDefault()
         e.stopPropagation()
         useStore.setState({ maximized: null })
@@ -533,6 +538,7 @@ function Canvas(): React.JSX.Element | null {
         {gitOpen && <GitPanel selected={selected} />}
         <ReviewInboxLayer />
         <FileShelfLayer />
+        <ConfirmHost />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

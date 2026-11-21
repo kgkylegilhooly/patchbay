@@ -9,7 +9,7 @@ import type { Rect, Size } from '../core/canvas/place'
  */
 
 /** Panels that sit on the right edge. One wider than this share of the canvas is a view of its own, not a panel. */
-const RIGHT_PANELS = '.stage > .drawer, .stage > .git-panel'
+const RIGHT_PANELS = '.stage > .drawer, .stage > .git-panel, .stage > .shell-drawer:not(.shell-beside)'
 const PANEL_SHARE = 0.6
 /** The sidebar's room while it's opening and not drawn yet: its width and its inset from the edge. */
 const SIDEBAR_STANDIN = 314
@@ -119,7 +119,7 @@ export function useChromeWatch(mapOn: boolean, ready: boolean): void {
     const watchSizes = (): void => {
       sizes?.disconnect()
       sizes?.observe(stage)
-      for (const el of stage.querySelectorAll(':scope > .dock, :scope > .sidebar, :scope > .legend, .react-flow__minimap, :scope > .drawer, :scope > .git-panel')) sizes?.observe(el)
+      for (const el of stage.querySelectorAll(':scope > .dock, :scope > .sidebar, :scope > .legend, .react-flow__minimap, :scope > .drawer, :scope > .git-panel, :scope > .shell-drawer')) sizes?.observe(el)
     }
     // Chrome comes and goes as children of the stage; the minimap inside the canvas.
     const children = new MutationObserver(() => {

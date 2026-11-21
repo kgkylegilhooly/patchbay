@@ -8,7 +8,8 @@ export interface SystemMemory {
   commitAvail: number
 }
 
-export type SessionKind = 'agent' | 'terminal' | 'run'
+/** `unknown` is a session the host runs with no node on the canvas. */
+export type SessionKind = 'agent' | 'terminal' | 'run' | 'unknown'
 
 /** One running session and every process under it. */
 export interface SessionUse {
@@ -17,6 +18,8 @@ export interface SessionUse {
   projectId: string | null
   kind: SessionKind
   status: string
+  /** Its root process. */
+  pid: number | null
   /** When it last became idle, for an agent at its prompt. Null for any other state. */
   idleSince: number | null
   /** Its process tree's private memory. Null until processes have been read. */

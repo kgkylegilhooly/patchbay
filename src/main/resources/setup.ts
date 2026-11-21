@@ -67,14 +67,17 @@ export function setupResources(d: {
   dataDir: string
   store: CanvasStore
   host: { pid(id: string): number | null; isRunning(id: string): boolean }
+  /** Every session the host runs, with or without a node. */
+  hosted?(): Array<{ id: string; pid: number | null; running: boolean }>
   hostPid(): number | null
   tracker: { get(id: string): AgentStatus; since(id: string): { at: number } | undefined }
   settings(): Settings
   broadcast(channel: string, ...args: unknown[]): void
   isAppUi(e: IpcMainInvokeEvent): boolean
 }): ResourceMonitor {
-  const sessions = (): SessionInfo[] =>
-    d.store.get().nodes.flatMap((n): SessionInfo[] => {
+  const sessions = (): SessionInfo[] => {
+    const nodes = d.store.get().nodes
+    const onCanvas = nodes.flatMap((n): SessionInfo[] => {
       if (n.kind !== 'claude' && n.kind !== 'terminal' && n.kind !== 'run') return []
       if (!d.host.isRunning(n.id)) return []
       const status = d.tracker.get(n.id)
@@ -90,6 +93,13 @@ export function setupResources(d: {
         }
       ]
     })
+    // Sessions the host runs that no node shows: they hold memory too, and it's why one would be ended.
+    const known = new Set(nodes.map((n) => n.id))
+    const unseen = (d.hosted?.() ?? [])
+      .filter((s) => s.running && !known.has(s.id))
+      .map((s): SessionInfo => ({ id: s.id, title: '', projectId: null, kind: 'unknown', pid: s.pid, status: 'unknown', idleSince: null }))
+    return [...onCanvas, ...unseen]
+  }
 
   const cores = cpus().length || 1
   const fake = readFake(d.dataDir)
