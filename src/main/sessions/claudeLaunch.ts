@@ -8,6 +8,7 @@ import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
+import { httpHooksBlocked, withLoopbackNoProxy } from './httpHookSafety'
 import { nativeMessagingSettings } from './nativeMessaging'
 import { signalFile, SIGNAL_EVENTS, statusFile } from './signals'
 
@@ -54,6 +55,8 @@ export interface ClaudeLaunchContext extends SessionEnvContext {
    * for a session that runs in that host, with a Claude that has http hooks. See docs/plans/host-hooks.md.
    */
   hookPort?: number
+  /** Where an administrator's Claude settings are. Defaults to the Windows location. For tests. */
+  managedSettingsFile?: string
 }
 
 export interface ClaudeLaunch extends SessionSpec {
@@ -352,22 +355,23 @@ export interface HttpHook {
   type: 'http'
   url: string
   headers: Record<string, string>
-  allowedEnvVars: string[]
   timeout: number
 }
 
 /**
- * An event posted straight to the session host: nothing starts. The node and its token come from the session's own
- * environment, as hook.cjs reads them, so the token is never written into the settings file. Claude Code allows only
- * command hooks on SessionStart, so that one stays a command (hook.cjs, to the app), which also returns the agent's
- * context.
+ * An event posted straight to the session host: nothing starts. Claude Code allows only command hooks on SessionStart,
+ * so that one stays a command (hook.cjs, to the app), which also returns the agent's context.
+ *
+ * The node and its token are written as they are, not as `$PATCHBAY_TOKEN` for Claude to fill in: Claude blanks
+ * credential-like variables in hook headers when it scrubs its subprocesses' environment, and a managed
+ * httpHookAllowedEnvVars can leave them out, and either would refuse every event. The file is the session's own, in the
+ * same profile folder as the secret every token comes from, and the agent has the token in its environment anyway.
  */
-export function httpHook(event: string, port: number, timeout: number): HttpHook {
+export function httpHook(event: string, port: number, timeout: number, nodeId: string, token: string): HttpHook {
   return {
     type: 'http',
     url: `http://127.0.0.1:${port}/hook/${event}`,
-    headers: { authorization: 'Bearer $PATCHBAY_TOKEN', 'x-patchbay-node': '$PATCHBAY_NODE_ID' },
-    allowedEnvVars: ['PATCHBAY_TOKEN', 'PATCHBAY_NODE_ID'],
+    headers: { authorization: `Bearer ${token}`, 'x-patchbay-node': nodeId },
     timeout
   }
 }
@@ -381,7 +385,7 @@ export function httpHook(event: string, port: number, timeout: number): HttpHook
  */
 export function hookEntry(event: string, nodeId: string, ctx: ClaudeLaunchContext): CommandHook | HttpHook {
   const timeout = event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : event === 'SessionEnd' ? SESSION_END_TIMEOUT_S : HOOK_TIMEOUT_S
-  if (ctx.hookPort && event !== 'SessionStart') return httpHook(event, ctx.hookPort, timeout)
+  if (ctx.hookPort && event !== 'SessionStart') return httpHook(event, ctx.hookPort, timeout, nodeId, ctx.token)
   const signalled = !!ctx.signalDir && (SIGNAL_EVENTS as readonly string[]).includes(event)
   if (!ctx.hookNode || signalled) return { type: 'command', command: hookCommand(event, nodeId, ctx), timeout }
   return { type: 'command', command: ctx.hookNode, args: [ctx.hookScript, event], timeout }
@@ -468,7 +472,10 @@ export function buildClaudeLaunch(node: ClaudeNode, ctx: ClaudeLaunchContext): C
   const resumed = !!node.sessionId
   const sessionId = node.sessionId ?? randomUUID()
   const own = ctx.statusLineScript ? findUserStatusLine(node.cwd, ctx.home ?? homedir()) : null
-  const args = ['--settings', writeSettings(node, ctx, own), '--plugin-dir', ctx.pluginDir]
+  // http hooks only where they'd reach the host directly. See httpHookSafety.ts.
+  const configDir = Object.entries(ctx.baseEnv ?? process.env).find(([k]) => k.toUpperCase() === 'CLAUDE_CONFIG_DIR')?.[1]
+  const hookPort = ctx.hookPort && !httpHooksBlocked({ cwd: node.cwd, home: ctx.home ?? homedir(), configDir, managedFile: ctx.managedSettingsFile }) ? ctx.hookPort : undefined
+  const args = ['--settings', writeSettings(node, { ...ctx, hookPort }, own), '--plugin-dir', ctx.pluginDir]
   if (ctx.permissionMode) args.push('--permission-mode', ctx.permissionMode)
   if (resumed) {
     args.push('--resume', sessionId)
@@ -483,8 +490,12 @@ export function buildClaudeLaunch(node: ClaudeNode, ctx: ClaudeLaunchContext): C
     nodeId: node.id,
     ...program,
     cwd: node.cwd,
-    env: { ...sessionEnv(node.id, ctx.token, ctx), ...(own ? { PATCHBAY_STATUSLINE_FORWARD: own.command } : {}) },
-    ...(ctx.hookPort ? { hookPort: ctx.hookPort } : {}),
+    env: {
+      // Its hooks go to 127.0.0.1, never through a proxy.
+      ...(hookPort ? withLoopbackNoProxy(sessionEnv(node.id, ctx.token, ctx)) : sessionEnv(node.id, ctx.token, ctx)),
+      ...(own ? { PATCHBAY_STATUSLINE_FORWARD: own.command } : {})
+    },
+    ...(hookPort ? { hookPort } : {}),
     sessionId,
     resumed,
     ...(!resumed && ctx.claudeTerminal && node.prompt?.trim() ? { typedPrompt: node.prompt } : {})

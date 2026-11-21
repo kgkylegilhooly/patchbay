@@ -56,6 +56,8 @@ interface Client {
   limited: boolean
   /** Set when it takes sessions' hook events. */
   forwarder?: HookForwarder
+  /** It doesn't, being from before they were served: hooks go to the journal it reads. */
+  withoutHooks?: boolean
 }
 
 export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
@@ -171,6 +173,9 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
             cancel: (hid) => send(socket, { t: 'hook-cancel', hid })
           }
           opts.hooks.connect(current.forwarder)
+        } else if (opts.hooks) {
+          current.withoutHooks = true
+          opts.hooks.appWithoutHooks(true)
         }
         return
       }
@@ -214,6 +219,7 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
     socket.on('close', () => {
       clearTimeout(handshake)
       if (current?.forwarder) opts.hooks?.disconnect(current.forwarder)
+      if (current?.withoutHooks) opts.hooks?.appWithoutHooks(false)
       if (client?.socket !== socket) return
       client = null
       resumeAll()

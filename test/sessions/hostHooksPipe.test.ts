@@ -51,7 +51,7 @@ afterEach(async () => {
 async function setUp(opts: { serveHooks?: boolean } = {}): Promise<{ pipe: string }> {
   dir = mkdtempSync(join(tmpdir(), 'patchbay pipe hooks '))
   const pipe = `\\\\.\\pipe\\patchbay-hooks-test-${randomUUID()}`
-  hooks = opts.serveHooks === false ? null : await startHostHooks({ journalDir: join(dir, 'missed'), replyLimitMs: 300, holdMs: 100 })
+  hooks = opts.serveHooks === false ? null : await startHostHooks({ journalDir: join(dir, 'missed'), replyLimitMs: 300 })
   server = await startHostServer({ pipe, secret: SECRET, protocol: HOST_PROTOCOL, version: 't', startedAt: Date.now(), sessions: fakeSessions(), onStopRequested: () => {}, ...(hooks ? { hooks } : {}) })
   return { pipe }
 }
@@ -84,8 +84,8 @@ test('a session started in the host has its hooks served there and handled by th
   await app.connect()
   const port = app.hookPort()
   expect(port).toBe(hooks?.port)
-  // Its token comes from its own environment, given to the host as it starts.
-  expect((await post(port!, 'Stop', 'n1')).status).toBe(401)
+  // Its token comes from its own environment, given to the host as it starts: before that, a hook is answered and dropped.
+  expect(await post(port!, 'Stop', 'n1')).toEqual({ status: 200, body: {} })
   await app.start(spec('n1', { hookPort: port! }))
   const seen: string[] = []
   app.serveHooks(async (id, payload) => {
@@ -131,6 +131,27 @@ test('with the app gone, events are journalled for the next one, which reads the
   expect(takeMissedHooks(join(dir, 'missed'), 'n1').map((e) => e.hook_event_name)).toEqual(['PermissionRequest', 'Stop'])
 })
 
+test('what came while no app was there reaches the next one, sent right behind its welcome, in order', async () => {
+  const { pipe } = await setUp()
+  app = appFor(pipe)
+  await app.connect()
+  await app.start(spec('n1'))
+  const port = app.hookPort()!
+  await app.detach()
+  await post(port, 'UserPromptSubmit', 'n1')
+  await post(port, 'PermissionRequest', 'n1', { tool_name: 'Bash' })
+  await post(port, 'Stop', 'n1')
+  app = appFor(pipe)
+  await app.connect()
+  const seen: string[] = []
+  app.serveHooks((_id, payload) => void seen.push(String(payload.hook_event_name)))
+  await new Promise((r) => setTimeout(r, 100))
+  // The request nobody waits on comes as the prompt it showed.
+  expect(seen).toEqual(['UserPromptSubmit', 'Notification', 'Stop'])
+  await hooks?.flush()
+  expect(takeMissedHooks(join(dir, 'missed'), 'n1')).toEqual([])
+})
+
 test('a host from before hook serving: the app keeps command hooks', async () => {
   const { pipe } = await setUp({ serveHooks: false })
   app = appFor(pipe)
@@ -169,4 +190,36 @@ test('an app from before hook serving gets no hook messages: the journal has the
   expect(messages).not.toContain('hook')
   expect(takeMissedHooks(join(dir, 'missed'), 'n1').map((e) => e.hook_event_name)).toEqual(['Stop'])
   old.connection.close()
+})
+
+test('frames that arrive in the same chunk as the welcome reach the first listener', async () => {
+  const { createServer } = await import('node:net')
+  const { createFrameReader, encodeFrame, proofFor } = await import('../../src/main/sessions/hostProtocol')
+  const pipe = `\\\\.\\pipe\\patchbay-early-${randomUUID()}`
+  const server = createServer((socket) => {
+    const reader = createFrameReader({
+      limit: 1 << 20,
+      onError: () => socket.destroy(),
+      onFrame: (m) => {
+        if (m.t !== 'hello') return
+        const welcome = encodeFrame({ t: 'welcome', proof: proofFor(SECRET, 'host', m.nonce), protocol: HOST_PROTOCOL, version: 't', pid: 1, startedAt: 1, running: 0, hookPort: 1 })
+        const early = encodeFrame({ t: 'hook', hid: 1, id: 'n1', payload: { hook_event_name: 'Stop' }, live: false })
+        socket.write(Buffer.concat([welcome, early]))
+      }
+    })
+    socket.on('data', (c: Buffer) => reader.push(c))
+    socket.write(encodeFrame({ t: 'challenge', nonce: 'x', protocol: HOST_PROTOCOL }))
+  })
+  await new Promise<void>((r) => server.listen(pipe, r))
+  try {
+    const result = await connectToHost({ pipe, secret: SECRET, protocol: HOST_PROTOCOL, hooks: true })
+    if (result.kind !== 'ok') throw new Error(result.kind)
+    await new Promise((r) => setTimeout(r, 20))
+    const got: string[] = []
+    result.connection.onMessage((m) => void got.push(m.t))
+    expect(got).toEqual(['hook'])
+    result.connection.close()
+  } finally {
+    server.close()
+  }
 })

@@ -1,10 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { reduce } from '../../src/core/canvas/reduce'
 import { buildClaudeLaunch, HELD_HOOK_TIMEOUT_S, HOOK_EVENTS, HOOK_TIMEOUT_S, SESSION_END_TIMEOUT_S, type ClaudeLaunchContext } from '../../src/main/sessions/claudeLaunch'
 import { claudeRunsExecHooks, claudeRunsHttpHooks, forgetHookRunners, HTTP_HOOKS_SINCE, runsHttpHooks } from '../../src/main/sessions/hookRunner'
+import { httpHooksBlocked, withLoopbackNoProxy } from '../../src/main/sessions/httpHookSafety'
 import { createNodeRunner, type NodeRunnerContext } from '../../src/main/sessions/nodeRunner'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import type { CanvasStore, SessionHost, SessionSpec } from '../../src/shared/contract'
@@ -42,6 +43,9 @@ const ctx = (over: Partial<ClaudeLaunchContext> = {}): ClaudeLaunchContext => ({
   token: 'secret-token',
   claude: { file: 'C:\\bin\\claude.exe', prefixArgs: [] },
   baseEnv: { Path: 'C:\\Windows' },
+  // Never the person's own Claude settings.
+  home: join(dir, 'home'),
+  managedSettingsFile: join(dir, 'managed.json'),
   ...over
 })
 
@@ -51,26 +55,65 @@ const settingsOf = (args: string[]): { text: string; hooks: Record<string, Array
 }
 const entry = (hooks: ReturnType<typeof settingsOf>['hooks'], event: string) => hooks[event][0].hooks[0]
 
-test('with the host serving hooks, every event but SessionStart posts to it, with the token taken from the environment', () => {
+test('with the host serving hooks, every event but SessionStart posts to it, with the node and token as they are', () => {
   const launch = buildClaudeLaunch(node(), ctx({ hookPort: 51234, hookNode: 'C:\\Program Files\\nodejs\\node.exe' }))
-  const { text, hooks } = settingsOf(launch.args)
+  const { hooks } = settingsOf(launch.args)
   for (const event of HOOK_EVENTS.filter((e) => e !== 'SessionStart')) {
+    // Not $PATCHBAY_TOKEN for Claude to fill in, which it blanks when it scrubs credentials from hook headers.
     expect(entry(hooks, event)).toEqual({
       type: 'http',
       url: `http://127.0.0.1:51234/hook/${event}`,
-      headers: { authorization: 'Bearer $PATCHBAY_TOKEN', 'x-patchbay-node': '$PATCHBAY_NODE_ID' },
-      allowedEnvVars: ['PATCHBAY_TOKEN', 'PATCHBAY_NODE_ID'],
+      headers: { authorization: 'Bearer secret-token', 'x-patchbay-node': 'n1' },
       timeout: event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : event === 'SessionEnd' ? SESSION_END_TIMEOUT_S : HOOK_TIMEOUT_S
     })
   }
   // Claude Code runs only command hooks on SessionStart. It still starts Node directly, and returns the context.
   expect(entry(hooks, 'SessionStart')).toEqual({ type: 'command', command: 'C:\\Program Files\\nodejs\\node.exe', args: [ctx().hookScript, 'SessionStart'], timeout: HOOK_TIMEOUT_S })
-  // The token stays in the session's environment, never in a file.
-  expect(text).not.toContain('secret-token')
   expect(launch.env.PATCHBAY_TOKEN).toBe('secret-token')
-  expect(launch.env.PATCHBAY_NODE_ID).toBe('n1')
   // So the host it's started in can be checked to be the one these hooks post to.
   expect(launch.hookPort).toBe(51234)
+})
+
+test('a session with http hooks never sends them through a proxy: 127.0.0.1 joins NO_PROXY, keeping what was there', () => {
+  const proxied = { Path: 'C:\\Windows', HTTPS_PROXY: 'http://proxy.corp:8080', no_proxy: 'corp.example, .internal' }
+  const env = buildClaudeLaunch(node(), ctx({ hookPort: 51234, baseEnv: proxied })).env
+  const noProxy = Object.entries(env).filter(([k]) => /^no_proxy$/i.test(k))
+  // One name only: Windows reads it in any case, and two would both reach Claude.
+  expect(noProxy).toEqual([['NO_PROXY', 'corp.example,.internal,127.0.0.1']])
+  expect(env.HTTPS_PROXY).toBe('http://proxy.corp:8080')
+  expect(buildClaudeLaunch(node({ id: 'n2' }), ctx({ hookPort: 51234 })).env.NO_PROXY).toBe('127.0.0.1')
+  // Command hooks don't need it, and the environment is as it always was.
+  expect(buildClaudeLaunch(node({ id: 'n3' }), ctx({ baseEnv: proxied })).env).not.toHaveProperty('NO_PROXY')
+  expect(withLoopbackNoProxy({ NO_PROXY: '127.0.0.1,x' }, 'linux')).toEqual({ NO_PROXY: '127.0.0.1,x', no_proxy: '127.0.0.1,x' })
+})
+
+test("Claude settings that could take hooks off 127.0.0.1 keep that session's command hooks", () => {
+  const write = (file: string, settings: unknown): void => {
+    mkdirSync(join(file, '..'), { recursive: true })
+    writeFileSync(file, JSON.stringify(settings))
+  }
+  const formOf = (id: string, over: Partial<ClaudeLaunchContext> = {}) => entry(settingsOf(buildClaudeLaunch(node({ id }), ctx({ hookPort: 51234, ...over })).args).hooks, 'Stop').type
+  expect(formOf('a')).toBe('http')
+  // A proxy in the person's settings env is applied over the session's, so NO_PROXY could be undone.
+  write(join(dir, 'home', '.claude', 'settings.json'), { env: { HTTPS_PROXY: 'http://p:1' } })
+  expect(formOf('b')).toBe('command')
+  expect(httpHooksBlocked({ cwd: dir, home: join(dir, 'home'), managedFile: join(dir, 'managed.json') })).toMatch(/proxy setting/)
+  rmSync(join(dir, 'home'), { recursive: true })
+  // The sandbox, in the project's own settings.
+  write(join(dir, '.claude', 'settings.local.json'), { sandbox: { enabled: true } })
+  expect(formOf('c')).toBe('command')
+  rmSync(join(dir, '.claude'), { recursive: true })
+  // An administrator's allowlist of hook URLs.
+  write(join(dir, 'managed.json'), { allowedHttpHookUrls: ['https://hooks.corp/*'] })
+  expect(formOf('d')).toBe('command')
+  rmSync(join(dir, 'managed.json'))
+  // CLAUDE_CONFIG_DIR moves the person's settings, and those are the ones read.
+  write(join(dir, 'cfg', 'settings.json'), { env: { no_proxy: 'x' } })
+  expect(formOf('e', { baseEnv: { Path: 'C:\\Windows', CLAUDE_CONFIG_DIR: join(dir, 'cfg') } })).toBe('command')
+  expect(formOf('f')).toBe('http')
+  // The sandbox merely mentioned, or switched off, changes nothing.
+  write(join(dir, '.claude', 'settings.json'), { sandbox: { enabled: false }, env: { FOO: '1' } })
+  expect(formOf('g')).toBe('http')
 })
 
 test("the tool events go over http too, rather than through bash's signal files", () => {
@@ -132,7 +175,7 @@ function runnerWith(over: Partial<NodeRunnerContext>) {
     host,
     tracker: createStatusTracker({ notify: () => {} }),
     store,
-    ctx: { sessionDir: join(dir, 'sessions'), hookScript: 'C:/hook.cjs', pluginDir: 'C:/skill', cliDir: 'C:/cli', endpointFile: 'C:/e.json', secret: 's', claude: { file: 'C:\\bin\\claude.exe', prefixArgs: [] }, baseEnv: { PATH: 'C:\\Windows' }, hookNode: null, ...over }
+    ctx: { sessionDir: join(dir, 'sessions'), hookScript: 'C:/hook.cjs', pluginDir: 'C:/skill', cliDir: 'C:/cli', endpointFile: 'C:/e.json', secret: 's', claude: { file: 'C:\\bin\\claude.exe', prefixArgs: [] }, baseEnv: { PATH: 'C:\\Windows' }, hookNode: null, home: join(dir, 'home'), managedSettingsFile: join(dir, 'managed.json'), ...over }
   })
   return { runner, specs }
 }

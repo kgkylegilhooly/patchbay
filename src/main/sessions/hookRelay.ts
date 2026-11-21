@@ -24,12 +24,16 @@ export interface HookRelay {
   serve(handler: HookHandler): void
   /** That connection closed: the host keeps what it hadn't been answered, and sends it again over the next. */
   dropConnection(conn: RelayConnection): void
+  /** Which host run the connections are to. A new one numbers its events from the start again. */
+  forHost(id: string): void
 }
 
 /** Far more than an app's start-up ever gathers. Past it, Claude is told "nothing to say" and the host's copy stands. */
 const MAX_WAITING = 5000
 /** How long a held request goes first before the next of its node's events is handled. */
 const HELD_HEAD_START_MS = 50
+/** Far more than one reconnect ever sends again. */
+const SEEN_KEPT = 10_000
 
 interface Item {
   conn: RelayConnection
@@ -44,6 +48,9 @@ export function createHookRelay(): HookRelay {
   const inFlight = new Map<number, { conn: RelayConnection; controller: AbortController }>()
   const chains = new Map<string, Promise<void>>()
   const closed = new WeakSet<RelayConnection>()
+  /** Events already handled, by the host's id for them, which an event keeps when it's sent again. */
+  const seen = new Set<number>()
+  let hostId = ''
 
   const run = (item: Item, handle: HookHandler): void => {
     const controller = new AbortController()
@@ -51,6 +58,14 @@ export function createHookRelay(): HookRelay {
     const previous = chains.get(item.id) ?? Promise.resolve()
     const handled = previous.then(async () => {
       if (closed.has(item.conn)) return
+      // Sent again after a reconnect, because its answer was lost with the old connection: it's been applied already.
+      if (seen.has(item.hid)) {
+        inFlight.delete(item.hid)
+        item.conn.send({ t: 'hook-res', hid: item.hid, body: {} })
+        return
+      }
+      seen.add(item.hid)
+      if (seen.size > SEEN_KEPT) seen.delete(seen.values().next().value as number)
       let body: unknown = {}
       try {
         body = (await handle(item.id, item.payload, controller.signal)) ?? {}
@@ -87,6 +102,10 @@ export function createHookRelay(): HookRelay {
     serve(next) {
       handler = next
       for (const item of waiting.splice(0)) if (!closed.has(item.conn)) run(item, next)
+    },
+    forHost(id) {
+      if (id !== hostId) seen.clear()
+      hostId = id
     },
     dropConnection(conn) {
       closed.add(conn)

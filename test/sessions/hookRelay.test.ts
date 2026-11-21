@@ -102,3 +102,24 @@ test('a handler that refuses, as for a hook from another node, answers with noth
   await tick(10)
   expect(c.sent).toEqual([{ t: 'hook-res', hid: 1, body: {} }])
 })
+
+test('an event sent again under the same id, after its answer was lost, is answered without being applied twice', async () => {
+  const relay = createHookRelay()
+  relay.forHost('host-a')
+  const seen: number[] = []
+  relay.serve((_id, payload) => void seen.push(Number(payload.n)))
+  const first = conn()
+  relay.receive(first, hook(7, 'n1', 'Stop', { n: 1 }))
+  await tick(10)
+  relay.dropConnection(first)
+  const second = conn()
+  relay.receive(second, { t: 'hook', hid: 7, id: 'n1', payload: { hook_event_name: 'Stop', n: 2 }, live: false })
+  await tick(10)
+  expect(seen).toEqual([1])
+  expect(second.sent).toEqual([{ t: 'hook-res', hid: 7, body: {} }])
+  // A new host run numbers its events from the start again, so the same id is a new event there.
+  relay.forHost('host-b')
+  relay.receive(second, hook(7, 'n1', 'Stop', { n: 3 }))
+  await tick(10)
+  expect(seen).toEqual([1, 3])
+})

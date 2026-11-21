@@ -232,6 +232,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   const wire = (conn: HostConnection): void => {
     connection = conn
     welcome = conn.welcome
+    hooks.forHost(`${conn.welcome.pid}:${conn.welcome.startedAt}`)
     conn.onMessage((message) => {
       if (!hooks.receive(conn, message)) handleMessage(message)
     })

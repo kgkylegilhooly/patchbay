@@ -13,7 +13,7 @@ let hooks: HostHooks
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'patchbay host hooks '))
-  hooks = await startHostHooks({ journalDir: join(dir, 'missed'), replyLimitMs: 150, holdMs: 200 })
+  hooks = await startHostHooks({ journalDir: join(dir, 'missed'), replyLimitMs: 150, maxHeld: 50 })
   hooks.allow('n1', 'tok1')
   hooks.allow('n2', 'tok2')
 })
@@ -30,7 +30,7 @@ interface Reply {
 }
 
 /** Posts as Claude Code's http hook does: the event as JSON, the node and its token in headers. */
-function post(event: string, payload: Record<string, unknown> | string, opts: { node?: string; token?: string; path?: string; signal?: AbortSignal } = {}): Promise<Reply> {
+function post(event: string, payload: Record<string, unknown> | string, opts: { node?: string; token?: string; path?: string; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<Reply> {
   const text = typeof payload === 'string' ? payload : JSON.stringify({ hook_event_name: event, session_id: 's1', ...payload })
   const started = Date.now()
   return new Promise((resolve, reject) => {
@@ -40,7 +40,7 @@ function post(event: string, payload: Record<string, unknown> | string, opts: { 
         port: hooks.port,
         method: 'POST',
         path: opts.path ?? `/hook/${event}`,
-        headers: { 'content-type': 'application/json', 'x-patchbay-node': opts.node ?? 'n1', authorization: `Bearer ${opts.token ?? 'tok1'}` },
+        headers: { 'content-type': 'application/json', 'x-patchbay-node': opts.node ?? 'n1', authorization: `Bearer ${opts.token ?? 'tok1'}`, ...opts.headers },
         signal: opts.signal
       },
       (res) => {
@@ -49,7 +49,8 @@ function post(event: string, payload: Record<string, unknown> | string, opts: { 
         res.on('end', () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'), ms: Date.now() - started }))
       }
     )
-    req.on('error', reject)
+    // A refused request's connection is closed without reading what it sent, which can cut the upload short.
+    req.on('error', (e: NodeJS.ErrnoException) => (e.code === 'ECONNRESET' || e.code === 'EPIPE' ? resolve({ status: -1, body: {}, ms: 0 }) : reject(e)))
     req.end(text)
   })
 }
@@ -70,24 +71,34 @@ const until = async (what: () => boolean, ms = 3000): Promise<void> => {
 }
 const journal = (id = 'n1') => takeMissedHooks(join(dir, 'missed'), id)
 
-test('refuses a wrong token, an unknown node and anything but POST /hook/<event>', async () => {
-  expect((await post('Stop', {}, { token: 'tok2' })).status).toBe(401)
-  expect((await post('Stop', {}, { node: 'n3', token: 'tok1' })).status).toBe(401)
-  expect((await post('Stop', {}, { path: '/rpc' })).status).toBe(404)
-  expect((await post('Stop', {}, { path: '/hook/../x' })).status).toBe(404)
-  expect((await post('Stop', {}, { path: '/hook/St%zzop' })).status).toBe(404)
-  expect((await post('Stop', {}, { path: '/hook/Stop?x=1' })).status).toBe(404)
+test('a wrong token or an unknown node is dropped, but answered 200, which Claude shows no error for', async () => {
+  const app = fakeApp()
+  hooks.connect(app)
+  // The last is as Claude sends it when it blanks a credential-like header.
+  for (const opts of [{ token: 'tok2' }, { node: 'n3', token: 'tok1' }, { token: '' }]) expect(await post('Stop', {}, opts)).toMatchObject({ status: 200, body: {} })
   hooks.disallow('n1')
-  expect((await post('Stop', {})).status).toBe(401)
+  expect((await post('Stop', {})).status).toBe(200)
+  expect(app.got).toEqual([])
 })
 
-test('with no app, every event is answered at once with nothing to say, and journalled after a while', async () => {
+test('anything but POST /hook/<event> from Claude itself is refused and its connection closed', async () => {
+  for (const path of ['/rpc', '/hook/../x', '/hook/St%zzop', '/hook/Stop?x=1']) expect((await post('Stop', {}, { path })).status).toBe(404)
+  // A web page sends an Origin; one reached by rebinding a name to 127.0.0.1 sends its own Host.
+  expect((await post('Stop', {}, { headers: { origin: 'https://example.com' } })).status).toBe(403)
+  expect((await post('Stop', {}, { headers: { host: `evil.example:${hooks.port}` } })).status).toBe(403)
+  await hooks.flush()
+  expect(readJournal()).toEqual([])
+})
+
+test('with no app, every event is answered at once with nothing to say, kept for the next app, and journalled when the host stops', async () => {
   const replies = [await post('UserPromptSubmit', { prompt: 'hi' }), await post('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } }), await post('Stop', {})]
   // Nothing to say: a permission request is left to Claude's own prompt.
   for (const r of replies) expect(r).toMatchObject({ status: 200, body: {} })
   for (const r of replies) expect(r.ms).toBeLessThan(1000)
-  expect(journal()).toEqual([])
-  await until(() => readJournal().length === 3)
+  // However long the app is away: no timer moves them to a journal a running app might not read until it restarts.
+  await new Promise((r) => setTimeout(r, 300))
+  expect(readJournal()).toEqual([])
+  await hooks.flush()
   const events = journal()
   expect(events.map((e) => e.hook_event_name)).toEqual(['UserPromptSubmit', 'PermissionRequest', 'Stop'])
   // As hook.cjs writes them: no prompt text, no tool input, and when.
@@ -105,7 +116,7 @@ function readJournal(id = 'n1'): string[] {
   }
 }
 
-test('an app that reconnects soon gets what came meanwhile, in order, with nothing journalled', async () => {
+test('an app that connects gets what came meanwhile, in order, with nothing journalled', async () => {
   await post('UserPromptSubmit', {})
   await post('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } })
   const app = fakeApp()
@@ -178,7 +189,7 @@ test('a slow app: Claude gets nothing to say by the limit, and the app still get
   expect(readJournal()).toEqual([])
 })
 
-test('the app going away: a held request is left to Claude, and what it hadn\'t answered is kept and then journalled', async () => {
+test("the app going away: a held request is left to Claude, and what it hadn't answered goes to the next app under the same ids", async () => {
   const app = fakeApp()
   hooks.connect(app)
   const held = post('PermissionRequest', { tool_name: 'Bash' })
@@ -187,8 +198,33 @@ test('the app going away: a held request is left to Claude, and what it hadn\'t 
   hooks.disconnect(app)
   expect((await held).body).toEqual({})
   expect((await stop).body).toEqual({})
+  const next = fakeApp()
+  hooks.connect(next)
+  // The same ids, so an app that had applied one before its answer was lost can tell.
+  expect(next.got.map((g) => [g.hid, g.payload.hook_event_name, g.live])).toEqual([
+    [app.got[0].hid, 'Notification', false],
+    [app.got[1].hid, 'Stop', false]
+  ])
+  await hooks.flush()
+  expect(readJournal()).toEqual([])
+})
+
+test('an app from before this, which never takes hooks, gets them in the journal it reads', async () => {
+  await post('UserPromptSubmit', {})
+  hooks.appWithoutHooks(true)
+  await until(() => readJournal().length === 1)
+  await post('Stop', {})
   await until(() => readJournal().length === 2)
-  expect(journal().map((e) => e.hook_event_name)).toEqual(['PermissionRequest', 'Stop'])
+  hooks.appWithoutHooks(false)
+  await post('Notification', {})
+  await new Promise((r) => setTimeout(r, 100))
+  expect(readJournal()).toHaveLength(2)
+})
+
+test('past the most it keeps, what waits goes to the journal, in order', async () => {
+  for (let i = 0; i < 51; i++) await post(i % 2 ? 'Stop' : 'UserPromptSubmit', {})
+  await until(() => readJournal().length === 51)
+  expect(journal().at(-1)?.hook_event_name).toBe('UserPromptSubmit')
 })
 
 test('a newer connection takes over what the older one hadn\'t answered', async () => {

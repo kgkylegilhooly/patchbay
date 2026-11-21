@@ -53,6 +53,7 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
   let nextId = 1
   const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; timer: NodeJS.Timeout }>()
   const messageListeners: Array<(m: HostMessage) => void> = []
+  const early: HostMessage[] = []
   const closeListeners: Array<() => void> = []
 
   reader.takeOver((message) => {
@@ -65,6 +66,8 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
       else waiting.reject(new HostRequestError(message.message, message.reason))
       return
     }
+    // What comes right behind the welcome, such as hook events kept for an app, can arrive before anyone listens.
+    if (messageListeners.length === 0) early.push(message)
     for (const cb of messageListeners) cb(message)
   })
 
@@ -98,6 +101,7 @@ function wrap(socket: Socket, welcome: HostWelcome, reader: { takeOver(cb: (m: H
     },
     onMessage(cb) {
       messageListeners.push(cb)
+      for (const message of early.splice(0)) cb(message)
     },
     onClose(cb) {
       closeListeners.push(cb)
