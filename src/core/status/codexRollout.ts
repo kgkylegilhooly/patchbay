@@ -6,15 +6,16 @@ import type { PlanUsage } from '../../shared/usage'
  *
  * Codex 0.170 has no StopFailure hook, and its Stop hook carries no error. What it does write to the rollout, from its
  * protocol (read from the 0.170 binary; see docs/plans/followups-integration.md):
- * - `event_msg` `task_started` / `task_complete`: a turn's start and end.
- * - `event_msg` `error`: `{ message, codex_error_info }`. The turn failed on it. `codex_error_info` is a snake_case
- *   name (`usage_limit_exceeded`, `server_overloaded`, ...) or an object with one such key.
+ * - `event_msg` `task_started` / `task_complete`: a turn's start and end. A turn that failed ends with `task_complete`
+ *   carrying `error: { message, codex_error_info }` and `last_agent_message: null`, and no Stop hook follows (seen
+ *   live: test/fixtures/codex-0.170/failed-turn.jsonl). `codex_error_info` is a snake_case name
+ *   (`usage_limit_exceeded`, `model_not_found`, ...) or an object with one such key.
+ * - `event_msg` `error`: the same fields as an event of its own. In the protocol; not seen written by 0.170; still read.
  * - `event_msg` `turn_aborted`: `{ reason }`, `interrupted` when the person pressed Esc.
  * - `event_msg` `token_count`: `rate_limits.primary` / `.secondary` with `used_percent` and `resets_at` (unix
  *   seconds): the exact reset of a full window, as Claude's status line gives.
- * UNVERIFIED: whether 0.170 writes `error` and `turn_aborted` to the rollout in its default persistence mode, and
- * whether its Stop hook fires after a failed turn. Neither could be produced here (no Codex quota left); the tests use
- * written fixtures. If neither happens, nothing changes from before: the node is left as its hooks say.
+ * Checked against a live 0.170 (docs/plans/codex-live.md): `turn_aborted` and `task_complete`'s error are written in
+ * the default persistence mode. A usage limit itself wasn't produced; it's taken to end a turn the same way.
  */
 
 export interface CodexFailure {
@@ -119,8 +120,14 @@ export function foldCodexLine(state: CodexTurnState, text: string): CodexTurnSta
   switch (p.type) {
     case 'task_started':
       return { ...state, inTurn: true, ended: false, failure: null, aborted: null }
-    case 'task_complete':
-      return { ...state, inTurn: false, ended: true }
+    case 'task_complete': {
+      // 0.170 says a failed turn's error here, on the turn's end, rather than as an event before it.
+      const e = obj(p.error)
+      if (!e) return { ...state, inTurn: false, ended: true }
+      const message = typeof e.message === 'string' ? e.message : ''
+      const codexError = codexErrorName(e.codex_error_info)
+      return { ...state, inTurn: false, ended: true, failure: { error: claudeErrorFor(codexError, message), codexError, message, at } }
+    }
     case 'turn_aborted':
       return { ...state, inTurn: false, ended: true, aborted: { reason: typeof p.reason === 'string' ? p.reason : 'unknown', at } }
     case 'error': {

@@ -35,6 +35,24 @@ export function foldCodexChild(progress: Progress, text: string): Progress {
     if (!Number.isNaN(at)) out = { ...out, startedAt: out.startedAt ?? at, lastAt: at }
     const p = obj(line.payload)
     if (!p) continue
+    // 0.170 forks a child from its parent: the rollout opens with the child's own session_meta (`forked_from_id`), then
+    // the parent's history up to the spawn_agent call, then the child's own first turn, started by the parent's agent
+    // (test/fixtures/codex-0.170/subagent-child.jsonl). Only that last part is the child's. Its task text is encrypted;
+    // its task name ends its agent path ("/root/pong").
+    if (line.type === 'session_meta' && out.inherited === undefined) {
+      if (typeof p.forked_from_id !== 'string') {
+        out = { ...out, inherited: false }
+        continue
+      }
+      const name = typeof p.agent_path === 'string' ? p.agent_path.split('/').filter(Boolean).pop() : undefined
+      out = { ...out, inherited: true, ...(name && out.prompt === undefined ? { prompt: name.slice(0, 200) } : {}) }
+      continue
+    }
+    if (out.inherited) {
+      const by = obj(p.turn_attribution)?.initiating_agent_path
+      if (line.type === 'event_msg' && p.type === 'task_started' && typeof by === 'string') out = { ...out, inherited: false }
+      continue
+    }
     if (line.type === 'response_item') {
       if (typeof p.type === 'string' && TOOL_ITEMS.has(p.type)) out = { ...out, tools: out.tools + 1 }
       else if (p.type === 'message' && p.role === 'user' && out.prompt === undefined) {
@@ -50,8 +68,10 @@ export function foldCodexChild(progress: Progress, text: string): Progress {
         const last = obj(obj(p.info)?.last_token_usage)
         const total = typeof last?.total_tokens === 'number' ? last.total_tokens : null
         if (total !== null) out = { ...out, tokens: total }
-      } else if (p.type === 'error') {
-        out = { ...out, error: typeof p.message === 'string' && p.message ? p.message.slice(0, 200) : 'It ended on an error' }
+      } else if (p.type === 'error' || (p.type === 'task_complete' && obj(p.error))) {
+        // 0.170 puts a failed turn's error on its task_complete.
+        const said = p.type === 'error' ? p.message : obj(p.error)?.message
+        out = { ...out, error: typeof said === 'string' && said ? said.slice(0, 200) : 'It ended on an error' }
       } else if (p.type === 'user_message' && out.prompt === undefined && typeof p.message === 'string' && p.message.trim()) {
         out = { ...out, prompt: p.message.trim().split('\n')[0].slice(0, 200) }
       }
