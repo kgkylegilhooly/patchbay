@@ -1,14 +1,16 @@
 /*
  * Semantic zoom for node headers (zoomTier.ts). ZoomTierWatcher sets data-zoom-tier (near, far, overview) and
- * --head-scale on the canvas. Zoomed out, a header is drawn at its real on-screen size as a tile: the title, then the
- * status word and one key badge. The header leaves the flow and the window keeps its slot as padding, so the body,
- * and the terminal in it, never changes size with the zoom. In the overview the body is a flat fill in the status
- * colour, as on the minimap, so a wall of agents reads at a glance.
+ * --head-scale on the headers and strips. Zoomed out, a header is drawn at its real on-screen size as a tile: the
+ * title, then the status word and one key badge. The header leaves the flow and the window keeps its slot as padding,
+ * so the body, and the terminal in it, never changes size with the zoom. The tile is a fixed height, so the strips
+ * under it (Approve and Deny, an error with Restart, a hold) move down by exactly what it adds, and stay usable. In
+ * the overview the body is a flat fill in the status colour, as on the minimap, so a wall of agents reads at a glance.
  */
 
 .react-flow {
-  --head-scale: 1;
   --far-title: 15px;
+  /* A session tile's height before scaling: one line of title and one of status. */
+  --tile-h: 54px;
   --far-meta: 12px;
   /* The LED, the kind icon and the gaps between: where a far header's second line starts, under the title. */
   --far-indent: 38px;
@@ -104,16 +106,37 @@
   position: absolute;
   inset: 0 0 auto 0;
   z-index: 3;
-  zoom: var(--head-scale);
+  zoom: var(--head-scale, 1);
   background: var(--face);
   border-bottom: 1px solid var(--line);
-  border-radius: calc(var(--radius) / var(--head-scale)) calc(var(--radius) / var(--head-scale)) 0 0;
+  border-radius: calc(var(--radius) / var(--head-scale, 1)) calc(var(--radius) / var(--head-scale, 1)) 0 0;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
 }
 
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit > .unit-head {
   min-height: 36px;
   padding: 6px 6px 7px 11px;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit > .unit-head-session {
+  height: var(--tile-h);
+  align-content: center;
+}
+
+/* The strips under a session tile move down by what the tile adds to the 36 px slot, over the top of the body. */
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > :not(.unit-head, .unit-body) {
+  position: relative;
+  z-index: 2;
+  transform: translateY(calc(var(--tile-h) * var(--head-scale, 1) - 36px));
+}
+
+/* Solid, now they lie over the body. An error keeps its red tint on top. */
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .strip {
+  background-color: var(--face);
+}
+
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .strip-error {
+  background-image: linear-gradient(rgb(255 69 58 / 0.14), rgb(255 69 58 / 0.14));
 }
 
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit > .unit-head, .wb > .wb-head, .rack-head) .title {
@@ -138,11 +161,6 @@
   flex: 1 1 0;
   min-width: 0;
   line-height: 1.25;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) .head-far {
@@ -215,12 +233,12 @@
 
 /* A group's label grows upward from where it sits, above the group, so it never covers the windows inside. */
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) .rack-head {
-  width: calc(100% / var(--head-scale));
-  transform: scale(var(--head-scale));
+  width: calc(100% / var(--head-scale, 1));
+  transform: scale(var(--head-scale, 1));
   transform-origin: 0 100%;
   /* Solid, as it now sits over the group's top edge. */
   background: color-mix(in srgb, var(--group) 16%, var(--face));
-  border-radius: calc(13px / var(--head-scale)) calc(13px / var(--head-scale)) 0 0;
+  border-radius: calc(13px / var(--head-scale, 1)) calc(13px / var(--head-scale, 1)) 0 0;
 }
 
 /* ── Overview: the body becomes the status colour ────────────────────────────────────────────────────────────── */

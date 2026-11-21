@@ -36,6 +36,12 @@ const kinds = (doc) => {
 }
 
 const seeds = {
+  // An agent asking to run a command, zoomed out: the tile says what, and Approve and Deny stay under it.
+  'zoom-far-approval': (doc) => {
+    const idle = doc.nodes.find((n) => n.id === 'idle')
+    doc.nodes.push({ ...idle, id: 'asks', title: 'Ship the fix', x: 0, y: 760, prompt: 'permission' })
+    at(doc, { x: 340, y: -120, zoom: 0.5 })
+  },
   // Each kind of title bar, zoomed out.
   'zoom-far-kinds': (doc) => {
     kinds(doc)
@@ -71,6 +77,11 @@ const scenes = {
   'zoom-near': waitForHeads,
   'zoom-far': waitForHeads,
   'zoom-far-kinds': waitForHeads,
+  'zoom-far-approval': async (page) => {
+    await waitForHeads(page)
+    await page.waitForSelector('.react-flow__node[data-id="asks"] .strip-approval', { timeout: 15000 })
+    await sleep(500)
+  },
   'zoom-overview': waitForHeads,
   'zoom-far-hover': async (page) => {
     await waitForHeads(page)

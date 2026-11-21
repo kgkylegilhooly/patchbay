@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isSessionNode, type CanvasNode, type SessionNode } from '../../shared/model'
 import { copyText } from '../clipboard'
@@ -9,6 +9,19 @@ import { FONT_SIZE, steppedFontSize, windowFontSize } from '../prefs'
 import { nameWithAi, patchNode, refreshWindow, toggleMaximize, useStore } from '../store'
 import { terminalActions } from '../terminalRegistry'
 import { headerMenuEntries, useHeaderMenu } from './headerMenu'
+
+/** Shows a Claude window as a chat, or back as its terminal. Other windows have no chat. */
+export function toggleChatView(id: string): void {
+  if (useStore.getState().doc?.nodes.find((n) => n.id === id)?.kind !== 'claude') return
+  useStore.setState((s) => ({ chatView: { ...s.chatView, [id]: !s.chatView[id] } }))
+}
+
+/** Copies where a session runs. An SSH terminal's folder is only where ssh started, so it has none to copy. */
+export function copyFolderPath(id: string): void {
+  const node = useStore.getState().doc?.nodes.find((n) => n.id === id)
+  if (!isSessionNode(node) || (node.kind === 'terminal' && node.sshHost)) return
+  void copyText(node.cwd)
+}
 
 function Tool({ icon, label, tool, disabled, busy, pressed, onClick }: { icon: IconName; label: string; tool: string; disabled?: boolean; busy?: boolean; pressed?: boolean; onClick: () => void }): React.JSX.Element {
   return (
@@ -35,6 +48,10 @@ function MoreTool({ node }: { node: SessionNode }): React.JSX.Element {
     closedAt.current = Date.now()
     if (useHeaderMenu.getState().open === node.id) useHeaderMenu.setState({ open: null })
   }, [node.id])
+  // A window closed or hidden with its menu open mustn't find it open again when it comes back.
+  useEffect(() => () => {
+    if (useHeaderMenu.getState().open === node.id) useHeaderMenu.setState({ open: null })
+  }, [node.id])
   useLayoutEffect(() => {
     if (!open) return setAt(null)
     const r = button.current?.getBoundingClientRect()
@@ -46,11 +63,11 @@ function MoreTool({ node }: { node: SessionNode }): React.JSX.Element {
     { kind: node.kind, chat, naming, size, global, own: node.fontSize !== undefined, min: FONT_SIZE.min, max: FONT_SIZE.max, folder: node.kind === 'terminal' && node.sshHost ? '' : node.cwd },
     {
       refresh: () => refreshWindow(node.id),
-      toggleChat: () => useStore.setState((s) => ({ chatView: { ...s.chatView, [node.id]: !chat } })),
+      toggleChat: () => toggleChatView(node.id),
       name: () => void nameWithAi(node.id),
       step: (by) => patchNode(node.id, { fontSize: steppedFontSize(node.fontSize, global, by) }),
       resetSize: () => patchNode(node.id, { fontSize: undefined }),
-      copyFolder: () => void copyText(node.cwd)
+      copyFolder: () => copyFolderPath(node.id)
     }
   )
   return (
@@ -60,6 +77,7 @@ function MoreTool({ node }: { node: SessionNode }): React.JSX.Element {
         type="button"
         className={`icon-btn tool-btn nodrag tool-more${naming ? ' tool-btn-busy' : ''}`}
         data-tool="more"
+        data-node-id={node.id}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={naming ? `More tools for ${node.title}. Asking Claude for a name…` : `More tools for ${node.title}`}

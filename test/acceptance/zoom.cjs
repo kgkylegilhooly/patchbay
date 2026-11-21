@@ -38,6 +38,8 @@ async function main() {
   // The usual seeded canvas, at full size with the Backend group clear of the sessions sidebar.
   const { profile, cwd } = U.seeded('zoom')
   const doc = canvas(cwd)
+  // An agent asking to run a command, below the group, for Approve and Deny at every zoom.
+  doc.nodes.push({ ...doc.nodes.find((n) => n.id === 'idle'), id: 'asks', title: 'Ship the fix', x: 0, y: 760, prompt: 'permission' })
   doc.viewport = { x: 340, y: 60, zoom: 1 }
   doc.projects[0].viewport = doc.viewport
   fs.writeFileSync(path.join(profile, 'canvas.json'), JSON.stringify(doc))
@@ -72,10 +74,45 @@ async function main() {
     await page.keyboard.press('Escape')
     await L.sleep(200)
 
+    await U.focusTerminal(page, 'work')
+    await U.chord(page, 'shift', 'F10')
+    c.check('Shift+F10 from inside the terminal opens it too', (await page.$eval(`${U.nodeSel('work')} [data-tool="more"]`, (b) => b.getAttribute('aria-expanded'))) === 'true')
+    await page.click('.dock [data-cmd="zoom-out"]')
+    await L.sleep(300)
+    c.check('Zooming the view closes it, rather than leave it behind its button', !(await page.$('.menu-panel')))
+    await page.click('.dock [data-cmd="zoom-out"]')
+    await L.sleep(300)
+    const mid = await page.$eval('.dock-zoom', (z) => z.textContent)
+    c.check('Between 60% and 100% a window is left as it is, readable terminal and all', parseInt(mid, 10) >= 60 && (await tier(page)) === 'near', { mid, tier: await tier(page) })
+    await page.click('.dock [data-cmd="zoom-reset"]')
+    await L.sleep(400)
+
+    await page.click(`${U.nodeSel('work')} .unit-head .title`)
+    await L.sleep(200)
+    await U.chord(page, 'ctrl', 'KeyK')
+    await page.type('.palette-input', 'chat')
+    await L.sleep(200)
+    const offered = await page.$$eval('.palette-item .palette-label', (l) => Array.from(l, (x) => x.textContent))
+    c.check('The palette offers the chat toggle, so it has a key path', offered.some((t) => /as a chat/.test(t)), offered)
+    await page.keyboard.press('Escape')
+    await L.sleep(200)
+
     const near = await bodySizes(page)
     const pty = await U.ptySize(page, 'term', 'near')
     await zoomTo(page, 'far')
     c.check('Zoomed out, the canvas is far', (await tier(page)) === 'far', await tier(page))
+    await L.waitFor('the approval', () => page.$(`${U.nodeSel('asks')} .strip-approval`), 20000)
+    // Every window in view, which is still far out.
+    await L.fitView(page)
+    await L.sleep(500)
+    const approve = await page.$eval(`${U.nodeSel('asks')} .strip-approval .btn-solid`, (b) => {
+      const r = b.getBoundingClientRect()
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      return { hit: !!hit && b.contains(hit), text: b.textContent }
+    })
+    c.check('Approve is still there to press on a far window, not under its tile', approve.hit, approve)
+    const asked = await page.$eval(`${U.nodeSel('asks')} .head-far .key-badge`, (m) => m.textContent)
+    c.check("The tile's badge names the command", /^Bash: /.test(asked), asked)
     const zoom = await page.$eval('.dock-zoom', (b) => b.textContent)
     const px = await titlePx(page, 'needs')
     c.check('A far title still draws at a readable size', px >= 13, { zoom, px })

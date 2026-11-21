@@ -7,8 +7,11 @@
 /** near: the full header. far: a readable tile. overview: the tile, and the body becomes a flat status fill. */
 export type ZoomTier = 'near' | 'far' | 'overview'
 
-/** Below this zoom a header turns into a tile. At 0.8 a 13 px title already draws at about 10 px. */
-export const FAR_BELOW = 0.8
+/**
+ * Below this zoom a header turns into a tile. Above it a 13 px terminal still draws at 8 px or more and is worth
+ * reading, so the window is left as it is, even though its header text is already small.
+ */
+export const FAR_BELOW = 0.6
 /** Below this, a terminal's text is a texture, so the body shows its status colour instead. */
 export const OVERVIEW_BELOW = 0.35
 /** How far past a line the zoom must go to cross back, so a wheel zoom resting on the line doesn't flicker. */

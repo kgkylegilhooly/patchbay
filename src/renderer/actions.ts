@@ -66,6 +66,8 @@ export const ACTIONS: Action[] = [
   { id: 'find', section: 'Window', label: 'Find in terminal', icon: 'find', fixedKey: 'Ctrl+F', keywords: ['search'], ready: (s) => s.canFind, run: (c) => c.find() },
   { id: 'refresh-window', section: 'Window', label: 'Refresh this window', icon: 'refresh', key: 'Ctrl+Shift+R', keywords: ['redraw', 'repaint', 'rebuild'], ready: hasWindow, run: (c) => c.refreshWindow() },
   { id: 'name-with-ai', section: 'Window', label: 'Name this window with AI', icon: 'sparkle', keywords: ['title', 'rename'], ready: (s) => s.canName, run: (c) => c.nameWithAi() },
+  { id: 'toggle-chat', section: 'Window', label: 'Show this window as a chat, or as its terminal', icon: 'note', keywords: ['chat', 'conversation', 'terminal', 'view'], ready: hasWindow, run: (c) => c.toggleChat() },
+  { id: 'copy-folder-path', section: 'Window', label: "Copy this window's folder path", icon: 'copy', keywords: ['cwd', 'directory', 'path', 'folder'], ready: hasWindow, run: (c) => c.copyFolderPath() },
   { id: 'toggle-maximize', section: 'Window', label: 'Maximize or restore this window', icon: 'maximize', key: 'F11', keywords: ['fullscreen', 'expand'], ready: hasWindow, run: (c) => c.toggleMaximize() },
   { id: 'font-larger', section: 'Window', label: "Larger text in this window", icon: 'text-larger', key: 'Ctrl+Shift+=', keywords: ['font', 'size', 'zoom'], ready: hasWindow, run: (c) => c.stepFont(1) },
   { id: 'font-smaller', section: 'Window', label: "Smaller text in this window", icon: 'text-smaller', key: 'Ctrl+Shift+-', keywords: ['font', 'size', 'zoom'], ready: hasWindow, run: (c) => c.stepFont(-1) },

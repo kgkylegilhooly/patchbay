@@ -102,6 +102,9 @@ export interface Commands {
   refreshWindow(nodeId?: string): void
   nameWithAi(nodeId?: string): void
   toggleMaximize(nodeId?: string): void
+  /** A Claude window as a chat, or back to its terminal. */
+  toggleChat(nodeId?: string): void
+  copyFolderPath(nodeId?: string): void
   stepFont(step: number, nodeId?: string): void
   resetFont(nodeId?: string): void
   moveFocus(direction: Direction): void

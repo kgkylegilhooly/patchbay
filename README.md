@@ -300,14 +300,14 @@ and spends a little quota.
 
 ## Session windows
 
-Each window's header has Find, Maximize, **⋯** and Close. **⋯**, or Shift+F10 when the window itself has the keyboard,
-holds Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The header shows the folder only when
+Each window's header has Find, Maximize, **⋯** and Close. **⋯**, or Shift+F10 in the window or its terminal, holds
+Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The header shows the folder only when
 it isn't the project's own, by its folder name. On narrow windows the folder goes first, then labels.
 
-- **Zoomed out** below 80%, each header becomes a tile you can still read: the title, then the status and the one thing
-  you'd zoom in for, such as the command an agent is asking to run or a nearly full context. The tools come back when
-  you point at the window. Below 35% the window's body turns its status colour, as on the minimap. Nothing in the
-  window changes size, so its terminal never sees the zoom.
+- **Zoomed out** below 60%, each header becomes a tile you can still read: the title, then the status and the one thing
+  you'd zoom in for, such as the command an agent is asking to run or a nearly full context. Approve and Deny, and an
+  error's Restart, stay under the tile. The tools come back when you point at the window. Below 35% the window's body
+  turns its status colour, as on the minimap. Nothing in the window changes size, so its terminal never sees the zoom.
 - **Refresh** draws the terminal view again from the session's output. The process keeps running. Restart is separate.
 - **Name with AI** titles the window from recent output, only when clicked, and spends a little plan quota. It runs
   `claude -p` in an empty folder with no tools, hooks or saved conversation.

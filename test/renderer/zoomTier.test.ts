@@ -7,7 +7,8 @@ describe('zoom tiers', () => {
   it('starts in the tier its zoom is in', () => {
     expect(nextTier(null, 1)).toBe('near')
     expect(nextTier(null, FAR_BELOW)).toBe('near')
-    expect(nextTier(null, 0.72)).toBe('far')
+    expect(nextTier(null, 0.72)).toBe('near')
+    expect(nextTier(null, 0.5)).toBe('far')
     expect(nextTier(null, OVERVIEW_BELOW)).toBe('far')
     expect(nextTier(null, 0.2)).toBe('overview')
   })
@@ -31,10 +32,11 @@ describe('zoom tiers', () => {
     expect(headScale(1, 'near')).toBe(1)
     expect(headScale(0.5, 'near')).toBe(1)
     expect(headScale(0.5, 'far')).toBe(2)
-    expect(headScale(0.72, 'far')).toBeCloseTo(1.4, 5)
+    expect(headScale(0.55, 'far')).toBeCloseTo(1.8, 5)
     expect(headScale(0.1, 'overview')).toBe(MAX_HEAD_SCALE)
-    // Coming back in while still far: never smaller than the canvas draws it.
-    expect(headScale(0.82, 'far')).toBe(1.2)
+    // Coming back in while still far: the scale follows the zoom, and is never below 1.
+    expect(headScale(0.62, 'far')).toBe(1.6)
+    expect(headScale(1.2, 'far')).toBe(1)
     expect(headScale(0, 'far')).toBe(1)
   })
 

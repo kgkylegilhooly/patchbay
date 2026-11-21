@@ -23,6 +23,7 @@ import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, terminalActions } from './terminalRegistry'
+import { copyFolderPath, toggleChatView } from './nodes/WindowTools'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -245,6 +246,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       refreshWindow: (nodeId) => onWindow(nodeId, refreshWindow),
       nameWithAi: (nodeId) => onWindow(nodeId, (id) => void nameWithAi(id)),
       toggleMaximize: (nodeId) => onWindow(nodeId, toggleMaximize),
+      toggleChat: (nodeId) => onWindow(nodeId, toggleChatView),
+      copyFolderPath: (nodeId) => onWindow(nodeId, copyFolderPath),
       stepFont: (step, nodeId) =>
         onWindow(nodeId, (id) => {
           const own = doc().nodes.find((n) => n.id === id)?.fontSize

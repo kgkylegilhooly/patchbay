@@ -165,12 +165,12 @@ export function MenuPanel({
 function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: () => void }): React.JSX.Element {
   const steps = item.steps!
   const step = (s: (typeof steps)['down'], icon: 'minus' | 'plus'): React.JSX.Element => (
-    <button type="button" className="menu-step" data-tool={s.tool} aria-label={s.label} title={s.label} disabled={s.disabled} onClick={s.run}>
+    <button type="button" role="menuitem" className="menu-step" data-tool={s.tool} aria-label={s.label} title={s.label} disabled={s.disabled} onClick={s.run}>
       <Icon name={icon} size={13} />
     </button>
   )
   return (
-    <div role="group" aria-label={item.label} data-cmd={item.id} data-tool={item.tool} className={`menu-item menu-steps${active ? ' menu-item-active' : ''}`} onMouseEnter={onHover}>
+    <div role="group" aria-label={`${item.label} ${steps.value}`} data-cmd={item.id} data-tool={item.tool} className={`menu-item menu-steps${active ? ' menu-item-active' : ''}`} onMouseEnter={onHover}>
       <span className="menu-check" aria-hidden="true">
         {item.icon ? <Icon name={item.icon} size={15} /> : ''}
       </span>
@@ -178,6 +178,7 @@ function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; 
       {step(steps.down, 'minus')}
       <button
         type="button"
+        role="menuitem"
         className={`menu-step-value${steps.canRun ? ' menu-step-value-own' : ''}`}
         data-tool={steps.runTool}
         aria-label={steps.runLabel ?? steps.value}
