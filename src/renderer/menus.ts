@@ -29,6 +29,20 @@ export interface MenuItem {
   /** Asks before running, in the confirmation dialog: what happens, in a sentence. */
   confirm?: string
   danger?: boolean
+  /** The menu stays open after it runs, so it can be used again, as when stepping a size. */
+  keepOpen?: boolean
+  /** A − value + row. Left and right step it, Enter runs `run` when `canRun`. It always stays open. */
+  steps?: { value: string; canRun: boolean; runLabel?: string; runTool?: string; down: MenuStep; up: MenuStep }
+  /** A name for checks to find the row by, as its `data-tool`. */
+  tool?: string
+}
+
+/** One side of a stepper row. */
+export interface MenuStep {
+  label: string
+  run: () => void
+  disabled?: boolean
+  tool?: string
 }
 
 export type MenuEntry = MenuItem | 'separator'
@@ -88,6 +102,9 @@ export interface Commands {
   refreshWindow(nodeId?: string): void
   nameWithAi(nodeId?: string): void
   toggleMaximize(nodeId?: string): void
+  /** A Claude window as a chat, or back to its terminal. */
+  toggleChat(nodeId?: string): void
+  copyFolderPath(nodeId?: string): void
   stepFont(step: number, nodeId?: string): void
   resetFont(nodeId?: string): void
   moveFocus(direction: Direction): void

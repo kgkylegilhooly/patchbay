@@ -63,6 +63,7 @@ import { ReaderLayer } from './reader/ReaderLayer'
 import { FileNode } from './nodes/FileNode'
 import { dropFileOnWindow, FileShelfLayer } from './FileShelf'
 import { HeaderZoomWatcher } from './useHeaderZoom'
+import { ZoomTierWatcher } from './ZoomTierWatcher'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -527,6 +528,7 @@ function Canvas(): React.JSX.Element | null {
         <NeedsYouLayer commands={commands} />
         <ReaderLayer />
         <HeaderZoomWatcher />
+        <ZoomTierWatcher />
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}

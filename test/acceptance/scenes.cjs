@@ -362,7 +362,9 @@ const scenes = {
     await sleep(600)
   },
   font: async (page) => {
-    for (let i = 0; i < 4; i++) await page.click('.react-flow__node[data-id="idle"] [data-tool="font-larger"]')
+    // The size is in the ⋯ menu now. Before the change it was a button on the header.
+    if (!(await page.$('.react-flow__node[data-id="idle"] [data-tool="more"]'))) for (let i = 0; i < 4; i++) await page.click('.react-flow__node[data-id="idle"] [data-tool="font-larger"]')
+    else for (let i = 0; i < 4; i++) await require('./uilib.cjs').headerTool(page, 'idle', 'font-larger')
     await sleep(500)
   },
   'closed-project': async (page) => {
@@ -704,6 +706,8 @@ Object.assign(seeds, require('./uxPanelScenes.cjs').seeds)
 Object.assign(scenes, require('./canvasUxScenes.cjs').scenes)
 Object.assign(seeds, require('./canvasUxScenes.cjs').seeds)
 Object.assign(scenes, require('./workflowScenes.cjs').scenes)
+Object.assign(scenes, require('./zoomScenes.cjs').scenes)
+Object.assign(seeds, require('./zoomScenes.cjs').seeds)
 Object.assign(scenes, require('./statusScenes.cjs').scenes)
 Object.assign(seeds, require('./statusScenes.cjs').seeds)
 Object.assign(scenes, require('./safeAreaScenes.cjs').scenes)

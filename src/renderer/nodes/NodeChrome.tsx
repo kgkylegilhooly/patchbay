@@ -15,6 +15,10 @@ import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
+import { useAgentStop } from '../agentStops'
+import { ledTokens, runMapColor, statusMapColor } from '../minimapColors'
+import { headerFolder, keyBadge } from '../zoomTier'
+import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
@@ -156,6 +160,27 @@ function Held({ node }: { node: CanvasNode }): React.JSX.Element | null {
   )
 }
 
+/**
+ * The second line of a header drawn zoomed out (zoom.css shows it then): the status word (a run's own, for a run
+ * command) and the one badge you'd zoom in to read, such as what's being asked.
+ */
+function FarMeta({ node, status, folder }: { node: CanvasNode; status: AgentStatus | null; folder: string }): React.JSX.Element {
+  const approval = useStore((s) => s.approvals.find((a) => a.nodeId === node.id))
+  const run = useStore((s) => (node.kind === 'run' ? s.runs[node.id] : undefined))
+  const context = contextLabel(useStore((s) => s.usage.nodes[node.id]))
+  const badge = keyBadge({ approval: approval ? { tool: approval.tool, summary: approval.summary } : null, context, folder })
+  return (
+    <span className="head-far">
+      {node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
+      {badge && (
+        <span className={`key-badge key-badge-${badge.tone}`} title={badge.title}>
+          {badge.text}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function CloseControl({ node, status }: { node: CanvasNode; status: AgentStatus | null }): React.JSX.Element {
   const busy = status === 'working' || status === 'needs-you'
   // The same question the canvas menu's Close asks, in the one confirmation dialog.
@@ -206,11 +231,16 @@ export function NodeChrome({
   const maximized = useStore((s) => s.maximized === node.id)
   const slot = useStore((s) => (s.focus ? s.focusSlots[node.id] : undefined))
   const headerZoom = useHeaderZoom(node.id)
+  const projectFolder = useStore((s) => s.doc?.projects.find((p) => p.id === node.projectId)?.folder)
+  const folder = headerFolder(cwd, projectFolder)
+  const stop = useAgentStop(status === 'unknown' ? node.id : undefined)
+  // The colour a zoomed-out window's body is filled with: the minimap's, so the two always agree.
+  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens())
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (
-    <div className={classes.join(' ')}>
-      <header className="unit-head pb-drag" onDoubleClick={headerZoom}>
+    <div className={classes.join(' ')} style={{ '--status-fill': fill } as React.CSSProperties}>
+      <header className="unit-head unit-head-session pb-drag" onDoubleClick={headerZoom}>
         {isRun ? <RunDot run={run} /> : <StatusDot status={status} nodeId={node.id} />}
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
@@ -229,9 +259,11 @@ export function NodeChrome({
           </span>
         )}
         {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
-        <span className="cwd" title={cwd}>
-          {cwd}
-        </span>
+        {folder && (
+          <span className="cwd" title={cwd}>
+            {folder}
+          </span>
+        )}
         {isRun && <PortChips nodeId={node.id} />}
         {isRun && (
           <span className="run-buttons">
@@ -250,10 +282,13 @@ export function NodeChrome({
             Restart
           </button>
         )}
-        <WindowTools node={node} />
-        <CloseControl node={node} status={status} />
-        {/* Maximized, Restore is the rightmost control, where a window's own restore button is, so it isn't Close. */}
-        {maximized && <MaximizeTool node={node} />}
+        <FarMeta node={node} status={isRun ? null : status} folder={folder} />
+        <span className="head-tools">
+          <WindowTools node={node} />
+          <CloseControl node={node} status={status} />
+          {/* Maximized, Restore is the rightmost control, where a window's own restore button is, so it isn't Close. */}
+          {maximized && <MaximizeTool node={node} />}
+        </span>
       </header>
       {error && (
         <div className="strip strip-error" role="alert">

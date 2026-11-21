@@ -227,8 +227,13 @@ async function main() {
       for (const [i, id] of ids.entries()) await L.openNode(page, { ...L.claude(id, cwd, ...place(i)), width: 480, height: 300, prompt: `${SECONDS + 30}${HEAVY ? ' heavy' : ''}` })
       await L.sleep(6000)
       if (CHAT) {
-        // Clicked in the page: at this zoom the tool may be clipped from a narrow header, which a real click can't reach.
-        for (const id of ids) await page.evaluate((i) => document.querySelector(`.react-flow__node[data-id="${i}"] [data-tool="chat"]`)?.click(), id)
+        // Clicked in the page: at this zoom the ⋯ button may be hidden on a far header, which a real click can't reach.
+        for (const id of ids) {
+          await page.evaluate((i) => document.querySelector(`.react-flow__node[data-id="${i}"] [data-tool="more"]`)?.click(), id)
+          await page.waitForSelector('.menu-panel [data-tool="chat"]', { timeout: 3000 })
+          await page.evaluate(() => document.querySelector('.menu-panel [data-tool="chat"]')?.click())
+          await L.sleep(50)
+        }
         await L.sleep(1500)
         const chats = await page.evaluate(() => document.querySelectorAll('.chat-list').length)
         c.check('Every agent window shows its chat', chats === N, { chats, of: N })

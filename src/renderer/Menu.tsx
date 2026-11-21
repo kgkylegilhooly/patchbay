@@ -55,7 +55,8 @@ export function MenuPanel({
 
   const choose = (item: MenuItem): void => {
     if (item.disabled) return
-    onClose()
+    if (item.steps && !item.steps.canRun) return
+    if (!item.keepOpen && !item.steps) onClose()
     // One confirmation for every destructive item, in its own dialog rather than a reworded menu row.
     if (item.confirm) void confirmThen({ ...confirmWords(item.label === 'Close' ? 'Close window' : item.label), message: item.confirm, tone: item.danger ? 'danger' : 'neutral', attrs: { 'data-confirm': item.id } }, item.run)
     else item.run()
@@ -78,8 +79,16 @@ export function MenuPanel({
         Escape: m.onClose,
         ArrowDown: () => move(1),
         ArrowUp: () => move(-1),
-        ArrowLeft: () => m.onStep?.(-1),
-        ArrowRight: () => m.onStep?.(1),
+        ArrowLeft: () => {
+          const steps = m.usable.find((i) => i.id === m.active)?.steps
+          if (steps) return void (!steps.down.disabled && steps.down.run())
+          m.onStep?.(-1)
+        },
+        ArrowRight: () => {
+          const steps = m.usable.find((i) => i.id === m.active)?.steps
+          if (steps) return void (!steps.up.disabled && steps.up.run())
+          m.onStep?.(1)
+        },
         Enter: () => {
           const item = m.usable.find((i) => i.id === m.active)
           if (item) m.choose(item)
@@ -108,11 +117,22 @@ export function MenuPanel({
       {entries.map((entry, i) =>
         entry === 'separator' ? (
           <div key={`sep-${i}`} className="menu-sep" role="separator" />
+        ) : entry.steps ? (
+          <StepsRow
+            key={entry.id}
+            item={entry}
+            active={active === entry.id}
+            onHover={() => {
+              keyed.current = false
+              setActive(entry.id)
+            }}
+          />
         ) : (
           <button
             key={entry.id}
             type="button"
             data-cmd={entry.id}
+            data-tool={entry.tool}
             role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             aria-checked={entry.checked}
             disabled={entry.disabled}
@@ -139,25 +159,61 @@ export function MenuPanel({
   )
 }
 
-/** A floating menu at a point: closes on any press elsewhere, on scroll, or when the window loses focus. */
+/** A − value + row in a menu, such as a window's text size. The value runs the item, when it can. */
+function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: () => void }): React.JSX.Element {
+  const steps = item.steps!
+  const step = (s: (typeof steps)['down'], icon: 'minus' | 'plus'): React.JSX.Element => (
+    <button type="button" role="menuitem" className="menu-step" data-tool={s.tool} aria-label={s.label} title={s.label} disabled={s.disabled} onClick={s.run}>
+      <Icon name={icon} size={13} />
+    </button>
+  )
+  return (
+    <div role="group" aria-label={`${item.label} ${steps.value}`} data-cmd={item.id} data-tool={item.tool} className={`menu-item menu-steps${active ? ' menu-item-active' : ''}`} onMouseEnter={onHover}>
+      <span className="menu-check" aria-hidden="true">
+        {item.icon ? <Icon name={item.icon} size={15} /> : ''}
+      </span>
+      <span className="menu-label">{item.label}</span>
+      {step(steps.down, 'minus')}
+      <button
+        type="button"
+        role="menuitem"
+        className={`menu-step-value${steps.canRun ? ' menu-step-value-own' : ''}`}
+        data-tool={steps.runTool}
+        aria-label={steps.runLabel ?? steps.value}
+        title={steps.runLabel}
+        disabled={!steps.canRun}
+        onClick={item.run}
+      >
+        {steps.value}
+      </button>
+      {step(steps.up, 'plus')}
+    </div>
+  )
+}
+
+/** A floating menu at a point:closes on any press elsewhere, on scroll, or when the window loses focus. */
 export function ContextMenu({
   at,
   entries,
   label,
-  onClose
+  onClose,
+  anchor = 'start'
 }: {
   at: Point
   entries: MenuEntry[]
   label: string
   onClose: () => void
+  /** 'end': the menu's right edge is at `at`, as under a button at the right of a header. */
+  anchor?: 'start' | 'end'
 }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState(at)
 
   useLayoutEffect(() => {
     const box = ref.current?.getBoundingClientRect()
-    if (box) setPosition(clampToViewport(at, box, { width: window.innerWidth, height: window.innerHeight }))
-  }, [at])
+    const from = anchor === 'end' && box ? { x: at.x - box.width, y: at.y } : at
+    if (box) setPosition(clampToViewport(from, box, { width: window.innerWidth, height: window.innerHeight }))
+  }, [at, anchor])
 
   useEffect(() => {
     const onPress = (e: MouseEvent): void => {
