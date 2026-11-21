@@ -6,11 +6,16 @@ import type { TriggerLimits, TriggerNode, TriggerOutcome, TriggerPreflight, Trig
 
 export type TriggerState = 'armed' | 'disarmed' | 'done'
 
-/** Done: a one-off that has run, or one whose end has passed. Finished, not failed. */
+/**
+ * Done: a one-off that has run, one whose end has passed, or one that ran and has no slot left before its end. Finished,
+ * not failed. One that never ran and has no slot left before a future end is only not armed: arming says why.
+ */
 export function triggerState(node: TriggerNode, now = Date.now()): TriggerState {
   if (isArmed(node)) return 'armed'
-  if (node.schedule.type === 'once') return node.runs.some((r) => r.source === 'schedule') ? 'done' : 'disarmed'
-  return windowEnded(node, now) ? 'done' : 'disarmed'
+  const ran = node.runs.some((r) => r.source !== 'manual')
+  if (node.schedule.type === 'once') return ran ? 'done' : 'disarmed'
+  const end = windowOf(node)?.end ?? null
+  return end !== null && (end <= now || (ran && windowEnded(node, now))) ? 'done' : 'disarmed'
 }
 
 export const STATE_LABELS: Record<TriggerState, string> = { armed: 'Armed', disarmed: 'Not armed', done: 'Done' }
@@ -34,7 +39,12 @@ export function relative(ms: number): string {
 
 export function nextLabel(node: TriggerNode, now: number): string {
   const win = windowOf(node)
-  if (!isArmed(node) && win?.end != null && windowEnded(node, now)) return `Finished. It ended ${describeWhen(win.end, now)}.`
+  if (!isArmed(node) && win?.end != null && windowEnded(node, now)) {
+    const when = describeWhen(win.end, now)
+    // Never ran, with the end still to come: nothing is finished, it just can't be armed like this.
+    if (triggerState(node, now) !== 'done') return `No run falls before its end, ${when}.`
+    return win.end <= now ? `Finished. It ended ${when}.` : `Finished. No run is left before its end, ${when}.`
+  }
   if (isEventSchedule(node.schedule)) {
     if (!isArmed(node)) return 'Arm it to listen for it.'
     return win?.start != null && win.start > now ? `From ${describeWhen(win.start, now)} (${relative(win.start - now)}).` : 'Whenever it happens.'

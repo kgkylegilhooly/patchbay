@@ -71,13 +71,50 @@ describe('nextRun with a window', () => {
     expect(nextRuns(EVERY_5, START - HOUR, START - HOUR, 5, { startsAt: START, endsAt: START + 10 * MIN })).toEqual([START, START + 5 * MIN, START + 10 * MIN])
   })
 
+})
+
+/** In a zone whose clocks go forward on 29 Mar 2026 and back on 25 Oct 2026, whatever zone runs the tests. */
+describe('across a clock change', () => {
+  let saved: string | undefined
+  beforeEach(() => {
+    saved = process.env.TZ
+    process.env.TZ = 'Europe/London'
+  })
+  afterEach(() => {
+    if (saved === undefined) delete process.env.TZ
+    else process.env.TZ = saved
+  })
+
+  test('the zone really changes its clocks here', () => {
+    expect(new Date(2026, 2, 28, 12).getTimezoneOffset()).not.toBe(new Date(2026, 2, 30, 12).getTimezoneOffset())
+    expect(new Date(2026, 9, 24, 12).getTimezoneOffset()).not.toBe(new Date(2026, 9, 26, 12).getTimezoneOffset())
+  })
+
   test('interval slots are exact milliseconds from the start, so a clock change does not move them', () => {
-    // Across the last Sunday in March and October, when many zones change their clocks.
     for (const start of [new Date(2026, 2, 28, 22, 0).getTime(), new Date(2026, 9, 24, 22, 0).getTime()]) {
       const runs = nextRuns({ type: 'interval', everyMs: HOUR }, start - 1, 0, 30, { startsAt: start })
       expect(runs[0]).toBe(start)
       expect(runs.every((t, i) => t === start + i * HOUR)).toBe(true)
     }
+  })
+
+  test('whole days from a start keep its time of day on the clock', () => {
+    for (const [month, day] of [[2, 27], [9, 23]]) {
+      const start = new Date(2026, month, day, 9, 0).getTime()
+      const daily = nextRuns({ type: 'interval', everyMs: 24 * HOUR }, start - 1, 0, 4, { startsAt: start })
+      expect(daily.map((t) => new Date(t).getHours())).toEqual([9, 9, 9, 9])
+      expect(daily.map((t) => new Date(t).getDate())).toEqual([day, day + 1, day + 2, day + 3])
+      // Asked from just before or just after a slot past the change, it finds that slot and the next.
+      expect(nextRun({ type: 'interval', everyMs: 24 * HOUR }, daily[3] - 1, 0, { startsAt: start })).toBe(daily[3])
+      expect(nextRun({ type: 'interval', everyMs: 24 * HOUR }, daily[2], 0, { startsAt: start })).toBe(daily[3])
+      const twoDays = nextRuns({ type: 'interval', everyMs: 48 * HOUR }, start, 0, 2, { startsAt: start })
+      expect(twoDays.map((t) => [new Date(t).getDate(), new Date(t).getHours()])).toEqual([[day + 2, 9], [day + 4, 9]])
+    }
+  })
+
+  test('whole days without a start still count milliseconds from when it was armed, as before', () => {
+    const armedAt = new Date(2026, 2, 28, 9, 0).getTime()
+    expect(nextRun({ type: 'interval', everyMs: 24 * HOUR }, armedAt + 24 * HOUR, armedAt)).toBe(armedAt + 48 * HOUR)
   })
 
   test('cron with a start counts in local time, whatever the clock does', () => {
@@ -216,6 +253,21 @@ describe('the form and the card', () => {
     expect(triggerState(t, END - HOUR)).toBe('disarmed')
     expect(triggerState(t, END + 1)).toBe('done')
     expect(nextLabel(t, END + 1)).toBe('Finished. It ended 22 Nov 09:00.')
+  })
+
+  test('one never armed, with no slot before a future end, is only not armed, and says why', () => {
+    const hourly = triggerNode('tr', { schedule: { type: 'interval', everyMs: HOUR }, endsAt: END, runs: [] })
+    expect(triggerState(hourly, END - 30 * MIN)).toBe('disarmed')
+    expect(nextLabel(hourly, END - 30 * MIN)).toBe('No run falls before its end, 22 Nov 09:00.')
+  })
+
+  test('one that ran and has no slot left before its end is done', () => {
+    const ran = triggerNode('tr', { schedule: { type: 'interval', everyMs: HOUR }, endsAt: END, runs: [{ id: 'r', at: END - HOUR, source: 'schedule', outcome: 'delivered' }] })
+    expect(triggerState(ran, END - 30 * MIN)).toBe('done')
+    expect(nextLabel(ran, END - 30 * MIN)).toBe('Finished. No run is left before its end, 22 Nov 09:00.')
+    // Run by hand only: that isn't the window running out.
+    const byHand = { ...ran, runs: [{ ...ran.runs[0], source: 'manual' as const }] }
+    expect(triggerState(byHand, END - 30 * MIN)).toBe('disarmed')
   })
 })
 

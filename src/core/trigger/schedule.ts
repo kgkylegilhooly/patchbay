@@ -26,13 +26,31 @@ export function scheduleError(s: TriggerSchedule): string | null {
   }
 }
 
+const DAY_MS = 86_400_000
+
+/**
+ * Every so many whole days from a start, keeping its time of day on the local clock: "every day from 09:00" stays at
+ * 09:00 across a clock change, as the start invites. The k-th slot is the start's date plus k * days.
+ */
+function wholeDaysAfter(start: number, days: number, after: number): number {
+  if (after < start) return start
+  const s = new Date(start)
+  const slot = (k: number): number => new Date(s.getFullYear(), s.getMonth(), s.getDate() + k * days, s.getHours(), s.getMinutes(), s.getSeconds(), s.getMilliseconds()).getTime()
+  // A clock change shifts a slot by an hour at most, so the estimate is off by one at most either way.
+  let k = Math.max(1, Math.floor((after - start) / (days * DAY_MS)))
+  while (slot(k) <= after) k++
+  while (k > 1 && slot(k - 1) > after) k--
+  return slot(k)
+}
+
 /**
  * The first slot strictly after a time, or null if there are no more. Interval slots count from `anchor`, the time it
  * was armed, so running late or being run by hand doesn't shift them.
  *
  * With a window (see window.ts), nothing falls before its start or after its end, which itself can be a slot. An
  * interval with a start counts from the start instead, and the start is its first slot: every 5 minutes from 14:00 is
- * 14:00, 14:05 and so on, whenever it was armed. Slots are counted in milliseconds, so a clock change doesn't move them.
+ * 14:00, 14:05 and so on, whenever it was armed. Slots are counted in milliseconds, so a clock change doesn't move them,
+ * except whole days from a start, which keep the start's time of day.
  */
 export function nextRun(s: TriggerSchedule, after: number, anchor: number, w?: TriggerWindow): number | null {
   const win = w ? windowOf({ schedule: s, ...w }) : null
@@ -46,6 +64,7 @@ export function nextRun(s: TriggerSchedule, after: number, anchor: number, w?: T
       }
       case 'interval':
         if (!(s.everyMs >= MIN_INTERVAL_MS)) return null
+        if (start !== null && s.everyMs % DAY_MS === 0) return wholeDaysAfter(start, s.everyMs / DAY_MS, after)
         if (start !== null) return after < start ? start : start + (Math.floor((after - start) / s.everyMs) + 1) * s.everyMs
         return after < anchor ? anchor + s.everyMs : anchor + (Math.floor((after - anchor) / s.everyMs) + 1) * s.everyMs
       case 'once':
