@@ -43,6 +43,11 @@ export interface ClaudeLaunchContext extends SessionEnvContext {
   claudeCommand?: string
   /** The claudeNativeMessaging setting: 'on' lets the node use Claude's own messaging between sessions. */
   claudeNativeMessaging?: string
+  /**
+   * The node.exe for Claude to start each Node hook with directly, with no shell in between. Unset keeps the hook a
+   * command line, for a Claude too old for that. See hookRunner.ts.
+   */
+  hookNode?: string | null
 }
 
 export interface ClaudeLaunch extends SessionSpec {
@@ -52,10 +57,14 @@ export interface ClaudeLaunch extends SessionSpec {
   typedPrompt?: string
 }
 
-/** A command hook's limit in seconds. hook.cjs exits long before this. */
-const HOOK_TIMEOUT_S = 5
+/**
+ * A command hook's limit in seconds. Once it runs, hook.cjs gives up within 1.5 s, so this only has to cover starting
+ * it: on a PC short of memory, with several agents, a shell and Node took past the 5 s this used to be, and Claude then
+ * showed the person a red "timed out" line and lost the event. 30 s is Claude Code's own default for UserPromptSubmit.
+ */
+export const HOOK_TIMEOUT_S = 30
 /** A held permission request needs longer than the approvals hold of 540 s. */
-const HELD_HOOK_TIMEOUT_S = 600
+export const HELD_HOOK_TIMEOUT_S = 600
 /**
  * No PreToolUse: it ran before every tool call, and nothing needs it. Every status it could set, PostToolUse sets as
  * the call ends, and a permission prompt answered in the terminal still comes back to working with PostToolUse.
@@ -275,6 +284,27 @@ export function hookCommand(event: string, nodeId: string, ctx: ClaudeLaunchCont
   return `node "${ctx.hookScript.replace(/\\/g, '/')}" ${event}`
 }
 
+export interface CommandHook {
+  type: 'command'
+  command: string
+  args?: string[]
+  timeout: number
+}
+
+/**
+ * One hook event's entry in the settings. With a Node to start, Claude starts it directly: no Git Bash or PowerShell in
+ * front of it, which roughly halves what each event costs, and saves most on a busy PC. See hookRunner.ts.
+ *
+ * Every event still runs to its end before Claude goes on. Run in the background ("async"), a turn's Stop and the next
+ * prompt could arrive the wrong way round, and the node would show the wrong status.
+ */
+export function hookEntry(event: string, nodeId: string, ctx: ClaudeLaunchContext): CommandHook {
+  const timeout = event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : HOOK_TIMEOUT_S
+  const signalled = !!ctx.signalDir && (SIGNAL_EVENTS as readonly string[]).includes(event)
+  if (!ctx.hookNode || signalled) return { type: 'command', command: hookCommand(event, nodeId, ctx), timeout }
+  return { type: 'command', command: ctx.hookNode, args: [ctx.hookScript, event], timeout }
+}
+
 /**
  * The status line. With a folder to signal through, bash saves its input there for Patchbay to read, then runs the
  * owner's own status line on the same input, as Claude would have: none of Patchbay's Node, and no second bash.
@@ -306,13 +336,7 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
       event,
       [
         {
-          hooks: [
-            {
-              type: 'command',
-              command: hookCommand(event, node.id, ctx),
-              timeout: event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : HOOK_TIMEOUT_S
-            }
-          ]
+          hooks: [hookEntry(event, node.id, ctx)]
         }
       ]
     ])

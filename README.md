@@ -25,7 +25,9 @@ Patchbay is built from this folder's code. There are three ways to run it, depen
 - The `claude` command for Claude nodes, and the `codex` command for Codex nodes.
 - The GitHub CLI (`gh`) only for issues and pull requests on the board.
 
-Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it.
+Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it. With Claude
+Code 2.1.139 or later, Claude starts that Node directly for each hook, with no shell in front of it, which costs less on
+a busy PC.
 
 ### First time
 

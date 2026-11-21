@@ -5,6 +5,8 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   buildClaudeLaunch,
   claudeAt,
+  HELD_HOOK_TIMEOUT_S,
+  HOOK_TIMEOUT_S,
   patchbayPermissions,
   rulePath,
   resolveClaude,
@@ -138,6 +140,54 @@ test('the settings file names every hook, with the script quoted and in forward 
       command: `node "C:/Program Files/Patchbay/resources/hook.cjs" ${event}`
     })
   }
+})
+
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'StopFailure', 'PermissionRequest', 'Notification', 'SessionEnd']
+const hooksOf = (c: ClaudeLaunchContext) => JSON.parse(readFileSync(after(buildClaudeLaunch(node(), c).args, '--settings'), 'utf8')).hooks
+
+test('with a Node to start, Claude starts it directly with the script and event as its arguments: no shell', () => {
+  const hooks = hooksOf(ctx({ hookNode: 'C:\\Program Files\\nodejs\\node.exe' }))
+  for (const event of EVENTS) {
+    expect(hooks[event][0].hooks).toEqual([
+      {
+        type: 'command',
+        command: 'C:\\Program Files\\nodejs\\node.exe',
+        args: ['C:\\Program Files\\Patchbay\\resources\\hook.cjs', event],
+        timeout: event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : HOOK_TIMEOUT_S
+      }
+    ])
+  }
+})
+
+test('without one, every hook stays the command line it was', () => {
+  for (const hookNode of [undefined, null]) {
+    const hooks = hooksOf(ctx({ hookNode }))
+    for (const event of EVENTS) expect(hooks[event][0].hooks[0]).not.toHaveProperty('args')
+  }
+})
+
+test('a hook only waits on its own end, and only a held permission request waits for a person', () => {
+  // A slow start on a starved PC must not reach the limit: Claude shows a red line for it and drops the event.
+  expect(HOOK_TIMEOUT_S).toBeGreaterThanOrEqual(30)
+  expect(HELD_HOOK_TIMEOUT_S).toBe(600)
+  for (const hookNode of [undefined, 'C:\\node\\node.exe']) {
+    const hooks = hooksOf(ctx({ hookNode, signalDir: join(dir, 'signals') }))
+    for (const event of EVENTS) {
+      const entry = hooks[event][0].hooks[0]
+      expect(entry.timeout).toBe(event === 'PermissionRequest' ? 600 : HOOK_TIMEOUT_S)
+      // Run in the background, a Stop and the next prompt could arrive the wrong way round.
+      expect(entry).not.toHaveProperty('async')
+    }
+  }
+})
+
+test('the events signalled through a file stay bash built-ins, with or without a Node to start', () => {
+  const hooks = hooksOf(ctx({ hookNode: 'C:\\node\\node.exe', signalDir: join(dir, 'signals') }))
+  for (const event of ['PostToolUse', 'PostToolUseFailure']) {
+    expect(hooks[event][0].hooks[0].command).toMatch(/^: > '/)
+    expect(hooks[event][0].hooks[0]).not.toHaveProperty('args')
+  }
+  expect(hooks.Stop[0].hooks[0]).toMatchObject({ command: 'C:\\node\\node.exe', args: [expect.any(String), 'Stop'] })
 })
 
 test('a node id with path characters stays inside the session folder', () => {

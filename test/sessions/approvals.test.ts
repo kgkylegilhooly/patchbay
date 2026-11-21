@@ -195,7 +195,9 @@ test('the per-node PermissionRequest hook timeout is longer than the hold', () =
     const timeout = hooks.PermissionRequest[0].hooks[0].timeout
     expect(timeout).toBe(600)
     expect(timeout * 1000).toBeGreaterThan(540000)
-    expect(hooks.Stop[0].hooks[0].timeout).toBeLessThan(10)
+    // Only a held request waits for a person. The others' limit only covers starting Node on a busy PC.
+    expect(hooks.Stop[0].hooks[0].timeout).toBe(30)
+    expect(hooks.Stop[0].hooks[0].timeout).toBeLessThan(timeout)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

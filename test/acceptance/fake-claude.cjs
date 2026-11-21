@@ -9,6 +9,12 @@ const fs = require('node:fs')
 
 const args = process.argv.slice(2)
 
+// Patchbay asks which Claude Code this is, to know whether it can start a hook's program directly (exec form).
+if (args[0] === '--version') {
+  process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION || '2.1.330'} (Claude Code)\n`)
+  process.exit(0)
+}
+
 // Name with AI asks for one answer and exits. This records what it was asked, so a check can read that back.
 if (args.includes('-p')) {
   let input = ''
@@ -33,10 +39,15 @@ const LONG_COMMAND = `for f in ${['api', 'auth', 'billing', 'canvas', 'sessions'
 
 const GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
 
-/** Runs a configured command as Claude Code does on Windows: through Git Bash, with the event on stdin. */
-function runCommand(command, payload) {
+/**
+ * Runs a configured command as Claude Code does on Windows, with the event on stdin: with `args`, the program itself
+ * and no shell (exec form); otherwise the line through Git Bash.
+ */
+function runCommand(command, payload, execArgs) {
   return new Promise((resolve) => {
-    const child = fs.existsSync(GIT_BASH)
+    const child = execArgs
+      ? spawn(command, execArgs, { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
+      : fs.existsSync(GIT_BASH)
       ? spawn(GIT_BASH, ['-c', command], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
       : spawn(command, { shell: true, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true })
     child.on('exit', resolve)
@@ -49,7 +60,12 @@ function runCommand(command, payload) {
 const hook = (name, extra = {}) => {
   const entry = settings.hooks[name]?.[0]?.hooks?.[0]
   if (!entry) return Promise.resolve()
-  return runCommand(entry.command, { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra })
+  const started = Date.now()
+  return runCommand(entry.command, { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra }, entry.args).then((code) => {
+    // Which way each hook ran and how long it took, for a check to read back.
+    if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ name, form: entry.args ? 'exec' : 'shell', code, ms: Date.now() - started, timeout: entry.timeout })}\n`)
+    return code
+  })
 }
 
 // With "chat" in the prompt it keeps a transcript in Claude's format, so a chat view has a conversation to show.
