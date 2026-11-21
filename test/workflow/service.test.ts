@@ -62,6 +62,9 @@ function world(wf: Workflow = featureWorkflow(), opts: {
   exitGraceMs?: number
   /** Runs before each save of a run, as something else on the canvas might. */
   beforeSave?: () => void
+  /** What the task service's check run waits on, and whether its submit fails. */
+  verifyWait?: Promise<void>
+  submitFails?: boolean
 } = {}) {
   const root = opts.repo ?? mkdtempSync(join(tmpdir(), 'pb-wf-svc-'))
   if (!opts.repo) dirs.push(root)
@@ -98,8 +101,8 @@ function world(wf: Workflow = featureWorkflow(), opts: {
     },
     tasks: {
       async create(_p, input) { tasks.created.push(input); return { id: 'task1' } },
-      async submit(...a) { tasks.submitted.push(a) },
-      async verify(...a) { tasks.verified.push(a) },
+      async submit(...a) { tasks.submitted.push(a); if (opts.submitFails) throw new Error('git read failed') },
+      async verify(...a) { tasks.verified.push(a); await opts.verifyWait },
       async recordRun(...a) { tasks.recorded.push(a) }
     },
     send: (id, text) => (sent.push([id, text]), { ok: true }),
@@ -622,5 +625,75 @@ describe('prune review fixes', () => {
     later.advanceClock(400 * DAY)
     expect((await later.service.prune()).removed).toEqual([])
     expect(existsSync(artifacts)).toBe(true)
+  })
+})
+
+describe("a run that succeeded just before Patchbay closed (live Codex run, docs/plans/codex-live.md)", () => {
+  /** A whole run to success, then its service closed, as the app quitting right after the last step. */
+  async function succeededRun() {
+    const w = world()
+    await startByPerson(w)
+    await submitPlan(w)
+    await w.service.act(w.run().id, { type: 'decide', attemptId: w.att('approve').id, decision: 'approve', note: '' })
+    await w.settle()
+    const impl = w.att('implement').nodeId!
+    await w.service.submit(impl, [{ key: 'summary', text: 'Done' }])
+    await w.settle()
+    w.runner.exit(w.att('tests').nodeId!, 0)
+    await w.settle()
+    expect(w.run().state).toBe('succeeded')
+    w.service.dispose()
+    return { w, impl }
+  }
+  const setTask = (w: ReturnType<typeof world>, task: Record<string, unknown> | null) =>
+    w.store.dispatch({ op: 'setTasks', projectId: 'p1', tasks: { tasks: task ? [{ id: 'task1', ...task } as never] : [], attempts: [] } } as never)
+
+  test('its deliverable, saved as succeeded but never submitted, is checked and submitted at the next start-up', async () => {
+    const { w, impl } = await succeededRun()
+    setTask(w, { state: 'planned' })
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    await later.service.recover()
+    await later.settle()
+    expect(later.tasks.verified).toEqual([['p1', 'task1', impl, 'tests']])
+    expect(later.tasks.submitted).toEqual([['p1', 'task1', impl, 'Done']])
+  })
+
+  test('review M1: start-up recovery is not held up by the check running again, which may take minutes', async () => {
+    const { w } = await succeededRun()
+    setTask(w, { state: 'planned' })
+    let release = () => {}
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root, verifyWait: new Promise<void>((r) => { release = r }) })
+    const done = await Promise.race([later.service.recover().then(() => 'recovered'), new Promise((r) => setTimeout(() => r('waited on the check'), 500))])
+    expect(done).toBe('recovered')
+    expect(later.tasks.submitted).toEqual([])
+    release()
+    await later.settle()
+    expect(later.tasks.submitted).toHaveLength(1)
+  })
+
+  test('review L1: tried once only, marked on the run first, so a submit that keeps failing is not retried at every start', async () => {
+    const { w } = await succeededRun()
+    setTask(w, { state: 'planned' })
+    const first = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root, submitFails: true })
+    await first.service.recover()
+    await first.settle()
+    expect(first.tasks.submitted).toHaveLength(1)
+    expect(first.run().deliverableRecovered).toEqual(expect.any(Number))
+    first.service.dispose()
+    const second = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    await second.service.recover()
+    await second.settle()
+    expect([second.tasks.verified, second.tasks.submitted]).toEqual([[], []])
+  })
+
+  test('one already submitted, closed or gone is left alone', async () => {
+    for (const task of [{ state: 'ready-for-review', submissionId: 's1' }, { state: 'accepted', submissionId: 's1' }, { state: 'cancelled' }, null]) {
+      const { w } = await succeededRun()
+      setTask(w, task)
+      const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+      await later.service.recover()
+      await later.settle()
+      expect([task, later.tasks.verified, later.tasks.submitted]).toEqual([task, [], []])
+    }
   })
 })

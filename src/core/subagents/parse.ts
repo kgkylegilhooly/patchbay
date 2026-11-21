@@ -50,6 +50,10 @@ export interface Progress {
   prompt?: string
   /** Set while its latest reply is an API error. */
   error?: string
+  /** Codex only: still reading the parent's history a forked child's rollout starts with. */
+  inherited?: boolean
+  /** Codex only: the agent path of the parent that started this child ("/root" for "/root/pong"), when known. */
+  startedBy?: string
 }
 
 export const emptyProgress = (): Progress => ({ tools: 0 })

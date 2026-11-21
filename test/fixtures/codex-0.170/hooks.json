@@ -1,0 +1,184 @@
+{
+  "SessionStart": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "SessionStart",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "source": "startup"
+  },
+  "UserPromptSubmit": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-031d-7581-a181-3d584ad86cd0",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "UserPromptSubmit",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "prompt": "Reply with just the word ready."
+  },
+  "Stop": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-031d-7581-a181-3d584ad86cd0",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "Stop",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "stop_hook_active": false,
+    "last_assistant_message": "ready"
+  },
+  "PreToolUse:mcp__patchbay__patchbay": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-140b-78f3-89bc-a0533ccecaf2",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "mcp__patchbay__patchbay",
+    "tool_input": {
+      "args": [
+        "guide"
+      ]
+    },
+    "tool_use_id": "exec-433fd58a-7ca4-473a-b75c-d1f1f8e03c77"
+  },
+  "PermissionRequest:mcp__patchbay__patchbay": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-140b-78f3-89bc-a0533ccecaf2",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PermissionRequest",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "mcp__patchbay__patchbay",
+    "tool_input": {
+      "args": [
+        "guide"
+      ]
+    }
+  },
+  "PostToolUse:mcp__patchbay__patchbay": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-140b-78f3-89bc-a0533ccecaf2",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PostToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "mcp__patchbay__patchbay",
+    "tool_input": {
+      "args": [
+        "guide"
+      ]
+    },
+    "tool_response": {
+      "content": [
+        {
+          "type": "text",
+          "text": "# Driving the Patchbay canvas\n\nThis session is a node on a Patchbay canvas. The `patchbay` command, already on PATH, opens and\ncoordinates other nodes that the person can watch.\n\nAgents on the canvas are either **Claude Code** or **Codex** (OpenAI). They're different programs from different\nprovider…"
+        }
+      ],
+      "isError": false
+    },
+    "tool_use_id": "exec-433fd58a-7ca4-473a-b75c-d1f1f8e03c77"
+  },
+  "Interrupt": {
+    "session_id": "01a1fc09-01fa-72d0-a983-822878a81dd2",
+    "turn_id": "01a1fc09-38df-78b1-a93c-7020834c3d62",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T02-56-51-01a1fc09-01fa-72d0-a983-822878a81dd2.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "Interrupt",
+    "model": "gpt-6-luna",
+    "permission_mode": "default"
+  },
+  "PreToolUse:collaborationspawn_agent": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc15-fabc-7ac2-b0bb-8f78facd8c31",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-01-01a1fc15-f99d-7941-8f4a-2f7b4b18a25f.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "collaborationspawn_agent",
+    "tool_input": {
+      "task_name": "pong",
+      "message": "gAAAAABrAQvHa5CyNOu7nnyG_Hqyl6DJmL4Sgcnd-4mekkViyuP6Sn678agRwzNkZ6nQFfhv_YVcOYiVmkJHUPsFRbzKDVvRiTikOPDYbgYHdqGUgZB9LJcMcXOXDZH_z2hdY4K8-lS9jQvz-qDlorb5YNW8FREH3Q==",
+      "fork_turns": "all"
+    },
+    "tool_use_id": "call_6c901061a546444d9e86fc27cabbc303"
+  },
+  "PostToolUse:collaborationspawn_agent": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc15-fabc-7ac2-b0bb-8f78facd8c31",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-01-01a1fc15-f99d-7941-8f4a-2f7b4b18a25f.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PostToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "collaborationspawn_agent",
+    "tool_input": {
+      "task_name": "pong",
+      "message": "gAAAAABrAQvHa5CyNOu7nnyG_Hqyl6DJmL4Sgcnd-4mekkViyuP6Sn678agRwzNkZ6nQFfhv_YVcOYiVmkJHUPsFRbzKDVvRiTikOPDYbgYHdqGUgZB9LJcMcXOXDZH_z2hdY4K8-lS9jQvz-qDlorb5YNW8FREH3Q==",
+      "fork_turns": "all"
+    },
+    "tool_response": "{\"task_name\":\"/root/pong\"}",
+    "tool_use_id": "call_6c901061a546444d9e86fc27cabbc303"
+  },
+  "SubagentStart": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc16-048b-79d0-90f3-3c43c40451af",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-03-01a1fc16-046b-7630-8620-b270e2ca2c85.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "SubagentStart",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "agent_id": "01a1fc16-046b-7630-8620-b270e2ca2c85",
+    "agent_type": "default"
+  },
+  "PreToolUse:collaborationwait_agent": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc15-fabc-7ac2-b0bb-8f78facd8c31",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-01-01a1fc15-f99d-7941-8f4a-2f7b4b18a25f.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "collaborationwait_agent",
+    "tool_input": {
+      "timeout_ms": 30000
+    },
+    "tool_use_id": "call_9e14b2c0489f4509a3151abceee7bda4"
+  },
+  "SubagentStop": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc16-048b-79d0-90f3-3c43c40451af",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-01-01a1fc15-f99d-7941-8f4a-2f7b4b18a25f.jsonl",
+    "agent_transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-03-01a1fc16-046b-7630-8620-b270e2ca2c85.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "SubagentStop",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "stop_hook_active": false,
+    "agent_id": "01a1fc16-046b-7630-8620-b270e2ca2c85",
+    "agent_type": "default",
+    "last_assistant_message": "pong"
+  },
+  "PostToolUse:collaborationwait_agent": {
+    "session_id": "01a1fc15-f99d-7941-8f4a-2f7b4b18a25f",
+    "turn_id": "01a1fc15-fabc-7ac2-b0bb-8f78facd8c31",
+    "transcript_path": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-home-XXXXXX\\sessions\\2026\\11\\21\\rollout-2026-11-21T03-11-01-01a1fc15-f99d-7941-8f4a-2f7b4b18a25f.jsonl",
+    "cwd": "C:\\Users\\person\\AppData\\Local\\Temp\\patchbay-codex-work-XXXXXX",
+    "hook_event_name": "PostToolUse",
+    "model": "gpt-6-luna",
+    "permission_mode": "default",
+    "tool_name": "collaborationwait_agent",
+    "tool_input": {
+      "timeout_ms": 30000
+    },
+    "tool_response": "{\"message\":\"Wait completed.\",\"timed_out\":false}",
+    "tool_use_id": "call_9e14b2c0489f4509a3151abceee7bda4"
+  }
+}
