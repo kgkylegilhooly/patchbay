@@ -1,0 +1,309 @@
+/*
+ * Semantic zoom for node headers (zoomTier.ts). ZoomTierWatcher sets data-zoom-tier (near, far, overview) and
+ * --head-scale on the headers and strips. Zoomed out, a header is drawn at its real on-screen size as a tile: the
+ * title, then the status word and one key badge. The header leaves the flow and the window keeps its slot as padding,
+ * so the body, and the terminal in it, never changes size with the zoom. The tile is a fixed height, so the strips
+ * under it (Approve and Deny, an error with Restart, a hold) move down by exactly what it adds, and stay usable. In
+ * the overview the body is a flat fill in the status colour, as on the minimap, so a wall of agents reads at a glance.
+ */
+
+.react-flow {
+  --far-title: 15px;
+  /* A session tile's height before scaling: one line of title and one of status. */
+  --tile-h: 54px;
+  --far-meta: 12px;
+  /* The LED, the kind icon and the gaps between: where a far header's second line starts, under the title. */
+  --far-indent: 38px;
+}
+
+/* A session header's tools: Find, Maximize, ⋯ and Close (WindowTools.tsx). */
+.head-tools {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.head-tools > .tools {
+  margin-left: 0;
+}
+
+.head-far {
+  display: none;
+}
+
+/* The ⋯ menu's text size row: − 13 +. */
+.menu-steps {
+  cursor: default;
+}
+
+.menu-steps .menu-label {
+  flex: 1;
+}
+
+.menu-step,
+.menu-step-value {
+  display: inline-grid;
+  place-items: center;
+  height: 22px;
+  padding: 0;
+  font: inherit;
+  color: var(--ink-dim);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+
+.menu-step {
+  width: 22px;
+  cursor: pointer;
+}
+
+.menu-step:hover:not(:disabled) {
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.1);
+}
+
+.menu-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-step-value {
+  min-width: 26px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-step-value:disabled {
+  color: var(--ink-dim);
+}
+
+/* A size of this window's own, not the global one: click to go back. */
+.menu-step-value-own {
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.1);
+  cursor: pointer;
+}
+
+/* ── Far and overview: the header becomes a tile ─────────────────────────────────────────────────────────────── */
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit, .wb) {
+  position: relative;
+}
+
+/* The header's slot in the flow: .unit-head is 36 px tall, .wb-head 38. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit:has(> .unit-head) {
+  padding-top: 36px;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .wb {
+  padding-top: 38px;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit > .unit-head, .wb > .wb-head) {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  zoom: var(--head-scale, 1);
+  background: var(--face);
+  border-bottom: 1px solid var(--line);
+  border-radius: calc(var(--radius) / var(--head-scale, 1)) calc(var(--radius) / var(--head-scale, 1)) 0 0;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit > .unit-head {
+  min-height: 36px;
+  padding: 6px 6px 7px 11px;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit > .unit-head-session {
+  height: var(--tile-h);
+  align-content: center;
+}
+
+/* The strips under a session tile move down by what the tile adds to the 36 px slot, over the top of the body. */
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > :not(.unit-head, .unit-body) {
+  position: relative;
+  z-index: 2;
+  transform: translateY(calc(var(--tile-h) * var(--head-scale, 1) - 36px));
+}
+
+/* Solid, now they lie over the body. An error keeps its red tint on top. */
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .strip {
+  background-color: var(--face);
+}
+
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .strip-error {
+  background-image: linear-gradient(rgb(255 69 58 / 0.14), rgb(255 69 58 / 0.14));
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit > .unit-head, .wb > .wb-head, .rack-head) .title {
+  max-width: none;
+  font-size: var(--far-title);
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+/* A session window: the LED, its kind and the title, then the status word and the key badge under the title. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head-session {
+  flex-wrap: wrap;
+  column-gap: 7px;
+  row-gap: 2px;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head-session > :not(.badge:has(> .led), .kind-icon, .title, .title-input, .head-far, .head-tools) {
+  display: none;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head-session .title {
+  flex: 1 1 0;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .head-far {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 0 100%;
+  order: 1;
+  min-width: 0;
+  padding-left: var(--far-indent);
+  font-size: var(--far-meta);
+}
+
+.head-far .badge {
+  font-size: inherit;
+}
+
+.key-badge {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What's being asked: the command itself, so it can be told apart from a status word. */
+.key-badge-needs {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  color: var(--ink);
+}
+
+.key-badge-warn {
+  color: var(--status-working);
+}
+
+/* Tools come back on hover, selection or keyboard focus, over the end of the title. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head-session .head-tools {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding-left: 6px;
+  background: var(--face);
+  box-shadow: -10px 0 10px var(--face);
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit-head-session .head-tools, .unit-head:not(.unit-head-session) > .icon-btn, .wb-head > .icon-btn, .rack-head > .icon-btn) {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .react-flow__node:is(:hover, .selected, :focus-within) :is(.unit-head-session .head-tools, .unit-head:not(.unit-head-session) > .icon-btn, .wb-head > .icon-btn, .rack-head > .icon-btn),
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .head-tools:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .head-tools,
+  .unit-head > .icon-btn,
+  .wb-head > .icon-btn,
+  .rack-head > * {
+    transition: none !important;
+  }
+}
+
+/* What's under a session tile is too small to read: dim it, so the tile is what's seen. */
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .unit-body > * {
+  opacity: 0.6;
+}
+
+/* A group's label grows upward from where it sits, above the group, so it never covers the windows inside. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .rack-head {
+  width: calc(100% / var(--head-scale, 1));
+  transform: scale(var(--head-scale, 1));
+  transform-origin: 0 100%;
+  /* Solid, as it now sits over the group's top edge. */
+  background: color-mix(in srgb, var(--group) 16%, var(--face));
+  border-radius: calc(13px / var(--head-scale, 1)) calc(13px / var(--head-scale, 1)) 0 0;
+}
+
+/* ── Overview: the body becomes the status colour ────────────────────────────────────────────────────────────── */
+
+/* Hidden rather than removed, so nothing in the window changes size. The tile's badge says what a strip said. */
+[data-zoom-tier='overview'] .unit:has(> .unit-head-session) > :not(.unit-head, .unit-body),
+[data-zoom-tier='overview'] .unit:has(> .unit-head-session) > .unit-body > * {
+  visibility: hidden;
+}
+
+[data-zoom-tier='overview'] .unit:has(> .unit-head-session) > .unit-body {
+  background: color-mix(in srgb, var(--status-fill, var(--ink-dim)) 34%, var(--well));
+}
+
+/* ── Fit the tile ─────────────────────────────────────────────────────────────────────────────────────────────── */
+
+/* The header's own container queries see its scaled-down width and hide status words; in the tile they stay. */
+.react-flow:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head-session .head-far .badge {
+  display: inline-flex;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.rack-head, .unit > .unit-head) {
+  overflow: hidden;
+}
+
+/* A group keeps its title, its worktree and its team summary; the latest message and Bind worktree make way. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .rack-head .team-latest,
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .react-flow__node:not(.selected) .rack-head > .btn {
+  display: none;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .rack-head .team-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Other windows (browser, trigger, reader): the title and what says their state, the rest on hover. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head:not(.unit-head-session) > :is(.cwd, .reader-changed) {
+  display: none;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head:not(.unit-head-session) {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+/* The title keeps most of the line; a state chip that doesn't fit beside it moves under it. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head:not(.unit-head-session) > .title {
+  flex: 1 1 auto;
+  min-width: 55%;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head:not(.unit-head-session) > :is(.icon-btn, .head-space) {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--face);
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .unit-head:not(.unit-head-session) > .reader-tools {
+  opacity: 0;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .react-flow__node:is(:hover, .selected, :focus-within) .unit-head > .reader-tools {
+  opacity: 1;
+}

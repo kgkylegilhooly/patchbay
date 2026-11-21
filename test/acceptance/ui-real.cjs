@@ -42,7 +42,7 @@ async function main() {
 
     await step('real refresh', async () => {
       const seenBefore = (await L.seenStatuses(page, 'real')).length
-      await page.click(`${U.nodeSel('real')} [data-tool="refresh"]`)
+      await U.headerTool(page, 'real', 'refresh')
       await L.sleep(1500)
       const status = await L.statusOf(page, 'real')
       c.check('Refresh leaves a real Claude running', status === 'idle', { status, seen: (await L.seenStatuses(page, 'real')).slice(seenBefore) })
@@ -50,9 +50,9 @@ async function main() {
     })
 
     await step('real name', async () => {
-      await page.click(`${U.nodeSel('real')} [data-tool="name"]`)
+      await U.headerTool(page, 'real', 'name')
       await L.sleep(100)
-      c.check('Name with AI shows it is working', !!(await page.$(`${U.nodeSel('real')} .tool-btn-busy`)))
+      c.check('Name with AI shows it is working', !!(await page.$(`${U.nodeSel('real')} [data-tool="more"].tool-btn-busy`)))
       const named = await L.waitFor('a title', async () => {
         const failed = await page.$(`${U.nodeSel('real')} [data-naming-error]`)
         if (failed) throw new Error(await page.$eval(`${U.nodeSel('real')} [data-naming-error]`, (e) => e.textContent))

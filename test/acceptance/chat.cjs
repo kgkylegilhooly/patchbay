@@ -30,7 +30,7 @@ async function main() {
     await L.waitFor('the agent', async () => (await L.statusOf(page, 'c1')) === 'idle' && !!(await L.nodeOf(page, 'c1')).transcriptPath, 30000)
     await page.click('[data-cmd="toggle-sidebar"]')
     await L.sleep(300)
-    await page.click(`${node} [data-tool="chat"]`)
+    await U.headerTool(page, 'c1', 'chat')
     await page.waitForSelector(`${node} .chat`, { timeout: 5000 })
     c.check('The chat tool shows the chat view', !!(await page.$(`${node} .chat-empty`)))
 
@@ -47,7 +47,7 @@ async function main() {
     await L.sleep(500)
     c.check('A link in a reply never navigates the app window', page.url() === before, page.url())
 
-    await page.click(`${node} [data-tool="chat"]`)
+    await U.headerTool(page, 'c1', 'chat')
     await L.sleep(300)
     const terminal = await page.$eval(`${node} .term`, (t) => t.offsetWidth > 0 && t.textContent.includes('Make the header blue'))
     c.check('Switching back shows the terminal, which saw everything', terminal)

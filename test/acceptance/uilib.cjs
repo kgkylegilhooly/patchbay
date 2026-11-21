@@ -100,4 +100,22 @@ function stepper(check, onFail) {
   }
 }
 
-module.exports = { emptySpot, watchdog, seeded, chord, nodeSel, focusTerminal, typeLine, shellPid, ptySize, fontSizeOf, rowIds, active, shownNodes, stepper }
+/**
+ * Runs a row of a session window's ⋯ menu, such as 'chat', 'refresh', 'name' or 'font-larger', opening the menu first
+ * unless it is already open on that window. A text size row keeps the menu open.
+ */
+async function headerTool(page, id, tool) {
+  const mine = await page.$(`${nodeSel(id)} [data-tool="more"][aria-expanded="true"]`)
+  if (!mine && (await page.$('.menu-panel'))) {
+    await page.keyboard.press('Escape')
+    await lib.sleep(100)
+  }
+  if (!mine) {
+    await page.click(`${nodeSel(id)} [data-tool="more"]`)
+    await page.waitForSelector(`.menu-panel [data-tool="${tool}"]`, { timeout: 3000 })
+  }
+  await page.click(`.menu-panel [data-tool="${tool}"]`)
+  await lib.sleep(100)
+}
+
+module.exports = { headerTool, emptySpot, watchdog, seeded, chord, nodeSel, focusTerminal, typeLine, shellPid, ptySize, fontSizeOf, rowIds, active, shownNodes, stepper }
