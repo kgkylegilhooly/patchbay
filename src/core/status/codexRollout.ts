@@ -121,7 +121,9 @@ export function foldCodexLine(state: CodexTurnState, text: string): CodexTurnSta
     case 'task_started':
       return { ...state, inTurn: true, ended: false, failure: null, aborted: null }
     case 'task_complete': {
-      // 0.170 says a failed turn's error here, on the turn's end, rather than as an event before it.
+      // 0.170 says a failed turn's error here, on the turn's end, rather than as an event before it. Seen live for
+      // `model_not_found`; UNVERIFIED for `usage_limit_exceeded`, taken to arrive the same way (the `error` event below
+      // is still read in case it doesn't).
       const e = obj(p.error)
       if (!e) return { ...state, inTurn: false, ended: true }
       const message = typeof e.message === 'string' ? e.message : ''

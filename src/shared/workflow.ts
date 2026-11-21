@@ -166,6 +166,8 @@ export interface WorkflowRun {
   attempts: StepAttempt[]
   startedAt: number
   endedAt?: number
+  /** When start-up tried to submit the deliverable this run left unsubmitted. Tried once only. */
+  deliverableRecovered?: number
 }
 
 // Reading

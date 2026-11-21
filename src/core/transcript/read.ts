@@ -7,6 +7,8 @@ const LOCAL_COMMAND = /^\s*<(command-|local-command-)/
 export interface TranscriptMessage {
   role: 'user' | 'assistant'
   text: string
+  /** Codex only: a note it wrote on its way through a turn ("I'll run the tests"), not its answer. */
+  commentary?: true
 }
 type Message = TranscriptMessage
 
@@ -43,7 +45,8 @@ export function parseLine(line: string): Message | null {
     if (type === 'item_completed') {
       const role = item?.type === 'UserMessage' ? 'user' : item?.type === 'AgentMessage' ? 'assistant' : null
       const said = role && Array.isArray(item.content) ? codexText(item.content) : ''
-      return role && said.trim() ? { role, text: said } : null
+      if (!role || !said.trim()) return null
+      return role === 'assistant' && item.phase === 'commentary' ? { role, text: said, commentary: true } : { role, text: said }
     }
     const role = type === 'user_message' ? 'user' : type === 'agent_message' ? 'assistant' : null
     return role && typeof message === 'string' && message.trim() ? { role, text: message } : null
@@ -141,7 +144,8 @@ export async function readMessagesTail(path: string, tail: number): Promise<Tran
   }
 }
 
-const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}]\n${m.text}\n`).join('\n')
+/** As `patchbay read` shows it. A Codex note on the way is marked, so it isn't taken for the answer. */
+const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}${m.commentary ? ', on the way' : ''}]\n${m.text}\n`).join('\n')
 
 /** How much of a whole transcript is parsed before giving everything else waiting on the thread a turn. */
 const WHOLE_CHUNK_BYTES = 512 * 1024
@@ -192,9 +196,7 @@ export async function readTranscriptAsync(path: string, tail?: number): Promise<
 
 /** The conversation as plain text. `tail` keeps the last N messages. Throws if the file can't be read. */
 export function readTranscript(path: string, tail?: number): string {
-  return readMessages(path, tail)
-    .map((m) => `[${m.role}]\n${m.text}\n`)
-    .join('\n')
+  return asText(readMessages(path, tail))
 }
 
 // Order matters: strings first, so their contents can't be mistaken for shorter sequences.

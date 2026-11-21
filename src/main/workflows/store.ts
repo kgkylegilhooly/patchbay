@@ -52,7 +52,7 @@ export function readRun(raw: unknown): { ok: true; run: WorkflowRun } | { ok: fa
     (raw.taskId === undefined || isText(raw.taskId)) && RUN_STATES.includes(raw.state as RunState) && isObject(raw.inputs) &&
     Object.values(raw.inputs).every((v) => ['string', 'number', 'boolean'].includes(typeof v)) &&
     Array.isArray(raw.attempts) && raw.attempts.every(isAttempt) && isTime(raw.startedAt) && (raw.endedAt === undefined || isTime(raw.endedAt)) &&
-    (raw.stopped === undefined || typeof raw.stopped === 'boolean')
+    (raw.stopped === undefined || typeof raw.stopped === 'boolean') && (raw.deliverableRecovered === undefined || isTime(raw.deliverableRecovered))
   if (!ok) return { ok: false, newer: false, problem: 'A field is missing or of the wrong kind.' }
   return { ok: true, run: raw as unknown as WorkflowRun }
 }

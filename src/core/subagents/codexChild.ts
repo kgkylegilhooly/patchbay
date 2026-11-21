@@ -44,13 +44,17 @@ export function foldCodexChild(progress: Progress, text: string): Progress {
         out = { ...out, inherited: false }
         continue
       }
-      const name = typeof p.agent_path === 'string' ? p.agent_path.split('/').filter(Boolean).pop() : undefined
-      out = { ...out, inherited: true, ...(name && out.prompt === undefined ? { prompt: name.slice(0, 200) } : {}) }
+      const parts = typeof p.agent_path === 'string' ? p.agent_path.split('/').filter(Boolean) : []
+      const name = parts.at(-1)
+      // A nested child's history holds its parent's own turns, started by the grandparent: only a turn started by
+      // this child's parent is its own. Without a path, any turn an agent started is taken.
+      const startedBy = parts.length > 1 ? `/${parts.slice(0, -1).join('/')}` : undefined
+      out = { ...out, inherited: true, ...(startedBy ? { startedBy } : {}), ...(name && out.prompt === undefined ? { prompt: name.slice(0, 200) } : {}) }
       continue
     }
     if (out.inherited) {
       const by = obj(p.turn_attribution)?.initiating_agent_path
-      if (line.type === 'event_msg' && p.type === 'task_started' && typeof by === 'string') out = { ...out, inherited: false }
+      if (line.type === 'event_msg' && p.type === 'task_started' && typeof by === 'string' && (out.startedBy === undefined || by === out.startedBy)) out = { ...out, inherited: false }
       continue
     }
     if (line.type === 'response_item') {

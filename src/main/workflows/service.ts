@@ -210,6 +210,15 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     return next
   }
 
+  /** Work on a run that isn't an event, in the same queue as its events, so the two never interleave. */
+  const inQueue = (runId: string, work: () => Promise<void>): Promise<void> => {
+    const next = (queues.get(runId) ?? Promise.resolve()).then(work)
+    const tail = next.catch((e: unknown) => log(`Workflow run ${runId}: ${String(e)}`))
+    queues.set(runId, tail)
+    void tail.then(() => { if (queues.get(runId) === tail) queues.delete(runId) })
+    return tail
+  }
+
   const groupRect = (run: WorkflowRun): GroupNode | undefined => {
     const g = d.store.get().nodes.find((n) => n.id === run.groupId)
     return g?.kind === 'group' ? g : undefined
@@ -561,10 +570,17 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
    * run whose task is there, open and has no submission gets both again: the check runs again (its evidence is gone
    * with the closed app), then the submission.
    */
-  const finishDeliverable = async (run: WorkflowRun): Promise<void> => {
-    if (!run.taskId || !d.tasks) return
-    const task = d.store.get().projects.find((p) => p.id === run.projectId)?.tasks?.tasks.find((t) => t.id === run.taskId)
+  const finishDeliverable = async (runId: string): Promise<void> => {
+    // Read now, in the run's queue: its own `finished` may have submitted it since start-up began.
+    const current = runs.get(runId)
+    if (!current || current.state !== 'succeeded' || current.stopped || current.deliverableRecovered !== undefined || !current.taskId || !d.tasks) return
+    const task = d.store.get().projects.find((p) => p.id === current.projectId)?.tasks?.tasks.find((t) => t.id === current.taskId)
     if (!task || task.submissionId || task.state === 'accepted' || task.state === 'cancelled') return
+    // Tried once only: marked on disk first, so a check or submit that keeps failing isn't run again at every start.
+    const run: WorkflowRun = { ...current, deliverableRecovered: now() }
+    runs.set(run.id, run)
+    await d.runStore.save(run)
+    d.changed?.(run)
     log(`Workflow run ${run.id}: it succeeded, but its deliverable wasn't submitted before Patchbay closed. Submitting it now.`)
     for (const step of run.definition.steps) {
       const a = currentAttempt(run, step.key)
@@ -580,8 +596,9 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
   const recover = async (): Promise<void> => {
     const doc = d.store.get()
     const results = d.runner.runs()
+    const succeeded: string[] = []
     for (const run of runs.values()) {
-      if (run.state === 'succeeded' && !run.stopped) await finishDeliverable(run)
+      if (run.state === 'succeeded' && !run.stopped) succeeded.push(run.id)
       if (run.stopped || run.state === 'succeeded') continue
       const nodes: Record<string, 'running' | 'stopped'> = {}
       const exits: Record<string, number> = {}
@@ -597,6 +614,8 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
       }
       await apply(run.id, { type: 'recovered', nodes, exits })
     }
+    // After the live runs, and not waited for: running a check again can take minutes. Each in its own run's queue.
+    for (const id of succeeded) void inQueue(id, () => finishDeliverable(id))
   }
 
   /**

@@ -175,3 +175,39 @@ describe('more of the same shapes', () => {
     expect(await confirmDelivery({ path: file, from: 0, sent, timing: { confirmMs: 300, pollMs: 10 } })).toMatchObject({ result: 'confirmed' })
   })
 })
+
+describe('review M2: a forked child counts only from the turn its own parent started', () => {
+  const child = () => lines('subagent-child.jsonl').map((l) => JSON.parse(l))
+  const ownStart = (ls: Array<Record<string, any>>) => ls.findIndex((l) => l.payload?.type === 'task_started' && l.payload.turn_attribution?.initiating_agent_path === '/root')
+  const toolCall = { timestamp: '2026-11-21T03:11:03.900Z', type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: '{}', call_id: 'c1' } }
+  const fold = (ls: unknown[]) => foldCodexChild(emptyProgress(), ls.map((l) => JSON.stringify(l)).join('\n'))
+
+  test("a nested child (/root/pong/ping) doesn't count its parent's turn, which /root started", () => {
+    const ls = child()
+    const at = ownStart(ls)
+    const meta = { ...ls[0], payload: { ...ls[0].payload, agent_path: '/root/pong/ping' } }
+    // Pong's own turn, started by /root, with a tool call: inherited by ping.
+    const pongTurn = [ls[at], toolCall]
+    const pingStart = { ...ls[at], payload: { ...ls[at].payload, turn_attribution: { ...ls[at].payload.turn_attribution, initiating_agent_path: '/root/pong' } } }
+    expect(fold([meta, ...ls.slice(1, at), ...pongTurn, pingStart, ...ls.slice(at + 1)])).toMatchObject({ tools: 0, prompt: 'ping' })
+  })
+
+  test("a root turn a sibling started, in the inherited history, doesn't end it either", () => {
+    const ls = child()
+    const at = ownStart(ls)
+    const woken = { ...ls[at], payload: { ...ls[at].payload, turn_attribution: { ...ls[at].payload.turn_attribution, initiating_agent_path: '/root/other' } } }
+    expect(fold([...ls.slice(0, at), woken, toolCall, ...ls.slice(at)])).toMatchObject({ tools: 0, prompt: 'pong' })
+  })
+})
+
+describe("review L2: Codex's notes on the way aren't taken for its answer", () => {
+  test('patchbay read marks a commentary message; the final answer is plain', async () => {
+    const { readTranscript } = await import('../../src/core/transcript/read')
+    const file = join(temp(), 'r.jsonl')
+    copyFileSync(join(FIXTURES, 'live-session.jsonl'), file)
+    const text = readTranscript(file)
+    expect(text).toContain("[assistant, on the way]\nI’ll use Patchbay to open one agent")
+    expect(text).toContain('[assistant]\nI couldn’t retrieve a reply from the agent.')
+    expect(readMessages(file).find((m) => m.text === 'ready')).toEqual({ role: 'assistant', text: 'ready' })
+  })
+})
