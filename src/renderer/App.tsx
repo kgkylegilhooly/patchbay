@@ -64,6 +64,8 @@ import { FileNode } from './nodes/FileNode'
 import { dropFileOnWindow, FileShelfLayer } from './FileShelf'
 import { HeaderZoomWatcher } from './useHeaderZoom'
 import { ZoomTierWatcher } from './ZoomTierWatcher'
+import { TerminalParkingWatcher } from './TerminalParkingWatcher'
+import { ResourceNotice } from './resources/ResourceNotice'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -529,6 +531,8 @@ function Canvas(): React.JSX.Element | null {
         <ReaderLayer />
         <HeaderZoomWatcher />
         <ZoomTierWatcher />
+        <TerminalParkingWatcher />
+        <ResourceNotice commands={commands} />
         <FocusView />
         {boardOpen && <Board commands={commands} />}
         {gitOpen && <GitPanel selected={selected} />}

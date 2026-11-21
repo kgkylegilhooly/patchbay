@@ -5,6 +5,7 @@ import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../share
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
 import type { Settings } from '../../shared/settings'
 import { agentChoice, agentOffReason } from '../../shared/agents'
+import { agentLimitReason, parseAgentLimit } from '../../core/resources/agentLimit'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -16,7 +17,8 @@ import {
   type ClaudeProgram
 } from './claudeLaunch'
 import { buildCodexLaunch, codexKnowsNoDaemon, isLookingCall, resolveCodex } from './codexLaunch'
-import { SessionStartError } from './host'
+import { isAlreadyRunning, SessionStartError } from './host'
+import { hookNodeFor, type HookLaunch } from './hookRunner'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
@@ -73,6 +75,12 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
    * one that's starting, and Patchbay runs Codex itself in the background to read its limits.
    */
   beforeCodexStart?: () => Promise<void>
+  /** Asks the host what it runs and brings its mirrors up to date. Null when there's no host to ask. */
+  refreshHost?: () => Promise<unknown>
+  /** A session the host still ran was taken on again, so its views should be rebuilt. See docs/plans/session-sync.md. */
+  onReattached?: (id: string) => void
+  /** The Node a Claude launch's hooks start directly, when `hookNode` isn't set. Defaults to hookNodeFor. */
+  findHookNode?: (launch: HookLaunch) => Promise<string | null>
 }
 
 function taskkill(pid: number): Promise<void> {
@@ -83,7 +91,10 @@ function taskkill(pid: number): Promise<void> {
 }
 
 export interface NodeRunner {
-  /** Never rejects. A failure appears in errors() and onError. Does nothing if already running. */
+  /**
+   * Never rejects. A failure appears in errors() and onError. Does nothing if already running. One the host turned out
+   * to be running already, out of this app's sight, is taken on again instead.
+   */
   startNode(id: string, opts?: { initialScrollback?: string; restored?: boolean }): Promise<void>
   /** Takes on a session already running in the background host. Its status stays `unknown` until a hook confirms one. */
   adoptNode(id: string): void
@@ -91,7 +102,17 @@ export interface NodeRunner {
   noteFinishedRun(id: string, exitCode: number | null, at: number | null): void
   /** Applies hook events that arrived while the app was closed, unless newer live ones have overtaken them. */
   catchUpHooks(id: string): void
+  /** A session the host still runs that this app had lost track of: taken on again, caught up, and its views rebuilt. */
+  reattachNode(id: string): void
   restartNode(id: string): Promise<void>
+  /**
+   * As restartNode. `joined` means the session it would have ended was still running unseen, so it's shown again
+   * instead. With `shownExited`, the person was looking at it as ended: one running by now, as after a revive that
+   * landed just before the click, is shown, never ended.
+   */
+  restartOrJoin(id: string, opts?: { shownExited?: boolean }): Promise<'joined' | void>
+  /** Ends the session's whole process tree, then starts it again. An agent resumes its conversation. */
+  endAndRestart(id: string): Promise<void>
   /** Ends a session on purpose, as when its node closes. */
   stopNode(id: string): Promise<void>
   /** Ends a run node's command and everything it started, so a server really lets go of its port. */
@@ -258,7 +279,9 @@ export function createNodeRunner({
     } else {
       const custom = now.claudeTerminal || now.claudeCommand
       const claude = custom ? undefined : (ctx.claude ?? (ctx.locateClaude ?? resolveClaude)())
-      launch = buildClaudeLaunch(node, { ...now, claude, token })
+      // Asked once per program, without holding up the main thread.
+      const hookNode = now.hookNode !== undefined ? now.hookNode : await (ctx.findHookNode ?? hookNodeFor)({ claude, claudeCommand: now.claudeCommand, claudeTerminal: now.claudeTerminal })
+      launch = buildClaudeLaunch(node, { ...now, claude, token, hookNode })
     }
     tracker.apply(node.id, { type: 'launched' })
     const { sessionId, resumed, typedPrompt, ...spec } = launch
@@ -376,7 +399,11 @@ export function createNodeRunner({
   /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
   const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
 
-  const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
+  /** Settings > Background sessions: why another agent may not start now, counting those already running. */
+  const overAgentLimit = (id: string): string | null =>
+    agentLimitReason(parseAgentLimit(ctx.settings?.().agentLimit), store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== id && (started.has(n.id) || host.isRunning(n.id))).length)
+
+  const launch = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<'joined' | void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
@@ -388,6 +415,18 @@ export function createNodeRunner({
       tracker.apply(id, { type: 'process-exit' })
       return setError(id, { code: 'spawn-failed', message: off })
     }
+    // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
+    const limited = node.kind === 'claude' && !opts.restored ? overAgentLimit(id) : null
+    if (limited) {
+      // The host may run it already, out of this app's sight. That's joining it, not starting another, so the limit
+      // doesn't apply: asked before refusing, as a refusal would leave it unreachable.
+      if (ctx.refreshHost && (await ctx.refreshHost().catch(() => null)) && host.isRunning(id)) {
+        if (!started.has(id)) api.reattachNode(id)
+        return 'joined'
+      }
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: limited })
+    }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.
       started.add(id)
@@ -395,6 +434,11 @@ export function createNodeRunner({
       else if (node.kind === 'run') await startRun(node, opts.initialScrollback)
       else await startTerminal(node, opts.initialScrollback, opts.restored)
     } catch (e) {
+      // The host already runs it: joined, not started. Without this it showed as ended and Restart could never work.
+      if (isAlreadyRunning(e) && host.isRunning(id)) {
+        api.reattachNode(id)
+        return 'joined'
+      }
       started.delete(id)
       if (node.kind === 'claude') tracker.apply(id, { type: 'process-exit' })
       setError(id, {
@@ -427,8 +471,31 @@ export function createNodeRunner({
     }
   }
 
-  return {
+  const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
+    await launch(id, opts)
+  }
+
+  const api: NodeRunner = {
     startNode,
+
+    reattachNode(id) {
+      if (!host.isRunning(id) || !nodeById(id)) return
+      api.adoptNode(id)
+      catchUpHooks(id)
+      ctx.onReattached?.(id)
+    },
+
+    async endAndRestart(id) {
+      const node = nodeById(id)
+      if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
+      const run = runs.get(id)
+      if (run) run.stopping = true
+      // The whole tree, as Stop does for a run, so nothing it started is left holding files or ports.
+      await stopTree(id)
+      if (node.kind !== 'run') stoppingRuns.delete(id)
+      if (host.isRunning(id)) return setError(id, { code: 'spawn-failed', message: "The session didn't end, so it wasn't started again." })
+      await api.restartOrJoin(id)
+    },
 
     adoptNode(id) {
       const node = nodeById(id)
@@ -460,10 +527,19 @@ export function createNodeRunner({
     catchUpHooks,
 
     async restartNode(id) {
+      await api.restartOrJoin(id)
+    },
+
+    async restartOrJoin(id, opts = {}) {
       const node = nodeById(id)
+      if (opts.shownExited && (node?.kind === 'claude' || node?.kind === 'terminal') && host.isRunning(id)) {
+        // Already taken on again by the revive, or not yet: either way it's live, and Restart only shows it.
+        if (!started.has(id)) api.reattachNode(id)
+        return 'joined'
+      }
       if (node?.kind === 'run') {
         await stopTree(id)
-        return startNode(id)
+        return launch(id)
       }
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
       // Refused before anything is stopped, so a session that's running keeps running, with no start error over it.
@@ -477,9 +553,9 @@ export function createNodeRunner({
         // A transcript still on disk may be worth another try, and nothing is lost by keeping it.
         const gone = !current?.transcriptPath || !existsSync(current.transcriptPath)
         if (errors.get(id)?.code === 'resume-failed' && gone) forgetSession(id)
-        return startNode(id)
+        return launch(id)
       }
-      return startNode(id, { initialScrollback: host.snapshot(id).data })
+      return launch(id, { initialScrollback: host.snapshot(id).data })
     },
 
     stopTree,
@@ -579,4 +655,5 @@ export function createNodeRunner({
       errorListeners.push(cb)
     }
   }
+  return api
 }

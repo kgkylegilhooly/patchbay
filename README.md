@@ -25,7 +25,9 @@ Patchbay is built from this folder's code. There are three ways to run it, depen
 - The `claude` command for Claude nodes, and the `codex` command for Codex nodes.
 - The GitHub CLI (`gh`) only for issues and pull requests on the board.
 
-Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it.
+Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it. With Claude
+Code 2.1.139 or later, Claude starts that Node directly for each hook, with no shell in front of it, which costs less on
+a busy PC.
 
 ### First time
 
@@ -107,6 +109,20 @@ meanwhile. The host holds the newest 1 MB of each session's output.
 | **Settings > Background sessions > Stop** | Every session and the host end, and the app stays open |
 
 Quitting asks first if a Claude node is working or waiting on you.
+
+**Memory.** Settings > Background sessions shows what the PC, Patchbay, the host and each running session (with every
+program it started) use. When Windows is nearly out of memory, a note says so once and names the idle agents worth
+closing. **Most agents at once** (off by default) stops a new agent starting past it, with a note in its window; it never
+stops a running one. A window far off-screen for 3 minutes lets go of what it has drawn and draws it again from its
+session when you come back.
+
+**Keeping the canvas and the host in step.** Every minute or so, on reconnecting and on waking, Patchbay checks its
+nodes against what the host runs. A session the canvas showed as ended but the host still runs is shown again, with a
+notice and an **End and restart…** button that asks first. Restart on such a node shows the session instead of
+failing. An agent whose status has said Starting or Working long after its hooks went quiet, while it waits at its
+prompt, has its status worked out again from its transcript. A session with no node is listed under **Settings >
+Background sessions > Sessions**, where you can show it as a terminal or end it. Nothing is ended without
+asking.
 
 **While the app is closed,** nothing notifies you. A permission request goes to Claude's own prompt in its terminal,
 which you can answer once you reconnect. The `patchbay` command says the app is closed and fails straight away.

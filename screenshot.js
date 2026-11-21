@@ -97,6 +97,7 @@ async function main() {
   if (scene) {
     writeFileSync(join(profile, 'canvas.json'), JSON.stringify(scene.doc))
     writeFileSync(join(profile, 'settings.json'), JSON.stringify(scene.settings))
+    for (const [name, text] of Object.entries(scene.files ?? {})) writeFileSync(join(profile, name), text)
   }
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -131,7 +132,7 @@ async function main() {
     if (opts.size) await page.setViewport(opts.size)
     await new Promise((r) => setTimeout(r, opts.wait))
     if (scene) {
-      await scene.act(page)
+      await scene.act(page, { profile })
       await new Promise((r) => setTimeout(r, 400))
     }
     mkdirSync(dirname(out), { recursive: true })

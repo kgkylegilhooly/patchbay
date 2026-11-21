@@ -20,8 +20,11 @@ function stateLine(info: HostInfo): string {
   }
 }
 
-/** The background session host: whether it's there, what's in it, and the way to end it. */
-export function HostSection(): React.JSX.Element {
+/**
+ * The background session host: whether it's there, what's in it, and the way to end it. What it runs is listed above it,
+ * with each session's memory, in resources/ResourceSection.tsx.
+ */
+export function HostSection({ memory }: { memory?: string } = {}): React.JSX.Element {
   const [info, setInfo] = useState<HostInfo | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -82,6 +85,7 @@ export function HostSection(): React.JSX.Element {
             <span className="set-value">
               Process {info.pid}, version {info.version}, protocol {info.protocol}
               {info.protocol !== info.expectedProtocol ? ` (this app needs ${info.expectedProtocol})` : ''}
+              {memory ? `, ${memory} of its own` : ''}
             </span>
           </div>
         </div>
