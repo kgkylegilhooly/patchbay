@@ -15,8 +15,8 @@ import { randomUUID } from 'node:crypto'
 import { EvidenceNetwork } from './evidenceNetwork'
 import { linkAttemptToTask, taskRefusal } from './taskLink'
 import { readRevision, unknownRevision } from '../tasks/verification'
-import { watchHungPage, type HungPage } from './hungPage'
-import { HUNG_PAGE_NOTICE } from '../stuckParts'
+import { restartTogether, watchHungPage, type HungPage } from './hungPage'
+import { hungPageNotice } from '../stuckParts'
 
 /** What the agent verbs need from a page. Anything they can't do comes back as a refusal saying why. */
 export interface BrowserDriver {
@@ -153,6 +153,23 @@ export function createBrowserDriver({
   const guests = new Map<string, WebContents>()
   const states = new Map<string, BrowserState>()
   const hungPages = new Map<string, HungPage>()
+  /** The other browser nodes whose page runs in the same renderer process as this one. */
+  const sharingProcess = (id: string, guest: WebContents): string[] => {
+    const pid = guest.isDestroyed() ? 0 : guest.getOSProcessId()
+    if (!pid) return []
+    return [...guests].filter(([other, g]) => other !== id && !g.isDestroyed() && g.getOSProcessId() === pid).map(([other]) => other)
+  }
+  /** Reload, ending the page's process first when it's stuck, with the pages that share it. See hungPage.ts. */
+  const reloadPage = async (id: string, guest: WebContents): Promise<void> => {
+    const page = hungPages.get(id)
+    if (page?.restarting) return
+    if (!page || !(await page.stuck()) || guest.isDestroyed()) {
+      if (!guest.isDestroyed()) guest.reload()
+      return
+    }
+    const sharing = sharingProcess(id, guest).flatMap((other) => hungPages.get(other) ?? [])
+    restartTogether(page, guest, sharing)
+  }
   const waiting = new Map<string, Array<() => void>>()
   const pushTimers = new Map<string, NodeJS.Timeout>()
   const urlTimers = new Map<string, NodeJS.Timeout>()
@@ -284,10 +301,15 @@ export function createBrowserDriver({
       // -3 is a load replaced by another. Refusals have already said why.
       if (isMainFrame && code !== -3 && code !== -20) change(id, { notice: `Couldn't open ${url.slice(0, 200)}: ${description}` })
     })
+    let hungNotice: string | null = null
     const hang = watchHungPage(guest, {
-      onHung: () => change(id, { notice: HUNG_PAGE_NOTICE }),
+      onHung: () => {
+        hungNotice = hungPageNotice(sharingProcess(id, guest).length)
+        change(id, { notice: hungNotice })
+      },
       onRecovered: () => {
-        if (states.get(id)?.notice === HUNG_PAGE_NOTICE) change(id, { notice: null })
+        if (hungNotice !== null && states.get(id)?.notice === hungNotice) change(id, { notice: null })
+        hungNotice = null
       }
     })
     hungPages.set(id, hang)
@@ -477,7 +499,7 @@ export function createBrowserDriver({
       change(id, { notice: null })
       if (step === 'back') history.goBack()
       else if (step === 'forward') history.goForward()
-      else if (!(await hungPages.get(id)?.restart())) guest.reload()
+      else await reloadPage(id, guest)
       return { moved: true, loaded: await settleAfter(id) }
     },
 
@@ -646,11 +668,7 @@ export function createBrowserDriver({
       const history = guest.navigationHistory
       if (step === 'back' && history.canGoBack()) history.goBack()
       if (step === 'forward' && history.canGoForward()) history.goForward()
-      if (step === 'reload') {
-        const page = hungPages.get(id)
-        if (!page) guest.reload()
-        else void page.restart().then((restarted) => !restarted && !guest.isDestroyed() && guest.reload())
-      }
+      if (step === 'reload') void reloadPage(id, guest)
       if (step === 'stop') guest.stop()
     },
 

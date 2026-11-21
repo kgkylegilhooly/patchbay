@@ -30,6 +30,14 @@ export interface WorkerLike {
 /** A worker that stops this many times while running programs is given up on, and programs start here instead. */
 export const CRASHES_BEFORE_GIVING_UP = 3
 
+/**
+ * Each run's own time limit is kept in the worker. A worker whose thread is stuck, as in a process start that never
+ * returns on a starved PC, can't keep it, so the main side also gives each run this long past its limit.
+ */
+export const ANSWER_GRACE_MS = 5000
+/** A worker that hasn't said it's ready by now is taken to be unable to start. */
+export const READY_MS = 10_000
+
 export const STOPPED_WHILE_RUNNING = "Patchbay's program runner stopped while this was running."
 
 export interface OffThreadRunner extends ProgramRunner {
@@ -87,9 +95,17 @@ export function offThreadRunner(d: { start: () => WorkerLike; fallback: ProgramR
     }
     worker = w
     w.unref?.()
+    const readyBy = setTimeout(() => {
+      if (worker === w && !ready) {
+        void w.terminate()
+        lost(w, `it didn't start within ${READY_MS / 1000} s`)
+      }
+    }, READY_MS)
+    readyBy.unref?.()
     w.on('message', (m) => {
       if (worker !== w) return
       if ('ready' in m) {
+        clearTimeout(readyBy)
         ready = true
         const waiting = queued
         queued = []
@@ -105,10 +121,20 @@ export function offThreadRunner(d: { start: () => WorkerLike; fallback: ProgramR
   }
 
   const send = (w: WorkerLike, msg: ToWorker, done: (r: RunResult) => void): void => {
-    running.set(msg.id, done)
+    const deadline = setTimeout(() => {
+      if (worker !== w || !running.has(msg.id)) return
+      void w.terminate()
+      lost(w, `it didn't answer within ${Math.round((msg.o.timeoutMs + ANSWER_GRACE_MS) / 1000)} s`)
+    }, msg.o.timeoutMs + ANSWER_GRACE_MS)
+    deadline.unref?.()
+    running.set(msg.id, (r) => {
+      clearTimeout(deadline)
+      done(r)
+    })
     try {
       w.postMessage(msg)
     } catch (e) {
+      clearTimeout(deadline)
       running.delete(msg.id)
       void d.fallback(msg.file, msg.args, msg.o).then(done)
       d.log?.(`A program couldn't be handed to the runner (${(e as Error).message}), so it started here.`)

@@ -148,12 +148,18 @@ export async function readAllMessages(path: string): Promise<TranscriptMessage[]
       // A stretch ends at its last complete line; one longer than a stretch is read whole.
       let end = bytes.lastIndexOf(0x0a) + 1
       let chunk = bytes.subarray(0, end)
-      if (end === 0) {
-        const rest = await readRange(handle, at, size)
-        const nl = rest.indexOf(0x0a)
-        end = nl === -1 ? rest.length : nl + 1
-        chunk = rest.subarray(0, end)
+      // A line longer than a stretch, such as a pasted screenshot: read twice as far each time until it ends.
+      for (let span = WHOLE_CHUNK_BYTES * 2; end === 0; span *= 2) {
+        const want = Math.min(size, at + span) - at
+        const longer = await readRange(handle, at, at + want)
+        const nl = longer.indexOf(0x0a)
+        // The end of the file, or of what's there now if it was cut short meanwhile, ends the line.
+        if (nl === -1 && longer.length === want && at + want < size) continue
+        end = nl !== -1 ? nl + 1 : longer.length
+        chunk = longer.subarray(0, end)
+        break
       }
+      if (end === 0) break
       for (const m of parseText(chunk.toString('utf8'))) messages.push(m)
       at += end
     }

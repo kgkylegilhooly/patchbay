@@ -138,17 +138,35 @@ export async function lookUpClaudeAhead(setting: { terminal?: string; command?: 
   const names = new Set(['claude'])
   const first = (line?: string): string | undefined => (line?.trim() ? programWords(line)[0] : undefined)
   for (const name of [first(setting.command), first(setting.terminal)]) if (name && !/[\\/]/.test(name)) names.add(name)
-  await Promise.all(
-    [...names].map(async (name) => {
-      const key = name.toLowerCase()
-      if (whereAnswers.has(key)) return
-      const r = await runProgram('where.exe', [name], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 })
+  await Promise.all([...names].map((name) => (whereAnswers.has(name.toLowerCase()) ? null : askWhere(name))))
+}
+
+const asking = new Map<string, Promise<string | null>>()
+
+/** where.exe's answer for a program, asked off the main thread. A program found is remembered; one not found isn't. */
+function askWhere(name: string): Promise<string | null> {
+  const key = name.toLowerCase()
+  const already = asking.get(key)
+  if (already) return already
+  const ask = runProgram('where.exe', [name], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 })
+    .then((r) => {
       const path = r.code === 0 ? pickWhere(r.stdout.split(/\r?\n/).filter(Boolean)) : null
-      if (!path || whereAnswers.get(key)?.path) return
-      whereAnswers.set(key, { path, at: Date.now() })
-      if (key === 'claude' && !located && /\.(exe|cmd|bat)$/i.test(path)) located = path
+      if (path) whereAnswers.set(key, { path, at: Date.now() })
+      if (path && key === 'claude' && !located && /\.(exe|cmd|bat)$/i.test(path)) located = path
+      return path
     })
-  )
+    .finally(() => asking.delete(key))
+  asking.set(key, ask)
+  return ask
+}
+
+/** resolveClaude without waiting on where.exe on the main thread, for checks in the background. */
+export async function resolveClaudeAsync(): Promise<ClaudeProgram> {
+  if (located && existsSync(located)) return claudeAt(located)
+  const path = await askWhere('claude')
+  if (!path || !/\.(exe|cmd|bat)$/i.test(path)) throw new Error('The claude command was not found on PATH.')
+  located = path
+  return claudeAt(path)
 }
 
 let located: string | null = null
@@ -193,7 +211,11 @@ const LOCATED_KEPT_MS = 5 * 60_000
 function locate(name: string): string | null {
   if (/[\\/]/.test(name)) return existsSync(name) ? name : null
   const known = whereAnswers.get(name.toLowerCase())
-  if (known && Date.now() - known.at < LOCATED_KEPT_MS && known.path && existsSync(known.path)) return known.path
+  if (known?.path && existsSync(known.path)) {
+    // An older answer still stands while it's asked again in the background, rather than waiting on where.exe here.
+    if (Date.now() - known.at >= LOCATED_KEPT_MS) void askWhere(name).catch(() => null)
+    return known.path
+  }
   const path = whereIs(name)
   whereAnswers.set(name.toLowerCase(), { path, at: Date.now() })
   return path

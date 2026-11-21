@@ -1,10 +1,14 @@
 /**
- * A browser node's page that stops answering, such as one stuck in a loop. Its page runs in a process of its own, so
- * the canvas carries on; this tells the node, and makes Reload work on it. A reload sent to a stuck page is lost with
- * it, so its process is ended first and the reload follows once it's gone.
+ * A browser node's page that stops answering, such as one stuck in a loop. Its page runs in a renderer process apart
+ * from the canvas, so the canvas carries on; this tells the node, and makes Reload work on it. A reload sent to a stuck
+ * page is lost with it, so its process is ended first and the reload follows once it's gone.
  *
- * Electron says a page is unresponsive only once input has waited on it for a long while, so the page is also asked
- * for a trivial answer now and then, and whenever Reload is pressed.
+ * Electron says a page is unresponsive only once input has waited on it for a long while, so every page is also asked
+ * for a trivial answer every few seconds, and whenever Reload is pressed.
+ *
+ * Pages of the same site can share one renderer process (Chromium does so past its process limit, which it sizes from
+ * memory, so more on a PC short of it). Those pages share its thread, so when one is stuck they all are, and ending
+ * the process ends them all: they're restarted together (restartTogether).
  */
 export interface HungGuest {
   on(event: 'unresponsive' | 'responsive' | 'destroyed', cb: () => void): unknown
@@ -19,25 +23,32 @@ export interface HungGuest {
 
 export interface HungPage {
   readonly hung: boolean
-  /** True for the moment its process is gone because restart ended it, which isn't the page failing. */
+  /** True while its process is being ended on purpose, which isn't the page failing. */
   readonly restarting: boolean
-  /** For Reload: starts a stuck page again and resolves true; resolves false for a page that answers, to reload as usual. */
-  restart(): Promise<boolean>
+  /** For Reload: true when the page is known to be stuck, or doesn't answer within reloadAnswerMs. */
+  stuck(): Promise<boolean>
+  /** Its process is about to be ended on purpose: once it's gone the page reloads, and if it never goes, after restartWaitMs anyway. */
+  expectRestart(): void
   stop(): void
 }
 
 export interface HungTiming {
-  /** A page that hasn't answered in this long is stuck. */
+  /** The heartbeat: a page that hasn't answered in this long is stuck. */
   answerMs: number
-  /** How often a page is asked, while it's shown. 0 asks only when Reload is pressed. */
+  /** Reload's check waits longer, so a page that's only busy isn't ended. */
+  reloadAnswerMs: number
+  /** How often each page is asked. 0 asks only when Reload is pressed. */
   everyMs: number
+  /** How long a restart waits for the process to end before reloading anyway. */
+  restartWaitMs: number
 }
-export const HUNG_TIMING: HungTiming = { answerMs: 1500, everyMs: 5000 }
+export const HUNG_TIMING: HungTiming = { answerMs: 1500, reloadAnswerMs: 4000, everyMs: 5000, restartWaitMs: 5000 }
 
 export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered(): void }, timing: Partial<HungTiming> = {}): HungPage {
   const t = { ...HUNG_TIMING, ...timing }
   let hung = false
   let restarting = false
+  let restartTimer: ReturnType<typeof setTimeout> | null = null
   let asking = false
 
   const nowHung = (): void => {
@@ -52,9 +63,9 @@ export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered
   }
 
   /** True when the page answered in time. A refusal, as when it's between pages, is an answer too. */
-  const answers = (): Promise<boolean> =>
+  const answers = (ms: number): Promise<boolean> =>
     new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), t.answerMs)
+      const timer = setTimeout(() => resolve(false), ms)
       guest.executeJavaScript('1').then(
         () => (clearTimeout(timer), resolve(true)),
         () => (clearTimeout(timer), resolve(true))
@@ -65,7 +76,7 @@ export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered
     if (asking || restarting || guest.isDestroyed() || guest.isLoading()) return
     asking = true
     try {
-      const ok = await answers()
+      const ok = await answers(t.answerMs)
       if (guest.isDestroyed() || restarting) return
       if (ok) nowFine()
       else nowHung()
@@ -78,6 +89,14 @@ export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered
   timer?.unref?.()
   const stop = (): void => {
     if (timer) clearInterval(timer)
+    if (restartTimer) clearTimeout(restartTimer)
+  }
+
+  const reloadNow = (): void => {
+    if (restartTimer) clearTimeout(restartTimer)
+    restartTimer = null
+    restarting = false
+    if (!guest.isDestroyed()) guest.reload()
   }
 
   guest.on('unresponsive', nowHung)
@@ -85,12 +104,8 @@ export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered
   guest.on('destroyed', stop)
   guest.on('render-process-gone', () => {
     hung = false
-    if (!restarting) return
     // Listeners run in the order they were added, so the driver's own handler has seen `restarting` already.
-    queueMicrotask(() => {
-      restarting = false
-      if (!guest.isDestroyed()) guest.reload()
-    })
+    if (restarting) queueMicrotask(reloadNow)
   })
 
   return {
@@ -100,17 +115,27 @@ export function watchHungPage(guest: HungGuest, d: { onHung(): void; onRecovered
     get restarting() {
       return restarting
     },
-    async restart() {
-      if (guest.isDestroyed() || restarting) return restarting
-      if (!hung && (await answers())) return false
-      if (guest.isDestroyed()) return false
-      const wasHung = hung
-      hung = false
+    async stuck() {
+      if (guest.isDestroyed() || restarting) return false
+      return hung || !(await answers(t.reloadAnswerMs))
+    },
+    expectRestart() {
+      if (restarting || guest.isDestroyed()) return
       restarting = true
-      if (wasHung) d.onRecovered()
-      guest.forcefullyCrashRenderer()
-      return true
+      nowFine()
+      restartTimer = setTimeout(reloadNow, t.restartWaitMs)
+      restartTimer.unref?.()
     },
     stop
   }
+}
+
+/**
+ * Starts a stuck page again by ending its process, and every page that shares that process with it: they're stuck
+ * with it, and would end with it anyway, so each reloads rather than reporting a crash.
+ */
+export function restartTogether(page: HungPage, guest: Pick<HungGuest, 'forcefullyCrashRenderer'>, sharing: HungPage[]): void {
+  for (const other of sharing) other.expectRestart()
+  page.expectRestart()
+  guest.forcefullyCrashRenderer()
 }

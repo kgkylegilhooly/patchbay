@@ -45,6 +45,16 @@ export function resolveCodex(): ClaudeProgram {
   return claudeAt(located)
 }
 
+/** resolveCodex without waiting on where.exe on the main thread, for checks in the background. */
+export async function resolveCodexAsync(): Promise<ClaudeProgram> {
+  if (!(located && existsSync(located))) {
+    located = null
+    await lookUpCodexAhead()
+  }
+  if (!located) throw new Error('The codex command was not found on PATH. Install it with npm install -g @openai/codex.')
+  return claudeAt(located)
+}
+
 /** Finds codex ahead of time, off the main thread, so resolveCodex needn't wait for where.exe. See lookUpClaudeAhead. */
 export async function lookUpCodexAhead(): Promise<void> {
   if (located) return

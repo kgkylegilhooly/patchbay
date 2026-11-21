@@ -12,6 +12,8 @@ export interface RunOptions {
    * with the oldest bytes past maxBytes dropped. For a log whose summary comes last, such as a test run.
    */
   keepTail?: boolean
+  /** Passes the arguments exactly as written, as cmd.exe's own command line needs. Windows only. */
+  verbatim?: boolean
 }
 
 export interface RunResult {
@@ -71,7 +73,7 @@ export function runHere(file: string, args: string[], o: RunOptions): Promise<Ru
   return new Promise((done) => {
     let child
     try {
-      child = spawn(file, args, { cwd: o.cwd, env: o.env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(file, args, { cwd: o.cwd, env: o.env, windowsHide: true, shell: false, windowsVerbatimArguments: o.verbatim, stdio: ['ignore', 'pipe', 'pipe'] })
     } catch (e) {
       done({ code: null, stdout: '', stderr: (e as Error).message, truncated: false, timedOut: false, missing: true })
       return

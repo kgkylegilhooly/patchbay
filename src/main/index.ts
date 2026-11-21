@@ -94,8 +94,8 @@ import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
-import { lookUpClaudeAhead, resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
-import { lookUpCodexAhead, resolveCodex } from './sessions/codexLaunch'
+import { lookUpClaudeAhead, resolveClaudeAsync, type ClaudeProgram } from './sessions/claudeLaunch'
+import { lookUpCodexAhead, resolveCodexAsync } from './sessions/codexLaunch'
 import { noteFromNode, registerFileShelfIpc } from './fileShelf/ipc'
 import { noteReaders } from './fileShelf/readers'
 
@@ -652,13 +652,13 @@ async function boot(): Promise<void> {
   const refreshAgents = async (): Promise<void> => {
     if (currentSettings().usageSource === 'off') return
     try {
-      usage.setClaudeAccount(await readClaudeAccount(resolveClaude()))
+      usage.setClaudeAccount(await readClaudeAccount(await resolveClaudeAsync()))
     } catch {
       // No claude on PATH, or it couldn't say. The panel then shows no account line.
     }
     let codex: ClaudeProgram
     try {
-      codex = resolveCodex()
+      codex = await resolveCodexAsync()
     } catch {
       return // Codex isn't installed, so it has no section.
     }

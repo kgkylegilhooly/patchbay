@@ -194,3 +194,9 @@ describe('readAllMessages', () => {
     await expect(readAllMessages(join(dir, 'gone.jsonl'))).rejects.toThrow()
   })
 })
+
+test('readAllMessages reads several lines longer than a stretch in a row, each found by growing the read', async () => {
+  const big = (n: number) => user(`${n} ${'b'.repeat(1_300_000)}`)
+  const file = fixture([big(1), assistant([text('between')]), big(2), big(3), assistant([text('end')])])
+  expect(await readAllMessages(file)).toEqual(readMessages(file))
+})

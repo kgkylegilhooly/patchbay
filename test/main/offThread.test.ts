@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { afterEach, expect, test, vi } from 'vitest'
 import { runHere, runProgram, useProgramRunner, type RunResult } from '../../src/core/git/run'
-import { CRASHES_BEFORE_GIVING_UP, offThreadRunner, STOPPED_WHILE_RUNNING, type FromWorker, type ToWorker, type WorkerLike } from '../../src/main/proc/offThread'
+import { ANSWER_GRACE_MS, CRASHES_BEFORE_GIVING_UP, offThreadRunner, READY_MS, STOPPED_WHILE_RUNNING, type FromWorker, type ToWorker, type WorkerLike } from '../../src/main/proc/offThread'
 
 const ok = (stdout: string): RunResult => ({ code: 0, stdout, stderr: '', truncated: false, timedOut: false, missing: false })
 const opts = { env: {}, timeoutMs: 1000, maxBytes: 1024 }
@@ -181,4 +181,42 @@ test('mapFew runs at most the limit at once and keeps the order of results', asy
   expect(most).toBe(2)
   expect(await mapFew([], 2, async (n: number) => n)).toEqual([])
   await expect(mapFew([1, 2], 2, async (n) => (n === 2 ? Promise.reject(new Error('no')) : n))).rejects.toThrow('no')
+})
+
+test("a run the worker never answers fails on the main side past its own limit, and the stuck worker is replaced", async () => {
+  vi.useFakeTimers()
+  try {
+    const { run, workers } = setup()
+    const a = run('git', ['fetch'], { ...opts, timeoutMs: 1000 })
+    workers[0].ready()
+    await vi.advanceTimersByTimeAsync(1000 + ANSWER_GRACE_MS)
+    const r = await a
+    expect(r.code).toBeNull()
+    expect(r.stderr).toBe(STOPPED_WHILE_RUNNING)
+    expect(workers[0].terminated).toBe(true)
+    // A late answer from the stuck worker changes nothing, and the next program gets a new worker.
+    workers[0].answer(workers[0].sent[0].id, 'late')
+    const b = run('git', ['status'], opts)
+    expect(workers).toHaveLength(2)
+    workers[1].ready()
+    workers[1].answer(workers[1].sent[0].id, 'fresh')
+    expect((await b).stdout).toBe('fresh')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test("a worker that never says it's ready is given up on, and what was waiting runs here", async () => {
+  vi.useFakeTimers()
+  try {
+    const { run, workers, fallback } = setup()
+    const a = run('git', ['status'], opts)
+    await vi.advanceTimersByTimeAsync(READY_MS)
+    expect((await a).stdout).toBe('here:git')
+    expect(workers[0].terminated).toBe(true)
+    expect(run.gaveUp).toBe(true)
+    expect(fallback).toHaveBeenCalledTimes(1)
+  } finally {
+    vi.useRealTimers()
+  }
 })

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { expect, test, vi } from 'vitest'
-import { watchHungPage, type HungGuest } from '../../src/main/browser/hungPage'
-import { hungWindowDetail, lowMemoryNote, processGoneText } from '../../src/main/stuckParts'
+import { restartTogether, watchHungPage, type HungGuest } from '../../src/main/browser/hungPage'
+import { hungPageNotice, hungWindowDetail, lowMemoryNote, processGoneText } from '../../src/main/stuckParts'
 
 const MB = 1024 * 1024
 const GB = 1024 * MB
@@ -59,11 +59,12 @@ class Guest extends EventEmitter implements HungGuest {
   }
 }
 
-const quiet = { everyMs: 0, answerMs: 1500 }
+const quiet = { everyMs: 0, answerMs: 1500, reloadAnswerMs: 4000, restartWaitMs: 5000 }
+const noop = () => ({ onHung: vi.fn(), onRecovered: vi.fn() })
 
 test("Electron's own unresponsive and responsive events report a stuck page once, and its recovery", () => {
   const guest = new Guest()
-  const d = { onHung: vi.fn(), onRecovered: vi.fn() }
+  const d = noop()
   const page = watchHungPage(guest, d, quiet)
   guest.emit('unresponsive')
   guest.emit('unresponsive')
@@ -74,28 +75,80 @@ test("Electron's own unresponsive and responsive events report a stuck page once
   expect(page.hung).toBe(false)
 })
 
-test('Reload on a page that answers is left to the usual reload', async () => {
+test('a page that answers is not stuck, so Reload is the usual one', async () => {
   const guest = new Guest()
-  const page = watchHungPage(guest, { onHung: vi.fn(), onRecovered: vi.fn() }, quiet)
-  expect(await page.restart()).toBe(false)
+  const page = watchHungPage(guest, noop(), quiet)
+  expect(await page.stuck()).toBe(false)
   expect(guest.crash).not.toHaveBeenCalled()
 })
 
-test("Reload on a stuck page that nobody had noticed yet: it doesn't answer, so its process is ended, then it's reloaded", async () => {
+test("Reload's check waits longer than the heartbeat, so a page that's only busy isn't ended", async () => {
   vi.useFakeTimers()
   try {
     const guest = new Guest()
+    let answer: (v: unknown) => void = () => {}
+    guest.executeJavaScript = () => new Promise((r) => (answer = r))
+    const page = watchHungPage(guest, noop(), quiet)
+    const stuck = page.stuck()
+    await vi.advanceTimersByTimeAsync(2500)
+    answer(1)
+    expect(await stuck).toBe(false)
     guest.answering = false
-    const page = watchHungPage(guest, { onHung: vi.fn(), onRecovered: vi.fn() }, quiet)
-    let sawRestarting: boolean | null = null
-    // The driver's own handler, added after the watcher, as in driver.ts.
-    guest.on('render-process-gone', () => (sawRestarting = page.restarting))
-    const restarted = page.restart()
-    await vi.advanceTimersByTimeAsync(1500)
-    expect(await restarted).toBe(true)
-    expect(guest.crash).toHaveBeenCalledTimes(1)
-    expect(sawRestarting).toBe(true)
-    await Promise.resolve()
+    guest.executeJavaScript = Guest.prototype.executeJavaScript
+    const really = page.stuck()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(await really).toBe(true)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('restarting a stuck page ends its process, then reloads it, and that ending is not a failure', async () => {
+  const guest = new Guest()
+  const d = noop()
+  const page = watchHungPage(guest, d, quiet)
+  let sawRestarting: boolean | null = null
+  // The driver's own handler, added after the watcher, as in driver.ts.
+  guest.on('render-process-gone', () => (sawRestarting = page.restarting))
+  guest.emit('unresponsive')
+  expect(await page.stuck()).toBe(true)
+  expect(guest.asked).toBe(0)
+  restartTogether(page, guest, [])
+  expect(guest.crash).toHaveBeenCalledTimes(1)
+  expect(sawRestarting).toBe(true)
+  expect(d.onRecovered).toHaveBeenCalledTimes(1)
+  await Promise.resolve()
+  expect(guest.reload).toHaveBeenCalledTimes(1)
+  expect(page.restarting).toBe(false)
+  expect(page.hung).toBe(false)
+  // While a restart is under way, the page isn't counted as stuck again.
+  expect(await page.stuck()).toBe(false)
+})
+
+test('pages sharing the stuck process restart with it: each reloads, and none reports a crash', async () => {
+  // One renderer process: ending it ends every page in it.
+  const guests = [new Guest(), new Guest(), new Guest()]
+  const crashAll = () => guests.forEach((g) => g.emit('render-process-gone', {}, { reason: 'killed' }))
+  guests[0].forcefullyCrashRenderer = crashAll
+  const pages = guests.map((g) => watchHungPage(g, noop(), quiet))
+  const failures: number[] = []
+  guests.forEach((g, i) => g.on('render-process-gone', () => !pages[i].restarting && failures.push(i)))
+  restartTogether(pages[0], guests[0], [pages[1], pages[2]])
+  await Promise.resolve()
+  expect(failures).toEqual([])
+  expect(guests.map((g) => g.reload.mock.calls.length)).toEqual([1, 1, 1])
+})
+
+test("a restart whose process never reports ending still reloads, so Reload can't be stuck", async () => {
+  vi.useFakeTimers()
+  try {
+    const guest = new Guest()
+    guest.forcefullyCrashRenderer = () => {} // the ending never arrives
+    const page = watchHungPage(guest, noop(), quiet)
+    guest.emit('unresponsive')
+    restartTogether(page, guest, [])
+    expect(page.restarting).toBe(true)
+    await vi.advanceTimersByTimeAsync(5000)
     expect(guest.reload).toHaveBeenCalledTimes(1)
     expect(page.restarting).toBe(false)
   } finally {
@@ -103,24 +156,11 @@ test("Reload on a stuck page that nobody had noticed yet: it doesn't answer, so 
   }
 })
 
-test('Reload on a page already known to be stuck ends it at once and clears the notice', async () => {
-  const guest = new Guest()
-  const d = { onHung: vi.fn(), onRecovered: vi.fn() }
-  const page = watchHungPage(guest, d, quiet)
-  guest.emit('unresponsive')
-  expect(await page.restart()).toBe(true)
-  expect(guest.asked).toBe(0)
-  expect(d.onRecovered).toHaveBeenCalledTimes(1)
-  await Promise.resolve()
-  expect(guest.reload).toHaveBeenCalledTimes(1)
-  expect(page.hung).toBe(false)
-})
-
 test('the heartbeat notices a stuck page without any input, and its recovery, and skips pages still loading', async () => {
   vi.useFakeTimers()
   try {
     const guest = new Guest()
-    const d = { onHung: vi.fn(), onRecovered: vi.fn() }
+    const d = noop()
     const page = watchHungPage(guest, d, { everyMs: 5000, answerMs: 1500 })
     await vi.advanceTimersByTimeAsync(5000)
     expect(guest.asked).toBe(1)
@@ -147,10 +187,16 @@ test('the heartbeat notices a stuck page without any input, and its recovery, an
 
 test('a page that crashes by itself is not reloaded by the watcher', async () => {
   const guest = new Guest()
-  const page = watchHungPage(guest, { onHung: vi.fn(), onRecovered: vi.fn() }, quiet)
+  const page = watchHungPage(guest, noop(), quiet)
   guest.emit('unresponsive')
   guest.emit('render-process-gone', {}, { reason: 'crashed' })
   await Promise.resolve()
   expect(guest.reload).not.toHaveBeenCalled()
   expect(page.hung).toBe(false)
+})
+
+test('the stuck-page notice says when other browser nodes share the process', () => {
+  expect(hungPageNotice(0)).toMatch(/Only this browser node is affected/)
+  expect(hungPageNotice(1)).toMatch(/shares a process with 1 other browser node, which is stuck with it/)
+  expect(hungPageNotice(3)).toMatch(/3 other browser nodes/)
 })

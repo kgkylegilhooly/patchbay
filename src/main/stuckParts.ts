@@ -47,5 +47,9 @@ export function hungWindowDetail(memoryNote: string | null): string {
   return lines.join('\n\n')
 }
 
-/** The notice on a browser node whose page stopped answering. */
-export const HUNG_PAGE_NOTICE = "This page isn't responding. Only this browser node is affected. Reload it to start the page again."
+/** The notice on a browser node whose page stopped answering, given how many other browser nodes share its process. */
+export function hungPageNotice(sharing: number): string {
+  if (sharing <= 0) return "This page isn't responding. Only this browser node is affected. Reload it to start the page again."
+  const others = sharing === 1 ? '1 other browser node, which is' : `${sharing} other browser nodes, which are`
+  return `This page isn't responding. It shares a process with ${others} stuck with it. Reload starts them all again.`
+}
