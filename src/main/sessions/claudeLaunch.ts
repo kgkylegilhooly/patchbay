@@ -9,6 +9,7 @@ import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
 import { httpHooksBlocked, withLoopbackNoProxy } from './httpHookSafety'
+import { settingsFileFor } from './sessionSettingsFiles'
 import { nativeMessagingSettings } from './nativeMessaging'
 import { signalFile, SIGNAL_EVENTS, statusFile } from './signals'
 
@@ -428,7 +429,8 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
     ])
   )
   mkdirSync(ctx.sessionDir, { recursive: true })
-  const file = join(ctx.sessionDir, `${encodeURIComponent(node.id)}.settings.json`)
+  // It goes with the node: see sessionSettingsFiles.ts.
+  const file = settingsFileFor(ctx.sessionDir, node.id)
   const command = statusLineCommand(node.id, ctx, own)
   const statusLine = command ? { statusLine: { type: 'command', command, ...(own?.padding === undefined ? {} : { padding: own.padding }) } } : {}
   const dataDir = dirname(ctx.sessionDir)

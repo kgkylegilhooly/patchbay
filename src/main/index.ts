@@ -75,6 +75,7 @@ import { createSessionHost } from './sessions/host'
 import { pipeNameFor } from './sessions/hostProtocol'
 import { guardExit, hostRuntime, lastHostLogLine, pruneHostRuntimes, spawnSessionHost } from './sessions/hostSpawn'
 import { missedHooksDir, takeMissedHooks } from './sessions/missedHooks'
+import { onClaudeNodesRemoved, pruneSessionSettings, removeSessionSettings } from './sessions/sessionSettingsFiles'
 import { createNodeRunner } from './sessions/nodeRunner'
 import { createStatusTracker } from './sessions/statusTracker'
 import { createPortWatcher, readConsoleMembers, runNetstat, runProcessList } from './ports/ports'
@@ -503,6 +504,13 @@ async function boot(): Promise<void> {
   const adopted = adoptLive()
   // A node at its usage limit before the app restarted still is, if its session came back.
   stops.retain(adopted)
+  // A Claude node's settings hold its hook token, so they go with the node. Never those of a session still running.
+  const sessionDir = join(dataDir, 'sessions')
+  // After a damaged save the canvas may be what's missing, so nothing is pruned then.
+  if (!store.loaded.quarantined) pruneSessionSettings(sessionDir, (id) => store.get().nodes.some((n) => n.id === id) || host.isRunning(id))
+  onClaudeNodesRemoved(store, (id) => {
+    if (!host.isRunning(id)) removeSessionSettings(sessionDir, id)
+  })
 
   const noteRefusal = refusalLog((line) => log?.write(line))
   const onHook = async (id: string, payload: Record<string, unknown>, signal: AbortSignal): Promise<unknown> => {

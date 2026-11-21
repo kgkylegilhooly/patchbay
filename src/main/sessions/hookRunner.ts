@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import { runProgram } from '../../core/git/run'
 import { programArgs, type ClaudeProgram } from './claudeLaunch'
+import { loadRegistryPolicy } from './httpHookSafety'
 
 /**
  * Which Node runs Patchbay's hooks, when Claude Code can start it itself.
@@ -148,4 +149,13 @@ function output(file: string, args: string[]): Promise<string> {
     if (r.code !== 0 && !r.stdout) throw new Error(r.stderr.trim() || (r.missing ? `${file} was not found` : `${file} ended with code ${r.code}`))
     return r.stdout
   })
+}
+
+/**
+ * Whether a launch may have http hooks: a Claude that has them, with Claude's registry policy read for
+ * httpHooksBlocked (httpHookSafety.ts). Both are asked once per app run.
+ */
+export async function httpHooksPossible(launch: HookLaunch, ask: Ask = output): Promise<boolean> {
+  const [runs] = await Promise.all([claudeRunsHttpHooks(launch, ask), loadRegistryPolicy().catch(() => {})])
+  return runs
 }

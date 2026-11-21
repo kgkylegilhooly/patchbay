@@ -106,6 +106,12 @@ async function main() {
     const shell = readLog(log).filter((e) => e.form !== 'http' && e.node !== 'boxed')
     c.check('only SessionStart started a program: one per session', shell.length === 5 && shell.every((e) => e.name === 'SessionStart' && e.form === 'exec'), shell)
     console.log(`      live: ${live.length} http hooks, median ${median(live.map((e) => e.ms))} ms, slowest ${Math.max(...live.map((e) => e.ms))} ms; SessionStart (exec) median ${median(shell.map((e) => e.ms))} ms`)
+    // Closing a node takes its settings, with the hook token in them, along with it.
+    const needsSettings = path.join(profile, 'sessions', 'needs.settings.json')
+    const hadSettings = fs.existsSync(needsSettings)
+    await page.evaluate(() => window.patchbay.dispatch({ op: 'removeNodes', ids: ['needs'] }))
+    const settingsGone = await L.waitFor('the closed node\'s settings to go', async () => (fs.existsSync(needsSettings) ? null : true), 15000).catch(() => false)
+    c.check("closing a node removes its settings file, which held its hook token", hadSettings && settingsGone === true && fs.existsSync(path.join(profile, 'sessions', 'work.settings.json')))
     c.check('no errors in the page', app.problems.length === 0, app.problems)
 
     // The app goes, leaving the sessions running in the host. Ended as a crash ends it: a quit would first ask about the

@@ -17,16 +17,20 @@ import { removeTemp } from '../support/realProcess'
 /** Sessions with no PTY behind them. */
 function fakeSessions(): PtyHost {
   const running = new Set<string>()
+  const exits: Array<(id: string, code: number) => void> = []
   return {
     start: (spec: SessionSpec) => void running.add(spec.nodeId),
     write: () => {},
     resize: () => {},
-    kill: async (id) => void running.delete(id),
+    async kill(id) {
+      if (!running.delete(id)) return
+      for (const cb of exits) cb(id, -1)
+    },
     pid: (id) => (running.has(id) ? 4242 : null),
     isRunning: (id) => running.has(id),
     snapshot: () => ({ data: '', seq: 0 }),
     onOutput: () => {},
-    onExit: () => {},
+    onExit: (cb) => void exits.push(cb),
     list: () => [...running].map((id): HostedSession => ({ id, pid: 4242, running: true, exitCode: null, exitedAt: null })),
     forget: (id) => void running.delete(id),
     pause: () => {},
@@ -222,4 +226,22 @@ test('frames that arrive in the same chunk as the welcome reach the first listen
   } finally {
     server.close()
   }
+})
+
+test("a node's token stops working in the host once its ended session is forgotten, as when the node is removed", async () => {
+  const { pipe } = await setUp()
+  app = appFor(pipe)
+  await app.connect()
+  await app.start(spec('n1'))
+  const seen: string[] = []
+  app.serveHooks((_id, payload) => void seen.push(String(payload.hook_event_name)))
+  await post(app.hookPort()!, 'UserPromptSubmit', 'n1')
+  await app.kill('n1')
+  await new Promise((r) => setTimeout(r, 50))
+  app.forget('n1')
+  await new Promise((r) => setTimeout(r, 100))
+  // Answered, so Claude shows nothing, but not taken.
+  expect(await post(app.hookPort()!, 'Stop', 'n1')).toEqual({ status: 200, body: {} })
+  await new Promise((r) => setTimeout(r, 50))
+  expect(seen).toEqual(['UserPromptSubmit'])
 })

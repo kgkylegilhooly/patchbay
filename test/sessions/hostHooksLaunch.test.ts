@@ -197,3 +197,32 @@ test('chosen per session at launch: http when the host serves hooks and Claude h
   expect(entry(settingsOf(inApp.specs[0].args).hooks, 'Stop').type).toBe('command')
   expect(noHost).not.toHaveBeenCalled()
 })
+
+test("Claude's managed policy counts from the registry and from managed-settings.d too", async () => {
+  const { forgetRegistryPolicy, loadRegistryPolicy, parseRegistrySettings } = await import('../../src/main/sessions/httpHookSafety')
+  const reg = (json: string, type = 'REG_SZ') => `\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\ClaudeCode\r\n    Settings    ${type}    ${json}\r\n\r\n`
+  expect(parseRegistrySettings(reg('{"sandbox":{"enabled":true}}'))).toEqual({ sandbox: { enabled: true } })
+  expect(parseRegistrySettings(reg('{"a":1}', 'REG_EXPAND_SZ'))).toEqual({ a: 1 })
+  expect(parseRegistrySettings(reg('not json'))).toBeNull()
+  expect(parseRegistrySettings(null)).toBeNull()
+  const places = { cwd: dir, home: join(dir, 'home'), managedFile: join(dir, 'policy', 'managed-settings.json') }
+  forgetRegistryPolicy()
+  const asked: string[] = []
+  await loadRegistryPolicy(async (key) => {
+    asked.push(key)
+    return key.startsWith('HKLM') ? reg('{"env":{"HTTPS_PROXY":"http://p:1"}}') : null
+  })
+  expect(asked).toEqual(['HKLM\\SOFTWARE\\Policies\\ClaudeCode', 'HKCU\\SOFTWARE\\Policies\\ClaudeCode'])
+  expect(httpHooksBlocked(places)).toMatch(/proxy setting in HKLM/)
+  // Read once per app run: a second launch doesn't start reg.exe again.
+  await loadRegistryPolicy(async (key) => {
+    asked.push(key)
+    return null
+  })
+  expect(asked).toHaveLength(2)
+  forgetRegistryPolicy()
+  expect(httpHooksBlocked(places)).toBeNull()
+  mkdirSync(join(dir, 'policy', 'managed-settings.d'), { recursive: true })
+  writeFileSync(join(dir, 'policy', 'managed-settings.d', '10-net.json'), JSON.stringify({ sandbox: { enabled: true } }))
+  expect(httpHooksBlocked(places)).toMatch(/managed-settings\.d/)
+})
