@@ -18,6 +18,7 @@ import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStop } from '../agentStops'
 import { ledTokens, runMapColor, statusMapColor } from '../minimapColors'
 import { headerFolder, keyBadge } from '../zoomTier'
+import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
@@ -298,6 +299,7 @@ export function NodeChrome({
           </div>
         </div>
       )}
+      {status !== 'exited' && <JoinedStrip id={node.id} />}
       {runProblem && (
         <div className="strip strip-error" role="alert" data-run-problem>
           <div className="strip-text">

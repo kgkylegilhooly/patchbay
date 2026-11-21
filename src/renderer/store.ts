@@ -14,6 +14,7 @@ import { svgToPng } from './whiteboardImage'
 import { joinBoardEdit, joinNoteEdit, type AgentBoardEdits, type AgentNoteEdits } from './noteEdit'
 import { PULSE_MS, pulseCable } from './cableMotion'
 import { shareDoc } from './docShare'
+import { noteJoined } from './sessionSync'
 
 /** As many as main keeps. */
 const MESSAGES_KEPT = 300
@@ -293,7 +294,9 @@ export function closeNodes(ids: string[]): void {
 }
 
 export async function restartNode(id: string): Promise<void> {
-  noteRunProblem(id, await bridge.restartNode(id))
+  const result = await bridge.restartNode(id)
+  // Still running unseen, so shown again: its own notice says so. See sessionSyncUi.tsx.
+  if (!noteJoined(id, result)) noteRunProblem(id, result)
   useStore.setState((s) => ({ epochs: { ...s.epochs, [id]: (s.epochs[id] ?? 0) + 1 } }))
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { HostInfo } from '../shared/contract'
 import { bridge } from './bridge'
+import { SessionSyncList } from './sessionSyncUi'
 
 const count = (n: number): string => `${n} session${n === 1 ? '' : 's'}`
 
@@ -74,6 +75,8 @@ export function HostSection(): React.JSX.Element {
           </div>
         </div>
       )}
+
+      {hostIsThere && info.mode !== 'other-version' && <SessionSyncList />}
 
       {info.mode === 'other-version' && (
         <div className="set-row">

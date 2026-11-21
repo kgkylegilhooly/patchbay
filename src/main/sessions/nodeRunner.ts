@@ -16,7 +16,7 @@ import {
   type ClaudeProgram
 } from './claudeLaunch'
 import { buildCodexLaunch, codexKnowsNoDaemon, isLookingCall, resolveCodex } from './codexLaunch'
-import { SessionStartError } from './host'
+import { isAlreadyRunning, SessionStartError } from './host'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
@@ -73,6 +73,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
    * one that's starting, and Patchbay runs Codex itself in the background to read its limits.
    */
   beforeCodexStart?: () => Promise<void>
+  /** A session the host still ran was taken on again, so its views should be rebuilt. See docs/plans/session-sync.md. */
+  onReattached?: (id: string) => void
 }
 
 function taskkill(pid: number): Promise<void> {
@@ -83,7 +85,10 @@ function taskkill(pid: number): Promise<void> {
 }
 
 export interface NodeRunner {
-  /** Never rejects. A failure appears in errors() and onError. Does nothing if already running. */
+  /**
+   * Never rejects. A failure appears in errors() and onError. Does nothing if already running. One the host turned out
+   * to be running already, out of this app's sight, is taken on again instead.
+   */
   startNode(id: string, opts?: { initialScrollback?: string; restored?: boolean }): Promise<void>
   /** Takes on a session already running in the background host. Its status stays `unknown` until a hook confirms one. */
   adoptNode(id: string): void
@@ -91,7 +96,13 @@ export interface NodeRunner {
   noteFinishedRun(id: string, exitCode: number | null, at: number | null): void
   /** Applies hook events that arrived while the app was closed, unless newer live ones have overtaken them. */
   catchUpHooks(id: string): void
+  /** A session the host still runs that this app had lost track of: taken on again, caught up, and its views rebuilt. */
+  reattachNode(id: string): void
   restartNode(id: string): Promise<void>
+  /** As restartNode. `joined` means the session it would have ended was still running unseen, so it's shown again instead. */
+  restartOrJoin(id: string): Promise<'joined' | void>
+  /** Ends the session's whole process tree, then starts it again. An agent resumes its conversation. */
+  endAndRestart(id: string): Promise<void>
   /** Ends a session on purpose, as when its node closes. */
   stopNode(id: string): Promise<void>
   /** Ends a run node's command and everything it started, so a server really lets go of its port. */
@@ -376,7 +387,7 @@ export function createNodeRunner({
   /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
   const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
 
-  const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
+  const launch = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<'joined' | void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
@@ -395,6 +406,11 @@ export function createNodeRunner({
       else if (node.kind === 'run') await startRun(node, opts.initialScrollback)
       else await startTerminal(node, opts.initialScrollback, opts.restored)
     } catch (e) {
+      // The host already runs it: joined, not started. Without this it showed as ended and Restart could never work.
+      if (isAlreadyRunning(e) && host.isRunning(id)) {
+        api.reattachNode(id)
+        return 'joined'
+      }
       started.delete(id)
       if (node.kind === 'claude') tracker.apply(id, { type: 'process-exit' })
       setError(id, {
@@ -427,8 +443,31 @@ export function createNodeRunner({
     }
   }
 
-  return {
+  const startNode = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<void> => {
+    await launch(id, opts)
+  }
+
+  const api: NodeRunner = {
     startNode,
+
+    reattachNode(id) {
+      if (!host.isRunning(id) || !nodeById(id)) return
+      api.adoptNode(id)
+      catchUpHooks(id)
+      ctx.onReattached?.(id)
+    },
+
+    async endAndRestart(id) {
+      const node = nodeById(id)
+      if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
+      const run = runs.get(id)
+      if (run) run.stopping = true
+      // The whole tree, as Stop does for a run, so nothing it started is left holding files or ports.
+      await stopTree(id)
+      if (node.kind !== 'run') stoppingRuns.delete(id)
+      if (host.isRunning(id)) return setError(id, { code: 'spawn-failed', message: "The session didn't end, so it wasn't started again." })
+      await api.restartOrJoin(id)
+    },
 
     adoptNode(id) {
       const node = nodeById(id)
@@ -460,10 +499,14 @@ export function createNodeRunner({
     catchUpHooks,
 
     async restartNode(id) {
+      await api.restartOrJoin(id)
+    },
+
+    async restartOrJoin(id) {
       const node = nodeById(id)
       if (node?.kind === 'run') {
         await stopTree(id)
-        return startNode(id)
+        return launch(id)
       }
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
       // Refused before anything is stopped, so a session that's running keeps running, with no start error over it.
@@ -477,9 +520,9 @@ export function createNodeRunner({
         // A transcript still on disk may be worth another try, and nothing is lost by keeping it.
         const gone = !current?.transcriptPath || !existsSync(current.transcriptPath)
         if (errors.get(id)?.code === 'resume-failed' && gone) forgetSession(id)
-        return startNode(id)
+        return launch(id)
       }
-      return startNode(id, { initialScrollback: host.snapshot(id).data })
+      return launch(id, { initialScrollback: host.snapshot(id).data })
     },
 
     stopTree,
@@ -579,4 +622,5 @@ export function createNodeRunner({
       errorListeners.push(cb)
     }
   }
+  return api
 }

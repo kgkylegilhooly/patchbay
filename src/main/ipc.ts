@@ -38,6 +38,7 @@ import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
 import type { SignalWatcher } from './sessions/signals'
 import { removeRefusal } from '../core/canvas/projectOps'
+import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 
 export interface IpcServices {
   dataDir: string
@@ -93,7 +94,7 @@ const USAGE_PUSH_MS = 500
 const CONVERSATION_MESSAGES = 200
 
 /** Serves every `pb:` channel. See src/preload/index.ts for the conventions. */
-export function registerIpc(s: IpcServices): { reattached(ids: string[]): void } {
+export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; terminalShownExited(id: string): boolean } {
   const { dataDir, store, host, runner, tracker, approvals, gate, scrollback, saver, notifier, testNotification, attention, usage, usageSecret, usagePoller, ports, hostInfo, quit, stopHost, resolveOtherHost, triggers, launchRunner, onSettingsSaved } = s
   const find = (id: string): CanvasNode | undefined => store.get().nodes.find((n) => n.id === id)
 
@@ -261,8 +262,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     // saved scrollback on disk. Restarting without it would let the next save overwrite that file.
     if (node?.kind === 'terminal' && !host.isRunning(id) && !host.snapshot(id).data) {
       await runner.startNode(id, { initialScrollback: restoreSeed('terminal', scrollback.read(id)) })
-    } else {
-      await runner.restartNode(id)
+    } else if ((await runner.restartOrJoin(id)) === 'joined') {
+      // It was still running unseen, so it's shown again: the notice offers ending it first. See docs/plans/session-sync.md.
+      clearExited(id)
+      return { ok: false, reason: JOINED_NOTICE, joined: true } satisfies JoinedRefusal
     }
     clearExited(id)
   })
@@ -512,6 +515,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void }
     reattached(ids) {
       for (const id of ids) clearExited(id)
       broadcast('pb:onReattach', ids)
-    }
+    },
+    terminalShownExited: (id) => exitedTerminals.has(id)
   }
 }
