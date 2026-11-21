@@ -176,7 +176,7 @@
 }
 
 .key-badge-warn {
-  color: var(--led-working);
+  color: var(--status-working);
 }
 
 /* Tools come back on hover, selection or keyboard focus, over the end of the title. */

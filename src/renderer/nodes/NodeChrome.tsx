@@ -9,15 +9,14 @@ import { PortChips } from '../PortChips'
 import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
-import { runDot, runFailed, runLabel } from './runView'
-import { StatusBadge, StatusDot } from './StatusBadge'
+import { RunDot, RunLabel, StatusBadge, StatusDot } from './StatusBadge'
 import { MaximizeTool, WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStop } from '../agentStops'
-import { ledTokens, statusMapColor } from '../minimapColors'
+import { ledTokens, runMapColor, statusMapColor } from '../minimapColors'
 import { headerFolder, keyBadge } from '../zoomTier'
 import '../zoom.css'
 
@@ -161,22 +160,17 @@ function Held({ node }: { node: CanvasNode }): React.JSX.Element | null {
 }
 
 /**
- * The second line of a header drawn zoomed out (zoom.css shows it then): the status word and the one badge you'd
- * zoom in to read, such as what's being asked.
+ * The second line of a header drawn zoomed out (zoom.css shows it then): the status word (a run's own, for a run
+ * command) and the one badge you'd zoom in to read, such as what's being asked.
  */
 function FarMeta({ node, status, folder }: { node: CanvasNode; status: AgentStatus | null; folder: string }): React.JSX.Element {
   const approval = useStore((s) => s.approvals.find((a) => a.nodeId === node.id))
   const run = useStore((s) => (node.kind === 'run' ? s.runs[node.id] : undefined))
   const context = contextLabel(useStore((s) => s.usage.nodes[node.id]))
-  const badge = keyBadge({
-    approval: approval ? { tool: approval.tool, summary: approval.summary } : null,
-    run: node.kind === 'run' ? { label: runLabel(run), failed: runFailed(run) } : null,
-    context,
-    folder
-  })
+  const badge = keyBadge({ approval: approval ? { tool: approval.tool, summary: approval.summary } : null, context, folder })
   return (
     <span className="head-far">
-      {status && <StatusBadge status={status} nodeId={node.id} />}
+      {node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
       {badge && (
         <span className={`key-badge key-badge-${badge.tone}`} title={badge.title}>
           {badge.text}
@@ -242,19 +236,19 @@ export function NodeChrome({
   const folder = headerFolder(cwd, projectFolder)
   const stop = useAgentStop(status === 'unknown' ? node.id : undefined)
   // The colour a zoomed-out window's body is filled with: the minimap's, so the two always agree.
-  const fill = statusMapColor(isRun ? runDot(run) : status, stop, ledTokens())
+  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens())
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (
     <div className={classes.join(' ')} style={{ '--status-fill': fill } as React.CSSProperties}>
       <header className="unit-head unit-head-session pb-drag" onDoubleClick={headerZoom}>
-        <StatusDot status={isRun ? runDot(run) : status} nodeId={node.id} />
+        {isRun ? <RunDot run={run} /> : <StatusDot status={status} nodeId={node.id} />}
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
         {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
         {status && <StatusBadge status={status} nodeId={node.id} />}
-        {isRun && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
+        {isRun && <RunLabel run={run} />}
         {node.kind === 'run' && node.launch && (
           <span className="run-launch" title={`From ${node.launch.folder}\\.vscode\\launch.json, read again at each run`}>
             launch.json

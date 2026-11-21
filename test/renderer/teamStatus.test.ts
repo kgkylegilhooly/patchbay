@@ -18,10 +18,11 @@ test('lists a group\'s agents, most pressing first, and counts them in words', (
   expect(team.members.map((m) => [m.id, m.status])).toEqual([['b', 'needs-you'], ['a', 'working'], ['c', 'working']])
   expect(team.summary).toBe('1 needs you, 2 working')
   expect(team.latest).toBeNull()
+  expect(team.members.map((m) => m.look.tone)).toEqual(['needs', 'working', 'working'])
 })
 
-test('an agent with no status yet counts as unknown, and a group with no agents has nothing to say', () => {
-  expect(teamStatus(nodes, { a: 'idle' }, [], 'g').summary).toBe('1 idle, 2 unknown')
+test('an agent with no status yet says so, and a group with no agents has nothing to say', () => {
+  expect(teamStatus(nodes, { a: 'idle' }, [], 'g').summary).toBe('1 idle, 2 no status yet')
   expect(teamStatus(nodes, {}, [], 'other')).toEqual({ members: [], summary: '', latest: null })
 })
 

@@ -46,21 +46,19 @@ export interface KeyBadge {
 
 export interface KeyBadgeInput {
   approval?: { tool: string; summary: string } | null
-  run?: { label: string; failed: boolean } | null
   context?: { text: string; level: 'ok' | 'warn' | 'high' | string } | null
   folder?: string
 }
 
 /**
- * Picks the badge: what's being asked first, since that's what you came for, then a run's state, then a context
- * nearly full, then the folder when it isn't the project's own. Nothing when none of these apply.
+ * Picks the badge: what's being asked first, since that's what you came for, then a context nearly full, then the
+ * folder when it isn't the project's own. Nothing when none of these apply. A run's state is its status word.
  */
 export function keyBadge(input: KeyBadgeInput): KeyBadge | null {
   if (input.approval) {
     const text = `${input.approval.tool}: ${input.approval.summary}`
     return { text, tone: 'needs', title: text }
   }
-  if (input.run) return { text: input.run.label, tone: input.run.failed ? 'needs' : 'plain' }
   if (input.context && input.context.level !== 'ok') return { text: input.context.text, tone: 'warn' }
   if (input.folder) return { text: input.folder, tone: 'plain' }
   return null

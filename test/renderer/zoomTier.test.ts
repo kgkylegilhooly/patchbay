@@ -50,10 +50,6 @@ describe('the key badge', () => {
   it('shows what is being asked first', () => {
     expect(keyBadge({ approval: { tool: 'Bash', summary: 'npm run build' }, context, folder: 'site' })).toEqual({ text: 'Bash: npm run build', tone: 'needs', title: 'Bash: npm run build' })
   })
-  it("then a run's state, red when it failed", () => {
-    expect(keyBadge({ run: { label: 'Exited 1', failed: true } })).toEqual({ text: 'Exited 1', tone: 'needs' })
-    expect(keyBadge({ run: { label: 'Running', failed: false }, folder: 'x' })).toEqual({ text: 'Running', tone: 'plain' })
-  })
   it('then a context that is filling up, but not one that is fine', () => {
     expect(keyBadge({ context, folder: 'site' })).toEqual({ text: '71% context', tone: 'warn' })
     expect(keyBadge({ context: { text: '12% context', level: 'ok' }, folder: 'site' })).toEqual({ text: 'site', tone: 'plain' })

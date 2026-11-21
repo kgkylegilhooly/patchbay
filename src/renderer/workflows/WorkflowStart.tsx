@@ -5,7 +5,9 @@ import { useAgentChoice } from '../agentChoice'
 import { AGENT_NAMES, type AgentKind } from '../../shared/model'
 import { workflows } from '../workflowBridge'
 import { editWorkflow, loadWorkflows, openRunPanel } from './workflowUi'
-import { RUN_STATE_LABEL, runSubject } from './runView'
+import { runSubject } from './runView'
+import { workflowRunLook } from '../status/status'
+import { StatusPair } from '../status/StatusMarks'
 import type { WorkflowRun } from '../../shared/workflow'
 
 const SOURCE_LABEL = { 'built-in': 'Built-in', personal: 'Personal', repository: 'Repository' } as const
@@ -222,7 +224,7 @@ export function WorkflowStart({ projectId, entry, onStart, onCancel }: { project
                 >
                   {new Date(r.startedAt).toLocaleString()} — {runSubject(r) || 'no inputs'}
                 </button>{' '}
-                <span className={`workflow-state workflow-state-${r.state}`}>{RUN_STATE_LABEL[r.state]}</span>
+                <StatusPair look={workflowRunLook(r.state)} className={`workflow-state workflow-state-${r.state}`} />
               </li>
             ))}
           </ul>

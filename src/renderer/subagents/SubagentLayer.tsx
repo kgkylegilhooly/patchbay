@@ -9,11 +9,12 @@ import { useStore } from '../store'
 import { TranscriptViewer } from '../TranscriptViewer'
 import { CARD, cardSpots, type Side } from './placement'
 import { agentTypeLabel, closeSubagentView, followSubagents, useSubagentUi, viewSubagent } from './subagentUi'
+import { subagentLook } from '../status/status'
+import { StatusMark } from '../status/StatusMarks'
 import './subagents.css'
 
 const NONE: Rect[] = []
 
-const STATUS_TEXT: Record<SubagentCard['status'], string> = { running: 'Running', done: 'Done', failed: 'Failed' }
 
 /** The current time, every second while anything shown is counting. */
 function useNow(ticking: boolean): number {
@@ -39,6 +40,7 @@ function Card({ card, rect, fading, now }: { card: SubagentCard; rect: Rect; fad
   const time = elapsed((card.endedAt ?? now) - card.startedAt)
   const type = agentTypeLabel(card.agentType)
   const title = `${type}: ${card.description}`
+  const look = subagentLook(card.status)
   return (
     <button
       type="button"
@@ -50,7 +52,7 @@ function Card({ card, rect, fading, now }: { card: SubagentCard; rect: Rect; fad
       onClick={() => viewSubagent(card.parentId, card.id, title)}
     >
       <span className="sa-top">
-        <span className="sa-dot" aria-hidden />
+        <StatusMark look={look} size={7} className="sa-dot" />
         <span className="sa-type">
           {type}
           {card.depth > 1 ? ' (nested)' : ''}
@@ -59,7 +61,7 @@ function Card({ card, rect, fading, now }: { card: SubagentCard; rect: Rect; fad
       </span>
       <span className="sa-desc">{card.description}</span>
       <span className="sa-meta">
-        {card.status === 'failed' && card.failure ? `Failed: ${card.failure}` : STATUS_TEXT[card.status]}
+        {card.status === 'failed' && card.failure ? `${look.label}: ${card.failure}` : look.label}
         {` · ${card.tools} ${card.tools === 1 ? 'tool' : 'tools'}`}
         {tokens && <span title={card.status === 'running' ? 'Estimated: the context size of its latest reply' : 'The context size of its last reply'}> · {tokens}</span>}
       </span>
@@ -80,6 +82,8 @@ const ParentCards = memo(function ParentCards({ parentId, cards, now, doc, taken
   const { shown, more } = visibleCards(cards, now)
   const others = useMemo(() => [...othersOf(doc, parentId), ...taken], [doc, parentId, taken])
   if (!node || shown.length === 0) return null
+  // Running cards are never dropped for fading ones, so the hidden running ones are all the rest.
+  const hiddenRunning = cards.filter((c) => c.status === 'running').length - shown.filter((s) => s.card.status === 'running').length
   // Live while the window is dragged; the saved place otherwise.
   const at = internal?.internals.positionAbsolute ?? absolutePosition(doc, node)
   const parent: Rect = { x: at.x, y: at.y, width: internal?.measured.width ?? node.width, height: internal?.measured.height ?? node.height }
@@ -96,7 +100,7 @@ const ParentCards = memo(function ParentCards({ parentId, cards, now, doc, taken
       ))}
       {more > 0 && (
         <div className="sa-card sa-more nopan" style={{ left: spots[shown.length].x, top: spots[shown.length].y, ...CARD }} title="Only eight cards are shown beside a window.">
-          +{more} more
+          +{more} more{hiddenRunning > 0 ? `, ${hiddenRunning} running` : ''}
         </div>
       )}
     </div>

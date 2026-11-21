@@ -5,11 +5,14 @@ import { ContextMenu } from './Menu'
 import { projectMenu, type Commands, type Point } from './menus'
 import { moveProjectTab } from './projectActions'
 import { dropTarget, type TabDrop } from './projectTabDrag'
-import { projectSignal } from './projectSignal'
+import { projectSignal, SIGNAL_TONE } from './projectSignal'
+import { useAgentStops } from './agentStops'
+import { StatusMark } from './status/StatusMarks'
 import { useStore } from './store'
 
 const SIGNAL_TEXT = {
   'needs-you': 'needs you',
+  stopped: 'an agent stopped',
   unseen: 'something to look at',
   working: 'working'
 }
@@ -28,7 +31,8 @@ interface TabProps {
 }
 
 function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragStart, onDragEnd }: TabProps): React.JSX.Element {
-  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention) : null))
+  const stops = useAgentStops((s) => s.stops)
+  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops) : null))
   const [draft, setDraft] = useState<string | null>(null)
 
   if (draft !== null) {
@@ -77,7 +81,13 @@ function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragSt
         onMenu({ x: e.clientX, y: e.clientY }, rename)
       }}
     >
-      {signal && <span className={`project-signal project-signal-${signal}`} role="img" aria-label={SIGNAL_TEXT[signal]} />}
+      {signal && (SIGNAL_TONE[signal] ? (
+        <span className={`project-signal project-signal-${signal}`} role="img" aria-label={SIGNAL_TEXT[signal]}>
+          <StatusMark look={{ tone: SIGNAL_TONE[signal]!, label: SIGNAL_TEXT[signal] }} size={8} />
+        </span>
+      ) : (
+        <span className={`project-signal project-signal-${signal}`} role="img" aria-label={SIGNAL_TEXT[signal]} />
+      ))}
       <span className="project-name">{project.name}</span>
     </button>
   )

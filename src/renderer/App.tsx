@@ -69,7 +69,8 @@ import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
 import { focusedTerminal, terminalActions } from './terminalRegistry'
 import { TopBar } from './TopBar'
-import { ledTokens, statusMapColor } from './minimapColors'
+import { ledTokens, runMapColor, statusMapColor } from './minimapColors'
+import type { RunResult } from '../shared/contract'
 import { useAgentStops } from './agentStops'
 import type { AgentStop } from '../shared/agentStop'
 import { EmptyCanvas } from './EmptyCanvas'
@@ -80,11 +81,12 @@ import './styles.css'
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 
-function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>): string {
+function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Record<string, RunResult>): string {
   if (node.data.node.kind === 'group') return 'transparent'
   if (node.data.node.kind === 'sticky') return '#a89a2b'
   if (node.data.node.kind === 'whiteboard') return '#d8d8d2'
   if (node.data.node.kind === 'trigger') return '#e7b53f'
+  if (node.data.node.kind === 'run') return runMapColor(runs[node.id], ledTokens())
   return statusMapColor(node.data.status, stops[node.id], ledTokens())
 }
 
@@ -108,7 +110,8 @@ function Canvas(): React.JSX.Element | null {
   const gitOpen = useStore((s) => s.gitOpen)
   const boardOpen = useStore((s) => s.boardOpen)
   const stops = useAgentStops((s) => s.stops)
-  const mapColor = useCallback((node: FlowNode) => miniMapColor(node, stops), [stops])
+  const runs = useStore((s) => s.runs)
+  const mapColor = useCallback((node: FlowNode) => miniMapColor(node, stops, runs), [stops, runs])
   const flow = useReactFlow<FlowNode, FlowEdge>()
   const [nodes, setNodes] = useState<FlowNode[]>([])
   const [edges, setEdges] = useState<FlowEdge[]>([])

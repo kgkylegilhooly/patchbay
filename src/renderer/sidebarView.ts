@@ -1,5 +1,6 @@
 import { isProjectArchived, isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
 import { matchesSession, sessionTree, type Session, type SessionTree } from './sessionTree'
+import type { Tone } from './status/status'
 
 export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' | 'starting' | 'stopped' | 'plain'
 
@@ -9,15 +10,15 @@ export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' |
  * Only `idle` from a Claude hook reaches Idle. Queued and starting sessions wait under Starting, ended ones go under
  * Stopped, and terminals and run commands, which have no way of reporting a status, get a section of their own.
  */
-export const BUCKETS: { id: BucketId; label: string; help: string; always: boolean }[] = [
-  { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer', always: true },
-  { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: false },
-  { id: 'running', label: 'Running', help: 'Claude is working', always: false },
-  { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: false },
-  { id: 'unknown', label: 'No status yet', help: "Patchbay can't tell, so don't assume it finished", always: false },
-  { id: 'starting', label: 'Starting', help: 'Queued, or on its way up', always: false },
-  { id: 'stopped', label: 'Stopped', help: 'The process has ended', always: false },
-  { id: 'plain', label: 'Terminals and commands', help: "These don't report a status, so none is shown", always: false }
+export const BUCKETS: { id: BucketId; label: string; help: string; always: boolean; tone: Tone | null }[] = [
+  { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer, or stopped on a limit or an error', always: true, tone: 'needs' },
+  { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: false, tone: null },
+  { id: 'running', label: 'Working', help: 'Claude is working', always: false, tone: 'working' },
+  { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: false, tone: 'done' },
+  { id: 'unknown', label: 'No status yet', help: "Patchbay can't tell, so don't assume it finished", always: false, tone: 'unknown' },
+  { id: 'starting', label: 'Starting', help: 'Queued, or on its way up', always: false, tone: 'pending' },
+  { id: 'stopped', label: 'Exited', help: 'The process has ended', always: false, tone: 'ended' },
+  { id: 'plain', label: 'Terminals and commands', help: "These don't report a status, so none is shown", always: false, tone: 'none' }
 ]
 
 /** Never guesses: anything with no status from a hook is either Unknown or listed as having none. */
@@ -47,6 +48,8 @@ export interface StatusSection {
   id: BucketId
   label: string
   help: string
+  /** The section's mark, from the status system. Null for Unread, which is a marker, not a status. */
+  tone: Tone | null
   sessions: Session[]
 }
 
@@ -70,7 +73,7 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
     if (hidden && isProjectArchived(doc.projects.find((p) => p.id === node.projectId))) continue
     sections.get(bucket)!.push(node)
   }
-  return BUCKETS.filter((b) => b.always || sections.get(b.id)!.length > 0).map((b) => ({ id: b.id, label: b.label, help: b.help, sessions: sections.get(b.id)! }))
+  return BUCKETS.filter((b) => b.always || sections.get(b.id)!.length > 0).map((b) => ({ id: b.id, label: b.label, help: b.help, tone: b.tone, sessions: sections.get(b.id)! }))
 }
 
 export interface ProjectSection {

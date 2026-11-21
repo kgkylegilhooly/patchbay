@@ -112,7 +112,7 @@ Quitting asks first if a Claude node is working or waiting on you.
 which you can answer once you reconnect. The `patchbay` command says the app is closed and fails straight away.
 
 **Status after reconnecting** comes only from what Claude's hooks reported while the app was away. A session with
-nothing reported shows "unknown" until its next hook, never a guessed "idle".
+nothing reported shows "No status yet" until its next hook, never a guessed "Idle".
 
 **When a session has really died,** because the host was stopped or the PC restarted, it comes back as before.
 Terminals start a new shell below their saved output and a divider, and don't rerun their command. Claude nodes resume
@@ -273,8 +273,8 @@ and spends a little quota.
 
 - **Project** lists sessions under each open project, across all of them. Headers fold, and stay folded after a restart.
   A row shows its folder only when it isn't the project's folder.
-- **Status** sorts every session by what it's doing: Need attention, Unread, Running, Idle and No status yet. Only a session
-  whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Stopped,
+- **Status** sorts every session by what it's doing: Need attention, Unread, Working, Idle and No status yet. Only a session
+  whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Exited,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
   Empty sections are left out, except Need attention, which says "All clear."
@@ -283,7 +283,12 @@ and spends a little quota.
   It goes under Need attention. The reset time comes from Claude's status line, or from its message. A Codex turn
   that fails gets the same badge and the same holding of messages: Patchbay reads the error from Codex's rollout file
   (Codex has no hook for it), and the reset from Codex's own limits there. After Esc, a Codex window goes back to
-  Idle, since Codex reports the interrupt; a Claude window stays Unknown.
+  Idle, since Codex reports the interrupt; a Claude window stays at No status yet.
+- **Status marks** mean the same everywhere: windows, the sidebar, tabs, the minimap, team lights, subagent cards
+  and workflow steps. Amber dot: working or running. Green: idle or done, or a command that exited 0. Red, blinking, with a red label: needs you.
+  Grey ring: starting or queued (dashed: no status yet). Red ring: stopped until you act, as on a failed login, an
+  error or a failed command. Amber ring: stopped until a limit resets. Small dim dot: exited. Grey square: a terminal,
+  which has no status. A white dot is unread. Blue is never a status: it marks focus, selection and links.
 - **Peek:** on the Status tab, an agent row's magnifier (or Space on the row) shows what it last said, what it's
   waiting on if Patchbay can tell, and how long it has waited. Type a reply there: it goes the same way as
   `patchbay send`, once the agent is idle. Approve and deny stay in the window, which Open goes to.
