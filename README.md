@@ -187,6 +187,10 @@ rather; the question goes away by itself if the window recovers. If the window c
 you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
 in the log above, which is the thing to share if Patchbay misbehaves.
 
+A browser node's page runs apart from the canvas. If the page gets stuck, only that node is affected: it says the page
+isn't responding, and **Reload** starts the page again. git and the other programs Patchbay runs start off the
+window's main process, so many agents starting or finishing at once don't hold up the window.
+
 ### Git Bash's limit of 32 consoles
 
 Git Bash can have at most 32 consoles in use at once across the whole PC. Each Git Bash terminal holds one, each agent

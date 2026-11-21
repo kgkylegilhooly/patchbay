@@ -94,27 +94,25 @@ const startWatching = (page) =>
       if (!w.stop) requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
-    w.observer = new PerformanceObserver((list) => {
-      for (const e of list.getEntries()) w.long.push(e.duration)
-    })
-    w.observer.observe({ entryTypes: ['longtask'] })
   })
 
 const stopWatching = (page) =>
   page.evaluate(() => {
     const w = window.__perf
     w.stop = true
-    w.observer.disconnect()
     const sorted = [...w.gaps].sort((a, b) => a - b)
     const pct = (p) => Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0)
+    // Long tasks, from the gaps between frames: the window's PerformanceObserver never reports 'longtask' entries, not
+    // even for a 200 ms loop, so counts taken that way were always 0. A gap over 50 ms is a task that held it up.
+    const long = w.gaps.filter((g) => g > 50)
     return {
       frames: w.gaps.length,
       frameP50: pct(0.5),
       frameP95: pct(0.95),
       worstFrameGap: Math.round(sorted.at(-1) ?? 0),
-      longTasks: w.long.length,
-      longTaskMs: Math.round(w.long.reduce((a, b) => a + b, 0)),
-      worstLongTask: Math.round(Math.max(0, ...w.long))
+      longTasks: long.length,
+      longTaskMs: Math.round(long.reduce((a, b) => a + b, 0)),
+      worstLongTask: Math.round(Math.max(0, ...long))
     }
   })
 

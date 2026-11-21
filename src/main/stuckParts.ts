@@ -4,6 +4,7 @@
  * the graphics process puts its frames on screen, each browser node's page runs in a process of its own, and the
  * terminals and agents run in the session host, apart from all of them.
  */
+import { PRESSURE } from '../core/resources/pressure'
 
 export interface GoneDetails {
   type: string
@@ -26,14 +27,13 @@ export function processGoneText(d: GoneDetails): string {
   return `A ${d.type} process stopped (${how}).`
 }
 
-/** Below either of these, Windows is short of memory and everything on the PC gets slow to answer. */
-const LOW_FREE_MB = 700
-const LOW_FREE_SHARE = 0.08
-
-/** A sentence about the PC being short of memory, or null when it isn't. */
+/**
+ * A sentence about the PC being short of memory, or null when it isn't. Short means what the resource notice means by
+ * it (src/core/resources/pressure.ts), so the two never disagree.
+ */
 export function lowMemoryNote(freeBytes: number, totalBytes: number): string | null {
   const freeMb = Math.round(freeBytes / 1024 / 1024)
-  if (freeMb >= LOW_FREE_MB && freeBytes / totalBytes >= LOW_FREE_SHARE) return null
+  if (totalBytes <= 0 || freeBytes / totalBytes >= PRESSURE.physFree) return null
   return `Windows has only ${freeMb} MB of memory free, which makes every program slow to answer. Closing windows you don't need, in Patchbay or elsewhere, helps.`
 }
 

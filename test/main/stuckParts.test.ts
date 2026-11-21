@@ -22,9 +22,10 @@ test('a stopped helper process is named by what it does', () => {
 test('low memory is mentioned only when Windows is actually short of it', () => {
   expect(lowMemoryNote(4 * GB, 16 * GB)).toBeNull()
   expect(lowMemoryNote(400 * MB, 16 * GB)).toMatch(/only 400 MB of memory free/)
-  // Plenty of megabytes, but a small share of a big machine.
+  // Plenty of megabytes, but a small share of a big machine: the same line the resource notice uses.
   expect(lowMemoryNote(900 * MB, 64 * GB)).toMatch(/only 900 MB/)
   expect(lowMemoryNote(900 * MB, 8 * GB)).toBeNull()
+  expect(lowMemoryNote(0, 0)).toBeNull()
 })
 
 test("the hung-window dialog says what's stuck, that sessions are safe, and adds a memory note when there is one", () => {
