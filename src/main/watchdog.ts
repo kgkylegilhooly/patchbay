@@ -1,5 +1,7 @@
 import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
+import { freemem, totalmem } from 'node:os'
 import { join } from 'node:path'
+import { hungWindowDetail, lowMemoryNote } from './stuckParts'
 import type { App, BrowserWindow, Dialog, IpcMain, RenderProcessGoneDetails } from 'electron'
 
 /** Past this the log starts again, keeping the one before as patchbay.1.log. */
@@ -150,14 +152,15 @@ export function watchWindow(
   const hung = (how: string): void => {
     if (disposed || hungSince !== null) return
     hungSince = Date.now()
-    log.write(`The window stopped responding (${how}). Memory: ${memorySummary(app)}`)
+    const memoryNote = lowMemoryNote(freemem(), totalmem())
+    log.write(`The window stopped responding (${how}). Memory: ${memorySummary(app)}, ${Math.round(freemem() / 1048576)} MB free on the PC.`)
     asking = new AbortController()
     void dialog
       .showMessageBox(win, {
         type: 'warning',
         title: 'Patchbay',
         message: "Patchbay's window isn't responding",
-        detail: 'Your terminals and agents are safe: they keep running in the background. Reloading the window brings the canvas back as it was.',
+        detail: hungWindowDetail(memoryNote),
         buttons: ['Reload window', 'Keep waiting'],
         defaultId: 1,
         cancelId: 1,

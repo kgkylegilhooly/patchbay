@@ -2,6 +2,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { ClaudeNode } from '../../shared/model'
+import { runProgram } from '../../core/git/run'
 import { claudeAt, customLaunch, LOOKING_VERBS, programArgs, sessionEnv, type ClaudeLaunch, type ClaudeProgram, type SessionEnvContext } from './claudeLaunch'
 
 export interface CodexLaunchContext extends SessionEnvContext {
@@ -42,6 +43,25 @@ export function resolveCodex(): ClaudeProgram {
   located = lines.find((l) => /\.exe$/i.test(l)) ?? lines.find((l) => /\.(cmd|bat)$/i.test(l)) ?? null
   if (!located) throw new Error('The codex command was not found on PATH. Install it with npm install -g @openai/codex.')
   return claudeAt(located)
+}
+
+/** resolveCodex without waiting on where.exe on the main thread, for checks in the background. */
+export async function resolveCodexAsync(): Promise<ClaudeProgram> {
+  if (!(located && existsSync(located))) {
+    located = null
+    await lookUpCodexAhead()
+  }
+  if (!located) throw new Error('The codex command was not found on PATH. Install it with npm install -g @openai/codex.')
+  return claudeAt(located)
+}
+
+/** Finds codex ahead of time, off the main thread, so resolveCodex needn't wait for where.exe. See lookUpClaudeAhead. */
+export async function lookUpCodexAhead(): Promise<void> {
+  if (located) return
+  const r = await runProgram('where.exe', ['codex'], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 })
+  if (located || r.code !== 0) return
+  const lines = r.stdout.split(/\r?\n/).filter(Boolean)
+  located = lines.find((l) => /\.exe$/i.test(l)) ?? lines.find((l) => /\.(cmd|bat)$/i.test(l)) ?? null
 }
 
 /** A TOML basic string. JSON's escapes are a subset TOML accepts. */

@@ -29,6 +29,7 @@
     "asarUnpack": [
       "node_modules/node-pty/**",
       "out/main/searchWorker.js",
+      "out/main/procWorker.js",
       "out/main/chunks/**"
     ],
     "extraResources": [

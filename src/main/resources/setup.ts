@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { runProgram } from '../../core/git/run'
 import { join } from 'node:path'
 import { cpus } from 'node:os'
 import { app, ipcMain, type IpcMainInvokeEvent } from 'electron'
@@ -11,12 +11,12 @@ import type { SystemMemory } from '../../shared/resources'
 import type { Settings } from '../../shared/settings'
 import { createResourceMonitor, PROCESS_TIMEOUT_MS, systemMemoryFrom, type ResourceMonitor, type SessionInfo } from './monitor'
 
-const listProcesses = (): Promise<string> =>
-  new Promise((resolve, reject) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PROCESS_QUERY], { windowsHide: true, timeout: PROCESS_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }, (error, stdout) =>
-      error ? reject(error) : resolve(stdout)
-    )
-  })
+/** Through runProgram, so this, the costliest process the app starts, never starts from the main thread. */
+const listProcesses = async (): Promise<string> => {
+  const r = await runProgram('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PROCESS_QUERY], { env: process.env as Record<string, string>, timeoutMs: PROCESS_TIMEOUT_MS, maxBytes: 32 * 1024 * 1024 })
+  if (r.code !== 0 || r.truncated) throw new Error(r.timedOut ? 'The process list took too long.' : r.stderr.trim() || `PowerShell ended with code ${r.code}`)
+  return r.stdout
+}
 
 /**
  * Made-up readings for pictures of the view (screenshot.js scenes): `fake-resources.json` in the profile, read only by a

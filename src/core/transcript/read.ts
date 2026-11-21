@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { open, readFile, type FileHandle } from 'node:fs/promises'
+import { open, type FileHandle } from 'node:fs/promises'
 
 /** Slash commands and their output, which Claude records as user messages though nobody wrote them. */
 const LOCAL_COMMAND = /^\s*<(command-|local-command-)/
@@ -128,10 +128,51 @@ export async function readMessagesTail(path: string, tail: number): Promise<Tran
 
 const asText = (messages: Message[]): string => messages.map((m) => `[${m.role}]\n${m.text}\n`).join('\n')
 
+/** How much of a whole transcript is parsed before giving everything else waiting on the thread a turn. */
+const WHOLE_CHUNK_BYTES = 512 * 1024
+
+/**
+ * Every message, a stretch at a time, letting the rest of the thread run between stretches. Parsing a long agent's
+ * transcript in one go held up the main process, and every window with it, for as long as it took.
+ */
+export async function readAllMessages(path: string): Promise<TranscriptMessage[]> {
+  const handle = await open(path, 'r')
+  try {
+    const { size } = await handle.stat()
+    const messages: Message[] = []
+    let at = 0
+    while (at < size) {
+      if (at > 0) await new Promise<void>((r) => setImmediate(r))
+      const bytes = await readRange(handle, at, Math.min(size, at + WHOLE_CHUNK_BYTES))
+      if (bytes.length === 0) break
+      // A stretch ends at its last complete line; one longer than a stretch is read whole.
+      let end = bytes.lastIndexOf(0x0a) + 1
+      let chunk = bytes.subarray(0, end)
+      // A line longer than a stretch, such as a pasted screenshot: read twice as far each time until it ends.
+      for (let span = WHOLE_CHUNK_BYTES * 2; end === 0; span *= 2) {
+        const want = Math.min(size, at + span) - at
+        const longer = await readRange(handle, at, at + want)
+        const nl = longer.indexOf(0x0a)
+        // The end of the file, or of what's there now if it was cut short meanwhile, ends the line.
+        if (nl === -1 && longer.length === want && at + want < size) continue
+        end = nl !== -1 ? nl + 1 : longer.length
+        chunk = longer.subarray(0, end)
+        break
+      }
+      if (end === 0) break
+      for (const m of parseText(chunk.toString('utf8'))) messages.push(m)
+      at += end
+    }
+    return messages
+  } finally {
+    await handle.close()
+  }
+}
+
 /** The last `tail` messages as plain text, or every message without one, read without blocking. Throws if the file can't be read. */
 export async function readTranscriptAsync(path: string, tail?: number): Promise<string> {
   if (tail !== undefined) return asText(await readMessagesTail(path, tail))
-  return asText(parseText(await readFile(path, 'utf8')))
+  return asText(await readAllMessages(path))
 }
 
 /** The conversation as plain text. `tail` keeps the last N messages. Throws if the file can't be read. */

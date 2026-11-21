@@ -291,21 +291,21 @@ describe('closed sessions', () => {
     expect(store.get().nodes).toEqual([])
   })
 
-  test('readClosedTranscript reports a missing transcript instead of throwing', () => {
+  test('readClosedTranscript reports a missing transcript instead of throwing', async () => {
     const dir = tempDir()
     const doc = docOf([], [
       { ...entry, transcriptPath: join(dir, 'gone.jsonl') },
       { ...entry, id: 'closed-2', transcriptPath: null }
     ])
-    expect(readClosedTranscript(doc, 'closed-1')).toEqual({ ok: false, reason: expect.stringMatching(/no longer exists/i) })
-    expect(readClosedTranscript(doc, 'closed-2').ok).toBe(false)
-    expect(readClosedTranscript(doc, 'nope').ok).toBe(false)
+    expect(await readClosedTranscript(doc, 'closed-1')).toEqual({ ok: false, reason: expect.stringMatching(/no longer exists/i) })
+    expect((await readClosedTranscript(doc, 'closed-2')).ok).toBe(false)
+    expect((await readClosedTranscript(doc, 'nope')).ok).toBe(false)
   })
 
-  test('readClosedTranscript returns the conversation as text', () => {
+  test('readClosedTranscript returns the conversation as text', async () => {
     const file = join(tempDir(), 't.jsonl')
     writeFileSync(file, `${JSON.stringify({ type: 'user', message: { content: 'hello there' } })}\n`)
-    const r = readClosedTranscript(docOf([], [{ ...entry, transcriptPath: file }]), 'closed-1')
+    const r = await readClosedTranscript(docOf([], [{ ...entry, transcriptPath: file }]), 'closed-1')
     expect(r).toEqual({ ok: true, text: expect.stringContaining('hello there') })
   })
 })

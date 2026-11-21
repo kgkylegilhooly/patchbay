@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
+import { runProgram } from '../../core/git/run'
 import { programArgs, type ClaudeProgram } from './claudeLaunch'
 
 /**
@@ -118,10 +118,10 @@ export function forgetHookRunners(): void {
 function output(file: string, args: string[]): Promise<string> {
   // programArgs builds cmd.exe's line as node-pty passes it: as written. Node would quote it again.
   const verbatim = /^cmd(.exe)?$/i.test(basename(file))
-  return new Promise((resolve, reject) => {
-    execFile(file, args, { encoding: 'utf8', windowsHide: true, timeout: 15_000, windowsVerbatimArguments: verbatim }, (error, stdout) => {
-      if (error && !stdout) reject(error)
-      else resolve(stdout)
-    })
+  // Through runProgram, so these first-launch questions start off the main thread. As with execFile before: what it
+  // printed counts even when it ended with an error, and nothing printed with an error is a failure.
+  return runProgram(file, args, { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 1024 * 1024, verbatim }).then((r) => {
+    if (r.code !== 0 && !r.stdout) throw new Error(r.stderr.trim() || (r.missing ? `${file} was not found` : `${file} ended with code ${r.code}`))
+    return r.stdout
   })
 }

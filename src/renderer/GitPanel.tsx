@@ -8,6 +8,7 @@ import { useStore } from './store'
 import { work } from './workBridge'
 import { Panel } from './shell/Panel'
 import { confirmThen } from './shell/confirmStore'
+import { oneAtATime } from './oneAtATime'
 import './work.css'
 
 type Tab = 'changes' | 'branches' | 'history'
@@ -49,6 +50,8 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   const asked = useStore((s) => s.gitFolder)
   const [repos, setRepos] = useState<RepoChoice[] | null>(null)
   const [root, setRoot] = useState<string | null>(null)
+  const shownRoot = useRef<string | null>(null)
+  shownRoot.current = root
   const [tab, setTab] = useState<Tab>('changes')
   const [status, setStatus] = useState<RepoStatus | null>(null)
   const [branches, setBranches] = useState<BranchInfo[]>([])
@@ -61,7 +64,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   const [file, setFile] = useState<{ path: string; staged: boolean } | null>(null)
   const [diff, setDiff] = useState<DiffResult | string | null>(null)
   const lastRefresh = useRef(0)
-  const inFlight = useRef(false)
+  const refreshes = useRef(oneAtATime())
 
   // Which repositories there are, worked out again only when the folders on the canvas change.
   const candidates = useMemo(() => (doc ? repoCandidates(doc, asked ? [] : selected) : []), [doc, asked, selected])
@@ -81,12 +84,14 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateKey])
 
-  const refresh = useCallback(async (which: Tab = tab) => {
-    if (!root || inFlight.current) return
-    inFlight.current = true
-    lastRefresh.current = Date.now()
-    try {
+  const refresh = useCallback((which: Tab = tab): Promise<void> => {
+    if (!root) return Promise.resolve()
+    // One at a time, and one asked for meanwhile, as after a pull, runs when the current one ends. See oneAtATime.ts.
+    return refreshes.current(async () => {
+      lastRefresh.current = Date.now()
       const [s, b] = await Promise.all([work.gitStatus(root), work.gitBranches(root)])
+      // Answers for a repository no longer shown are dropped.
+      if (shownRoot.current !== root) return
       if (!s.ok) {
         setError(s.error)
         return
@@ -96,12 +101,11 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
       if (b.ok) setBranches(b.branches)
       if (which === 'history') {
         const l = await work.gitLog(root)
+        if (shownRoot.current !== root) return
         if (l.ok) setLog({ rows: l.rows, truncated: l.truncated })
         else setError(l.error)
       }
-    } finally {
-      inFlight.current = false
-    }
+    })
   }, [root, tab])
 
   useEffect(() => {

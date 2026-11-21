@@ -1,4 +1,6 @@
-import { execFile, fork } from 'node:child_process'
+import { fork } from 'node:child_process'
+import { runProgram } from '../../core/git/run'
+import { mapFew } from '../proc/few'
 import type { PortInfo } from '../../shared/contract'
 
 export interface Listener {
@@ -109,7 +111,8 @@ export function createPortWatcher({
     if (rootIds !== knownIds || appeared) {
       try {
         processes = parseProcesses(await runProcessList())
-        const found = await Promise.all([...rootMap].map(async ([pid, nodeId]) => ({ nodeId, pids: await consoleMembers(pid).catch(() => []) })))
+        // Each asks a helper process: a couple at a time, so many new sessions don't start a burst of them at once.
+        const found = await mapFew([...rootMap], 2, async ([pid, nodeId]) => ({ nodeId, pids: await consoleMembers(pid).catch((): number[] => []) }))
         members = new Map(found.flatMap(({ nodeId, pids }) => pids.map((pid): [number, string] => [pid, nodeId])))
         knownIds = rootIds
       } catch {
@@ -139,10 +142,12 @@ export function createPortWatcher({
   }
 }
 
-const run = (file: string, args: string[]): Promise<string> =>
-  new Promise((resolve, reject) => {
-    execFile(file, args, { windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => (error ? reject(error) : resolve(stdout)))
-  })
+/** Through runProgram, so these checks every few seconds start their programs off the main thread. */
+const run = async (file: string, args: string[]): Promise<string> => {
+  const r = await runProgram(file, args, { env: process.env as Record<string, string>, timeoutMs: 30_000, maxBytes: 16 * 1024 * 1024 })
+  if (r.code !== 0) throw new Error(r.stderr.trim() || `${file} ended with code ${r.code}`)
+  return r.stdout
+}
 
 const CONSOLE_LIMIT_MS = 3000
 

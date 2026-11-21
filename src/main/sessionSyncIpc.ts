@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process'
 import { homedir } from 'node:os'
 import { ipcMain, powerMonitor, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
+import { runProgram } from '../core/git/run'
 import { tailLines } from '../core/transcript/peek'
 import type { CanvasStore } from '../shared/contract'
 import { isSessionNode, type TerminalNode } from '../shared/model'
@@ -17,7 +17,7 @@ const ADOPT_SIZE = { width: 560, height: 340 }
 
 function taskkillTree(pid: number): Promise<void> {
   // It fails if the process has already gone, which is what was wanted anyway.
-  return new Promise((resolve) => execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve()))
+  return runProgram('taskkill', ['/pid', String(pid), '/T', '/F'], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 }).then(() => undefined)
 }
 
 /**

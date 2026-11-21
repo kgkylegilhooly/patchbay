@@ -7,6 +7,8 @@ import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
+import { startProgramsOffThread } from './proc/setup'
+import { processGoneText } from './stuckParts'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
 import { claudeRunsBash, terminalProfiles } from './sessions/shell'
 import { terminalStartFor } from './sessions/terminalStart'
@@ -92,8 +94,8 @@ import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
 import { autoUpdater } from 'electron-updater'
 import { createUpdates, type Updater } from './updates'
-import { resolveClaude, type ClaudeProgram } from './sessions/claudeLaunch'
-import { resolveCodex } from './sessions/codexLaunch'
+import { lookUpClaudeAhead, resolveClaudeAsync, type ClaudeProgram } from './sessions/claudeLaunch'
+import { lookUpCodexAhead, resolveCodexAsync } from './sessions/codexLaunch'
 import { noteFromNode, registerFileShelfIpc } from './fileShelf/ipc'
 import { noteReaders } from './fileShelf/readers'
 
@@ -244,12 +246,21 @@ async function boot(): Promise<void> {
   log.write(`Patchbay ${app.getVersion()} started (Electron ${process.versions.electron}, pid ${process.pid}).`)
   watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`))
   logMemoryNowAndThen(app, log)
+  startProgramsOffThread(__dirname, (line) => log?.write(line))
   app.on('child-process-gone', (_e, details) => {
-    if (details.reason !== 'clean-exit') log?.write(`A ${details.type} process ended (${details.reason}, exit code ${details.exitCode}).`)
+    if (details.reason !== 'clean-exit') log?.write(processGoneText(details))
   })
   const currentSettings = () => parseSettings(readIfPresent(settingsFile))
   setEnvNotPassed(() => currentSettings().envNotPassed)
   readAgentsFrom(currentSettings)
+  {
+    // Found now, off the main thread, so the first agent started doesn't wait on where.exe. See claudeLaunch.ts.
+    const s = currentSettings()
+    void lookUpClaudeAhead({ terminal: s.claudeTerminal, command: s.claudeCommand })
+      .then(() => lookUpClaudeAhead({ command: s.codexCommand }))
+      .then(() => lookUpCodexAhead())
+      .catch(() => {})
+  }
   ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
 
   let saveErrorShown = false
@@ -641,13 +652,13 @@ async function boot(): Promise<void> {
   const refreshAgents = async (): Promise<void> => {
     if (currentSettings().usageSource === 'off') return
     try {
-      usage.setClaudeAccount(await readClaudeAccount(resolveClaude()))
+      usage.setClaudeAccount(await readClaudeAccount(await resolveClaudeAsync()))
     } catch {
       // No claude on PATH, or it couldn't say. The panel then shows no account line.
     }
     let codex: ClaudeProgram
     try {
-      codex = resolveCodex()
+      codex = await resolveCodexAsync()
     } catch {
       return // Codex isn't installed, so it has no section.
     }
