@@ -91,7 +91,7 @@
 }
 
 .recipe-source-personal {
-  color: var(--led-waiting);
+  color: var(--ink);
 }
 
 .recipe-source-repository {
@@ -262,7 +262,7 @@
 }
 
 .recipe-node-wait {
-  color: var(--led-waiting);
+  color: var(--ink-dim);
   font-size: var(--fs-sm);
 }
 

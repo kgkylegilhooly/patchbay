@@ -296,7 +296,7 @@
 }
 
 .evidence-partial {
-  color: var(--led-waiting);
+  color: var(--status-working);
 }
 
 .evidence-stale {

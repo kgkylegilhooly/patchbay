@@ -5,8 +5,7 @@ import { issuePrompt } from '../shared/issuePrompt'
 import { isSessionNode, type SessionNode } from '../shared/model'
 import { Icon, KindIcon } from './icons'
 import type { Commands } from './menus'
-import { runDot, runLabel } from './nodes/runView'
-import { StatusBadge, StatusDot } from './nodes/StatusBadge'
+import { RunDot, RunLabel, StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { dispatch, useStore } from './store'
 import { contextLabel } from './usageView'
 import { work } from './workBridge'
@@ -46,13 +45,13 @@ function SessionCard({ node }: { node: SessionNode }): React.JSX.Element {
   return (
     <>
       <span className="card-top">
-        <StatusDot status={node.kind === 'run' ? runDot(run) : status} nodeId={node.id} />
+        {node.kind === 'run' ? <RunDot run={run} /> : <StatusDot status={status} nodeId={node.id} />}
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <span className="card-title">{node.title}</span>
       </span>
       <span className="card-meta">
         {status && <StatusBadge status={status} nodeId={node.id} />}
-        {node.kind === 'run' && <span className="run-label">{runLabel(run)}</span>}
+        {node.kind === 'run' && <RunLabel run={run} />}
         {context && <span className={`session-context usage-${context.level}`}>{context.text}</span>}
       </span>
       <span className="card-where" title={node.cwd || undefined}>{node.cwd ? shortPath(node.cwd, root) : 'Home folder'}</span>

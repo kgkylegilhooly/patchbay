@@ -274,31 +274,12 @@
 }
 
 .workflow-state {
-  flex: none;
-  padding: 1px 8px;
-  color: var(--ink-dim);
-  font-size: var(--fs-xs);
-  border: 1px solid currentColor;
-  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
 }
 
-.workflow-state-running,
-.workflow-state-launching {
-  color: var(--led-working);
-}
-
-.workflow-state-waiting-for-you,
-.workflow-state-needs-attention,
-.workflow-state-interrupted {
-  color: var(--led-waiting);
-}
-
-.workflow-state-failed {
-  color: var(--led-needs);
-}
-
-.workflow-state-succeeded {
-  color: var(--led-idle);
+.workflow-run-chip .st {
+  margin-right: 6px;
+  vertical-align: 1px;
 }
 
 .workflow-run-steps {

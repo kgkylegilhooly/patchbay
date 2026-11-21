@@ -5,8 +5,8 @@ import { Icon, KindIcon } from './icons'
 import { ContextMenu } from './Menu'
 import { PeekButton, peekFrom } from './NeedsYouLayer'
 import { closedProjectMenu, type Commands, type Point } from './menus'
-import { runDot, runFailed, runLabel } from './nodes/runView'
-import { StatusBadge, StatusDot } from './nodes/StatusBadge'
+import { StatusMark } from './status/StatusMarks'
+import { RunDot, RunLabel, StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
 import type { Prefs } from './prefs'
@@ -68,7 +68,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
         }}
       >
         <span className="session-top">
-          <StatusDot status={session.kind === 'run' ? runDot(run) : status} nodeId={session.id} />
+          {session.kind === 'run' ? <RunDot run={run} /> : <StatusDot status={status} nodeId={session.id} />}
           {inStatus && <Badge project={project} />}
           <KindIcon kind={session.kind} agent={session.kind === 'claude' ? session.agent : undefined} />
           <span className="session-title">{session.title}</span>
@@ -79,7 +79,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
             </span>
           )}
           {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} />}
-          {session.kind === 'run' && <span className={`run-label${runFailed(run) ? ' run-label-failed' : ''}`}>{runLabel(run)}</span>}
+          {session.kind === 'run' && <RunLabel run={run} />}
         </span>
         {showWhere && (
           <span className="session-where-row">
@@ -99,7 +99,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   )
 }
 
-function SectionHead({ id, label, count, open, onToggle, help, badge }: { id: string; label: string; count: number; open: boolean; onToggle: () => void; help?: string; badge?: Project }): React.JSX.Element {
+function SectionHead({ id, label, count, open, onToggle, help, badge, mark }: { id: string; label: string; count: number; open: boolean; onToggle: () => void; help?: string; badge?: Project; mark?: React.ReactNode }): React.JSX.Element {
   return (
     <h3 className="sidebar-section-head">
       <button type="button" className={`sidebar-section${count === 0 ? ' sidebar-section-empty' : ''}`} data-section={id} aria-expanded={open} title={help} onClick={onToggle}>
@@ -107,6 +107,7 @@ function SectionHead({ id, label, count, open, onToggle, help, badge }: { id: st
           <Icon name="chevron" size={12} />
         </span>
         <Badge project={badge} />
+        {mark}
         <span className="session-title">{label}</span>
         <span className="sidebar-count">{count}</span>
       </button>
@@ -207,7 +208,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
             const id = `status:${section.id}`
             return (
               <section key={section.id} data-status-section={section.id}>
-                <SectionHead id={id} label={section.label} count={section.sessions.length} help={section.help} open={isOpen(id)} onToggle={() => toggle(id)} />
+                <SectionHead id={id} label={section.label} count={section.sessions.length} help={section.help} open={isOpen(id)} onToggle={() => toggle(id)} mark={section.tone ? <StatusMark look={{ tone: section.tone, label: section.label }} size={8} /> : <span className="session-unseen" aria-hidden="true" />} />
                 {isOpen(id) && section.sessions.length > 0 && <ul className="sidebar-body">{section.sessions.map(row)}</ul>}
                 {isOpen(id) && section.sessions.length === 0 && section.id === 'needs-you' && !filtering && <p className="sidebar-empty">All clear.</p>}
               </section>

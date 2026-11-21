@@ -320,36 +320,8 @@
 }
 
 .compare-status {
-  display: inline-flex;
   flex: 1;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-dim);
   font-size: var(--fs-sm);
-}
-
-.compare-status i {
-  width: 8px;
-  height: 8px;
-  background: var(--hole);
-  border-radius: 50%;
-}
-
-.compare-status-working i,
-.compare-status-starting i {
-  background: var(--led-working);
-}
-
-.compare-status-idle i {
-  background: var(--led-idle);
-}
-
-.compare-status-needs-you i {
-  background: var(--led-needs);
-}
-
-.compare-status-queued i {
-  background: var(--led-waiting);
 }
 
 .compare-approach {
