@@ -22,6 +22,19 @@ export class SessionStartError extends Error {
   }
 }
 
+/** The session is already running, so it can be joined rather than started. See docs/plans/session-sync.md. */
+export class SessionAlreadyRunning extends SessionStartError {
+  constructor(id: string) {
+    super('spawn-failed', `Session ${id} is already running.`)
+    this.name = 'SessionAlreadyRunning'
+  }
+}
+
+/** Also true of the host's refusal as it crosses the pipe, which keeps only the message: the host may be an older build. */
+export function isAlreadyRunning(e: unknown): boolean {
+  return e instanceof SessionAlreadyRunning || (e instanceof Error && /^Session .+ is already running\.$/.test(e.message))
+}
+
 interface Session {
   proc: pty.IPty
   running: boolean
@@ -121,9 +134,7 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
   return {
     start(spec: SessionSpec): void {
       const id = spec.nodeId
-      if (sessions.get(id)?.running) {
-        throw new SessionStartError('spawn-failed', `Session ${id} is already running.`)
-      }
+      if (sessions.get(id)?.running) throw new SessionAlreadyRunning(id)
       if (!isDirectory(spec.cwd)) {
         throw new SessionStartError('cwd-missing', `Folder not found: ${spec.cwd}`)
       }

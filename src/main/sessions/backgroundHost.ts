@@ -1,5 +1,5 @@
 import type { HostInfo, SessionHost, SessionSpec } from '../../shared/contract'
-import { SessionStartError, type PtyHost } from './host'
+import { isAlreadyRunning, SessionAlreadyRunning, SessionStartError, type PtyHost } from './host'
 import { connectToHost, HostRequestError, type ConnectResult, type HostConnection, type HostWelcome } from './hostClient'
 import { HOST_PROTOCOL, type HostedSession, type HostMessage } from './hostProtocol'
 import { createSessionBuffer, type SessionBuffer } from './sessionBuffer'
@@ -11,6 +11,11 @@ const RETRY_MS = 100
 /** A dropped connection to a host that's still there comes back at once. */
 const RECONNECT_TRIES = 3
 const RECONNECT_GAP_MS = 300
+/**
+ * A host whose pipe is still there but that doesn't answer, as under memory pressure, hasn't gone: it's given this long
+ * before its sessions are counted as ended. See docs/plans/session-sync.md.
+ */
+const UNRESPONSIVE_PATIENCE_MS = 30000
 /** The host's own limit on stopping is 5 s. */
 const STOP_WAIT_MS = 8000
 /** Closing a pipe takes a moment. Exiting the process before it has can hang the exit. */
@@ -35,6 +40,12 @@ interface Mirror {
   adopted: boolean
   /** What the host last told its program. */
   size?: { cols: number; rows: number }
+  /** A start is under way, so the host may not have it yet. */
+  starting?: boolean
+  /** While it was starting, a reconnect found the host already running it. */
+  foundRunning?: boolean
+  /** When it was made, as a count, so a check of the host's list can pass over mirrors newer than that list. */
+  gen: number
 }
 
 export interface BackgroundHost extends SessionHost {
@@ -55,6 +66,13 @@ export interface BackgroundHost extends SessionHost {
   stopHost(): Promise<void>
   /** The host went away with sessions in it, without anybody asking. */
   onLost(cb: () => void): void
+  /**
+   * A session this app had counted as ended, or never heard of, turned out to be running in the host, as after a
+   * reconnect to a host it had given up on. Its mirror is live again and its views have been sent its whole buffer.
+   */
+  onRevive(cb: (id: string) => void): void
+  /** Asks the host what it runs and puts the mirrors right. Null when there's no host to ask. */
+  refresh(): Promise<HostedSession[] | null>
 }
 
 export interface BackgroundHostOptions {
@@ -85,6 +103,10 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   const exitListeners: Array<(id: string, code: number) => void> = []
   const infoListeners: Array<(info: HostInfo) => void> = []
   const lostListeners: Array<() => void> = []
+  const reviveListeners: Array<(id: string) => void> = []
+  /** Connected once already, so what a later connection finds running is a session coming back, not one to adopt. */
+  let booted = false
+  let generation = 0
 
   let connection: HostConnection | null = null
   let local: PtyHost | null = null
@@ -155,7 +177,11 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
 
   /** Fills a mirror from the host's buffer and joins its live output, with nothing lost or repeated. */
   const attach = async (conn: HostConnection, session: HostedSession, reset: boolean): Promise<void> => {
-    const mirror: Mirror = mirrors.get(session.id) ?? {
+    const known = mirrors.get(session.id)
+    // Running in the host, though this app had counted it as ended or never heard of it. See docs/plans/session-sync.md.
+    const revived = booted && session.running && !known?.running
+    if (known?.starting && session.running) known.foundRunning = true
+    const mirror: Mirror = known ?? {
       running: session.running,
       pid: session.pid,
       buffer: createSessionBuffer(bufferBytes),
@@ -164,19 +190,33 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       queue: null,
       repaint: false,
       adopted: session.running,
-      size: session.size
+      size: session.size,
+      gen: ++generation
     }
     mirrors.set(session.id, mirror)
     mirror.queue = []
     const { data } = (await conn.request('attach', { id: session.id })) as { data: string }
     mirror.buffer = createSessionBuffer(bufferBytes, data)
     mirror.pid = session.pid
-    if (reset) emitOutput(session.id, `${FULL_RESET}${data}`)
+    if (revived) {
+      mirror.running = true
+      mirror.exitCode = null
+      mirror.exitedAt = null
+      // Its program may need telling to redraw, as one adopted at launch does.
+      mirror.adopted = true
+      mirror.size = session.size ?? mirror.size
+    }
+    // A view of a revived session missed what it printed meanwhile, so it gets the whole buffer from a clean slate.
+    if (reset || revived) emitOutput(session.id, `${FULL_RESET}${data}`)
     const queued = mirror.queue
     mirror.queue = null
     for (const apply of queued) apply()
     // The host's record is the truth, for one that ended while nobody was connected.
-    if (!session.running && mirror.running) markExited(session.id, mirror, session.exitCode ?? -1, session.exitedAt ?? undefined)
+    if (!session.running && mirror.running && !mirror.starting) markExited(session.id, mirror, session.exitCode ?? -1, session.exitedAt ?? undefined)
+    if (revived && mirror.running) {
+      for (const cb of reviveListeners) cb(session.id)
+      changed()
+    }
   }
 
   const wire = (conn: HostConnection): void => {
@@ -215,6 +255,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         wire(result.connection)
         const list = (await result.connection.request('list')) as HostedSession[]
         await Promise.all(list.map((session) => attach(result.connection, session, false)))
+        booted = true
         setMode('background')
         return
       }
@@ -257,9 +298,19 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     return connecting
   }
 
-  const connectionLost = async (): Promise<void> => {
+  /** A reconnect under way, which attaches every session: a refresh waits for it rather than attach them over it. */
+  let reconnecting: Promise<void> | null = null
+  const connectionLost = (): Promise<void> => {
+    reconnecting = reconnect().finally(() => {
+      reconnecting = null
+    })
+    return reconnecting
+  }
+
+  const reconnect = async (): Promise<void> => {
     if (leaving) return
-    for (let i = 0; i < RECONNECT_TRIES; i++) {
+    const patience = Date.now() + UNRESPONSIVE_PATIENCE_MS
+    for (let i = 0; i < RECONNECT_TRIES || Date.now() < patience; i++) {
       await sleep(RECONNECT_GAP_MS)
       const result = await connectToHost({ pipe: opts.pipe, secret: opts.secret, protocol })
       if (result.kind === 'ok') {
@@ -267,13 +318,14 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         try {
           const list = (await result.connection.request('list')) as HostedSession[]
           await Promise.all(
-            list.filter((s) => mirrors.has(s.id)).map((session) => {
+            // One this app never heard of is included if it runs: a start whose reply was lost with the connection.
+            list.filter((s) => mirrors.has(s.id) || s.running).map((session) => {
               // A view can't tell what it missed, so it gets the whole buffer again from a clean slate.
               return attach(result.connection, session, true)
             })
           )
           const known = new Set(list.map((s) => s.id))
-          for (const [id, mirror] of mirrors) if (!known.has(id)) markExited(id, mirror, -1)
+          for (const [id, mirror] of mirrors) if (!known.has(id) && !mirror.starting) markExited(id, mirror, -1)
           changed()
           return
         } catch {
@@ -282,6 +334,8 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       }
       if (result.kind === 'other-protocol') result.connection.close()
       if (result.kind === 'absent') break
+      // Only a host that's there but not answering earns the longer wait.
+      if (result.kind !== 'unresponsive' && i >= RECONNECT_TRIES - 1) break
     }
     welcome = null
     const hadSessions = [...mirrors.values()].some((m) => m.running)
@@ -301,6 +355,35 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     },
     onLost(cb) {
       lostListeners.push(cb)
+    },
+    onRevive(cb) {
+      reviveListeners.push(cb)
+    },
+
+    async refresh() {
+      if (reconnecting) await reconnecting
+      const conn = connection
+      if (mode !== 'background' || !conn) return null
+      const asked = generation
+      let list: HostedSession[]
+      try {
+        list = (await conn.request('list')) as HostedSession[]
+      } catch {
+        return null // Gone again: losing the connection deals with it.
+      }
+      if (connection !== conn) return null
+      const byId = new Map(list.map((s) => [s.id, s]))
+      for (const session of list) {
+        if (session.running && !mirrors.get(session.id)?.running) await attach(conn, session, false).catch(() => {})
+      }
+      // Only mirrors older than the list can be judged by it, and never one still starting.
+      for (const [id, mirror] of mirrors) {
+        if (!mirror.running || mirror.starting || mirror.gen > asked) continue
+        const there = byId.get(id)
+        if (!there) markExited(id, mirror, -1)
+        else if (!there.running) markExited(id, mirror, there.exitCode ?? -1, there.exitedAt ?? undefined)
+      }
+      return list
     },
 
     sessions() {
@@ -324,7 +407,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       if (mode === 'other-version') {
         throw new SessionStartError('spawn-failed', 'Sessions can\'t start until you decide what to do with the older session host. Look in Settings under Background sessions.')
       }
-      if (mirrors.get(id)?.running) throw new SessionStartError('spawn-failed', `Session ${id} is already running.`)
+      if (mirrors.get(id)?.running) throw new SessionAlreadyRunning(id)
       const previous = mirrors.get(id)
       // Counted as running from here on, so nothing can start the same session twice while this is under way.
       const mirror: Mirror = {
@@ -336,9 +419,19 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         queue: null,
         repaint: false,
         adopted: false,
-        size: sizes.get(id)
+        size: sizes.get(id),
+        starting: true,
+        gen: ++generation
       }
       mirrors.set(id, mirror)
+      /** The host was running it all along, so this joins that session rather than start a second. */
+      const joined = (): SessionAlreadyRunning => {
+        mirror.starting = false
+        mirror.foundRunning = false
+        mirror.adopted = true
+        changed()
+        return new SessionAlreadyRunning(id)
+      }
       const undo = (): void => {
         if (previous) mirrors.set(id, previous)
         else mirrors.delete(id)
@@ -348,6 +441,11 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       } catch (e) {
         undo()
         throw e
+      }
+      // Reconnecting just now found it running. Its buffer is the host's, which views haven't seen.
+      if (mirror.foundRunning) {
+        emitOutput(id, `${FULL_RESET}${mirror.buffer.read()}`)
+        throw joined()
       }
       if (mode === 'in-process' && local) {
         undo()
@@ -364,10 +462,19 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       }
       try {
         const { pid } = (await conn.request('start', { spec, size: sizes.get(id) })) as { pid: number | null }
+        mirror.starting = false
         // A very short-lived program may already have reported its exit.
         if (mirror.running) mirror.pid = pid
         changed()
       } catch (e) {
+        // The host already runs it, out of this app's sight: join it rather than leave it unreachable.
+        if (isAlreadyRunning(e) && connection === conn) {
+          const there = await conn.request('list').then((l) => (l as HostedSession[]).find((s) => s.id === id && s.running), () => undefined)
+          if (there) {
+            await attach(conn, there, true)
+            if (mirror.running) throw joined()
+          }
+        }
         undo()
         const reason = e instanceof HostRequestError ? e.reason : undefined
         throw new SessionStartError(reason ?? 'spawn-failed', (e as Error).message)
