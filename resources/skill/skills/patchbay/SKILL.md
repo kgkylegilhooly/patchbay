@@ -94,7 +94,8 @@ An agent whose turn ended on an API error, such as its usage limit, shows `unkno
 `kind` (`usage-limit`, `rate-limit`, `auth`, `billing`, `server` or `error`), `until` (when a limit resets, or null)
 and `text`, which says what happens to messages for it.
 
-Trigger nodes show a `trigger` entry: whether it's `armed`, its schedule, its `target`, `nextAt` and its last run. A
+Trigger nodes show a `trigger` entry: whether it's `armed`, its schedule (with its start and end, if it has them, as in
+"Every 5 minutes, from 21 Nov 14:00 until 22 Nov 09:00"), its `target`, `nextAt` and its last run. A
 trigger sends a prompt to its target on a schedule, or when something happens: an agent finishes a turn, needs you or
 exits, a run node finishes or fails, or files change in a folder. An event trigger can run a check command first and
 fire only if it exits 0, and has a cool-down and an hourly cap. Only the person at the canvas can arm, edit or create

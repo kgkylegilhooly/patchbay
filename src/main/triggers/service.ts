@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { armRefusal, canonicalSpec, isArmed, isTriggerTarget } from '../../core/trigger/arming'
 import { describeEventHappened, describeSeconds, eventVars, expandPrompt, isEventSchedule, limitsOf, outputTail, type TriggerEvent } from '../../core/trigger/events'
 import { nextRun, slotsUpTo } from '../../core/trigger/schedule'
+import { inWindow, windowOf } from '../../core/trigger/window'
 import type { RunResult as ProgramResult } from '../../core/git/run'
 import type { CanvasStore, RunResult, SessionHost } from '../../shared/contract'
 import { agentOf, DISARMED, type AgentStatus, type TriggerNode, type TriggerRun, type TriggerState } from '../../shared/model'
@@ -255,7 +256,8 @@ export function createTriggerService({
 
   /** An event for an armed trigger: through the gate, then fired. */
   const onEvent = (node: TriggerNode, event: TriggerEvent, at: number): void => {
-    if (!running || !isArmed(node)) return
+    // Outside its start and end, an event is ignored, not recorded.
+    if (!running || !isArmed(node) || !inWindow(windowOf(node), at)) return
     const limits = limitsOf(node)!
     if (checking.has(node.id)) return skip(node.id, 'event', 'Its last check before firing was still running.', event)
     const times = (fired.get(node.id) ?? []).filter((t) => at - t < HOUR_MS)
@@ -286,7 +288,7 @@ export function createTriggerService({
     if (kind) {
       for (const node of triggers()) {
         const s = node.schedule
-        if (s.type !== 'agent' || s.nodeId !== id || s.on !== kind || !isArmed(node)) continue
+        if (s.type !== 'agent' || s.nodeId !== id || s.on !== kind || !isArmed(node) || !inWindow(windowOf(node), now())) continue
         const own = ownTurns.get(node.id)
         // Only once that turn has begun: the idle a waiting prompt is delivered on ends someone else's turn.
         if (own?.targetId === id && own.started && own.endedAt === null) skip(node.id, 'event', OWN_TURN, { type: 'agent', nodeTitle: titleOf(id), on: kind })
@@ -311,6 +313,7 @@ export function createTriggerService({
   const onBatch = (id: string, folder: string, b: FileBatch): void => {
     const node = find(id)
     if (!node || node.schedule.type !== 'files') return
+    if (!inWindow(windowOf(node), now())) return
     const event: TriggerEvent = { type: 'files', folder, files: b.files, total: b.total }
     const own = ownTurns.get(id)
     const end = own ? ownTurnEnd(own) : 0
@@ -359,12 +362,12 @@ export function createTriggerService({
 
   /** Moves past every slot up to now. A one-off with none left keeps its agreement until anything it sent settles. */
   const advance = (node: TriggerNode, t: number): void => {
-    setState(node.id, { nextAt: nextRun(node.schedule, t, node.armedAt ?? t) })
+    setState(node.id, { nextAt: nextRun(node.schedule, t, node.armedAt ?? t, node) })
     finishIfSpent(node.id)
   }
 
   const missedSlots = (node: TriggerNode, t: number, why: string): void => {
-    const { count, last, capped } = slotsUpTo(node.schedule, node.nextAt!, t, node.armedAt ?? node.nextAt!)
+    const { count, last, capped } = slotsUpTo(node.schedule, node.nextAt!, t, node.armedAt ?? node.nextAt!, node)
     const runs = count === 1 ? `the run due ${when(last)}` : `${capped ? `more than ${count}` : count} runs, the last due ${when(last)}`
     record(node.id, { id: randomUUID(), at: last, source: 'schedule', outcome: 'missed', detail: `Skipped ${runs}: ${why}` })
     advance(node, t)
@@ -374,7 +377,8 @@ export function createTriggerService({
     if (timer) clearTimeout(timer)
     timer = null
     if (!running) return
-    const due = triggers().filter(isArmed).map((n) => n.nextAt).filter((at): at is number => at !== null)
+    // An event trigger has no slots, but wakes at its end to finish.
+    const due = triggers().filter(isArmed).map((n) => (isEventSchedule(n.schedule) ? windowOf(n)?.end ?? null : n.nextAt)).filter((at): at is number => at !== null)
     const wait = due.length ? Math.max(0, Math.min(MAX_WAIT_MS, Math.min(...due) - now())) : MAX_WAIT_MS
     timer = setTimeout(tick, wait)
     timer.unref?.()
@@ -383,6 +387,9 @@ export function createTriggerService({
   const tick = (): void => {
     const t = now()
     for (const node of triggers()) {
+      // An event trigger whose end has passed is finished, as a one-off is once it has run.
+      const end = windowOf(node)?.end ?? null
+      if (isEventSchedule(node.schedule) && end !== null && end < t && isArmed(node)) setState(node.id, { ...DISARMED })
       if (!isArmed(node) || node.nextAt === null || node.nextAt > t) continue
       if (t - node.nextAt > LATE_LIMIT_MS) missedSlots(node, t, 'Patchbay couldn\'t run it then, as when the PC is asleep.')
       else {
@@ -469,7 +476,7 @@ export function createTriggerService({
       if (refusal) return { ok: false, reason: refusal }
       fired.delete(id)
       ownTurns.delete(id)
-      setState(id, { armedSpec: shown, armedAt: t, nextAt: nextRun(node.schedule, t, t) })
+      setState(id, { armedSpec: shown, armedAt: t, nextAt: nextRun(node.schedule, t, t, node) })
       return { ok: true }
     },
     disarm(id) {

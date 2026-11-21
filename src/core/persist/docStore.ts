@@ -79,7 +79,9 @@ function isTriggerExtras(n: Fields): boolean {
   const l = n.limits
   return (
     (p === undefined || p === null || (isObject(p) && Array.isArray(p.argv) && p.argv.every(isString) && isString(p.cwd))) &&
-    (l === undefined || (isObject(l) && isNumber(l.gapMs) && isNumber(l.perHour)))
+    (l === undefined || (isObject(l) && isNumber(l.gapMs) && isNumber(l.perHour))) &&
+    (n.startsAt === undefined || isNumberOrNull(n.startsAt)) &&
+    (n.endsAt === undefined || isNumberOrNull(n.endsAt))
   )
 }
 
