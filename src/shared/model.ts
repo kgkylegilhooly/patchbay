@@ -127,6 +127,9 @@ export interface TriggerNode extends Base {
   preflight?: TriggerPreflight | null
   /** For event kinds. Absent means the defaults. Part of what arming agrees to. */
   limits?: TriggerLimits
+  /** Nothing fires before `startsAt` or after `endsAt`. Absent or null means no limit. Not for a one-off. Part of what arming agrees to. See src/core/trigger/window.ts. */
+  startsAt?: number | null
+  endsAt?: number | null
 }
 
 /** The part of a trigger that only the trigger service changes. */

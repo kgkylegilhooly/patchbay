@@ -161,6 +161,47 @@ const scenes = {
     await page.select('form[aria-label="New trigger"] [name="target"]', 'idle')
     await sleep(200)
   },
+  // A start and an end: see src/core/trigger/window.ts. Tomorrow 14:00 until the day after, 09:00.
+  'trigger-window-form': async (page) => {
+    await rightClickCanvas(page)
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="new-trigger"]')
+    await sleep(200)
+    const form = 'form[aria-label="New trigger"]'
+    await page.type(`${form} [name="prompt"]`, 'Check the deploy and report anything failing.')
+    await page.select(`${form} [name="target"]`, 'idle')
+    await page.evaluate((form) => {
+      const pad = (n) => String(n).padStart(2, '0')
+      const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      const day = new Date()
+      const set = (name, value) => {
+        const input = document.querySelector(`${form} [name="${name}"]`)
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      set('startsAt', local(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 14, 0)))
+      set('endsAt', local(new Date(day.getFullYear(), day.getMonth(), day.getDate() + 2, 9, 0)))
+    }, form)
+    await sleep(200)
+  },
+  'trigger-window-arm': async (page) => {
+    await page.evaluate(async () => {
+      const day = new Date()
+      const startsAt = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 14, 0).getTime()
+      const endsAt = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 2, 9, 0).getTime()
+      await window.patchbay.dispatch({
+        op: 'addNode',
+        node: {
+          id: 'trig', kind: 'trigger', title: 'Deploy watch', x: 900, y: 680, width: 360, height: 400, parentId: null, projectId: 'p1',
+          schedule: { type: 'interval', everyMs: 300000 }, prompt: 'echo checking the deploy', targetId: 'term', startsAt, endsAt, armedSpec: null, armedAt: null, nextAt: null, runs: []
+        }
+      })
+    })
+    await page.click('[data-cmd="toggle-sidebar"]')
+    await sleep(300)
+    await page.click('.react-flow__node[data-id="trig"] [data-trigger-action="arm"]')
+    await sleep(300)
+  },
   // Event triggers: see src/core/trigger/events.ts.
   'trigger-events-form': async (page) => {
     await rightClickCanvas(page)

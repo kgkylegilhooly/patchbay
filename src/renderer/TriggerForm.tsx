@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react'
 import { canonicalSpec, MAX_TRIGGER_PROMPT, type TriggerTarget } from '../core/trigger/arming'
 import { describeLimits, folderProblem, isEventSchedule, limitsError, limitsOf, PLACEHOLDERS, placeholderProblem, preflightText, projectRoots } from '../core/trigger/events'
 import { describeSchedule, nextRuns, scheduleError } from '../core/trigger/schedule'
+import { windowError, type TriggerWindow } from '../core/trigger/window'
 import type { TriggerLimits, TriggerNode, TriggerPreflight, TriggerSchedule } from '../shared/model'
 import { bridge } from './bridge'
 import { PopTitle, popKeys, SubmitHint } from './popForm'
 import { useStore } from './store'
-import { draftOf, extrasDraftOf, extrasOf, scheduleOf, type ExtrasDraft, type IntervalUnit, type ScheduleDraft } from './triggerView'
+import { draftOf, extrasDraftOf, extrasOf, scheduleOf, windowDraftOf, windowFieldsOf, type ExtrasDraft, type IntervalUnit, type ScheduleDraft, type WindowDraft } from './triggerView'
 import { upcomingText } from './upcomingText'
 import './triggerEvents.css'
 
@@ -16,12 +17,14 @@ export interface TriggerFields {
   targetId: string | null
   preflight: TriggerPreflight | null
   limits: TriggerLimits | undefined
+  startsAt: number | null
+  endsAt: number | null
 }
 
-function Upcoming({ schedule }: { schedule: TriggerSchedule }): React.JSX.Element | null {
+function Upcoming({ schedule, window: w }: { schedule: TriggerSchedule; window: TriggerWindow }): React.JSX.Element | null {
   const now = Date.now()
-  const times = nextRuns(schedule, now, now, 3)
-  if (!times.length) return null
+  const times = nextRuns(schedule, now, now, 3, w)
+  if (!times.length) return w.endsAt != null ? <p className="pop-note">No runs fall before its end.</p> : null
   return <p className="pop-note">Next: {upcomingText(times, now)}</p>
 }
 
@@ -44,6 +47,7 @@ export function TriggerForm({
   const runNodes = useMemo(() => (doc?.nodes ?? []).filter((n) => n.kind === 'run' && n.projectId === projectId), [doc, projectId])
   const [draft, setDraft] = useState<ScheduleDraft>(() => draftOf(editing?.schedule ?? { type: 'interval', everyMs: 5 * 60_000 }, Date.now(), projectFolder))
   const [extras, setExtras] = useState<ExtrasDraft>(() => extrasDraftOf(editing, projectFolder))
+  const [win, setWin] = useState<WindowDraft>(() => windowDraftOf(editing))
   const [prompt, setPrompt] = useState(editing?.prompt ?? '')
   const [targetId, setTargetId] = useState<string | null>(editing?.targetId ?? null)
   /** What's missing from "When" shows once Create has been tried, not as soon as a kind is picked. */
@@ -55,8 +59,10 @@ export function TriggerForm({
   const whenProblem = scheduleError(schedule) ?? (schedule.type === 'files' ? folderProblem(schedule.folder, roots, 'it watches') : null)
   const checkProblem = commandProblem ?? (preflight ? folderProblem(preflight.cwd, roots, 'the check runs in') : null)
   const limitsProblem = limitsError(limits)
+  const windowFields = windowFieldsOf(win, schedule)
+  const windowProblem = windowError({ schedule, ...windowFields })
   const promptProblem = placeholderProblem(prompt, schedule) ?? (prompt.length > MAX_TRIGGER_PROMPT ? 'The prompt is too long.' : null)
-  const problem = whenProblem ?? promptProblem ?? checkProblem ?? limitsProblem
+  const problem = whenProblem ?? windowProblem ?? promptProblem ?? checkProblem ?? limitsProblem
   const title = editing ? 'Edit trigger' : 'New trigger'
   const set = (patch: Partial<ScheduleDraft>): void => setDraft((d) => ({ ...d, ...patch }))
   const setX = (patch: Partial<ExtrasDraft>): void => setExtras((d) => ({ ...d, ...patch }))
@@ -69,7 +75,7 @@ export function TriggerForm({
       onSubmit={(e) => {
         e.preventDefault()
         setTried(true)
-        if (!problem) onSave({ schedule, prompt, targetId, preflight, limits })
+        if (!problem) onSave({ schedule, prompt, targetId, preflight, limits, ...windowFields })
       }}
     >
       <PopTitle icon="trigger">{title}</PopTitle>
@@ -144,8 +150,26 @@ export function TriggerForm({
             <p className="pop-note">.git and node_modules are never watched. A pattern without / matches file names at any depth.</p>
           </div>
         )}
-        {whenProblem ? tried && <p className="field-problem">{whenProblem}</p> : event ? null : <Upcoming schedule={schedule} />}
+        {whenProblem ? tried && <p className="field-problem">{whenProblem}</p> : event ? null : !windowProblem && <Upcoming schedule={schedule} window={windowFields} />}
       </div>
+      {draft.type !== 'once' && (
+        <div className="field" data-trigger="window">
+          <span className="field-label">Starts and ends (optional)</span>
+          <div className="trigger-when">
+            <span className="trigger-unit">From</span>
+            <input name="startsAt" type="datetime-local" aria-label="Starts" value={win.starts} onChange={(e) => setWin((d) => ({ ...d, starts: e.target.value }))} />
+            <span className="trigger-unit">until</span>
+            <input name="endsAt" type="datetime-local" aria-label="Ends" value={win.ends} onChange={(e) => setWin((d) => ({ ...d, ends: e.target.value }))} />
+          </div>
+          {windowProblem ? (
+            <p className="field-problem">{windowProblem}</p>
+          ) : (
+            <span className="pop-note">
+              {event ? 'Events before the start or after the end are ignored.' : draft.type === 'interval' ? 'With a start, it runs at the start itself, then every interval from it.' : 'Only times from the start up to the end run.'} Empty means no limit. After the end it's done.
+            </span>
+          )}
+        </div>
+      )}
       <label className="field">
         <span className="field-label">Prompt to send</span>
         <textarea name="prompt" rows={4} autoFocus={!editing} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
@@ -217,7 +241,7 @@ export function ArmReview({ node, target, onClose }: { node: TriggerNode; target
   const [problem, setProblem] = useState<string | null>(null)
   const nodes = useStore((s) => s.doc?.nodes)
   const now = Date.now()
-  const upcoming = nextRuns(node.schedule, now, now, 3)
+  const upcoming = nextRuns(node.schedule, now, now, 3, node)
   const limits = limitsOf(node)
   const name = (id: string): string | undefined => nodes?.find((n) => n.id === id)?.title
   return (
@@ -235,7 +259,7 @@ export function ArmReview({ node, target, onClose }: { node: TriggerNode; target
       <dl className="arm-review">
         <dt>When</dt>
         <dd data-arm="schedule">
-          {describeSchedule(node.schedule, name)}
+          {describeSchedule(node.schedule, name, node)}
           {upcoming.length > 0 && <span className="arm-next">Next: {upcomingText(upcoming, now)}</span>}
         </dd>
         {node.preflight && (

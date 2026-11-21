@@ -1,11 +1,12 @@
 import type { CanvasDoc, CanvasNode, ClaudeNode, TerminalNode, TriggerNode, TriggerSchedule } from '../../shared/model'
 import { eventRefusal, isEventSchedule, limitsOf, loopRefusal } from './events'
-import { nextRun, scheduleError } from './schedule'
+import { nextRun, scheduleError, windowEnded } from './schedule'
+import { describeWhen, windowError, windowOf } from './window'
 
 /** A prompt is typed into a session, so it has to fit in one sensibly. */
 export const MAX_TRIGGER_PROMPT = 20000
 
-export type TriggerContent = Pick<TriggerNode, 'schedule' | 'prompt' | 'targetId' | 'preflight' | 'limits'>
+export type TriggerContent = Pick<TriggerNode, 'schedule' | 'prompt' | 'targetId' | 'preflight' | 'limits' | 'startsAt' | 'endsAt'>
 
 function whenOf(s: TriggerSchedule): unknown[] {
   switch (s.type) {
@@ -27,17 +28,22 @@ function whenOf(s: TriggerSchedule): unknown[] {
 /**
  * The exact content someone agrees to by arming. Comparing this string is how arming stays tied to what was shown: any
  * change to the schedule, prompt or target makes the trigger stop matching what was agreed, however that change was made.
- * A check before firing and an event's limits are part of it too. They're added only when there are any, so a trigger
- * saved before they existed keeps the same string and stays armed.
+ * A check before firing, an event's limits and the start and end are part of it too. They're added only when there are
+ * any, so a trigger saved before they existed keeps the same string and stays armed.
  */
 export function canonicalSpec(node: TriggerContent): string {
   const { schedule, prompt, targetId, preflight } = node
   const limits = limitsOf(node)
-  const extras = { ...(preflight && { preflight: [preflight.argv, preflight.cwd.trim()] }), ...(limits && { limits: [limits.gapMs, limits.perHour] }) }
+  const win = windowOf(node)
+  const extras = {
+    ...(preflight && { preflight: [preflight.argv, preflight.cwd.trim()] }),
+    ...(limits && { limits: [limits.gapMs, limits.perHour] }),
+    ...(win && { window: [win.start, win.end] })
+  }
   return JSON.stringify(Object.keys(extras).length ? [whenOf(schedule), prompt, targetId, extras] : [whenOf(schedule), prompt, targetId])
 }
 
-export function isArmed(node: Pick<TriggerNode, 'armedSpec' | 'schedule' | 'prompt' | 'targetId' | 'preflight' | 'limits'>): boolean {
+export function isArmed(node: Pick<TriggerNode, 'armedSpec'> & TriggerContent): boolean {
   return node.armedSpec !== null && node.armedSpec === canonicalSpec(node)
 }
 
@@ -54,7 +60,7 @@ export function targetsFor(doc: Pick<CanvasDoc, 'nodes'>, trigger: Pick<TriggerN
 
 /** Why this trigger can't be armed, or null if it can. */
 export function armRefusal(node: TriggerNode, doc: Pick<CanvasDoc, 'nodes'> & Partial<Pick<CanvasDoc, 'projects'>>, now: number): string | null {
-  const problem = scheduleError(node.schedule)
+  const problem = scheduleError(node.schedule) ?? windowError(node)
   if (problem) return problem
   if (!node.prompt.trim()) return 'Write the prompt it should send.'
   if (node.prompt.length > MAX_TRIGGER_PROMPT) return `The prompt is too long (limit ${MAX_TRIGGER_PROMPT} characters).`
@@ -62,12 +68,17 @@ export function armRefusal(node: TriggerNode, doc: Pick<CanvasDoc, 'nodes'> & Pa
   const target = doc.nodes.find((n) => n.id === node.targetId)
   if (!isTriggerTarget(target)) return 'What it sends to is gone. Choose a terminal or a Claude session.'
   if (target.projectId !== node.projectId) return 'What it sends to is in another project.'
+  // A start that has passed just means now. An end that has passed can't be agreed to.
+  const end = windowOf(node)?.end ?? null
+  if (end !== null && windowEnded(node, now)) {
+    return end <= now ? `Its end, ${describeWhen(end, now)}, has passed. Choose a later end, or clear it.` : 'No run falls before its end. Choose a later end.'
+  }
   const event = eventRefusal(node, { nodes: doc.nodes, projects: doc.projects ?? [] })
   if (event) return event
   if (isEventSchedule(node.schedule)) {
     const armed = doc.nodes.filter((n): n is TriggerNode => n.kind === 'trigger' && n.id !== node.id && isArmed(n))
     return loopRefusal(node, armed, doc.nodes)
   }
-  if (nextRun(node.schedule, now, now) === null) return node.schedule.type === 'once' ? 'That time has passed. Choose a later one.' : 'That schedule has no more runs.'
+  if (nextRun(node.schedule, now, now, node) === null) return node.schedule.type === 'once' ? 'That time has passed. Choose a later one.' : 'That schedule has no more runs.'
   return null
 }
