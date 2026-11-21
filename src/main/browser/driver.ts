@@ -15,6 +15,8 @@ import { randomUUID } from 'node:crypto'
 import { EvidenceNetwork } from './evidenceNetwork'
 import { linkAttemptToTask, taskRefusal } from './taskLink'
 import { readRevision, unknownRevision } from '../tasks/verification'
+import { watchHungPage, type HungPage } from './hungPage'
+import { HUNG_PAGE_NOTICE } from '../stuckParts'
 
 /** What the agent verbs need from a page. Anything they can't do comes back as a refusal saying why. */
 export interface BrowserDriver {
@@ -150,6 +152,7 @@ export function createBrowserDriver({
   const shotsDir = join(dataDir, 'browser-shots')
   const guests = new Map<string, WebContents>()
   const states = new Map<string, BrowserState>()
+  const hungPages = new Map<string, HungPage>()
   const waiting = new Map<string, Array<() => void>>()
   const pushTimers = new Map<string, NodeJS.Timeout>()
   const urlTimers = new Map<string, NodeJS.Timeout>()
@@ -281,12 +284,24 @@ export function createBrowserDriver({
       // -3 is a load replaced by another. Refusals have already said why.
       if (isMainFrame && code !== -3 && code !== -20) change(id, { notice: `Couldn't open ${url.slice(0, 200)}: ${description}` })
     })
-    guest.on('render-process-gone', (_e, details) => change(id, { notice: `The page stopped working (${details.reason}). Reload to try again.`, loading: false }))
+    const hang = watchHungPage(guest, {
+      onHung: () => change(id, { notice: HUNG_PAGE_NOTICE }),
+      onRecovered: () => {
+        if (states.get(id)?.notice === HUNG_PAGE_NOTICE) change(id, { notice: null })
+      }
+    })
+    hungPages.set(id, hang)
+    guest.on('render-process-gone', (_e, details) => {
+      // Ended on purpose, to reload a stuck page: not the page failing.
+      if (!hang.restarting) change(id, { notice: `The page stopped working (${details.reason}). Reload to try again.`, loading: false })
+    })
     guest.once('destroyed', () => {
       if (guests.get(id) !== guest) return
       evidence.interrupt(id, 'Page detached; recording stopped. Show the project and start a new attempt.')
       evidence.forgetRecent(id)
       guests.delete(id)
+      hungPages.get(id)?.stop()
+      hungPages.delete(id)
       states.delete(id)
       pushSoon(id)
     })
@@ -462,7 +477,7 @@ export function createBrowserDriver({
       change(id, { notice: null })
       if (step === 'back') history.goBack()
       else if (step === 'forward') history.goForward()
-      else guest.reload()
+      else if (!(await hungPages.get(id)?.restart())) guest.reload()
       return { moved: true, loaded: await settleAfter(id) }
     },
 
@@ -631,7 +646,11 @@ export function createBrowserDriver({
       const history = guest.navigationHistory
       if (step === 'back' && history.canGoBack()) history.goBack()
       if (step === 'forward' && history.canGoForward()) history.goForward()
-      if (step === 'reload') guest.reload()
+      if (step === 'reload') {
+        const page = hungPages.get(id)
+        if (!page) guest.reload()
+        else void page.restart().then((restarted) => !restarted && !guest.isDestroyed() && guest.reload())
+      }
       if (step === 'stop') guest.stop()
     },
 

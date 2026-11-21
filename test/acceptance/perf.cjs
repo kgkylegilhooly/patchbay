@@ -190,6 +190,18 @@ function summarizeProfile(profile) {
   return [...self].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, n]) => `${((n / total) * 100).toFixed(1).padStart(5)}%  ${k}`)
 }
 
+/** Each "main process was blocked" line in the app's log, in seconds. */
+function mainStalls(profile) {
+  let text = ''
+  try {
+    text = fs.readFileSync(path.join(profile, 'logs', 'patchbay.log'), 'utf8')
+  } catch {
+    return { count: 0, worstS: 0 }
+  }
+  const s = [...text.matchAll(/main process was blocked for ([\d.]+) s/g)].map((m) => Number(m[1]))
+  return { count: s.length, worstS: Math.max(0, ...s), totalS: Math.round(s.reduce((a, b) => a + b, 0) * 10) / 10 }
+}
+
 async function main() {
   const cwd = L.workDir('perf')
   const profile = L.newProfile({ notifications: 'off', sound: 'off', ...(AGENTS ? { claudeCommand: `node "${LOAD}"` } : {}) })
@@ -339,6 +351,9 @@ async function main() {
     console.log('FRAMES', JSON.stringify(frames))
     console.log('KEYS ms', JSON.stringify(keyStats))
     console.log('MAIN answer ms', JSON.stringify(mainStats))
+    // The app notes each time its main process was held up for a second or more, in the throwaway profile's log.
+    const stalls = mainStalls(profile)
+    console.log('MAIN stalls >= 1 s (whole run)', JSON.stringify(stalls))
     if (process.env.PB_PERF_OUT) fs.writeFileSync(process.env.PB_PERF_OUT, JSON.stringify({ N, HEAVY, AGENTS, CHAT, idleCpu, cpu, pc, busy, frames, keyStats, mainStats }, null, 2))
 
     if (!process.env.PB_PERF_REPORT) {

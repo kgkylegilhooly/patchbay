@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { readTranscript } from '../core/transcript/read'
+import { readTranscriptAsync } from '../core/transcript/read'
 import { placeInProject } from '../core/canvas/place'
 import { viewSize } from './viewSize'
 import type { CanvasStore } from '../shared/contract'
@@ -185,14 +185,15 @@ export function reopenClosed(store: CanvasStore, closedId: string, newId: string
 
 const GONE = "This conversation's transcript no longer exists."
 
-export function readClosedTranscript(
+/** Read a stretch at a time, so a long conversation doesn't hold up the rest of the app while it's read. */
+export async function readClosedTranscript(
   doc: CanvasDoc,
   closedId: string
-): { ok: true; text: string } | { ok: false; reason: string } {
+): Promise<{ ok: true; text: string } | { ok: false; reason: string }> {
   const path = doc.closed.find((c) => c.id === closedId)?.transcriptPath
   if (!path) return { ok: false, reason: GONE }
   try {
-    return { ok: true, text: readTranscript(path) }
+    return { ok: true, text: await readTranscriptAsync(path) }
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: false, reason: GONE }
     return { ok: false, reason: `The transcript couldn't be read: ${(e as Error).message}` }

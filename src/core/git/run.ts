@@ -45,11 +45,29 @@ function endTree(pid: number | undefined, child: { kill(signal?: NodeJS.Signals)
   }
 }
 
+export type ProgramRunner = (file: string, args: string[], o: RunOptions) => Promise<RunResult>
+
+let elsewhere: ProgramRunner | null = null
+
+/**
+ * Where runProgram starts programs from now on, or null for this thread. The app's main process hands them to a worker
+ * thread (src/main/proc/offThread.ts): starting a process on Windows holds up the thread that starts it, for a few
+ * milliseconds on a quiet PC and far longer on a busy one, and the main process stuck means the whole window is.
+ */
+export function useProgramRunner(runner: ProgramRunner | null): void {
+  elsewhere = runner
+}
+
 /**
  * Runs a program with its arguments as an array, so no shell ever reads them. Input is closed from the start, so a
  * program that wants to ask something gets nothing and fails instead of waiting.
  */
 export function runProgram(file: string, args: string[], o: RunOptions): Promise<RunResult> {
+  return elsewhere ? elsewhere(file, args, o) : runHere(file, args, o)
+}
+
+/** runProgram, always on this thread. */
+export function runHere(file: string, args: string[], o: RunOptions): Promise<RunResult> {
   return new Promise((done) => {
     let child
     try {

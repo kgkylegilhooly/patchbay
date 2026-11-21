@@ -2,7 +2,7 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { lastLines, readMessages, readMessagesTail, readTranscript, readTranscriptAsync, stripAnsi } from '../../src/core/transcript/read'
+import { lastLines, readAllMessages, readMessages, readMessagesTail, readTranscript, readTranscriptAsync, stripAnsi } from '../../src/core/transcript/read'
 
 let dir: string
 
@@ -158,5 +158,39 @@ describe('reading only the end of a long transcript', () => {
     const file = fixture([user('a'), assistant([text('b')]), user('c')])
     expect(await readTranscriptAsync(file, 2)).toBe(readTranscript(file, 2))
     expect(await readTranscriptAsync(file)).toBe(readTranscript(file))
+  })
+})
+
+describe('readAllMessages', () => {
+  test('a long transcript reads the same a stretch at a time as all at once, with lines that cross stretches', async () => {
+    // Over 512 KB each, so lines straddle stretches and some are longer than a stretch.
+    const lines = Array.from({ length: 40 }, (_, i) => (i % 3 === 0 ? user(`u${i} ${'x'.repeat(30_000 * (i % 7))}`) : assistant([text(`a${i} ${'y'.repeat(1000)}`)])))
+    lines.splice(10, 0, user('z'.repeat(700 * 1024)))
+    const file = fixture(lines)
+    expect(await readAllMessages(file)).toEqual(readMessages(file))
+  })
+
+  test("the last line counts even without its newline, and a half-written one doesn't", async () => {
+    const file = join(dir, 'open.jsonl')
+    writeFileSync(file, `${JSON.stringify(user('first'))}\n${JSON.stringify(assistant([text('last')]))}`)
+    expect((await readAllMessages(file)).map((m) => m.text)).toEqual(['first', 'last'])
+    writeFileSync(file, `${JSON.stringify(user('first'))}\n{"type":"assistant","mess`)
+    expect((await readAllMessages(file)).map((m) => m.text)).toEqual(['first'])
+  })
+
+  test('lets other work run while it reads', async () => {
+    const file = fixture(Array.from({ length: 400 }, (_, i) => assistant([text(`m${i} ${'w'.repeat(4000)}`)])))
+    let ticks = 0
+    const timer = setInterval(() => ticks++, 0)
+    await readAllMessages(file)
+    clearInterval(timer)
+    expect(ticks).toBeGreaterThan(0)
+  })
+
+  test('an empty file has no messages, and a missing one throws', async () => {
+    const file = join(dir, 'empty.jsonl')
+    writeFileSync(file, '')
+    expect(await readAllMessages(file)).toEqual([])
+    await expect(readAllMessages(join(dir, 'gone.jsonl'))).rejects.toThrow()
   })
 })

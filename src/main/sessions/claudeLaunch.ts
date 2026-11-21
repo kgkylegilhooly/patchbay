@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
+import { runProgram } from '../../core/git/run'
 import type { SessionSpec } from '../../shared/contract'
 import type { ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
@@ -108,8 +109,35 @@ function whereIs(name: string): string | null {
   } catch {
     return null
   }
+  return pickWhere(lines)
+}
+
+/** The answer where.exe gave that a program can be started from. */
+function pickWhere(lines: string[]): string | null {
   const pick = (ext: RegExp): string | undefined => lines.find((l) => ext.test(l))
   return pick(/\.exe$/i) ?? pick(/\.(cmd|bat)$/i) ?? lines[0] ?? null
+}
+
+/**
+ * Asks where.exe about the programs agents start with, ahead of time and off the main thread, so the first agent
+ * started finds them known. Asking as it starts makes the main process wait for where.exe to finish, which on a busy
+ * PC took long enough to hold up the window. Nothing changes when a program isn't found: it's asked about then.
+ */
+export async function lookUpClaudeAhead(setting: { terminal?: string; command?: string }): Promise<void> {
+  const names = new Set(['claude'])
+  const first = (line?: string): string | undefined => (line?.trim() ? programWords(line)[0] : undefined)
+  for (const name of [first(setting.command), first(setting.terminal)]) if (name && !/[\\/]/.test(name)) names.add(name)
+  await Promise.all(
+    [...names].map(async (name) => {
+      const key = name.toLowerCase()
+      if (whereAnswers.has(key)) return
+      const r = await runProgram('where.exe', [name], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 })
+      const path = r.code === 0 ? pickWhere(r.stdout.split(/\r?\n/).filter(Boolean)) : null
+      if (!path || whereAnswers.get(key)?.path) return
+      whereAnswers.set(key, { path, at: Date.now() })
+      if (key === 'claude' && !located && /\.(exe|cmd|bat)$/i.test(path)) located = path
+    })
+  )
 }
 
 let located: string | null = null

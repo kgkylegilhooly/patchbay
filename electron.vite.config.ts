@@ -16,7 +16,9 @@ export default defineConfig({
           sessionHost: resolve(__dirname, 'src/main/sessions/hostProcess.ts'),
           hostLauncher: resolve(__dirname, 'src/main/sessions/hostLauncher.ts'),
           // Search reads and indexes transcripts in a worker thread, off the main thread. It must never import electron.
-          searchWorker: resolve(__dirname, 'src/main/search/worker.ts')
+          searchWorker: resolve(__dirname, 'src/main/search/worker.ts'),
+          // Programs such as git start from a worker thread, so creating a process never holds up the main thread.
+          procWorker: resolve(__dirname, 'src/main/proc/worker.ts')
         }
       }
     }
