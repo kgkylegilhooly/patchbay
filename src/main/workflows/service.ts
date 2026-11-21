@@ -556,6 +556,24 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
   timer.unref?.()
 
   /**
+   * A run is saved as succeeded before its deliverable's check is recorded and its result submitted (a few seconds of
+   * git reads). Closed in between, the task would stay unsubmitted, never to be accepted. So at start-up a succeeded
+   * run whose task is there, open and has no submission gets both again: the check runs again (its evidence is gone
+   * with the closed app), then the submission.
+   */
+  const finishDeliverable = async (run: WorkflowRun): Promise<void> => {
+    if (!run.taskId || !d.tasks) return
+    const task = d.store.get().projects.find((p) => p.id === run.projectId)?.tasks?.tasks.find((t) => t.id === run.taskId)
+    if (!task || task.submissionId || task.state === 'accepted' || task.state === 'cancelled') return
+    log(`Workflow run ${run.id}: it succeeded, but its deliverable wasn't submitted before Patchbay closed. Submitting it now.`)
+    for (const step of run.definition.steps) {
+      const a = currentAttempt(run, step.key)
+      if (step.kind === 'command' && step.taskCheck && a) await perform(run.id, { kind: 'task-check', step: step.key, attemptId: a.id }).catch((e: unknown) => log(`Workflow run ${run.id}: its check couldn't be run again: ${String(e)}`))
+    }
+    await perform(run.id, { kind: 'finished', state: 'succeeded' }).catch((e: unknown) => log(`Workflow run ${run.id}: its deliverable couldn't be submitted: ${String(e)}`))
+  }
+
+  /**
    * After the host's run results are in (see setupGate.evaluate in index.ts): each live run's nodes are checked, and
    * steps settle by what the host kept. Called once at start-up.
    */
@@ -563,6 +581,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
     const doc = d.store.get()
     const results = d.runner.runs()
     for (const run of runs.values()) {
+      if (run.state === 'succeeded' && !run.stopped) await finishDeliverable(run)
       if (run.stopped || run.state === 'succeeded') continue
       const nodes: Record<string, 'running' | 'stopped'> = {}
       const exits: Record<string, number> = {}

@@ -624,3 +624,45 @@ describe('prune review fixes', () => {
     expect(existsSync(artifacts)).toBe(true)
   })
 })
+
+describe("a run that succeeded just before Patchbay closed (live Codex run, docs/plans/codex-live.md)", () => {
+  /** A whole run to success, then its service closed, as the app quitting right after the last step. */
+  async function succeededRun() {
+    const w = world()
+    await startByPerson(w)
+    await submitPlan(w)
+    await w.service.act(w.run().id, { type: 'decide', attemptId: w.att('approve').id, decision: 'approve', note: '' })
+    await w.settle()
+    const impl = w.att('implement').nodeId!
+    await w.service.submit(impl, [{ key: 'summary', text: 'Done' }])
+    await w.settle()
+    w.runner.exit(w.att('tests').nodeId!, 0)
+    await w.settle()
+    expect(w.run().state).toBe('succeeded')
+    w.service.dispose()
+    return { w, impl }
+  }
+  const setTask = (w: ReturnType<typeof world>, task: Record<string, unknown> | null) =>
+    w.store.dispatch({ op: 'setTasks', projectId: 'p1', tasks: { tasks: task ? [{ id: 'task1', ...task } as never] : [], attempts: [] } } as never)
+
+  test('its deliverable, saved as succeeded but never submitted, is checked and submitted at the next start-up', async () => {
+    const { w, impl } = await succeededRun()
+    setTask(w, { state: 'planned' })
+    const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+    await later.service.recover()
+    await later.settle()
+    expect(later.tasks.verified).toEqual([['p1', 'task1', impl, 'tests']])
+    expect(later.tasks.submitted).toEqual([['p1', 'task1', impl, 'Done']])
+  })
+
+  test('one already submitted, closed or gone is left alone', async () => {
+    for (const task of [{ state: 'ready-for-review', submissionId: 's1' }, { state: 'accepted', submissionId: 's1' }, { state: 'cancelled' }, null]) {
+      const { w } = await succeededRun()
+      setTask(w, task)
+      const later = world(featureWorkflow(), { dataDir: w.dataDir, store: w.store, repo: w.root })
+      await later.service.recover()
+      await later.settle()
+      expect([task, later.tasks.verified, later.tasks.submitted]).toEqual([task, [], []])
+    }
+  })
+})
