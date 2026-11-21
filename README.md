@@ -456,6 +456,9 @@ or pick one in its form. The moving cable shows where it goes.
 - **Cron:** minute, hour, day of month, month and day of week, with `*`, lists, ranges, steps and names like `mon-fri`
   or `jan`. When clocks go forward, a time inside the skipped hour doesn't run that day. When they go back, a time
   inside the repeated hour runs twice.
+- **Starts and ends:** any trigger but a one-off can have an optional start and end. Before the start and after the
+  end it fires nothing, and once the end passes it shows Done. An interval with a start runs at the start, then every
+  interval from it. Both are part of what arming agrees to; an end that has passed can't be armed.
 - A trigger in a closed project keeps running, as its sessions do.
 
 ### Event triggers

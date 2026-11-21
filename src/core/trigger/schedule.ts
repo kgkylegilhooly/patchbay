@@ -1,6 +1,7 @@
 import type { TriggerSchedule } from '../../shared/model'
 import { nextCron, parseCron } from './cron'
-import { describeEvent, eventShapeError } from './events'
+import { describeEvent, eventShapeError, isEventSchedule } from './events'
+import { describeWindow, windowOf, type TriggerWindow } from './window'
 
 /** Anything faster would only pile prompts onto a session. */
 export const MIN_INTERVAL_MS = 5000
@@ -28,30 +29,41 @@ export function scheduleError(s: TriggerSchedule): string | null {
 /**
  * The first slot strictly after a time, or null if there are no more. Interval slots count from `anchor`, the time it
  * was armed, so running late or being run by hand doesn't shift them.
+ *
+ * With a window (see window.ts), nothing falls before its start or after its end, which itself can be a slot. An
+ * interval with a start counts from the start instead, and the start is its first slot: every 5 minutes from 14:00 is
+ * 14:00, 14:05 and so on, whenever it was armed. Slots are counted in milliseconds, so a clock change doesn't move them.
  */
-export function nextRun(s: TriggerSchedule, after: number, anchor: number): number | null {
-  switch (s.type) {
-    case 'cron': {
-      const parsed = parseCron(s.expr)
-      return parsed.ok ? nextCron(parsed.cron, after) : null
+export function nextRun(s: TriggerSchedule, after: number, anchor: number, w?: TriggerWindow): number | null {
+  const win = w ? windowOf({ schedule: s, ...w }) : null
+  const start = win?.start ?? null
+  const next = ((): number | null => {
+    switch (s.type) {
+      case 'cron': {
+        const parsed = parseCron(s.expr)
+        // nextCron is strictly after, so asking from just before the start lets the start itself be a slot.
+        return parsed.ok ? nextCron(parsed.cron, start !== null && after < start ? start - 1 : after) : null
+      }
+      case 'interval':
+        if (!(s.everyMs >= MIN_INTERVAL_MS)) return null
+        if (start !== null) return after < start ? start : start + (Math.floor((after - start) / s.everyMs) + 1) * s.everyMs
+        return after < anchor ? anchor + s.everyMs : anchor + (Math.floor((after - anchor) / s.everyMs) + 1) * s.everyMs
+      case 'once':
+        return s.at > after ? s.at : null
+      default:
+        // An event has no times: it fires when it happens.
+        return null
     }
-    case 'interval':
-      if (!(s.everyMs >= MIN_INTERVAL_MS)) return null
-      return after < anchor ? anchor + s.everyMs : anchor + (Math.floor((after - anchor) / s.everyMs) + 1) * s.everyMs
-    case 'once':
-      return s.at > after ? s.at : null
-    default:
-      // An event has no times: it fires when it happens.
-      return null
-  }
+  })()
+  return next !== null && win?.end != null && next > win.end ? null : next
 }
 
 /** The next few run times, for showing what arming agrees to. */
-export function nextRuns(s: TriggerSchedule, after: number, anchor: number, count: number): number[] {
+export function nextRuns(s: TriggerSchedule, after: number, anchor: number, count: number, w?: TriggerWindow): number[] {
   const out: number[] = []
   let from = after
   while (out.length < count) {
-    const next = nextRun(s, from, anchor)
+    const next = nextRun(s, from, anchor, w)
     if (next === null) break
     out.push(next)
     from = next
@@ -59,12 +71,23 @@ export function nextRuns(s: TriggerSchedule, after: number, anchor: number, coun
   return out
 }
 
-/** How many slots fall from `first` up to and including `until`, and when the last of them was. */
-export function slotsUpTo(s: TriggerSchedule, first: number, until: number, anchor: number): { count: number; last: number; capped: boolean } {
+/**
+ * Whether its window has closed for good: the end has passed, or no slot is left before it. Such a trigger is finished,
+ * not broken.
+ */
+export function windowEnded(node: { schedule: TriggerSchedule } & TriggerWindow, now: number): boolean {
+  const end = windowOf(node)?.end ?? null
+  if (end === null) return false
+  if (end <= now) return true
+  return !isEventSchedule(node.schedule) && nextRun(node.schedule, now, now, node) === null
+}
+
+/** How many slots fall from `first` up to and including `until`, and when the last of them was. None after the end. */
+export function slotsUpTo(s: TriggerSchedule, first: number, until: number, anchor: number, w?: TriggerWindow): { count: number; last: number; capped: boolean } {
   let count = 1
   let last = first
   while (count < MAX_COUNTED_SLOTS) {
-    const next = nextRun(s, last, anchor)
+    const next = nextRun(s, last, anchor, w)
     if (next === null || next > until) return { count, last, capped: false }
     last = next
     count++
@@ -88,8 +111,15 @@ export function describeInterval(ms: number): string {
   return n === 1 ? `Every ${unit}` : `Every ${plural(Math.round(n * 10) / 10, unit)}`
 }
 
-/** Says exactly what the schedule is, not a loose reading of it. `name` gives a node's title, for an event from a node. */
-export function describeSchedule(s: TriggerSchedule, name?: (id: string) => string | undefined): string {
+/**
+ * Says exactly what the schedule is, not a loose reading of it. `name` gives a node's title, for an event from a node.
+ * A window follows: "Every 5 minutes, from 21 Nov 14:00 until 22 Nov 09:00".
+ */
+export function describeSchedule(s: TriggerSchedule, name?: (id: string) => string | undefined, w?: TriggerWindow): string {
+  return describeWhat(s, name) + (w ? describeWindow(windowOf({ schedule: s, ...w })) : '')
+}
+
+function describeWhat(s: TriggerSchedule, name?: (id: string) => string | undefined): string {
   switch (s.type) {
     case 'cron':
       return `Cron: ${s.expr.trim().replace(/\s+/g, ' ')} (local time)`

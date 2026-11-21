@@ -1,13 +1,16 @@
 import { isArmed } from '../core/trigger/arming'
-import { describeInterval, MIN_INTERVAL_MS } from '../core/trigger/schedule'
+import { describeInterval, MIN_INTERVAL_MS, windowEnded } from '../core/trigger/schedule'
+import { describeWhen, windowOf } from '../core/trigger/window'
 import { DEFAULT_LIMITS, DEFAULT_QUIET_MS, isEventSchedule, preflightArgv, preflightText } from '../core/trigger/events'
 import type { TriggerLimits, TriggerNode, TriggerOutcome, TriggerPreflight, TriggerSchedule } from '../shared/model'
 
 export type TriggerState = 'armed' | 'disarmed' | 'done'
 
-export function triggerState(node: TriggerNode): TriggerState {
+/** Done: a one-off that has run, or one whose end has passed. Finished, not failed. */
+export function triggerState(node: TriggerNode, now = Date.now()): TriggerState {
   if (isArmed(node)) return 'armed'
-  return node.schedule.type === 'once' && node.runs.some((r) => r.source === 'schedule') ? 'done' : 'disarmed'
+  if (node.schedule.type === 'once') return node.runs.some((r) => r.source === 'schedule') ? 'done' : 'disarmed'
+  return windowEnded(node, now) ? 'done' : 'disarmed'
 }
 
 export const STATE_LABELS: Record<TriggerState, string> = { armed: 'Armed', disarmed: 'Not armed', done: 'Done' }
@@ -30,7 +33,12 @@ export function relative(ms: number): string {
 }
 
 export function nextLabel(node: TriggerNode, now: number): string {
-  if (isEventSchedule(node.schedule)) return isArmed(node) ? 'Whenever it happens.' : 'Arm it to listen for it.'
+  const win = windowOf(node)
+  if (!isArmed(node) && win?.end != null && windowEnded(node, now)) return `Finished. It ended ${describeWhen(win.end, now)}.`
+  if (isEventSchedule(node.schedule)) {
+    if (!isArmed(node)) return 'Arm it to listen for it.'
+    return win?.start != null && win.start > now ? `From ${describeWhen(win.start, now)} (${relative(win.start - now)}).` : 'Whenever it happens.'
+  }
   if (!isArmed(node)) return 'Arm it to schedule it.'
   if (node.nextAt === null) return 'No more runs.'
   return `${new Date(node.nextAt).toLocaleString()} (${relative(node.nextAt - now)})`
@@ -121,4 +129,20 @@ export function extrasOf(d: ExtrasDraft, s: TriggerSchedule): { preflight: Trigg
   const preflight = parsed.ok && parsed.argv ? { argv: parsed.argv, cwd: d.cwd.trim() } : null
   const limits = isEventSchedule(s) ? { gapMs: secondsOf(d.gapSeconds), perHour: Number(d.perHour) } : undefined
   return { preflight, limits, problem: parsed.ok ? null : parsed.reason }
+}
+
+/** The optional start and end, as datetime-local text. Empty means no limit. */
+export interface WindowDraft {
+  starts: string
+  ends: string
+}
+
+export function windowDraftOf(node: Pick<TriggerNode, 'startsAt' | 'endsAt'> | undefined): WindowDraft {
+  return { starts: node?.startsAt != null ? toLocalInput(node.startsAt) : '', ends: node?.endsAt != null ? toLocalInput(node.endsAt) : '' }
+}
+
+/** A one-off has its own time, so it keeps no window. */
+export function windowFieldsOf(d: WindowDraft, s: TriggerSchedule): { startsAt: number | null; endsAt: number | null } {
+  if (s.type === 'once') return { startsAt: null, endsAt: null }
+  return { startsAt: d.starts.trim() ? fromLocalInput(d.starts) : null, endsAt: d.ends.trim() ? fromLocalInput(d.ends) : null }
 }

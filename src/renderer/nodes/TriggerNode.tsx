@@ -60,7 +60,7 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
       <div className="trigger-body nodrag nowheel">
         <dl className="trigger-facts">
           <dt>When</dt>
-          <dd data-trigger="schedule">{describeSchedule(node.schedule, () => sourceTitle)}</dd>
+          <dd data-trigger="schedule">{describeSchedule(node.schedule, () => sourceTitle, node)}</dd>
           <dt>Next</dt>
           <dd data-trigger="next">{nextLabel(node, now)}</dd>
           {node.preflight && (
