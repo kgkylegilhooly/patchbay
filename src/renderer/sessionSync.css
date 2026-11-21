@@ -1,0 +1,42 @@
+/* Settings > Background sessions: sessions against nodes. See sessionSyncUi.tsx. */
+.sync-scroll {
+  overflow-x: auto;
+}
+
+.sync-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sync-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-dim);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.25));
+}
+
+.sync-table td {
+  padding: 5px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.12));
+}
+
+.sync-table tr[data-sync-row='orphan'] td:first-child,
+.sync-table tr[data-sync-row='shown-exited'] td:first-child,
+.sync-table tr[data-sync-row='pid-gone'] td:first-child,
+.sync-table tr[data-sync-row='stale-status'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--led-needs);
+}
+
+.sync-none,
+.sync-note {
+  color: var(--ink-dim);
+}
+
+.sync-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 6px;
+}

@@ -85,6 +85,7 @@ import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
 import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
 import { registerAgentStopIpc } from './agentStopsIpc'
+import { setupSessionSync } from './sessionSyncIpc'
 import { setupCodexStops } from './sessions/codexStopsSetup'
 import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
@@ -369,6 +370,7 @@ async function boot(): Promise<void> {
       signalDir,
       latestSignal: (id) => signals?.latestHook(id),
       beforeCodexStart: () => codexGate.sessionStarting(),
+      onReattached: (id) => noteReattached(id),
       pluginDir: join(resourceDir, 'skill'),
       cliDir: join(resourceDir, 'cli'),
       endpointFile,
@@ -564,7 +566,7 @@ async function boot(): Promise<void> {
     return [...plan.terminals, ...plan.claude]
   }
 
-  let ipcHooks: { reattached(ids: string[]): void } = { reattached: () => {} }
+  let ipcHooks: { reattached(ids: string[]): void; terminalShownExited(id: string): boolean } = { reattached: () => {}, terminalShownExited: () => false }
   const stopHost = async (): Promise<void> => {
     await runner.stopAll()
     await saver.flush()
@@ -615,6 +617,13 @@ async function boot(): Promise<void> {
   setupSubagents({ store, tracker, broadcast, log: (line) => log?.write(line) })
   ipcMain.handle('pb:sendToAgent', (_e, id: string, text: string) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text))
   host.onInfo((info) => broadcast('pb:onHostInfo', info))
+  // The canvas, the app's copy of each session and the host kept in agreement. See docs/plans/session-sync.md.
+  function noteReattached(id: string): void {
+    if (store.get().nodes.find((n) => n.id === id)?.kind === 'claude') host.repaintOnNextResize(id)
+    else saver.markDirty(id)
+    ipcHooks.reattached([id])
+  }
+  setupSessionSync({ store, host, runner, tracker, terminalShownExited: (id) => ipcHooks.terminalShownExited(id), latestSignal: (id) => signals?.latestHook(id), window: () => mainWindow, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
 
   // The window doesn't wait for sessions to come back, which took a second or more with many of them: it shows them
   // starting. Triggers do wait, so a slot that passed while closed is judged against the real state.

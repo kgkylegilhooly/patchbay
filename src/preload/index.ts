@@ -15,6 +15,7 @@ import { exposeView } from './view'
 import { exposeSubagents } from './subagents'
 import { exposeDocs } from './docs'
 import { exposeWorkflows } from './workflows'
+import { exposeSessionSync } from './sessionSync'
 
 /**
  * Every bridge method is one channel named `pb:<method>`:
@@ -62,7 +63,7 @@ const bridge: PatchbayBridge = {
   watchOutput: (ids) => ipcRenderer.send('pb:watchOutput', ids),
   devCopy: process.argv.includes('--patchbay-dev-copy'),
   startNode: (id) => invoke('startNode', id),
-  restartNode: (id) => invoke('restartNode', id),
+  restartNode: (id, opts) => invoke('restartNode', id, opts),
   armTrigger: (id, shownSpec) => invoke('armTrigger', id, shownSpec),
   disarmTrigger: (id) => invoke('disarmTrigger', id),
   runTriggerNow: (id) => invoke('runTriggerNow', id),
@@ -156,6 +157,7 @@ exposeView()
 exposeSubagents()
 exposeDocs()
 exposeWorkflows()
+exposeSessionSync()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,
 // and main can offer to reload it. See src/main/watchdog.ts.
