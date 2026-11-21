@@ -18,7 +18,7 @@ import {
 } from './claudeLaunch'
 import { buildCodexLaunch, codexKnowsNoDaemon, isLookingCall, resolveCodex } from './codexLaunch'
 import { isAlreadyRunning, SessionStartError } from './host'
-import { hookNodeFor, type HookLaunch } from './hookRunner'
+import { claudeRunsHttpHooks, hookNodeFor, type HookLaunch } from './hookRunner'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
 import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
@@ -81,6 +81,10 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   onReattached?: (id: string) => void
   /** The Node a Claude launch's hooks start directly, when `hookNode` isn't set. Defaults to hookNodeFor. */
   findHookNode?: (launch: HookLaunch) => Promise<string | null>
+  /** The connected session host's hook port, or null when sessions keep command hooks. See docs/plans/host-hooks.md. */
+  hostHookPort?: () => number | null
+  /** Whether a Claude launch's hooks can be http hooks. Defaults to claudeRunsHttpHooks. */
+  findHttpHooks?: (launch: HookLaunch) => Promise<boolean>
 }
 
 function taskkill(pid: number): Promise<void> {
@@ -280,8 +284,12 @@ export function createNodeRunner({
       const custom = now.claudeTerminal || now.claudeCommand
       const claude = custom ? undefined : (ctx.claude ?? (ctx.locateClaude ?? resolveClaude)())
       // Asked once per program, without holding up the main thread.
-      const hookNode = now.hookNode !== undefined ? now.hookNode : await (ctx.findHookNode ?? hookNodeFor)({ claude, claudeCommand: now.claudeCommand, claudeTerminal: now.claudeTerminal })
-      launch = buildClaudeLaunch(node, { ...now, claude, token, hookNode })
+      const hookLaunch = { claude, claudeCommand: now.claudeCommand, claudeTerminal: now.claudeTerminal }
+      const hookNode = now.hookNode !== undefined ? now.hookNode : await (ctx.findHookNode ?? hookNodeFor)(hookLaunch)
+      // Served by the session host, so its events start nothing. Chosen now, for this session's life.
+      const hostPort = ctx.hostHookPort?.() ?? null
+      const hookPort = hostPort && (await (ctx.findHttpHooks ?? claudeRunsHttpHooks)(hookLaunch)) ? hostPort : undefined
+      launch = buildClaudeLaunch(node, { ...now, claude, token, hookNode, hookPort })
     }
     tracker.apply(node.id, { type: 'launched' })
     const { sessionId, resumed, typedPrompt, ...spec } = launch

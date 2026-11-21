@@ -49,6 +49,11 @@ export interface ClaudeLaunchContext extends SessionEnvContext {
    * command line, for a Claude too old for that. See hookRunner.ts.
    */
   hookNode?: string | null
+  /**
+   * The session host's hook port. Set, every hook but SessionStart is an http hook to it, and starts no process. Only
+   * for a session that runs in that host, with a Claude that has http hooks. See docs/plans/host-hooks.md.
+   */
+  hookPort?: number
 }
 
 export interface ClaudeLaunch extends SessionSpec {
@@ -343,6 +348,30 @@ export interface CommandHook {
   timeout: number
 }
 
+export interface HttpHook {
+  type: 'http'
+  url: string
+  headers: Record<string, string>
+  allowedEnvVars: string[]
+  timeout: number
+}
+
+/**
+ * An event posted straight to the session host: nothing starts. The node and its token come from the session's own
+ * environment, as hook.cjs reads them, so the token is never written into the settings file. Claude Code allows only
+ * command hooks on SessionStart, so that one stays a command (hook.cjs, to the app), which also returns the agent's
+ * context.
+ */
+export function httpHook(event: string, port: number, timeout: number): HttpHook {
+  return {
+    type: 'http',
+    url: `http://127.0.0.1:${port}/hook/${event}`,
+    headers: { authorization: 'Bearer $PATCHBAY_TOKEN', 'x-patchbay-node': '$PATCHBAY_NODE_ID' },
+    allowedEnvVars: ['PATCHBAY_TOKEN', 'PATCHBAY_NODE_ID'],
+    timeout
+  }
+}
+
 /**
  * One hook event's entry in the settings. With a Node to start, Claude starts it directly: no Git Bash or PowerShell in
  * front of it, which roughly halves what each event costs, and saves most on a busy PC. See hookRunner.ts.
@@ -350,8 +379,9 @@ export interface CommandHook {
  * Every event still runs to its end before Claude goes on. Run in the background ("async"), a turn's Stop and the next
  * prompt could arrive the wrong way round, and the node would show the wrong status.
  */
-export function hookEntry(event: string, nodeId: string, ctx: ClaudeLaunchContext): CommandHook {
+export function hookEntry(event: string, nodeId: string, ctx: ClaudeLaunchContext): CommandHook | HttpHook {
   const timeout = event === 'PermissionRequest' ? HELD_HOOK_TIMEOUT_S : event === 'SessionEnd' ? SESSION_END_TIMEOUT_S : HOOK_TIMEOUT_S
+  if (ctx.hookPort && event !== 'SessionStart') return httpHook(event, ctx.hookPort, timeout)
   const signalled = !!ctx.signalDir && (SIGNAL_EVENTS as readonly string[]).includes(event)
   if (!ctx.hookNode || signalled) return { type: 'command', command: hookCommand(event, nodeId, ctx), timeout }
   return { type: 'command', command: ctx.hookNode, args: [ctx.hookScript, event], timeout }
@@ -454,6 +484,7 @@ export function buildClaudeLaunch(node: ClaudeNode, ctx: ClaudeLaunchContext): C
     ...program,
     cwd: node.cwd,
     env: { ...sessionEnv(node.id, ctx.token, ctx), ...(own ? { PATCHBAY_STATUSLINE_FORWARD: own.command } : {}) },
+    ...(ctx.hookPort ? { hookPort: ctx.hookPort } : {}),
     sessionId,
     resumed,
     ...(!resumed && ctx.claudeTerminal && node.prompt?.trim() ? { typedPrompt: node.prompt } : {})

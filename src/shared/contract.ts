@@ -59,6 +59,8 @@ export interface SessionSpec {
    * changes: they still get all of it.
    */
   background?: boolean
+  /** The port its hooks post to, which must be the connected session host's. See docs/plans/host-hooks.md. */
+  hookPort?: number
 }
 
 /**

@@ -2,6 +2,7 @@ import type { HostInfo, SessionHost, SessionSpec } from '../../shared/contract'
 import { isAlreadyRunning, SessionAlreadyRunning, SessionStartError, type PtyHost } from './host'
 import { connectToHost, HostRequestError, type ConnectResult, type HostConnection, type HostWelcome } from './hostClient'
 import { HOST_PROTOCOL, type HostedSession, type HostMessage } from './hostProtocol'
+import { createHookRelay, type HookHandler } from './hookRelay'
 import { createSessionBuffer, type SessionBuffer } from './sessionBuffer'
 
 const DEFAULT_BUFFER_BYTES = 1024 * 1024
@@ -73,6 +74,13 @@ export interface BackgroundHost extends SessionHost {
   onRevive(cb: (id: string) => void): void
   /** Asks the host what it runs and puts the mirrors right. Null when there's no host to ask. */
   refresh(): Promise<HostedSession[] | null>
+  /**
+   * Where the connected host serves sessions' hooks over http, or null to keep command hooks: no host, an older one, or
+   * sessions running in the app. See docs/plans/host-hooks.md.
+   */
+  hookPort(): number | null
+  /** Starts handling the hook events the host hands on. Those that came first have waited, in order. */
+  serveHooks(handler: HookHandler): void
 }
 
 export interface BackgroundHostOptions {
@@ -115,6 +123,8 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   let problem: string | undefined
   let leaving = false
   let connecting: Promise<void> | null = null
+  const hooks = createHookRelay()
+  const connectOpts = { pipe: opts.pipe, secret: opts.secret, protocol, hooks: true }
 
   const running = (): number => {
     if (mode === 'other-version') return welcome?.running ?? 0
@@ -222,8 +232,11 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   const wire = (conn: HostConnection): void => {
     connection = conn
     welcome = conn.welcome
-    conn.onMessage(handleMessage)
+    conn.onMessage((message) => {
+      if (!hooks.receive(conn, message)) handleMessage(message)
+    })
     conn.onClose(() => {
+      hooks.dropConnection(conn)
       if (connection !== conn) return
       connection = null
       void connectionLost()
@@ -250,7 +263,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     let deadline = Date.now() + startTimeout
     let spawned = false
     for (;;) {
-      const result: ConnectResult = await connectToHost({ pipe: opts.pipe, secret: opts.secret, protocol })
+      const result: ConnectResult = await connectToHost(connectOpts)
       if (result.kind === 'ok') {
         wire(result.connection)
         const list = (await result.connection.request('list')) as HostedSession[]
@@ -312,7 +325,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     const patience = Date.now() + UNRESPONSIVE_PATIENCE_MS
     for (let i = 0; i < RECONNECT_TRIES || Date.now() < patience; i++) {
       await sleep(RECONNECT_GAP_MS)
-      const result = await connectToHost({ pipe: opts.pipe, secret: opts.secret, protocol })
+      const result = await connectToHost(connectOpts)
       if (result.kind === 'ok') {
         wire(result.connection)
         try {
@@ -386,6 +399,12 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       return list
     },
 
+    hookPort() {
+      return mode === 'background' ? (connection?.welcome.hookPort ?? null) : null
+    },
+
+    serveHooks: (handler) => hooks.serve(handler),
+
     sessions() {
       return [...mirrors].map(([id, m]) => ({ id, pid: m.pid, running: m.running, exitCode: m.exitCode, exitedAt: m.exitedAt }))
     },
@@ -446,6 +465,11 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       if (mirror.foundRunning) {
         emitOutput(id, `${FULL_RESET}${mirror.buffer.read()}`)
         throw joined()
+      }
+      // Its hooks were written for the host that was connected then, which this no longer is.
+      if (spec.hookPort !== undefined && (mode !== 'background' || connection?.welcome.hookPort !== spec.hookPort)) {
+        undo()
+        throw new SessionStartError('spawn-failed', 'The session host changed while this was starting. Restart it to try again.')
       }
       if (mode === 'in-process' && local) {
         undo()

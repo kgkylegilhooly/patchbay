@@ -27,7 +27,8 @@ Patchbay is built from this folder's code. There are three ways to run it, depen
 
 Node has to stay on PATH for the built app too, because agents' hooks and the `patchbay` command run on it. With Claude
 Code 2.1.139 or later, Claude starts that Node directly for each hook, with no shell in front of it, which costs less on
-a busy PC.
+a busy PC. With sessions in the background session host, every hook but SessionStart goes to the host over http
+instead, and starts nothing at all.
 
 ### First time
 
@@ -174,7 +175,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | `whiteboards\images\` | Pictures pasted onto whiteboards. One no board uses is deleted at startup once it's a day old |
 | `sessions\` | The hook settings passed to each Claude node |
 | `control\endpoint.json`, `secret` | How sessions reach the app. Keep `secret` private. The endpoint file only exists while the app is open |
-| `control\host-secret`, `host.json`, `host.log` | How the app reaches the session host, and what the host last did. Keep `host-secret` private |
+| `control\host-secret`, `host.json`, `host.log` | How the app reaches the session host, the port where it takes sessions' hooks, and what the host last did. Keep `host-secret` private |
 | `control\missed\` | Hook events from while the app was closed, until it reconnects |
 | `logs\patchbay.log` | When the window froze, stopped responding or crashed, how it recovered, and memory now and then. Up to 1 MB, with the one before kept as `patchbay.1.log`. Settings > Open log opens it |
 | `settings.json` | Optional, and you create it |
