@@ -24,6 +24,7 @@ import { registerViewIpc } from './viewIpc'
 import { createWorktree } from '../core/worktree/service'
 import { registerRecipeIpc } from './recipes/ipc'
 import { registerNeedsYouIpc } from './needsYou/ipc'
+import { setupResources } from './resources/setup'
 import { createRecipeService } from './recipes/service'
 import { createSetupGate } from './recipes/setupGate'
 import { withRecipeVerbs } from './recipes/verbs'
@@ -370,6 +371,7 @@ async function boot(): Promise<void> {
       signalDir,
       latestSignal: (id) => signals?.latestHook(id),
       beforeCodexStart: () => codexGate.sessionStarting(),
+      refreshHost: () => host.refresh(),
       onReattached: (id) => noteReattached(id),
       pluginDir: join(resourceDir, 'skill'),
       cliDir: join(resourceDir, 'cli'),
@@ -559,7 +561,8 @@ async function boot(): Promise<void> {
       const held = plan.endedInHost.includes(id) ? host.snapshot(id).data : ''
       await runner.startNode(id, { initialScrollback: restoreSeed('terminal', held || scrollback.read(id)), restored: true })
     }
-    for (const id of plan.claude) await runner.startNode(id)
+    // They were running when Patchbay last saw them, so the soft limit on agents at once doesn't hold them back.
+    for (const id of plan.claude) await runner.startNode(id, { restored: true })
     gate.evaluate()
     setupGate.evaluate()
     void workflows.recover()
@@ -598,6 +601,8 @@ async function boot(): Promise<void> {
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
   registerNeedsYouIpc({ store, tracker, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
+  // Memory and CPU: the resource view in Settings, and a warning when the PC runs short. See src/main/resources.
+  setupResources({ dataDir, store, host, hosted: () => host.sessions(), hostPid: () => host.info().pid ?? null, tracker, settings: currentSettings, broadcast, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.

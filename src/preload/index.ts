@@ -15,6 +15,7 @@ import { exposeView } from './view'
 import { exposeSubagents } from './subagents'
 import { exposeDocs } from './docs'
 import { exposeWorkflows } from './workflows'
+import { exposeResources } from './resources'
 import { exposeSessionSync } from './sessionSync'
 
 /**
@@ -157,6 +158,7 @@ exposeView()
 exposeSubagents()
 exposeDocs()
 exposeWorkflows()
+exposeResources()
 exposeSessionSync()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,

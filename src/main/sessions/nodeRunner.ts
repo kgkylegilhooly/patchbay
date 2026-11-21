@@ -5,6 +5,7 @@ import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../share
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
 import type { Settings } from '../../shared/settings'
 import { agentChoice, agentOffReason } from '../../shared/agents'
+import { agentLimitReason, parseAgentLimit } from '../../core/resources/agentLimit'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -73,6 +74,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
    * one that's starting, and Patchbay runs Codex itself in the background to read its limits.
    */
   beforeCodexStart?: () => Promise<void>
+  /** Asks the host what it runs and brings its mirrors up to date. Null when there's no host to ask. */
+  refreshHost?: () => Promise<unknown>
   /** A session the host still ran was taken on again, so its views should be rebuilt. See docs/plans/session-sync.md. */
   onReattached?: (id: string) => void
 }
@@ -391,6 +394,10 @@ export function createNodeRunner({
   /** Settings > Agents: why this agent may not start, restart or resume now, or null. One already running is left alone. */
   const agentOff = (node: ClaudeNode): string | null => agentOffReason(agentOf(node), agentChoice(ctx.settings?.() ?? {}))
 
+  /** Settings > Background sessions: why another agent may not start now, counting those already running. */
+  const overAgentLimit = (id: string): string | null =>
+    agentLimitReason(parseAgentLimit(ctx.settings?.().agentLimit), store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== id && (started.has(n.id) || host.isRunning(n.id))).length)
+
   const launch = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<'joined' | void> => {
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
@@ -402,6 +409,18 @@ export function createNodeRunner({
     if (off) {
       tracker.apply(id, { type: 'process-exit' })
       return setError(id, { code: 'spawn-failed', message: off })
+    }
+    // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
+    const limited = node.kind === 'claude' && !opts.restored ? overAgentLimit(id) : null
+    if (limited) {
+      // The host may run it already, out of this app's sight. That's joining it, not starting another, so the limit
+      // doesn't apply: asked before refusing, as a refusal would leave it unreachable.
+      if (ctx.refreshHost && (await ctx.refreshHost().catch(() => null)) && host.isRunning(id)) {
+        if (!started.has(id)) api.reattachNode(id)
+        return 'joined'
+      }
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: limited })
     }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.

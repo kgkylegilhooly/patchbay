@@ -108,12 +108,18 @@ meanwhile. The host holds the newest 1 MB of each session's output.
 
 Quitting asks first if a Claude node is working or waiting on you.
 
+**Memory.** Settings > Background sessions shows what the PC, Patchbay, the host and each running session (with every
+program it started) use. When Windows is nearly out of memory, a note says so once and names the idle agents worth
+closing. **Most agents at once** (off by default) stops a new agent starting past it, with a note in its window; it never
+stops a running one. A window far off-screen for 3 minutes lets go of what it has drawn and draws it again from its
+session when you come back.
+
 **Keeping the canvas and the host in step.** Every minute or so, on reconnecting and on waking, Patchbay checks its
 nodes against what the host runs. A session the canvas showed as ended but the host still runs is shown again, with a
 notice and an **End and restart…** button that asks first. Restart on such a node shows the session instead of
 failing. An agent whose status has said Starting or Working long after its hooks went quiet, while it waits at its
 prompt, has its status worked out again from its transcript. A session with no node is listed under **Settings >
-Background sessions > Sessions and nodes**, where you can show it as a terminal or end it. Nothing is ended without
+Background sessions > Sessions**, where you can show it as a terminal or end it. Nothing is ended without
 asking.
 
 **While the app is closed,** nothing notifies you. A permission request goes to Claude's own prompt in its terminal,

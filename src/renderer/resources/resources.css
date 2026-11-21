@@ -1,0 +1,201 @@
+/* The resource view in Settings > Background sessions, and the low-memory notice. See src/renderer/resources. */
+
+.res-system {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.res-line {
+  display: grid;
+  grid-template-columns: 64px minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.res-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.res-line .res-num {
+  color: var(--ink);
+}
+
+.res-meter {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.res-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--status-done, #34c759);
+}
+
+.res-meter[data-level='warn'] .res-meter-fill {
+  background: var(--status-working, #ff9f43);
+}
+
+.res-meter[data-level='high'] .res-meter-fill {
+  background: var(--status-needs, #ff453a);
+}
+
+.set-row.res-sessions {
+  display: block;
+}
+
+.res-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.res-sessions .field-problem {
+  margin-top: 8px;
+}
+
+.res-table-wrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+.res-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.res-table th {
+  padding: 4px 8px;
+  font-weight: 500;
+  color: var(--ink-dim);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.res-table th.res-num {
+  text-align: right;
+}
+
+.res-table td {
+  padding: 5px 8px;
+  vertical-align: baseline;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+}
+
+.res-title {
+  color: var(--ink);
+}
+
+.res-project {
+  margin-left: 8px;
+  color: var(--ink-dim);
+}
+
+.res-state {
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.set-control > input.res-limit {
+  width: 110px;
+}
+
+/* Beside the canvas's top right corner, under the tabs: seen, but nothing it covers needs a click. */
+.res-notice {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 25;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 10px 10px 10px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--status-working, #ff9f43);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+}
+
+.res-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.res-notice-text p {
+  margin: 0 0 4px;
+  color: var(--ink-dim);
+}
+
+.res-notice-text .res-notice-head {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.res-notice-list {
+  margin: 2px 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.res-notice-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.res-notice-show {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  font: inherit;
+  color: var(--cable-link);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.res-notice-show:hover {
+  text-decoration: underline;
+}
+
+.res-notice-meta {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.res-notice-text .res-notice-foot {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* A window let go while far off-screen. Nobody normally sees it, being off-screen. */
+.term-parked {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--ink-dim);
+  pointer-events: none;
+}

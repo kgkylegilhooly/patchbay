@@ -716,6 +716,9 @@ const launchJsonExample = `{
 }
 `
 
+/** Extra profile files for a scene, by scene name. */
+const files = {}
+
 function prepare(name, cwdRoot) {
   if (!scenes[name]) throw new Error(`No scene called ${name}. There are: ${Object.keys(scenes).join(', ')}`)
   const cwd = fs.mkdtempSync(path.join(cwdRoot ?? os.tmpdir(), 'patchbay-scene-'))
@@ -729,6 +732,8 @@ function prepare(name, cwdRoot) {
     cwd,
     doc,
     settings: { claudeCommand: `node "${fake}"`, notifications: 'off', sound: 'off' },
+    // Other files for the profile, by name, as made-up readings.
+    files: files[name]?.() ?? {},
     act: scenes[name]
   }
 }
@@ -753,4 +758,6 @@ Object.assign(scenes, require('./statusScenes.cjs').scenes)
 Object.assign(seeds, require('./statusScenes.cjs').seeds)
 Object.assign(scenes, require('./safeAreaScenes.cjs').scenes)
 Object.assign(seeds, require('./safeAreaScenes.cjs').seeds)
+Object.assign(scenes, require('./resourceScenes.cjs').scenes)
+Object.assign(files, require('./resourceScenes.cjs').files)
 Object.assign(scenes, require('./sessionSyncScenes.cjs').scenes)
