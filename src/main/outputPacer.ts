@@ -3,19 +3,24 @@
  * a program whose output main isn't reading; this carries that on to the window. Before, a window whose page was busy
  * for 5 s was still sent 31 MB of output in that time, which main held and the page then had to work through.
  *
- * The window says how much it has taken (see src/preload/outputAck.ts). When what it hasn't taken passes HIGH_WATER,
- * it's sent no more output, and what each session printed meanwhile is kept, up to KEEP_CHARS a session. Once it has
- * caught up to LOW_WATER, each session gets what it missed as one chunk, exactly, so a selection or a search in it is
- * left alone. Only a session that printed more than that while the window was behind gets its whole buffer from a
- * clean slate instead (ESC c and the buffer, as a view gets after the host reconnects), so it's shown right however much
- * it missed. That goes one session at a time, while the window keeps up.
+ * The window says how much it has taken (see src/preload/outputAck.ts). Sessions in the project on screen come first:
+ * - Past HIGH_WATER untaken, background sessions (another project's, kept warm by the window for a while after a
+ *   switch) are sent no more, so they can't push the ones on screen behind.
+ * - Past HARD_WATER, which only the sessions on screen can reach by then, those are held too.
+ * What a held session prints is kept, up to KEEP_CHARS. Once the window is back down to LOW_WATER, each held session
+ * gets what it missed as one chunk, exactly, so a selection or a search in it is left alone; those on screen first, one
+ * at a time while the window keeps up. Only a session that printed more than KEEP_CHARS meanwhile gets its whole buffer
+ * from a clean slate instead (ESC c and the buffer, as a view gets after the host reconnects), so it's shown right
+ * however much it missed.
  */
 
-/** Characters of output sent to a window and not yet taken, past which it's sent no more. */
+/** Characters of output sent to a window and not yet taken, past which background sessions are held. */
 export const HIGH_WATER = 4 * 1024 * 1024
-/** Back down to this, it's sent output again. */
+/** Past this, the sessions on screen are held too. */
+export const HARD_WATER = 8 * 1024 * 1024
+/** Back down to this, held sessions catch up. */
 export const LOW_WATER = 1024 * 1024
-/** What a session's missed output is kept up to, while its window is behind. Past it, the view starts afresh. */
+/** What a session's missed output is kept up to, while it's held. Past it, the view starts afresh. */
 export const KEEP_CHARS = 256 * 1024
 /** Clears a view's screen and history, ahead of the whole buffer. The same as backgroundHost's. */
 const FULL_RESET = '\x1bc'
@@ -30,60 +35,70 @@ export interface OutputPacerOptions {
   snapshot(id: string): { data: string; seq: number }
   /** Whether the window still shows the session, so is owed it. */
   wants(windowId: number, id: string): boolean
+  /** Whether the session is in the project on screen. Without this, every session is. */
+  foreground?(id: string): boolean
   highWater?: number
+  hardWater?: number
   lowWater?: number
   keepChars?: number
 }
 
 export interface OutputPacer {
-  /** Sends a chunk of output to the window, unless it's behind. */
+  /** Sends a chunk of output to the window, unless the session is held. */
   deliver(win: PacedWindow, id: string, data: string, seq: number): void
   /** The window has taken this much output in all, counted in characters, since it loaded. */
   ack(win: PacedWindow, taken: number): void
   /** The window went, or loaded again and so starts its count from nothing. */
   forget(windowId: number): void
-  /** For tests and the log: how far behind a window is, and whether it's held. */
-  state(windowId: number): { unacked: number; held: boolean; missed: number } | null
+  /** For tests and the log: how far behind a window is, what's held, and how many sessions missed output. */
+  state(windowId: number): { unacked: number; held: boolean; holding: 'none' | 'background' | 'all'; missed: number } | null
 }
 
-/** What a session printed while its window was held: the output itself, or null once that passed KEEP_CHARS. */
+/** What a session printed while it was held: the output itself, or null once that passed KEEP_CHARS. */
 interface Missed {
   parts: string[] | null
   size: number
   seq: number
+  foreground: boolean
 }
 
 interface Pace {
   sent: number
   taken: number
-  /** Sessions that had output while this window was held, in the order they had it. Null while it's not held. */
-  missed: Map<string, Missed> | null
+  holding: 'none' | 'background' | 'all'
+  /** Held sessions with output waiting, in the order they had it. A session here stays held until it's caught up. */
+  missed: Map<string, Missed>
 }
 
 export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
   const high = opts.highWater ?? HIGH_WATER
+  const hard = Math.max(high, opts.hardWater ?? HARD_WATER)
   const low = opts.lowWater ?? LOW_WATER
   const keep = opts.keepChars ?? KEEP_CHARS
+  const foreground = opts.foreground ?? (() => true)
   const paces = new Map<number, Pace>()
 
   const paceOf = (windowId: number): Pace => {
     let pace = paces.get(windowId)
-    if (!pace) paces.set(windowId, (pace = { sent: 0, taken: 0, missed: null }))
+    if (!pace) paces.set(windowId, (pace = { sent: 0, taken: 0, holding: 'none', missed: new Map() }))
     return pace
   }
+
+  const behind = (pace: Pace): number => pace.sent - pace.taken
 
   const send = (win: PacedWindow, pace: Pace, id: string, data: string, seq: number): void => {
     win.send('pb:onOutput', id, data, seq)
     pace.sent += data.length
+    if (behind(pace) > hard) pace.holding = 'all'
+    else if (behind(pace) > high && pace.holding === 'none') pace.holding = 'background'
   }
 
-  /** Brings missed sessions up to date one at a time, for as long as the window keeps up. */
+  /** Brings held sessions up to date one at a time, those on screen first, for as long as the window keeps up. */
   const catchUp = (win: PacedWindow, pace: Pace): void => {
-    const missed = pace.missed
-    if (!missed) return
-    for (const [id, m] of missed) {
-      if (pace.sent - pace.taken > high) return
-      missed.delete(id)
+    const order = [...pace.missed].sort((a, b) => Number(b[1].foreground) - Number(a[1].foreground))
+    for (const [id, m] of order) {
+      if (behind(pace) > high) return
+      pace.missed.delete(id)
       if (!opts.wants(win.id, id)) continue
       if (m.parts) {
         send(win, pace, id, m.parts.join(''), m.seq)
@@ -92,24 +107,24 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
       const { data, seq } = opts.snapshot(id)
       send(win, pace, id, `${FULL_RESET}${data}`, seq)
     }
-    if (pace.sent - pace.taken > high) return
-    pace.missed = null
   }
 
   return {
     deliver(win, id, data, seq) {
       const pace = paceOf(win.id)
-      if (pace.missed) {
-        const m = pace.missed.get(id) ?? { parts: [], size: 0, seq }
+      const front = foreground(id)
+      const held = pace.missed.get(id)
+      if (held || pace.holding === 'all' || (pace.holding === 'background' && !front)) {
+        const m = held ?? { parts: [], size: 0, seq, foreground: front }
         pace.missed.set(id, m)
         m.seq = seq
         m.size += data.length
+        m.foreground = front
         if (m.parts && m.size <= keep) m.parts.push(data)
         else m.parts = null
         return
       }
       send(win, pace, id, data, seq)
-      if (pace.sent - pace.taken > high) pace.missed = new Map()
     },
 
     ack(win, taken) {
@@ -117,7 +132,9 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
       if (!pace || !Number.isFinite(taken) || taken <= pace.taken) return
       // Never more than was sent: a page can't take what it wasn't given.
       pace.taken = Math.min(taken, pace.sent)
-      if (pace.missed && pace.sent - pace.taken <= low) catchUp(win, pace)
+      if (behind(pace) > low) return
+      pace.holding = 'none'
+      if (pace.missed.size) catchUp(win, pace)
     },
 
     forget(windowId) {
@@ -126,7 +143,8 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
 
     state(windowId) {
       const pace = paces.get(windowId)
-      return pace ? { unacked: pace.sent - pace.taken, held: pace.missed !== null, missed: pace.missed?.size ?? 0 } : null
+      if (!pace) return null
+      return { unacked: behind(pace), held: pace.holding !== 'none' || pace.missed.size > 0, holding: pace.holding, missed: pace.missed.size }
     }
   }
 }

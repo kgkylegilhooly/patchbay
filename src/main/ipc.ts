@@ -112,13 +112,31 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
    * window only for it to be thrown away. A window that hasn't said yet gets everything.
    */
   const watching = new Map<number, Set<string>>()
-  // The host sends what no window shows in bigger, rarer pieces. See sessions/host.ts.
+  /**
+   * The nodes of the project on screen. A window keeps another project's terminals warm for a while after a switch,
+   * watching them at a slow pace: those count as out of sight, for the host's batching and the pacer alike.
+   */
+  let onScreen = new Set<string>()
+  let seen: { nodes: CanvasDoc['nodes']; active: string } | null = null
+  const noteOnScreen = (doc: CanvasDoc): boolean => {
+    if (seen && seen.nodes === doc.nodes && seen.active === doc.activeProjectId) return false
+    seen = { nodes: doc.nodes, active: doc.activeProjectId }
+    const next = new Set(doc.nodes.filter((n) => n.projectId === doc.activeProjectId).map((n) => n.id))
+    const same = next.size === onScreen.size && [...next].every((id) => onScreen.has(id))
+    onScreen = next
+    return !same
+  }
+  noteOnScreen(store.get())
+  // The host sends what no window shows, or keeps warm out of sight, in bigger, rarer pieces. See sessions/host.ts.
   const tellShown = (): void => {
     if (watching.size === 0) return host.setShown?.(null)
     const all = new Set<string>()
-    for (const ids of watching.values()) for (const id of ids) all.add(id)
+    for (const ids of watching.values()) for (const id of ids) if (onScreen.has(id)) all.add(id)
     host.setShown?.(all)
   }
+  store.subscribe((doc) => {
+    if (noteOnScreen(doc)) tellShown()
+  })
   ipcMain.on('pb:watchOutput', (e, ids: unknown) => {
     if (!Array.isArray(ids)) return
     const contents = e.sender
@@ -127,10 +145,11 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     watching.set(contentsId, new Set(ids.filter((x): x is string => typeof x === 'string')))
     tellShown()
   })
-  // A window that falls behind is sent no more output until it catches up, then each session it missed afresh.
+  // A window that falls behind is sent no more output until it catches up: sessions out of sight are held first.
   const pacer = createOutputPacer({
     snapshot: (id) => host.snapshot(id),
-    wants: (contentsId, id) => watching.get(contentsId)?.has(id) ?? true
+    wants: (contentsId, id) => watching.get(contentsId)?.has(id) ?? true,
+    foreground: (id) => onScreen.has(id)
   })
   const paced = new Set<number>()
   ipcMain.on('pb:outputAck', (e, taken: unknown) => {

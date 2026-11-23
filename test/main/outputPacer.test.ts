@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { createOutputPacer } from '../../src/main/outputPacer'
 
-function setup(opts: { wants?: (w: number, id: string) => boolean; keepChars?: number } = {}) {
+function setup(opts: { wants?: (w: number, id: string) => boolean; keepChars?: number; foreground?: (id: string) => boolean; hardWater?: number } = {}) {
   const sent: Array<{ id: string; data: string; seq: number }> = []
   const buffers = new Map<string, { data: string; seq: number }>()
   const win = { id: 7, send: (_channel: string, id: unknown, data: unknown, seq: unknown) => void sent.push({ id: id as string, data: data as string, seq: seq as number }) }
@@ -9,8 +9,10 @@ function setup(opts: { wants?: (w: number, id: string) => boolean; keepChars?: n
     snapshot: (id) => buffers.get(id) ?? { data: '', seq: 0 },
     wants: opts.wants ?? (() => true),
     highWater: 100,
+    hardWater: opts.hardWater ?? 100,
     lowWater: 30,
-    keepChars: opts.keepChars ?? 50
+    keepChars: opts.keepChars ?? 50,
+    foreground: opts.foreground
   })
   /** Output as the host hands it on: the buffer grows and the count goes up, whether or not the window is sent it. */
   const print = (id: string, data: string): void => {
@@ -104,4 +106,47 @@ test('an ack for more than was sent, or an old one, changes nothing; a reloaded 
   expect(t.pacer.state(7)).toBeNull()
   t.print('a', 'fresh')
   expect(t.sent[t.sent.length - 1].data).toBe('fresh')
+})
+
+test('terminals kept warm out of sight are held first, so they cannot push the ones on screen behind', () => {
+  const t = setup({ foreground: (id) => id.startsWith('front'), hardWater: 300, keepChars: 10_000 })
+  // A window that has stopped taking output: the background fills the first 100, then only the front gets through.
+  for (let i = 0; i < 40; i++) {
+    t.print('back' + (i % 3), 'b'.repeat(10))
+    t.print('front', 'f'.repeat(5))
+  }
+  expect(t.pacer.state(7)).toMatchObject({ holding: 'background' })
+  const front = t.sent.filter((c) => c.id === 'front')
+  expect(front).toHaveLength(40)
+  expect(front.map((c) => c.seq)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1))
+  // Background sent only until the high-water mark: far less than the 1,200 characters they printed.
+  expect(t.sent.filter((c) => c.id.startsWith('back')).reduce((n, c) => n + c.data.length, 0)).toBeLessThanOrEqual(110)
+})
+
+test('the ones on screen are held only past the hard mark, which by then only they can reach', () => {
+  const t = setup({ foreground: (id) => id === 'front', hardWater: 300, keepChars: 10_000 })
+  for (let i = 0; i < 100; i++) {
+    t.print('back', 'b'.repeat(10))
+    t.print('front', 'f'.repeat(10))
+  }
+  expect(t.pacer.state(7)).toMatchObject({ holding: 'all' })
+  const sentFront = t.sent.filter((c) => c.id === 'front').reduce((n, c) => n + c.data.length, 0)
+  expect(sentFront).toBeGreaterThanOrEqual(190)
+  expect(sentFront).toBeLessThanOrEqual(310)
+})
+
+test('catching up sends what the screen missed first, and every session ends up whole and exact', () => {
+  const t = setup({ foreground: (id) => id === 'front', hardWater: 150, keepChars: 10_000 })
+  for (let i = 0; i < 30; i++) {
+    t.print('back', String(i).padStart(10, 'b'))
+    t.print('front', String(i).padStart(10, 'f'))
+  }
+  const at = t.sent.length
+  for (let i = 0; i < 20 && t.pacer.state(7)?.held; i++) t.pacer.ack(t.win, t.taken())
+  const caught = t.sent.slice(at)
+  expect(caught[0].id).toBe('front')
+  for (const [id, pad] of [['front', 'f'], ['back', 'b']] as const) {
+    expect(t.sent.filter((c) => c.id === id).map((c) => c.data).join('')).toBe(Array.from({ length: 30 }, (_, i) => String(i).padStart(10, pad)).join(''))
+  }
+  expect(caught.every((c) => !c.data.startsWith(String.fromCharCode(27)))).toBe(true)
 })

@@ -21,10 +21,11 @@ function emitter() {
   let busy = false
   const nl = String.fromCharCode(13, 10)
   process.stdout.write('$ ')
-  process.stdin.on('data', () => {
+  process.stdin.on('data', (typed) => {
     if (busy) return
     busy = true
-    const end = Date.now() + Number(process.env.BURST_MS || 7000)
+    // 'long' for a burst that outlasts the longest stall.
+    const end = Date.now() + (String(typed).includes('long') ? 20000 : 7000)
     const t = setInterval(() => {
       let s = ''
       for (let i = 0; i < 16; i++) s += 'L' + String(n++).padStart(7, '0') + ' ' + 'abcdefghijklmnopqrstuvwxyz0123'.repeat(33) + nl
@@ -167,7 +168,7 @@ async function main() {
 
     // --- A long stall: the selected, searched terminal misses far more than is kept.
     console.log('\n--- A long stall, with a selection and a search open')
-    for (const id of all) await submit(app.page, id, 'go')
+    for (const id of all) await submit(app.page, id, 'go long')
     await sleep(1500)
     await app.page.evaluate((src) => { const t = eval(src)('sel'); t.select(0, t.buffer.active.viewportY + 2, 12) }, TERM_OF)
     await app.page.click('[data-term-node="sel"] .term-host')
@@ -181,8 +182,8 @@ async function main() {
     c.check('a selection is made before the stall', before.hasSelection, before.selection)
     const total = (x) => Object.values(x).reduce((n, r) => n + r.chars, 0)
     const atStall = total(await sends())
-    await busyPage(app.page, 8000)
-    console.log(`NOTE  sent to the busy page in 8 s: ${((total(await sends()) - atStall) / 1048576).toFixed(1)} M characters`)
+    await busyPage(app.page, 12000)
+    console.log(`NOTE  sent to the busy page in 12 s: ${((total(await sends()) - atStall) / 1048576).toFixed(1)} M characters`)
     await waitFor('every burst to end', async () => (await Promise.all(all.map((id) => lib.snapshot(app.page, id)))).every((s) => stripAnsi(s).includes('DONE')), 60000)
     await sleep(2500)
     let counted = await sends()
@@ -247,6 +248,41 @@ async function main() {
     }
     c.check('the page reported no errors', errors.length === 0, errors.slice(0, 3))
     console.log(`evidence: ${await shot(app.page, 'output-pacing-hidden-shown')}`)
+
+    // --- Kept warm: back on the first project, the window still watches the other project's terminals, as one that
+    // keeps them warm for a while after a switch does. They're held first, so the ones on screen aren't pushed behind.
+    console.log('\n--- Terminals kept warm out of sight')
+    await app.page.evaluate(() => window.patchbay.dispatch({ op: 'switchProject', id: 'p1' }))
+    await waitFor('the first project back', async () => (await Promise.all(shown.map((n) => readTerm(app.page, n.id)))).every(Boolean), 20000)
+    await sleep(1500)
+    await app.page.evaluate((ids) => window.patchbay.watchOutput(ids), all)
+    const warmBefore = await sends()
+    // One terminal on screen prints, with the three kept warm: together far past the high-water mark, alone well short
+    // of the hard one.
+    for (const id of ['sel', ...hidden.map((n) => n.id)]) await lib.input(app.page, id, 'go\r')
+    await sleep(300)
+    await busyPage(app.page, 4000)
+    await sleep(9000)
+    const warmAfter = await sends()
+    const delta = (id, k) => (warmAfter[id]?.[k] ?? 0) - (warmBefore[id]?.[k] ?? 0)
+    const frontResets = shown.reduce((n, s) => n + delta(s.id, 'resets'), 0)
+    const backResets = hidden.reduce((n, s) => n + delta(s.id, 'resets'), 0)
+    console.log(`NOTE  sent while kept warm: on screen ${(shown.reduce((n, s) => n + delta(s.id, 'chars'), 0) / 1048576).toFixed(1)} M, kept warm ${(hidden.reduce((n, s) => n + delta(s.id, 'chars'), 0) / 1048576).toFixed(1)} M; resets on screen ${frontResets}, kept warm ${backResets}`)
+    c.check('the terminals on screen were not started afresh', frontResets === 0, frontResets)
+    c.check('the ones kept warm were the ones held', backResets > 0 || hidden.every((s) => delta(s.id, 'chars') < delta('sel', 'chars')), { sel: delta('sel', 'chars'), warm: hidden.map((s) => ({ chars: delta(s.id, 'chars'), resets: delta(s.id, 'resets') })) })
+    let warmWhole = 0
+    for (const n of shown) {
+      if (n.id !== 'sel') {
+        warmWhole++
+        continue
+      }
+      const run = continuity((await readTerm(app.page, n.id)).lines)
+      const tail = lastNumber(await lib.snapshot(app.page, n.id))
+      if (!run.broken && run.last === tail) warmWhole++
+      else c.check(`${n.id}: unbroken with terminals kept warm`, false, { ...run, sessionEndsAt: tail })
+    }
+    c.check('the one on screen that printed is whole', warmWhole === 10, warmWhole)
+    c.check('the page reported no errors', errors.length === 0, errors.slice(0, 3))
   } catch (e) {
     c.check('finished without an error', false, e.message)
   } finally {
