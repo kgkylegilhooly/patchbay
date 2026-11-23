@@ -181,6 +181,19 @@
   z-index: 60;
 }
 
+/* A dialog over a dialog (Delete… from the Projects manager, archive over it) adds only a light dim, not a second
+   full one, so what's being acted on still shows behind it. */
+.stage > :is(.shell-layer, .palette-back, .projects-scrim) ~ :is(.shell-layer, .projects-scrim) {
+  background: rgb(0 0 0 / 0.25);
+}
+
+/* While a dialog is open, the title bar (menus, project tabs) dims with the stage and takes no clicks; barInert.ts
+   also makes it inert, so neither a click nor Tab reaches something behind the dialog. */
+.bar.bar-under-dialog {
+  filter: brightness(0.38);
+  pointer-events: none;
+}
+
 /* ---------- The shell ---------- */
 
 .shell {

@@ -2,13 +2,13 @@ import type { RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import { useAgentStop } from '../agentStops'
 import { agentLook, runLook, type Look } from '../status/status'
-import { setupHoldOf, type SetupHold } from '../status/setupStatus'
+import { setupHolds, type SetupHold } from '../status/setupStatus'
 import { useStore } from '../store'
 import { StatusMark, StatusText } from '../status/StatusMarks'
 
 /** A recipe agent's hold for its setup commands, if it has one. */
 export function useSetupHold(nodeId?: string): SetupHold | undefined {
-  return useStore((s) => (nodeId ? setupHoldOf(s.doc?.nodes.find((n) => n.id === nodeId)) : undefined))
+  return useStore((s) => (nodeId ? setupHolds(s.doc?.nodes).get(nodeId) : undefined))
 }
 
 /** An agent's look, with the stop its turn ended on when the status is still the `unknown` it left. */

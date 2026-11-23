@@ -160,7 +160,8 @@
   bottom: 16px;
   left: auto;
   width: min(720px, 55vw);
-  z-index: 50;
+  /* Above the sidebar and dock, below a modal's or the palette's dim layer (z 30), as the other drawers are. */
+  z-index: 20;
 }
 
 /* When the dock has no room beside it, the viewer stops above the dock's row instead of covering it. */

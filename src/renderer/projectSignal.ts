@@ -18,8 +18,8 @@ export function projectSignal(doc: CanvasDoc, statuses: Record<string, AgentStat
   const seen = sessions.map((id) => statuses[id])
   if (seen.includes('needs-you')) return 'needs-you'
   if (sessions.some((id) => statuses[id] === 'unknown' && id in stopped)) return 'stopped'
-  // A recipe agent whose setup failed, or a failed run command: held too, as the Status tab's Need attention says.
-  if (doc.nodes.some((n) => n.projectId === projectId && isSessionNode(n) && sessionBlocked(n, statuses[n.id], runs[n.id]))) return 'stopped'
+  // A recipe agent whose setup failed, or a failed run command not yet looked at: held too, as the Status tab says.
+  if (doc.nodes.some((n) => n.projectId === projectId && isSessionNode(n) && sessionBlocked(n, statuses[n.id], runs[n.id], attention.includes(n.id)))) return 'stopped'
   if (sessions.some((id) => attention.includes(id))) return 'unseen'
   return seen.includes('working') ? 'working' : null
 }

@@ -29,9 +29,32 @@ export function setupLookFor(status: AgentStatus | null | undefined, hold: Setup
 
 /**
  * Whether a session is stopped on something only the person can clear, apart from an agent's stop: a recipe agent
- * whose setup failed, or a run command that exited with an error. The Status tab lists these under Need attention.
+ * whose setup failed, until it's fixed, or a run command that exited with an error, until it's been looked at (a
+ * failing `npm test` is part of the edit-test loop, so once seen it's just a run that exited, not a call for help).
+ * The Status tab lists these under Need attention. `unread`: whether the session is on the attention list.
  */
-export function sessionBlocked(node: CanvasNode, status: AgentStatus | null | undefined, run: RunResult | undefined): boolean {
-  if (node.kind === 'run') return !!run && !run.running && !run.stoppedByYou && run.exitCode !== null && run.exitCode !== 0
+export function sessionBlocked(node: CanvasNode, status: AgentStatus | null | undefined, run: RunResult | undefined, unread: boolean): boolean {
+  if (node.kind === 'run') return unread && !!run && !run.running && !run.stoppedByYou && run.exitCode !== null && run.exitCode !== 0
   return setupLookFor(status, setupHoldOf(node))?.tone === 'held'
 }
+
+let heldFrom: readonly CanvasNode[] | null = null
+let held = new Map<string, SetupHold>()
+
+/**
+ * The setup holds by node id, worked out once per change of the node list and shared by every badge that asks, so a
+ * status badge's store selector is a map lookup, not a scan of every node on each store update.
+ */
+export function setupHolds(nodes: readonly CanvasNode[] | undefined): ReadonlyMap<string, SetupHold> {
+  if (!nodes) return EMPTY
+  if (nodes !== heldFrom) {
+    heldFrom = nodes
+    held = new Map()
+    for (const n of nodes) {
+      const hold = setupHoldOf(n)
+      if (hold) held.set(n.id, hold)
+    }
+  }
+  return held
+}
+const EMPTY: ReadonlyMap<string, SetupHold> = new Map()

@@ -27,7 +27,7 @@ export function JoinedStrip({ id }: { id: string }): React.JSX.Element | null {
     void confirmThen(
       {
         title: namedQuestion('End and restart', name) ?? 'End and restart this session?',
-        icon: 'restart',
+        icon: 'refresh',
         message: 'It and everything it started end now, then it starts again. An agent resumes its conversation.',
         verb: 'End and restart',
         tone: 'danger',

@@ -73,6 +73,7 @@ import { focusedTerminal, terminalActions } from './terminalRegistry'
 import { TopBar } from './TopBar'
 import { ledTokens, runMapColor, statusMapColor } from './minimapColors'
 import { setupHoldOf } from './status/setupStatus'
+import { useBarInertUnderDialogs } from './shell/barInert'
 import type { RunResult } from '../shared/contract'
 import { useAgentStops } from './agentStops'
 import type { AgentStop } from '../shared/agentStop'
@@ -142,6 +143,7 @@ function Canvas(): React.JSX.Element | null {
   useViewAreaReport(prefs.sidebar)
   const mapOn = prefs.minimap && nodes.length > 0
   useChromeWatch(mapOn, !!doc)
+  useBarInertUnderDialogs(!!doc)
   const foldMap = useChromeLayout((s) => s.foldMap)
   const mapOpen = useChromeLayout((s) => s.mapOpen)
   const prefsRef = useRef(prefs)

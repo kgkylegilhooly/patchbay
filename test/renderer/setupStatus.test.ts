@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { agentLook } from '../../src/renderer/status/status'
-import { sessionBlocked, setupHoldOf, setupLookFor } from '../../src/renderer/status/setupStatus'
+import { sessionBlocked, setupHoldOf, setupHolds, setupLookFor } from '../../src/renderer/status/setupStatus'
+import { DIALOG_LAYERS, syncBar } from '../../src/renderer/shell/barInert'
 import { teamStatus } from '../../src/renderer/teamStatus'
 import { statusSections } from '../../src/renderer/sidebarView'
 import { needsYouQueue } from '../../src/renderer/needsYou'
@@ -53,20 +54,67 @@ describe('a recipe agent held for its setup', () => {
 })
 
 describe('a failed run command', () => {
-  test('is blocked only when it exited with an error the person didn\'t cause', () => {
-    expect(sessionBlocked(run('r'), null, result({ exitCode: 3 }))).toBe(true)
-    expect(sessionBlocked(run('r'), null, result({ exitCode: 0 }))).toBe(false)
-    expect(sessionBlocked(run('r'), null, result({ exitCode: 1, stoppedByYou: true }))).toBe(false)
-    expect(sessionBlocked(run('r'), null, result({ running: true, exitCode: null }))).toBe(false)
-    expect(sessionBlocked(run('r'), null, undefined)).toBe(false)
+  test("is blocked only when it exited with an error the person didn't cause, and only until it's been seen", () => {
+    expect(sessionBlocked(run('r'), null, result({ exitCode: 3 }), true)).toBe(true)
+    expect(sessionBlocked(run('r'), null, result({ exitCode: 3 }), false)).toBe(false)
+    expect(sessionBlocked(run('r'), null, result({ exitCode: 0 }), true)).toBe(false)
+    expect(sessionBlocked(run('r'), null, result({ exitCode: 1, stoppedByYou: true }), true)).toBe(false)
+    expect(sessionBlocked(run('r'), null, result({ running: true, exitCode: null }), true)).toBe(false)
+    expect(sessionBlocked(run('r'), null, undefined, true)).toBe(false)
   })
 
-  test('goes under Need attention, not Unread, and lights its project tab', () => {
+  test('unseen, it goes under Need attention, not Unread, and lights its project tab', () => {
     const doc = docOf([run('r'), run('ok')])
     const runs = { r: result({ exitCode: 3 }), ok: result({ exitCode: 0 }) }
     const sections = Object.fromEntries(statusSections(doc, {}, ['r', 'ok'], '', {}, runs).map((s) => [s.id, s.sessions.map((n) => n.id)]))
     expect(sections['needs-you']).toEqual(['r'])
     expect(sections.unread).toEqual(['ok'])
-    expect(projectSignal(doc, {}, 'p', [], {}, runs)).toBe('stopped')
+    expect(projectSignal(doc, {}, 'p', ['r'], {}, runs)).toBe('stopped')
+  })
+
+  test('once looked at, it leaves Need attention and the tab, with the other commands', () => {
+    const doc = docOf([run('r')])
+    const runs = { r: result({ exitCode: 3 }) }
+    const sections = Object.fromEntries(statusSections(doc, {}, [], '', {}, runs).map((s) => [s.id, s.sessions.map((n) => n.id)]))
+    expect(sections['needs-you']).toEqual([])
+    expect(sections.plain).toEqual(['r'])
+    expect(projectSignal(doc, {}, 'p', [], {}, runs)).toBeNull()
+  })
+})
+
+describe('setup holds by id', () => {
+  test('are worked out once per node list, and only for held agents', () => {
+    const nodes = [agent('a', failed), agent('b', waiting), agent('c')]
+    const holds = setupHolds(nodes)
+    expect([...holds]).toEqual([['a', 'failed'], ['b', 'waiting']])
+    expect(setupHolds(nodes)).toBe(holds)
+    expect(setupHolds([agent('a')]).size).toBe(0)
+    expect(setupHolds(undefined).size).toBe(0)
+  })
+})
+
+describe('the title bar under a dialog', () => {
+  const bar = () => {
+    const attrs = new Set<string>()
+    const classes = new Set<string>()
+    return {
+      attrs,
+      classes,
+      toggleAttribute: (n: string, on?: boolean) => (on ? attrs.add(n) : attrs.delete(n), !!on),
+      classList: { toggle: (n: string, on?: boolean) => (on ? classes.add(n) : classes.delete(n), !!on) } as unknown as DOMTokenList
+    }
+  }
+  test('is inert and dimmed while a dialog layer is on the stage, and back once it goes', () => {
+    const b = bar()
+    let layer: object | null = {}
+    const stage = { querySelector: (sel: string) => (sel === DIALOG_LAYERS ? layer : null) } as unknown as Element
+    expect(syncBar(stage, b as unknown as Element)).toBe(true)
+    expect(b.attrs.has('inert') && b.classes.has('bar-under-dialog')).toBe(true)
+    layer = null
+    expect(syncBar(stage, b as unknown as Element)).toBe(false)
+    expect(b.attrs.size + b.classes.size).toBe(0)
+  })
+  test('counts the modal, confirm, palette and archive layers', () => {
+    for (const cls of ['.shell-layer', '.palette-back', '.projects-scrim']) expect(DIALOG_LAYERS).toContain(`:scope > ${cls}`)
   })
 })

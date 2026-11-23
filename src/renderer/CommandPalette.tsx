@@ -83,6 +83,21 @@ export function CommandPalette({
     entry.run()
   }
 
+  // Esc closes it wherever focus went, as with every other dialog: a press on the dimmed title bar takes focus from the
+  // search box.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      closeRef.current()
+    }
+    // First, so a drawer open under it doesn't take the Esc meant for the palette.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [current, shown])

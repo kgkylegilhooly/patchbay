@@ -26,7 +26,7 @@ export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStat
   const archived = new Set(doc.projects.filter(isProjectArchived).map((p) => p.id))
   doc.nodes.forEach((node, order) => {
     if (node.kind !== 'claude' || (node.projectId && archived.has(node.projectId))) return
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], undefined))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], undefined, unread.has(node.id)))
     if (bucket === 'needs-you' || (includeUnread && bucket === 'unread')) entries.push({ id: node.id, bucket, since: waits[node.id]?.at ?? null, order })
   })
   // Someone waiting on an answer first, then a stop only the person can clear (a failed login, an error), then a
