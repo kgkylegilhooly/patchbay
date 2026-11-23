@@ -135,7 +135,19 @@ async function main() {
       await page.click('.menu-panel [data-cmd="open-palette"]')
       await L.sleep(150)
       c.check('It opens from the View menu', !!(await page.$('.palette')))
+      // Behind a dialog the title bar is dimmed and inert: clicking another project's tab does nothing.
+      c.check('The title bar is inert while it is open', await page.$eval('.app > .bar', (b) => b.inert && b.classList.contains('bar-under-dialog')))
+      const was = await U.active(page)
+      const tab = await page.$$eval('.project-tab', (tabs) => {
+        const r = tabs[1].getBoundingClientRect()
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      })
+      await page.mouse.click(tab.x, tab.y)
+      await L.sleep(300)
+      c.check('A project tab behind it takes no click', (await U.active(page)) === was, await U.active(page))
       await page.keyboard.press('Escape')
+      await L.sleep(100)
+      c.check('The title bar comes back once it closes', await page.$eval('.app > .bar', (b) => !b.inert && !b.classList.contains('bar-under-dialog')))
     })
 
     await step('rebinding', async () => {

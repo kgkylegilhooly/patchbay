@@ -62,10 +62,12 @@
   --st-color: var(--status-ended);
 }
 
-/* Solid: working, done, needs. Needs also glows and blinks, the only motion nobody asked for. */
+/* Solid: working, done, needs. Needs also glows and pulses, the only motion nobody asked for. A soft pulse that never
+   drops below 60%, not a hard blink: caught at any moment (or in a picture) it still reads as bright red, never as the
+   dark dot of an ended session. Opacity only, so it costs no repaint. */
 .st-needs .led {
   box-shadow: 0 0 6px var(--status-needs);
-  animation: st-blink 1.1s steps(2, jump-none) infinite;
+  animation: st-blink 0.9s ease-in-out infinite alternate;
 }
 
 /* Rings: on its way (pulsing), can't tell (dashed), stopped (red: you act; amber: it clears by itself). */
@@ -100,7 +102,7 @@
     opacity: 1;
   }
   to {
-    opacity: 0.25;
+    opacity: 0.6;
   }
 }
 

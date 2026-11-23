@@ -32,7 +32,7 @@ interface TabProps {
 
 function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragStart, onDragEnd }: TabProps): React.JSX.Element {
   const stops = useAgentStops((s) => s.stops)
-  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops) : null))
+  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops, s.runs) : null))
   const [draft, setDraft] = useState<string | null>(null)
 
   if (draft !== null) {
@@ -78,7 +78,9 @@ function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragSt
       onDoubleClick={rename}
       onContextMenu={(e) => {
         e.preventDefault()
-        onMenu({ x: e.clientX, y: e.clientY }, rename)
+        // Below the tab, from its left edge, so the menu never covers the tab it's for (or the keyboard's menu key).
+        const tab = e.currentTarget.getBoundingClientRect()
+        onMenu({ x: Math.round(tab.left), y: Math.round(tab.bottom) + 4 }, rename)
       }}
     >
       {signal && (SIGNAL_TONE[signal] ? (
@@ -210,7 +212,8 @@ export function ProjectTabs({ commands }: { commands: Commands }): React.JSX.Ele
             rename: menu.rename,
             canMoveLeft: indexOf(menu.project.id) > 0,
             canMoveRight: indexOf(menu.project.id) < open.length - 1,
-            archiveRefusal: archiveRefusal({ projects }, menu.project.id)
+            archiveRefusal: archiveRefusal({ projects }, menu.project.id),
+            name: menu.project.name
           })}
           onClose={() => setMenu(null)}
         />

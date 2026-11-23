@@ -55,7 +55,7 @@ export function WorkflowList({ projectId, onPick }: { projectId: string; onPick:
         <span className="recipe-item-name">+ New workflow</span>
       </button>}
       <p className="workflow-list-foot">
-        Files:{' '}
+        Workflow files:{' '}
         <button type="button" className="workflow-link" onClick={() => void workflows.openFolder(projectId, 'personal')}>
           personal
         </button>

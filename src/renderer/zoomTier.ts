@@ -33,11 +33,19 @@ export function nextTier(prev: ZoomTier | null, zoom: number): ZoomTier {
   return tierAt(zoom - HYSTERESIS)
 }
 
+/**
+ * Near, a header's text is drawn no smaller than it would be at this zoom. Below it the header strip grows (its slot
+ * in the window doesn't, so the body keeps its size), which keeps titles and status words at about 11 px down to the
+ * far line, where the tile takes over.
+ */
+export const NEAR_READABLE = 0.85
+
 /** How much larger than its canvas size a header draws, so its text keeps about its real size on screen. */
 export function headScale(zoom: number, tier: ZoomTier): number {
-  if (tier === 'near' || !(zoom > 0)) return 1
+  if (!(zoom > 0)) return 1
+  const want = tier === 'near' ? NEAR_READABLE / zoom : 1 / zoom
   // Quantized, so a wheel zoom re-lays the headers out a few times rather than on every frame.
-  return Math.round(Math.min(MAX_HEAD_SCALE, Math.max(1, 1 / zoom)) * 20) / 20
+  return Math.round(Math.min(MAX_HEAD_SCALE, Math.max(1, want)) * 20) / 20
 }
 
 /** The one thing a far header shows beside the status word. Tones: needs (red), warn (amber), plain. */

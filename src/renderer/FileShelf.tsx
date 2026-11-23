@@ -7,6 +7,8 @@ import type { FlowNode } from './flowMapping'
 import { askSendPath, checkFiles, closeFileShelf, copyPath, filesBridge, fileNotice, forgetShared, listShared, openFile, personMade, revealFile, stateOf, useFilesUi } from './fileShelfUi'
 import { noteShared, pinFiles, setPlacer, typePathsInto } from './fileShelfActions'
 import { Icon } from './icons'
+import { ContextMenu } from './Menu'
+import { shelfRowMenu } from './shelfRowMenu'
 import type { Place } from './newNodes'
 import { relativeTime } from './sidebarView'
 import { useStore } from './store'
@@ -121,8 +123,24 @@ function ShelfRow({ entry, projectId, now }: { entry: ShelfEntry; projectId: str
   const state = useFilesUi((s) => stateOf(s.states, entry.path))
   const missing = state === 'missing'
   const shown = withoutLongPrefix(entry.path)
+  const [menu, setMenu] = useState<{ at: { x: number; y: number }; end: boolean } | null>(null)
+  const rowMenu = shelfRowMenu({
+    open: () => openFile(entry.path),
+    reveal: () => revealFile(entry.path),
+    copy: () => copyPath(entry.path),
+    pin: () => pinFiles([entry.path], {}, 'pin'),
+    send: () => askSendPath(entry.path),
+    forget: () => forgetShared(projectId, entry.path)
+  })
   return (
-    <li className={`shelf-row${missing ? ' shelf-row-missing' : ''}`} data-shelf-path={entry.path}>
+    <li
+      className={`shelf-row${missing ? ' shelf-row-missing' : ''}${menu ? ' shelf-row-menu' : ''}`}
+      data-shelf-path={entry.path}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenu({ at: { x: e.clientX, y: e.clientY }, end: false })
+      }}
+    >
       <button type="button" className="shelf-main" title={`Open ${shown}`} onClick={() => openFile(entry.path)} onDoubleClick={(e) => e.preventDefault()}>
         <FileGlyph path={entry.path} folder={state === 'folder'} size={30} />
         <span className="shelf-text">
@@ -140,22 +158,22 @@ function ShelfRow({ entry, projectId, now }: { entry: ShelfEntry; projectId: str
         </span>
       </button>
       <span className="shelf-actions">
-        <button type="button" className="icon-btn" aria-label="Reveal in File Explorer" title="Reveal in File Explorer" onClick={() => revealFile(entry.path)}>
-          <Icon name="folder-open" size={15} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Copy path" title="Copy path" onClick={() => copyPath(entry.path)}>
-          <Icon name="copy" size={15} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Pin to canvas" title="Pin to canvas" onClick={() => pinFiles([entry.path], {}, 'pin')}>
-          <Icon name="pin" size={15} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Send path to agent" title="Send path to agent…" onClick={() => askSendPath(entry.path)}>
-          <Icon name="claude" size={15} />
-        </button>
-        <button type="button" className="icon-btn" aria-label="Forget" title="Forget (the file itself is left alone)" onClick={() => forgetShared(projectId, entry.path)}>
-          <Icon name="close" size={15} />
+        <button
+          type="button"
+          className="icon-btn"
+          data-shelf-tool="menu"
+          aria-haspopup="menu"
+          aria-label={`More for ${fileName(entry.path)}`}
+          title="Reveal, copy, pin, send or forget"
+          onClick={(e) => {
+            const box = e.currentTarget.getBoundingClientRect()
+            setMenu({ at: { x: box.right, y: box.bottom + 4 }, end: true })
+          }}
+        >
+          <Icon name="more" size={16} />
         </button>
       </span>
+      {menu && <ContextMenu at={menu.at} anchor={menu.end ? "end" : "start"} label={fileName(entry.path)} onClose={() => setMenu(null)} entries={rowMenu} />}
     </li>
   )
 }

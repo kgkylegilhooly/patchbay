@@ -1,4 +1,4 @@
-import { Handle, NodeResizer, Position } from '@xyflow/react'
+import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PendingApproval } from '../../shared/contract'
@@ -17,10 +17,13 @@ import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStop } from '../agentStops'
 import { ledTokens, runMapColor, statusMapColor } from '../minimapColors'
+import { setupHoldOf } from '../status/setupStatus'
 import { headerFolder, keyBadge } from '../zoomTier'
 import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
+import { askReview, reviewShown, reviewViewport, useFarReview } from '../farReview'
+import { measureSafeArea } from '../safeArea'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -107,6 +110,13 @@ function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.E
   const [open, setOpen] = useState(false)
   const [clipped, setClipped] = useState(false)
   const text = useRef<HTMLElement>(null)
+  // Review… on a zoomed-out tile brought the view here: show the whole command.
+  const reviewing = useFarReview((s) => s.requestId === approval.requestId)
+  useEffect(() => {
+    if (!reviewing) return
+    setOpen(true)
+    reviewShown()
+  }, [reviewing])
   useEffect(() => {
     const el = text.current
     if (!el || open) return
@@ -172,12 +182,42 @@ function FarMeta({ node, status, folder }: { node: CanvasNode; status: AgentStat
   const badge = keyBadge({ approval: approval ? { tool: approval.tool, summary: approval.summary } : null, context, folder })
   return (
     <span className="head-far">
-      {node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
+      {/* Asking: what's asked and the answer buttons say it, so the status word makes room for them. */}
+      {approval ? null : node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
       {badge && (
-        <span className={`key-badge key-badge-${badge.tone}`} title={badge.title}>
+        <span className={`key-badge key-badge-${badge.tone}`} title={approval ? `${approval.tool}: ${approval.detail}` : badge.title}>
           {badge.text}
         </span>
       )}
+      {approval && <FarAnswer approval={approval} />}
+    </span>
+  )
+}
+
+/**
+ * A prompt in a zoomed-out tile: Deny, which is safe, and Review…, which zooms to the window with the whole command
+ * shown in its strip, where Approve is. The tile can't show all of a command, so it never approves one (farReview.ts).
+ */
+function FarAnswer({ approval }: { approval: PendingApproval }): React.JSX.Element {
+  const flow = useReactFlow()
+  const what = `${approval.tool}: ${approval.detail}`
+  const review = (): void => {
+    const internal = flow.getInternalNode(approval.nodeId)
+    const area = measureSafeArea()
+    if (!internal || !area) return
+    askReview(approval.requestId)
+    const node = { ...internal.internals.positionAbsolute, width: internal.measured.width ?? 0, height: internal.measured.height ?? 0 }
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    void flow.setViewport(reviewViewport(node, area), { duration: still ? 0 : 260 })
+  }
+  return (
+    <span className="far-answer">
+      <button type="button" className="far-act far-act-ok nodrag" data-far-answer="review" title={`Zoom in to read the whole command, then approve or deny it: ${what}`} onClick={review}>
+        Review…
+      </button>
+      <button type="button" className="far-act nodrag" data-far-answer="deny" title={`Deny ${what}`} onClick={() => void bridge.answerApproval(approval.requestId, 'deny')}>
+        Deny
+      </button>
     </span>
   )
 }
@@ -236,7 +276,7 @@ export function NodeChrome({
   const folder = headerFolder(cwd, projectFolder)
   const stop = useAgentStop(status === 'unknown' ? node.id : undefined)
   // The colour a zoomed-out window's body is filled with: the minimap's, so the two always agree.
-  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens())
+  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens(), Date.now(), setupHoldOf(node))
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (

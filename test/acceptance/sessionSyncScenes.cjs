@@ -23,7 +23,7 @@ async function behindItsBack(page, profile) {
     await window.patchbay.dispatch({ op: 'addNode', node: { ...n, cwd } })
     await window.patchbay.startNode(n.id)
     return cwd
-  }, { ...box, id: 'old', kind: 'terminal', title: 'Dev server', x: 40, y: 60 })
+  }, { ...box, id: 'old', kind: 'terminal', title: 'Dev server', x: 40, y: 740 })
   await sleep(2000)
   await page.evaluate(() => window.patchbay.input('old', 'exit\r'))
   await waitUntil(async () => (await page.evaluate(() => window.patchbay.getStatuses())).old === 'exited', 15000)

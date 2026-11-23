@@ -538,8 +538,6 @@ select {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--ink-dim);
-  /* Keeps the end of a long path, which is the part that tells folders apart. */
-  direction: rtl;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2344,15 +2342,6 @@ circle.wb-eraser {
   z-index: 5;
 }
 
-/* Next to the harmless Unbind: red text says this one deletes a folder. */
-.wt-bound .wt-remove:not(:disabled) {
-  color: var(--led-needs);
-}
-
-.wt-bound .wt-remove:hover:not(:disabled) {
-  border-color: var(--led-needs);
-}
-
 .wt-form input {
   width: 13em;
 }
@@ -3582,7 +3571,7 @@ circle.wb-eraser {
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: rgb(14 14 16 / 0.45);
+  background: var(--scrim);
 }
 
 .palette {

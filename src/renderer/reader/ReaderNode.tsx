@@ -17,12 +17,12 @@ import { findQuote, rangeText, sectionOf, setHighlights, visibleText } from './q
 import { enhanceBlocks } from './enhance'
 import { renderBlocks, renderHeading } from './render'
 import { changedAgo, slug } from './targets'
+import { readerColumns } from '../../core/reader/readerSize'
 import './reader.css'
 
 /** Blocks a comment can be put on with the + beside them. */
 const BLOCKS = 'p, li, blockquote, .code-block, table, .reader-heading'
 const PAPER_KEY = 'patchbay.reader.paper'
-const WIDE = 900
 
 function readPaper(): boolean {
   try {
@@ -219,8 +219,10 @@ export const ReaderNode = memo(function ReaderNode({ data, selected }: NodeProps
   const [linkProblem, setLinkProblem] = useState<string | null>(null)
 
   const openCount = comments.filter((c) => !c.resolved).length
-  const showOutline = outlineOpen ?? node.width >= WIDE
-  const showComments = commentsOpen ?? (openCount > 0 || draft !== null)
+  // A narrow reader keeps its comments behind the header's Comments button, so the page keeps its room.
+  const columns = readerColumns(node.width, { outlineOpen, commentsOpen, openCount, drafting: draft !== null })
+  const showOutline = columns.outline
+  const showComments = columns.comments
   const hidden = useMemo(() => hiddenBy(doc.sections, collapsed), [doc, collapsed])
 
   // Comments per section, for the count beside each heading.

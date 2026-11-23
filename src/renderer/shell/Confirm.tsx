@@ -19,6 +19,7 @@ export function ConfirmDialog({
   verb,
   tone = 'danger',
   cancelLabel = 'Cancel',
+  icon,
   attrs,
   verbAttrs,
   cancelAttrs,
@@ -31,7 +32,7 @@ export function ConfirmDialog({
     <Panel
       kind="modal"
       title={title}
-      icon={danger ? 'trash' : undefined}
+      icon={icon ?? (danger ? 'trash' : undefined)}
       onClose={onCancel}
       busy={busy}
       className={`shell-confirm${danger ? ' shell-confirm-danger' : ''}`}

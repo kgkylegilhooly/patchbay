@@ -225,7 +225,7 @@ export function TerminalProfilesSection(): React.JSX.Element {
                   Duplicate
                 </button>
                 {!p.builtIn && (
-                  <button type="button" className="btn btn-risky" data-tp="delete" onClick={() => askRemove(p)}>
+                  <button type="button" className="btn btn-risky btn-destroy" data-tp="delete" onClick={() => askRemove(p)}>
                     Delete…
                   </button>
                 )}

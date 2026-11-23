@@ -9,8 +9,10 @@ import type { CommentStore } from './commentStore'
 import { linksStayLocal, type LinkFs } from './links'
 import { findPlan, tailLines } from './planFind'
 import { checkDocPath, docKey, insideFolder, MAX_DOC_BYTES, systemFolders } from './policy'
+import { READER_DEFAULT, readerSize } from '../../core/reader/readerSize'
 
-export const READER_SIZE = { width: 780, height: 720 }
+/** A reader's size when the window's isn't known. New readers are sized to the window: see core/reader/readerSize. */
+export const READER_SIZE = READER_DEFAULT
 
 type Fail = { ok: false; reason: string; missing?: boolean }
 type Opened = { ok: true; nodeId: string; existed: boolean }
@@ -44,6 +46,8 @@ export interface DocsDeps {
   near: (doc: CanvasDoc, opener: CanvasNode, size: { width: number; height: number }) => { x: number; y: number }
   /** Brings a node into view, for a document that was already open. */
   center?: (id: string) => void
+  /** The visible canvas, in screen pixels, for sizing a new reader to it. Unknown in tests. */
+  view?: () => { width: number; height: number } | null
   link: Omit<LinkDeps, 'home'>
   system?: string[]
   newId?: () => string
@@ -143,13 +147,16 @@ export function createDocsService(d: DocsDeps) {
     const projectId = o.projectId ?? o.from?.projectId ?? doc.activeProjectId
     const already = doc.nodes.find((n) => n.kind === 'reader' && (n.projectId ?? doc.activeProjectId) === projectId && docKey(n.path) === docKey(read.path))
     if (already) return { ok: true, nodeId: already.id, existed: true }
-    const spot = o.at ?? (o.from ? d.near(doc, o.from, READER_SIZE) : { x: (80 - doc.viewport.x) / doc.viewport.zoom, y: (80 - doc.viewport.y) / doc.viewport.zoom })
+    // Opened by the person, it's brought into view, so it's sized to the window. An agent's opens beside it at the
+    // usual size, which doesn't move the person's view and leaves its neighbours room.
+    const size = o.openedBy ? READER_DEFAULT : readerSize(d.view?.() ?? null, doc.viewport.zoom)
+    const spot = o.at ?? (o.from ? d.near(doc, o.from, size) : { x: (80 - doc.viewport.x) / doc.viewport.zoom, y: (80 - doc.viewport.y) / doc.viewport.zoom })
     const node: ReaderNode = {
       id: newId(),
       kind: 'reader',
       title: o.title || titleFrom(read.text) || docName(read.path),
       path: read.path,
-      ...READER_SIZE,
+      ...size,
       x: Math.round(spot.x),
       y: Math.round(spot.y),
       parentId: null,
