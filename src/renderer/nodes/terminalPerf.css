@@ -1,0 +1,8 @@
+/*
+ * Overview: a session's body is a flat status fill (zoom.css) and its terminal is hidden. Hidden with visibility alone,
+ * every terminal still rebuilt, styled and laid out its rows on each print. Skipping the body's contents skips all of
+ * that, and xterm, finding itself off screen, stops drawing until the view comes back in. Its output is still taken in.
+ */
+[data-zoom-tier='overview'] .unit:has(> .unit-head-session) > .unit-body {
+  content-visibility: hidden;
+}

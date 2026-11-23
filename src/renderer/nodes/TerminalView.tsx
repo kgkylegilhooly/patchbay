@@ -1,6 +1,7 @@
 import type { SearchAddon } from '@xterm/addon-search'
 import type { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
+import './terminalPerf.css'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { bridge } from '../bridge'
