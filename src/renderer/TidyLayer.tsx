@@ -2,7 +2,7 @@ import { Panel, useReactFlow, ViewportPortal, type Viewport } from '@xyflow/reac
 import { useEffect, useMemo, useRef } from 'react'
 import { boundsOf, panToShow, planTidy, tidyOp, tidyResult, type TidyScope } from '../core/canvas/tidy'
 import { absoluteRect, type Rect } from '../core/canvas/place'
-import type { CanvasDoc } from '../shared/model'
+import type { AgentStatus, CanvasDoc } from '../shared/model'
 import { undoable, useStore } from './store'
 import { changeTidy, closeTidy, useTidyUi } from './tidyUi'
 import { visibleArea } from './viewArea'
@@ -17,6 +17,8 @@ const still = (): boolean => !!window.matchMedia?.('(prefers-reduced-motion: red
 function canvasView(area: Rect, vp: Viewport, below = 0): Rect {
   return { x: (area.x - vp.x) / vp.zoom, y: (area.y + below - vp.y) / vp.zoom, width: area.width / vp.zoom, height: (area.height - below) / vp.zoom }
 }
+
+const NO_STATUSES: Record<string, AgentStatus> = {}
 
 const sameScope = (a: TidyScope, b: TidyScope): boolean => JSON.stringify(a) === JSON.stringify(b)
 
@@ -36,8 +38,9 @@ function scopeChoices(doc: CanvasDoc, scope: TidyScope, selection: string[]): { 
  */
 export function TidyLayer({ sidebar }: { sidebar: boolean }): React.JSX.Element | null {
   const preview = useTidyUi((s) => s.preview)
-  const doc = useStore((s) => s.doc)
-  const statuses = useStore((s) => s.statuses)
+  // Only a preview uses the doc and the statuses. Without one, a status or a doc change renders nothing here.
+  const doc = useStore((s) => (preview ? s.doc : null))
+  const statuses = useStore((s) => (preview ? s.statuses : NO_STATUSES))
   const flow = useReactFlow()
 
   const plan = useMemo(

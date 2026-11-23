@@ -6,6 +6,8 @@ import {
   type Connection,
   MiniMap,
   type NodeChange,
+  type OnNodeDrag,
+  type SelectionDragHandler,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -21,17 +23,14 @@ import { LaunchForm } from './LaunchForm'
 import { TriggerNode } from './nodes/TriggerNode'
 import { ArmReview, TriggerForm } from './TriggerForm'
 import { ACTIONS, actionReady, worksOverBoard } from './actions'
-import { Board } from './Board'
 import { bridge } from './bridge'
 import { setCableMotion } from './cableMotion'
-import { GitPanel } from './GitPanel'
 import { CommandPalette } from './CommandPalette'
 import { Dock } from './Dock'
 import { dragOps } from './dragOps'
 import { type FlowEdge, type FlowNode, mergeFlowNodes, toFlow } from './flowMapping'
 import { shareEdges } from './docShare'
 import { actionForKey, appTakesKey, isOverTerminal, keyFocusOf, keyFromEvent } from './keys'
-import { FocusView } from './FocusView'
 import { ContextMenu } from './Menu'
 import { canvasMenu, nodeMenu, type MenuEntry, type MenuState, type Point } from './menus'
 import { NewProjectForm } from './NewProjectForm'
@@ -49,23 +48,11 @@ import { clampFontSize, loadPrefs, savePrefs, type Prefs, type TogglePref } from
 import { useViewAreaReport } from './viewArea'
 import { safePadding, useChromeLayout, useChromeWatch } from './safeArea'
 import { RecentPanel } from './RecentPanel'
-import { SearchLayer } from './SearchLayer'
-import { ReviewInboxLayer } from './ReviewInbox'
-import { RecipeLayer } from './RecipeLayer'
-import { CompareLayer } from './CompareLayer'
-import { WorkflowLayer } from './workflows/WorkflowLayer'
-import { ProjectsLayer } from './ProjectsLayer'
-import { SubagentLayer } from './subagents/SubagentLayer'
-import { TidyLayer } from './TidyLayer'
-import { NeedsYouLayer } from './NeedsYouLayer'
+import { CanvasOverlays, FlowLayers } from './CanvasOverlays'
+import { useSameList } from './sameList'
 import { ReaderNode } from './reader/ReaderNode'
-import { ReaderLayer } from './reader/ReaderLayer'
 import { FileNode } from './nodes/FileNode'
-import { dropFileOnWindow, FileShelfLayer } from './FileShelf'
-import { HeaderZoomWatcher } from './useHeaderZoom'
-import { ZoomTierWatcher } from './ZoomTierWatcher'
-import { TerminalParkingWatcher } from './TerminalParkingWatcher'
-import { ResourceNotice } from './resources/ResourceNotice'
+import { dropFileOnWindow } from './FileShelf'
 import { SettingsPage } from './SettingsPage'
 import { Sidebar } from './Sidebar'
 import { dispatch, undoable, undoState, useStore } from './store'
@@ -80,11 +67,12 @@ import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
 import './styles.css'
 import './shell/shell.css'
-import { ConfirmHost } from './shell/Confirm'
 import { cancelAllConfirms } from './shell/confirmStore'
 
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
+/** One array, so React Flow isn't handed a new one on every render. */
+const SNAP_GRID: [number, number] = [24, 24]
 
 function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Record<string, RunResult>): string {
   if (node.data.node.kind === 'group') return 'transparent'
@@ -133,7 +121,7 @@ function Canvas(): React.JSX.Element | null {
     setEdges((prev) => shareEdges(prev, mapped.edges))
   }, [doc, statuses])
 
-  const selected = useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes])
+  const selected = useSameList(useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes]))
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
@@ -310,13 +298,13 @@ function Canvas(): React.JSX.Element | null {
     }
   }, [])
 
-  const onPaneMenu = (e: MouseEvent | React.MouseEvent): void => {
+  const onPaneMenu = useCallback((e: MouseEvent | React.MouseEvent): void => {
     e.preventDefault()
     const at = { x: e.clientX, y: e.clientY }
     setMenu({ at, entries: canvasMenu(commands, menuState(), at), label: 'Canvas' })
-  }
+  }, [commands, menuState])
 
-  const onNodeMenu = (e: React.MouseEvent, flowNode: FlowNode): void => {
+  const onNodeMenu = useCallback((e: React.MouseEvent, flowNode: FlowNode): void => {
     e.preventDefault()
     const node = flowNode.data.node
     const status = useStore.getState().statuses[node.id] ?? null
@@ -324,7 +312,7 @@ function Canvas(): React.JSX.Element | null {
     const at = { x: e.clientX, y: e.clientY }
     const canCopy = !!terminalActions(node.id)?.hasSelection()
     setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart }), label: node.title })
-  }
+  }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
     setNodes((prev) => applyNodeChanges(changes, prev))
@@ -346,6 +334,17 @@ function Canvas(): React.JSX.Element | null {
     },
     [flow]
   )
+
+  // Given to React Flow as one function each, so a render during a drag doesn't hand it new ones to store.
+  const onNodeDragStop = useCallback<OnNodeDrag<FlowNode>>(
+    (e, n, dragged) => void ((dragged.length === 1 && dropFileOnWindow(e, n, (id, position) => flow.updateNode(id, { position }))) || finishDrag(dragged)),
+    [flow, finishDrag]
+  )
+  const onSelectionDragStop = useCallback<SelectionDragHandler<FlowNode>>((_e, dragged) => finishDrag(dragged), [finishDrag])
+  const onPaneClick = useCallback(() => {
+    if (prefsRef.current.sidebar && !prefsRef.current.sidebarPinned) setPref('sidebar')
+  }, [setPref])
+  const onNodeClick = useCallback((_e: React.MouseEvent, node: FlowNode) => bridge.markSeen(node.id), [])
 
   const onConnect = useCallback((c: Connection) => {
     if (!c.source || !c.target || c.source === c.target) return
@@ -403,31 +402,28 @@ function Canvas(): React.JSX.Element | null {
           maxZoom={2}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onNodeDragStop={(e, n, dragged) => (dragged.length === 1 && dropFileOnWindow(e, n, (id, position) => flow.updateNode(id, { position }))) || finishDrag(dragged)}
-          onSelectionDragStop={(_e, dragged) => finishDrag(dragged)}
+          onNodeDragStop={onNodeDragStop}
+          onSelectionDragStop={onSelectionDragStop}
           onConnect={onConnect}
           onMove={onMove}
           onMoveStart={onMoveStart}
           onMoveEnd={onMoveEnd}
-          onPaneClick={() => {
-            if (prefsRef.current.sidebar && !prefsRef.current.sidebarPinned) setPref('sidebar')
-          }}
+          onPaneClick={onPaneClick}
           onPaneContextMenu={onPaneMenu}
           onSelectionContextMenu={onPaneMenu}
           onNodeContextMenu={onNodeMenu}
-          onNodeClick={(_e, node) => bridge.markSeen(node.id)}
+          onNodeClick={onNodeClick}
           onlyRenderVisibleElements={false}
           deleteKeyCode={null}
           zoomOnDoubleClick={false}
           snapToGrid={prefs.snap}
           zoomOnScroll={prefs.wheel === 'zoom'}
           panOnScroll={prefs.wheel === 'pan'}
-          snapGrid={[24, 24]}
+          snapGrid={SNAP_GRID}
           attributionPosition="top-right"
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
-          <SubagentLayer />
-          <TidyLayer sidebar={prefs.sidebar} />
+          <FlowLayers sidebar={prefs.sidebar} />
           {mapOn && (!foldMap || mapOpen) && (
             <MiniMap<FlowNode>
               className={foldMap ? 'minimap-lifted' : undefined}
@@ -450,7 +446,7 @@ function Canvas(): React.JSX.Element | null {
             <li className="legend-link">Linked</li>
             <li className="legend-after">Starts after</li>
             <li className="legend-trigger">Trigger</li>
-            <li className="legend-note">Dots and arrowheads travel the way a one-way link runs. Linked works both ways, so it stays still.</li>
+            <li className="legend-note">Dots travel the way a one-way link runs, while it's busy. Linked works both ways, so it stays still.</li>
           </ul>
         )}
         {prefs.sidebar && (
@@ -522,23 +518,7 @@ function Canvas(): React.JSX.Element | null {
         {settingsOpen && <SettingsPage prefs={prefs} onToggle={setPref} onFontSize={setFontSize} onUsageMode={setUsageMode} onKeys={(keys) => updatePrefs({ keys })} onPrefs={updatePrefs} onClose={() => setSettingsOpen(false)} />}
         {paletteOpen && <CommandPalette commands={commands} state={menuState()} recent={prefs.recentActions} onRan={(id) => updatePrefs({ recentActions: noteRecent(prefsRef.current.recentActions, id) })} onClose={closePalette} />}
         {recentOpen && <RecentPanel onClose={() => setRecentOpen(false)} />}
-        <SearchLayer />
-        <RecipeLayer selected={selected} />
-        <CompareLayer />
-        <WorkflowLayer />
-        <ProjectsLayer commands={commands} />
-        <NeedsYouLayer commands={commands} />
-        <ReaderLayer />
-        <HeaderZoomWatcher />
-        <ZoomTierWatcher />
-        <TerminalParkingWatcher />
-        <ResourceNotice commands={commands} />
-        <FocusView />
-        {boardOpen && <Board commands={commands} />}
-        {gitOpen && <GitPanel selected={selected} />}
-        <ReviewInboxLayer />
-        <FileShelfLayer />
-        <ConfirmHost />
+        <CanvasOverlays commands={commands} selected={selected} boardOpen={boardOpen} gitOpen={gitOpen} />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

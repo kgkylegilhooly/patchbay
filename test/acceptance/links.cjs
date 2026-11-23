@@ -82,14 +82,29 @@ async function main() {
     })
 
     await step('direction', async () => {
-      const offsets = async () => page.$$eval('.cable-opened .cable-flow', (ps) => ps.map((p) => parseFloat(getComputedStyle(p).strokeDashoffset)))
-      const a = await offsets()
-      await L.sleep(250)
-      const b = await offsets()
+      // The dots move only while a node at either end is under way (working, starting, queued); see cableActivity.ts.
+      // Each cable's offset now and 250 ms later, kept only for cables that were moving, or still, both times.
+      const sample = () =>
+        page.$$eval('.cable-opened .cable-flow', async (ps) => {
+          const read = () => ps.map((p) => ({ still: p.classList.contains('cable-still'), at: parseFloat(getComputedStyle(p).strokeDashoffset) }))
+          const before = read()
+          await new Promise((r) => setTimeout(r, 250))
+          const after = read()
+          const pairs = before.map((x, i) => ({ still: x.still, a: x.at, b: after[i].at, same: x.still === after[i].still })).filter((x) => x.same)
+          return { moving: pairs.filter((x) => !x.still), still: pairs.filter((x) => x.still) }
+        })
+      // The stand-in agents start up first: wait for one to be working.
+      const { moving, still } = await L.waitFor('a moving cable', async () => {
+        const s = await sample()
+        return s.moving.length > 0 && s
+      }, 20000)
+      const [a, b] = [moving.map((x) => x.a), moving.map((x) => x.b)]
+      const [stillA, stillB] = [still.map((x) => x.a), still.map((x) => x.b)]
       // The offset falls toward 0 and wraps, so a move forward reads as smaller, or as a wrap back to the top.
       const forward = a.every((v, i) => b[i] < v || b[i] - v > 20)
       c.check('One-way cables animate', a.length > 0 && a.some((v, i) => v !== b[i]), { a, b })
-      c.check('They move from start to end', forward, { a, b })
+      c.check('They move from start to end', a.length > 0 && forward, { a, b })
+      c.check('A cable with nothing under way at either end keeps its dots still', stillA.length > 0 && stillA.every((v, i) => v === stillB[i]), { stillA, stillB })
       c.check('Links have no moving dots', (await page.$$('.cable-link .cable-flow')).length === 0)
       c.check('One-way cables have an arrowhead, links do not', (await page.$$('.cable-opened [marker-end]')).length > 0 && (await page.$$('.cable-link [marker-end]')).length === 0)
       const legend = await page.$eval('.legend', (l) => l.textContent)
