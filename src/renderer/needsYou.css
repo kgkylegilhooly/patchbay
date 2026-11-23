@@ -137,32 +137,38 @@
   color: var(--ink-dim);
 }
 
-/* A sidebar row's peek button: shown on hover or focus, and while its card is open. */
+/* A sidebar row's peek button: shown on hover or focus, and while its card is open. It takes the place of the row's
+   time on the second line, which hides meanwhile, so it never sits on top of the time or the status words. */
 .sidebar li:has(> .peek-btn) {
   position: relative;
 }
 
 .peek-btn {
   position: absolute;
-  top: 50%;
   right: 6px;
+  bottom: 3px;
   display: grid;
   place-items: center;
   width: 24px;
-  height: 24px;
+  height: 20px;
   padding: 0;
   color: var(--ink-dim);
   background: var(--face-raised);
   border: 1px solid var(--line);
   border-radius: 6px;
   opacity: 0;
-  transform: translateY(-50%);
 }
 
 .sidebar li:hover > .peek-btn,
 .sidebar li:focus-within > .peek-btn,
 .peek-btn-on {
   opacity: 1;
+}
+
+.sidebar li:hover:has(> .peek-btn) .session-time,
+.sidebar li:focus-within:has(> .peek-btn) .session-time,
+.sidebar li:has(> .peek-btn-on) .session-time {
+  visibility: hidden;
 }
 
 .peek-btn:hover,

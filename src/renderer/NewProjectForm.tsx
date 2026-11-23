@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { bridge } from './bridge'
+import { shortPath } from './shortPath'
 import { FormShell } from './shell/FormShell'
 
 const lastPart = (path: string): string => path.split(/[\\/]/).filter(Boolean).pop() ?? ''
@@ -24,7 +25,7 @@ export function NewProjectForm({ onCancel, onCreate }: { onCancel: () => void; o
         <span className="field-label">Folder</span>
         <div className="folder-row">
           <span className={folder ? 'folder' : 'folder folder-empty'} title={folder}>
-            {folder || 'Where new sessions start'}
+            {folder ? shortPath(folder) : 'Where new sessions start'}
           </span>
           <button type="button" className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setFolder(f))}>
             Choose folder

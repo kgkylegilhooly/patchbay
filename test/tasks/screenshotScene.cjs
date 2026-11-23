@@ -10,6 +10,8 @@ const prepare = scenes.prepare
 scenes.scenes.tasks = async (page) => {
   await page.waitForSelector('[data-cmd="toggle-board"]')
   await page.click('[data-cmd="toggle-board"]')
+  await page.waitForSelector('[data-task-outcomes="toggle"]')
+  if ((await page.$eval('[data-task-outcomes="toggle"]', (b) => b.getAttribute('aria-expanded'))) === 'false') await page.click('[data-task-outcomes="toggle"]')
   await page.waitForSelector('[data-task="task-ready"]')
   // Verify that direct document writes cannot forge human acceptance.
   await page.evaluate(async () => {

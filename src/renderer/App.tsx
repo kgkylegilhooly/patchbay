@@ -59,6 +59,8 @@ import { dispatch, undoable, undoState, useStore } from './store'
 import { focusedTerminal, terminalActions } from './terminalRegistry'
 import { TopBar } from './TopBar'
 import { ledTokens, runMapColor, statusMapColor } from './minimapColors'
+import { setupHoldOf } from './status/setupStatus'
+import { useBarInertUnderDialogs } from './shell/barInert'
 import type { RunResult } from '../shared/contract'
 import { useAgentStops } from './agentStops'
 import type { AgentStop } from '../shared/agentStop'
@@ -80,7 +82,7 @@ function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Re
   if (node.data.node.kind === 'whiteboard') return '#d8d8d2'
   if (node.data.node.kind === 'trigger') return '#e7b53f'
   if (node.data.node.kind === 'run') return runMapColor(runs[node.id], ledTokens())
-  return statusMapColor(node.data.status, stops[node.id], ledTokens())
+  return statusMapColor(node.data.status, stops[node.id], ledTokens(), Date.now(), setupHoldOf(node.data.node))
 }
 
 function miniMapStroke(node: FlowNode): string {
@@ -129,6 +131,7 @@ function Canvas(): React.JSX.Element | null {
   useViewAreaReport(prefs.sidebar)
   const mapOn = prefs.minimap && nodes.length > 0
   useChromeWatch(mapOn, !!doc)
+  useBarInertUnderDialogs(!!doc)
   const foldMap = useChromeLayout((s) => s.foldMap)
   const mapOpen = useChromeLayout((s) => s.mapOpen)
   const prefsRef = useRef(prefs)

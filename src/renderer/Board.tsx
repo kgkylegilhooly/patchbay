@@ -4,7 +4,9 @@ import type { GithubIssue } from '../shared/git'
 import { issuePrompt } from '../shared/issuePrompt'
 import { isSessionNode, type SessionNode } from '../shared/model'
 import { Icon, KindIcon } from './icons'
-import type { Commands } from './menus'
+import type { Commands, Point } from './menus'
+import { ContextMenu } from './Menu'
+import { boardColumnMenu } from './boardColumnMenu'
 import { RunDot, RunLabel, StatusBadge, StatusDot } from './nodes/StatusBadge'
 import { dispatch, useStore } from './store'
 import { contextLabel } from './usageView'
@@ -103,6 +105,7 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
   const [drag, setDrag] = useState<Drag | null>(null)
   const [openIssue, setOpenIssue] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [columnMenu, setColumnMenu] = useState<{ id: string; at: Point } | null>(null)
   const [adding, setAdding] = useState('')
   const [ask, setAsk] = useState<IssueAsk | null>(null)
   const [start, setStart] = useState<StartAsk | null>(null)
@@ -318,14 +321,40 @@ export function Board({ commands }: { commands: Commands }): React.JSX.Element |
                 </h3>
               )}
               <span className="board-column-tools">
-                <button type="button" className={`btn btn-sm btn-quiet${col.startsWork ? ' board-starts-on' : ''}`} data-col-tool="starts-work" aria-pressed={!!col.startsWork} title={col.startsWork ? 'Dropping an issue here offers to start a Claude session on it. Click to stop that' : 'Click so that dropping an issue here offers to start a Claude session on it'} onClick={() => change((b) => setStartsWork(b, col.id, !col.startsWork))}>
-                  ▶
+                {col.startsWork && (
+                  <span className="board-starts-mark" title="Dropping an issue here offers to start a Claude session on it. Change it in this column's menu">
+                    <Icon name="claude" size={13} />
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="icon-btn tool-btn"
+                  data-col-tool="menu"
+                  aria-haspopup="menu"
+                  aria-label={`Column ${col.title}: more`}
+                  title="Rename, move or remove this column"
+                  onClick={(e) => {
+                    const box = e.currentTarget.getBoundingClientRect()
+                    setColumnMenu({ id: col.id, at: { x: box.right, y: box.bottom + 4 } })
+                  }}
+                >
+                  <Icon name="more" size={15} />
                 </button>
-                <button type="button" className="btn btn-sm btn-quiet" data-col-tool="rename" title="Rename" onClick={() => setRenaming(col.id)}>✎</button>
-                <button type="button" className="btn btn-sm btn-quiet" data-col-tool="left" title="Move left" disabled={i === 0} onClick={() => change((b) => moveColumn(b, col.id, -1))}>←</button>
-                <button type="button" className="btn btn-sm btn-quiet" data-col-tool="right" title="Move right" disabled={i === board.columns.length - 1} onClick={() => change((b) => moveColumn(b, col.id, 1))}>→</button>
-                <button type="button" className="btn btn-sm btn-quiet btn-risky" data-col-tool="remove" title="Remove column" disabled={board.columns.length === 1} onClick={() => askRemove(col.id)}>×</button>
               </span>
+              {columnMenu?.id === col.id && (
+                <ContextMenu
+                  at={columnMenu.at}
+                  anchor="end"
+                  label={`Column ${col.title}`}
+                  onClose={() => setColumnMenu(null)}
+                  entries={boardColumnMenu(col, { index: i, count: board.columns.length }, {
+                    startsWork: (on) => change((b) => setStartsWork(b, col.id, on)),
+                    rename: () => setRenaming(col.id),
+                    move: (step) => change((b) => moveColumn(b, col.id, step)),
+                    remove: () => askRemove(col.id)
+                  })}
+                />
+              )}
             </div>
             <ul className="board-cards">
               {byColumn[col.id].map((key) => {

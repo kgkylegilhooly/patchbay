@@ -98,22 +98,6 @@
   color: var(--cable-trigger);
 }
 
-.recipe-list-foot {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 12px;
-}
-
-/* The labels say what they open, so they're long for the rail: they wrap rather than run off it. */
-.recipe-list-foot .btn {
-  font-size: var(--fs-sm);
-  text-align: left;
-  white-space: normal;
-}
-
 .recipe-preview {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,6 @@
 import type { RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
+import { setupLookFor, type SetupHold } from './setupStatus'
 import { stopHolds, stopLabel, type AgentStop } from '../../shared/agentStop'
 import type { SubagentStatus } from '../../shared/subagents'
 import type { AttemptState, RunState } from '../../shared/workflow'
@@ -26,6 +27,8 @@ export interface Look {
   label: string
   /** Longer text for a tooltip, such as what Claude said when it stopped. */
   detail?: string
+  /** Fewer words for a narrow row, as the sidebar's: "Limit until 00:30". The full label is then in the tooltip. */
+  short?: string
 }
 
 /** The agent words. "Unknown" is never shown to people. */
@@ -56,15 +59,24 @@ const AGENT_TONES: Record<AgentStatus, Tone> = {
 export function stopLook(stop: AgentStop, now: number): Look {
   const label = stopLabel(stop, now)
   const tone: Tone = stop.holds === 'reset' && stopHolds(stop, now) ? 'waits' : 'held'
-  return { tone, label, detail: stop.message ? `${label}\n${stop.message}` : label }
+  const short = shortStopLabel(label)
+  return { tone, label, detail: stop.message ? `${label}\n${stop.message}` : label, ...(short !== label ? { short } : {}) }
+}
+
+/** A stop in the words a narrow row has room for, keeping the time, which is the fact that matters. */
+export function shortStopLabel(label: string): string {
+  return label.replace(/^Usage limit\b/, 'Limit').replace(/ · continues then$/, '')
 }
 
 /**
  * An agent's look. Null status is a terminal or other node with nothing to report. An agent whose turn ended on
  * StopFailure keeps the status `unknown`, so the stop, when known, says what happened instead.
  */
-export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now()): Look {
+export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now(), setup?: SetupHold): Look {
   if (status === 'unknown' && stop) return stopLook(stop, now)
+  // A recipe agent held for its setup commands (see setupStatus): "Setup failed" or "Waiting for setup", not "Queued".
+  const held = setupLookFor(status, setup)
+  if (held) return held
   if (!status) return { tone: 'none', label: 'No status' }
   return { tone: AGENT_TONES[status], label: AGENT_LABELS[status] }
 }

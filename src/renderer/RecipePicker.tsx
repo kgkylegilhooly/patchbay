@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { branchFor, expectedWorktreePath, planRecipe, showArgv, toArgv, type RecipeEntry, type RecipeParams, type RecipePlan } from '../shared/recipe'
 import { bridge } from './bridge'
+import { shortPath } from './shortPath'
 import { recipes } from './recipeBridge'
 import { useAgentChoice } from './agentChoice'
 import { agentNames } from '../shared/agents'
@@ -148,18 +149,23 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
             {e.problem && <span className="recipe-why">{e.problem}</span>}
           </button>
         ))}
-        {/* Once the recipes are in, so the workflows below them never move under a click. */}
-        {listing && <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />}
-        <div className="recipe-list-foot">
-          <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
-            Open personal recipes folder
+        {/* The recipes' folders, in the same one line the workflows below use for theirs. */}
+        <p className="workflow-list-foot" data-recipe-files>
+          Recipe files:{' '}
+          <button type="button" className="workflow-link" title="Open the folder of your own recipes" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
+            personal
           </button>
           {listing?.repo && (
-            <button type="button" className="btn" onClick={() => void recipes.openRecipesFolder(projectId, 'repository')}>
-              Open repository recipes folder
-            </button>
+            <>
+              {' · '}
+              <button type="button" className="workflow-link" title="Open this repository's .patchbay\recipes folder" onClick={() => void recipes.openRecipesFolder(projectId, 'repository')}>
+                repository
+              </button>
+            </>
           )}
-        </div>
+        </p>
+        {/* Once the recipes are in, so the workflows below them never move under a click. */}
+        {listing && <WorkflowList projectId={projectId} onPick={() => setProblem(null)} />}
       </div>
 
       {workflowShown ? <WorkflowPane projectId={projectId} onStart={onStart} onCancel={onCancel} /> : <div className="recipe-preview">
@@ -200,7 +206,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
                     <span className="field-label">Repository</span>
                     <div className="folder-row">
                       <span className={repo ? 'folder' : 'folder folder-empty'} title={repo}>
-                        {repo || 'Choose a repository'}
+                        {repo ? shortPath(repo) : 'Choose a repository'}
                       </span>
                       <button type="button" className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setRepo(f))}>
                         Choose
@@ -213,7 +219,7 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
                   <span className="field-label">Working directory</span>
                   <div className="folder-row">
                     <span className={cwd ? 'folder' : 'folder folder-empty'} title={cwd}>
-                      {cwd || 'Choose a folder'}
+                      {cwd ? shortPath(cwd) : 'Choose a folder'}
                     </span>
                     <button type="button" className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setCwd(f))}>
                       Choose

@@ -169,13 +169,16 @@ export function TidyLayer({ sidebar }: { sidebar: boolean }): React.JSX.Element 
           <input type="checkbox" checked={preview.byStatus} onChange={(e) => changeTidy({ byStatus: e.target.checked })} />
           Needs you first
         </label>
-        <span className="tidy-count">{count === 0 ? 'Already tidy' : count === 1 ? '1 node moves' : `${count} nodes move`}</span>
-        <button type="button" className="btn" onClick={cancel}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn-solid" onClick={apply} autoFocus data-cmd="tidy-apply">
-          {count === 0 ? 'Close' : 'Apply'}
-        </button>
+        {/* The count and the two buttons stay together at the right, even when the bar has to wrap. */}
+        <div className="tidy-actions">
+          <span className="tidy-count">{count === 0 ? 'Already tidy' : count === 1 ? '1 node moves' : `${count} nodes move`}</span>
+          <button type="button" className="btn" onClick={cancel}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-solid" onClick={apply} autoFocus data-cmd="tidy-apply">
+            {count === 0 ? 'Close' : 'Apply'}
+          </button>
+        </div>
       </Panel>
     </>
   )

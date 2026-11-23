@@ -77,11 +77,6 @@
   line-height: 1.4;
 }
 
-.files-foot {
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-}
-
 .files-problem {
   margin: 0;
   color: #ff8a80;
@@ -199,4 +194,39 @@
 .files-tag-command {
   color: #9fe0d0;
   background: rgb(80 200 180 / 0.12);
+}
+
+/* The (i) in the popover's header: how the list is made, out of the way until asked for. */
+.files-head .files-about-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 13px;
+  font-style: italic;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.files-head .files-about-on {
+  color: #fff;
+  background: rgb(61 139 253 / 0.3);
+  border-color: var(--cable-link);
+}
+
+.files-about {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  background: rgb(255 255 255 / 0.04);
+  border-radius: var(--r-md);
+}
+
+.files-tag-unconfirmed {
+  cursor: help;
+  text-decoration: underline dotted rgb(255 255 255 / 0.35);
+  text-underline-offset: 2px;
 }
