@@ -143,11 +143,37 @@ function fail(message) {
   process.exit(1)
 }
 
-/** Git Bash hands over /c/Users/me, which Node would read as a folder on the current drive. */
+/**
+ * Git Bash's own name for a Windows path, from its cygpath: /tmp is the user's Temp folder, not C:\tmp. On PATH inside
+ * Git Bash, and where Git for Windows puts it otherwise. PATCHBAY_CYGPATH names another. Null when there's none.
+ */
+function fromGitBash(value) {
+  const tools = process.env.PATCHBAY_CYGPATH
+    ? [process.env.PATCHBAY_CYGPATH]
+    : ['cygpath', path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'usr', 'bin', 'cygpath.exe')]
+  for (const tool of tools) {
+    try {
+      const out = require('node:child_process')
+        .execFileSync(tool, ['-w', value], { encoding: 'utf8', timeout: 5000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+        .trim()
+      if (/^([a-zA-Z]:\\|\\\\)/.test(out)) return out
+    } catch {
+      // Not there, or it failed: try the next, then read the path as Node would.
+    }
+  }
+  return null
+}
+
+/**
+ * Git Bash hands paths over as it writes them, since the shim turns its own conversion off to keep /clear intact.
+ * /c/Users/me is a drive; any other path from the root, such as /tmp/brief.md, is one of Git Bash's own folders,
+ * which Node would otherwise read as a folder on the current drive.
+ */
 function toLocalPath(value) {
-  const msys = /^\/([a-zA-Z])(\/.*)?$/.exec(value)
-  const native = process.platform === 'win32' && msys ? `${msys[1].toUpperCase()}:${msys[2] || '/'}` : value
-  return path.resolve(native)
+  if (process.platform !== 'win32') return path.resolve(value)
+  const drive = /^\/([a-zA-Z])(\/.*)?$/.exec(value)
+  if (drive) return path.resolve(`${drive[1].toUpperCase()}:${drive[2] || '/'}`)
+  return path.resolve((/^\/(?!\/)/.test(value) && fromGitBash(value)) || value)
 }
 
 const camel = (flag) => flag.replace(/-(\w)/g, (_, c) => c.toUpperCase())

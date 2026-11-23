@@ -322,6 +322,27 @@ test.runIf(existsSync(BASH))('the sh shim keeps /clear intact under Git Bash and
   expect(calls.map((c) => c.args.text)).toEqual(['/clear', 'a b  c'])
 })
 
+test.runIf(existsSync(BASH))("Git Bash's own folders, as /tmp, are read where Git Bash keeps them", async () => {
+  const pathKey = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH')!
+  const where = await run(BASH, ['--login', '-c', 'cygpath -w /tmp'])
+  const tmp = where.stdout.trim()
+  expect(tmp).toMatch(/^[A-Z]:\\/)
+  const ok = await run(
+    BASH,
+    ['--login', '-c', 'patchbay open-agent --prompt-file /tmp/brief.md --cwd /c/Users && patchbay spawn-team --label L --members \'[{"name":"a","promptFile":"/tmp/a.md"}]\''],
+    { [pathKey]: `${CLI_DIR}${delimiter}${process.env[pathKey]}` }
+  )
+  expect(ok).toMatchObject({ code: 0, stderr: '' })
+  expect(calls[0].args).toEqual({ promptFile: join(tmp, 'brief.md'), cwd: resolve('C:/Users') })
+  expect(calls[1].args.members).toEqual([{ name: 'a', promptFile: join(tmp, 'a.md') }])
+})
+
+test('a POSIX path is passed over by cygpath when there is none, and still resolves', async () => {
+  // No Git on PATH and no Git where it usually is: the old reading, on the current drive, rather than a failure.
+  await cli(['open-agent', '--prompt-file', '/nowhere/brief.md'], { PATH: '', PATCHBAY_CYGPATH: join(dir, 'missing.exe') })
+  expect(calls[0].args.promptFile).toBe(resolve('/nowhere/brief.md'))
+})
+
 test.runIf(existsSync(BASH))('a checkout keeps the shim in LF, or sh could not run it', () => {
   const attributes = readFileSync(join(CLI_DIR, '.gitattributes'), 'utf8')
   expect(attributes).toMatch(/^patchbay\s+text eol=lf/m)
