@@ -1,0 +1,4 @@
+/* A busy cable off screen keeps its dots still until it's back in view. See cableSight.ts. */
+.cable-flow.cable-off {
+  animation-play-state: paused;
+}

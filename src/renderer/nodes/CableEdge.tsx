@@ -2,6 +2,7 @@ import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from '@xyflow/react'
 import { memo, useEffect, useMemo, useRef } from 'react'
 import { cableDirection, cableMessages } from '../cableMotion'
 import { alignCableDots, cableUnderWay } from '../cableActivity'
+import { watchCableSight } from '../cableSight'
 import { relativeTime } from '../sidebarView'
 import { cablePath, type FlowEdge } from '../flowMapping'
 import { dispatch, patchNode, useStore } from '../store'
@@ -19,6 +20,8 @@ export const CableEdge = memo(function CableEdge({ id, source, target, sourceX, 
   useEffect(() => {
     if (underWay) alignCableDots(dots.current)
   }, [underWay])
+  // Off screen, its dots stand still. See cableSight.ts.
+  useEffect(() => (oneWay ? watchCableSight(dots.current) : undefined), [oneWay])
   // Every message would render every cable. Only a selected link lists them, so only it reads them.
   const messages = useStore((s) => (selected && kind === 'link' ? s.messages : NO_MESSAGES))
   // Only a selected cable shows what was said along it, so only one works it out.
