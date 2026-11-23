@@ -2,6 +2,7 @@ import { isProjectArchived, type AgentStatus, type CanvasDoc } from '../shared/m
 import type { PendingTool, WaitSince } from '../shared/needsYouBridge'
 import { bucketOf } from './sidebarView'
 import { sessionBlocked } from './status/setupStatus'
+import type { NodeError } from '../shared/contract'
 
 /** Pure: which agents "Next needing you" walks, and how a peek words a wait. */
 
@@ -19,14 +20,14 @@ export interface QueueEntry {
  * jumped to: nothing says it needs anyone.
  */
 /** `stopped`: agents whose turn ended on an API error, such as a usage limit, which the Status tab lists under Need attention too. */
-export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], waits: Record<string, WaitSince>, includeUnread: boolean, stopped: Record<string, unknown> = {}): QueueEntry[] {
+export function needsYouQueue(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], waits: Record<string, WaitSince>, includeUnread: boolean, stopped: Record<string, unknown> = {}, errors: Record<string, NodeError> = {}): QueueEntry[] {
   const unread = new Set(attention)
   const entries: (QueueEntry & { order: number })[] = []
   // An archived project can't be shown until it's unarchived, so nothing in it is gone to.
   const archived = new Set(doc.projects.filter(isProjectArchived).map((p) => p.id))
   doc.nodes.forEach((node, order) => {
     if (node.kind !== 'claude' || (node.projectId && archived.has(node.projectId))) return
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], undefined, unread.has(node.id)))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], undefined, unread.has(node.id), errors[node.id]))
     if (bucket === 'needs-you' || (includeUnread && bucket === 'unread')) entries.push({ id: node.id, bucket, since: waits[node.id]?.at ?? null, order })
   })
   // Someone waiting on an answer first, then a stop only the person can clear (a failed login, an error), then a

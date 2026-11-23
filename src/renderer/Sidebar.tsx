@@ -7,7 +7,7 @@ import { ContextMenu } from './Menu'
 import { PeekButton, peekFrom } from './NeedsYouLayer'
 import { closedProjectMenu, type Commands, type Point } from './menus'
 import { StatusMark } from './status/StatusMarks'
-import { RunDot, RunLabel, StatusBadge, StatusDot, useSetupHold } from './nodes/StatusBadge'
+import { RunDot, RunLabel, StatusBadge, StatusDot, useSetupHold, useStartFailure } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
 import { placeLabel } from './placeLabel'
@@ -18,6 +18,10 @@ import { useStore } from './store'
 import { contextLabel } from './usageView'
 import { useAgentOff } from './agentChoice'
 import { useAgentStop, useAgentStops } from './agentStops'
+import { emptyProjectHint } from './startHints'
+import type { NodeError } from '../shared/contract'
+
+const NO_ERRORS: Record<string, NodeError> = {}
 
 const TICK_MS = 20_000
 const NO_STATUSES: Record<string, AgentStatus> = {}
@@ -58,7 +62,8 @@ const Row = memo(function Row({ session, project, tab, now, onReveal }: { sessio
   const inStatus = tab === 'status'
   // Its section says Need attention, so the row says why.
   const setupFailed = useSetupHold(session.kind === 'claude' ? session.id : undefined) === 'failed'
-  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined) || setupFailed
+  const startFailed = !!useStartFailure(status, session.id)
+  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined) || setupFailed || startFailed
   const peekable = inStatus && session.kind === 'claude'
   // Under its own project's heading the badge and the project's folder would only repeat the heading.
   const where = whereShown(session)
@@ -135,6 +140,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const stops = useAgentStops((s) => (byStatusTab ? s.stops : NO_STOPS))
   const attention = useStore((s) => (byStatusTab ? s.attention : NO_ATTENTION))
   const runs = useStore((s) => (byStatusTab ? s.runs : NO_RUNS))
+  // Only the Status tab's sections read start errors (rows read their own), so the Project tab isn't drawn again for them.
+  const errors = useStore((s) => (byStatusTab ? s.errors : NO_ERRORS))
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
@@ -150,7 +157,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={tab === 'status' ? now : 0} onReveal={commands.revealNode} />
 
   const bySection = projectSections(doc, query)
-  const byStatus = statusSections(doc, statuses, attention, query, stops, runs)
+  const byStatus = statusSections(doc, statuses, attention, query, stops, runs, errors)
   const total = bySection.reduce((sum, s) => sum + s.tree.total, 0)
   const closed = closedProjects(doc)
   const recent = recentlyClosed(doc, query)
@@ -197,7 +204,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
                 <SectionHead id={id} label={project.name} count={count} badge={project} open={isOpen(id)} onToggle={() => toggle(id)} help={project.folder || 'Home folder'} />
                 {isOpen(id) && (
                   <div className="sidebar-body">
-                    {tree.total === 0 && <p className="sidebar-empty">No sessions here. Right-click the canvas to open one.</p>}
+                    {tree.total === 0 && <p className={`sidebar-empty${project.id === doc.activeProjectId ? '' : ' sidebar-none'}`}>{emptyProjectHint(project.id === doc.activeProjectId)}</p>}
                     {tree.groups.map(({ group, sessions }) => (
                       <section key={group.id}>
                         <h4 className="sidebar-group">

@@ -15,7 +15,7 @@ async function main() {
   fs.mkdirSync(path.join(marked, '.claude'))
   fs.writeFileSync(path.join(marked, '.claude', 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'echo MARKED-LINE' } }))
   const exe = process.argv.includes('--packaged') ? lib.packagedExe : undefined
-  const app = await lib.launch({ profile, exe })
+  const app = await lib.launch({ profile, realHome: true, exe })
   const { page } = app
   try {
     await lib.openNode(page, lib.claude('marked', marked, 20, 20, { prompt: 'Say the word ok and nothing else.' }))

@@ -16,6 +16,7 @@ import { noteAgentSettings } from './agentChoice'
 import { confirmThen } from './shell/confirmStore'
 import { updateCheckRow } from './updateCheckRow'
 import './agents.css'
+import { takeSettingsSection, useSettingsAsk } from './settingsAsk'
 
 /** Suggestions only. Any installed font can be typed. */
 const MONO_FONTS = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono', 'Hack', 'Iosevka', 'Courier New']
@@ -130,7 +131,9 @@ export function SettingsPage({
   onClose: () => void
 }): React.JSX.Element | null {
   const setLook = (patch: Partial<TerminalLook>): void => onPrefs({ terminal: { ...prefs.terminal, ...patch } })
-  const [section, setSection] = useState<SectionId>('canvas')
+  const [section, setSection] = useState<SectionId>(() => takeSettingsSection() ?? 'canvas')
+  // Asked for again while open, as from another node's "Open Settings › Agents".
+  useEffect(() => useSettingsAsk.subscribe((s) => { if (s.section) setSection(takeSettingsSection() ?? 'canvas') }), [])
   const [draft, setDraft] = useState<Settings | null>(null)
   const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null)
   const [info, setInfo] = useState<{ version: string; dataDir: string } | null>(null)
@@ -162,6 +165,8 @@ export function SettingsPage({
       setDraft(settings)
     })
     void bridge.getAppInfo().then(setInfo)
+    // Closing gives the keyboard back to what had it, a terminal in use included, as the palette does.
+    const opener = document.activeElement as HTMLElement | null
     // A menu never takes focus, so a terminal behind this page would otherwise still get what's typed.
     rootRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
@@ -174,6 +179,8 @@ export function SettingsPage({
     return () => {
       window.removeEventListener('keydown', onKey, true)
       commitRef.current()
+      const now = document.activeElement
+      if ((!now || now === document.body || rootRef.current?.contains(now)) && opener?.isConnected && opener !== document.body) opener.focus({ preventScroll: true })
     }
   }, [])
 
@@ -495,6 +502,9 @@ export function SettingsPage({
               <button type="button" className="btn" data-cmd="open-log" onClick={() => void bridge.openLog()}>
                 Open log
               </button>
+            </Row>
+            <Row title="Built with" help="The canvas is drawn with React Flow (xyflow), under the MIT licence.">
+              <span className="set-value">React Flow</span>
             </Row>
             <Row title="Settings file" help="The Claude and terminal settings as text, for editing by hand.">
               <button type="button" className="btn" data-cmd="edit-settings" onClick={() => void bridge.openSettingsFile()}>

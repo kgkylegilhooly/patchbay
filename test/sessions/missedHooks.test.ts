@@ -80,3 +80,27 @@ test('a partial last line from a killed hook is skipped, and the rest still coun
 test('no journal is simply no events', () => {
   expect(takeMissedHooks(dir(), 'nobody')).toEqual([])
 })
+
+test('with the SessionStart lost, a turn in the journal still tells the session and its transcript', () => {
+  const summary = foldMissedHooks([ev('UserPromptSubmit', { session_id: 'sid', transcript_path: 'sid.jsonl' }), ev('Stop', { session_id: 'sid', transcript_path: 'sid.jsonl' })])
+  expect(summary).toMatchObject({ sessionId: 'sid', transcriptPath: 'sid.jsonl' })
+})
+
+test("a tool call's or subagent's session in the journal is never taken for the window's", () => {
+  const summary = foldMissedHooks([
+    ev('SessionStart', { session_id: 'main', transcript_path: 'main.jsonl' }),
+    ev('PostToolUse', { session_id: 'sub', transcript_path: 'sub.jsonl' }),
+    ev('SubagentStop', { session_id: 'sub', transcript_path: 'sub.jsonl' }),
+    ev('SessionEnd', { session_id: 'sub', reason: 'other' })
+  ])
+  expect(summary).toMatchObject({ sessionId: 'main', transcriptPath: 'main.jsonl' })
+})
+
+test('in the journal, a turn written before the session it would replace never moves the window back to it', () => {
+  const summary = foldMissedHooks([
+    ev('SessionStart', { session_id: 'new', transcript_path: 'new.jsonl', source: 'clear', at: 200 }),
+    // The old conversation's last Stop, journalled late from another route.
+    ev('Stop', { session_id: 'old', transcript_path: 'old.jsonl', at: 150 })
+  ])
+  expect(summary).toMatchObject({ sessionId: 'new', transcriptPath: 'new.jsonl' })
+})

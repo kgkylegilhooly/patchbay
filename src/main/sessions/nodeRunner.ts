@@ -30,7 +30,9 @@ import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startup
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 import { asPaste } from './paste'
+import { sessionFromHook } from './sessionFromHook'
 import { ARCHIVED_START, inArchivedProject } from '../../core/canvas/projectOps'
+import { fixOf, withFix } from './startFix'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
@@ -274,15 +276,24 @@ export function createNodeRunner({
     const now = { ...ctx, ...ctx.settings?.() }
     const token = tokenFor(ctx.secret, node.id)
     let launch: ClaudeLaunch
+    // What's thrown finding the program or building its command line is the agent's setup in Settings, so its node
+    // offers Settings › Agents. The hook checks in between aren't, and keep no fix.
+    const inSettings = <T>(step: () => T): T => {
+      try {
+        return step()
+      } catch (e) {
+        throw withFix(e, 'agents')
+      }
+    }
     if (agentOf(node) === 'codex') {
       await ctx.beforeCodexStart?.()
-      const codex = now.codexCommand?.trim() ? undefined : (ctx.codex ?? (ctx.locateCodex ?? resolveCodex)())
+      const codex = now.codexCommand?.trim() ? undefined : inSettings(() => ctx.codex ?? (ctx.locateCodex ?? resolveCodex)())
       // Asked once per program, without holding up the main thread.
       const noDaemon = await codexKnowsNoDaemon({ codex, codexCommand: now.codexCommand })
-      launch = buildCodexLaunch(node, { ...now, codex, token, noDaemon })
+      launch = inSettings(() => buildCodexLaunch(node, { ...now, codex, token, noDaemon }))
     } else {
       const custom = now.claudeTerminal || now.claudeCommand
-      const claude = custom ? undefined : (ctx.claude ?? (ctx.locateClaude ?? resolveClaude)())
+      const claude = custom ? undefined : inSettings(() => ctx.claude ?? (ctx.locateClaude ?? resolveClaude)())
       // Asked once per program, without holding up the main thread.
       const hookLaunch = { claude, claudeCommand: now.claudeCommand, claudeTerminal: now.claudeTerminal }
       const hookNode = now.hookNode !== undefined ? now.hookNode : await (ctx.findHookNode ?? hookNodeFor)(hookLaunch)
@@ -290,7 +301,7 @@ export function createNodeRunner({
       // Waited for: a host still coming up after a quick start has its port in a moment, and this is for the session's life.
       const hostPort = (await ctx.hostHookPort?.()) ?? null
       const hookPort = hostPort && (await (ctx.findHttpHooks ?? httpHooksPossible)(hookLaunch)) ? hostPort : undefined
-      launch = buildClaudeLaunch(node, { ...now, claude, token, hookNode, hookPort })
+      launch = inSettings(() => buildClaudeLaunch(node, { ...now, claude, token, hookNode, hookPort }))
     }
     tracker.apply(node.id, { type: 'launched' })
     const { sessionId, resumed, typedPrompt, ...spec } = launch
@@ -422,7 +433,7 @@ export function createNodeRunner({
     const off = node.kind === 'claude' ? agentOff(node) : null
     if (off) {
       tracker.apply(id, { type: 'process-exit' })
-      return setError(id, { code: 'spawn-failed', message: off })
+      return setError(id, { code: 'spawn-failed', message: off, fix: 'agents' })
     }
     // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
     const limited = node.kind === 'claude' && !opts.restored ? overAgentLimit(id) : null
@@ -434,7 +445,7 @@ export function createNodeRunner({
         return 'joined'
       }
       tracker.apply(id, { type: 'process-exit' })
-      return setError(id, { code: 'spawn-failed', message: limited })
+      return setError(id, { code: 'spawn-failed', message: limited, fix: 'sessions' })
     }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.
@@ -450,10 +461,9 @@ export function createNodeRunner({
       }
       started.delete(id)
       if (node.kind === 'claude') tracker.apply(id, { type: 'process-exit' })
-      setError(id, {
-        code: e instanceof SessionStartError ? e.reason : 'spawn-failed',
-        message: (e as Error).message
-      })
+      const code = e instanceof SessionStartError ? e.reason : 'spawn-failed'
+      const fix = fixOf(e, code)
+      setError(id, { code, message: (e as Error).message, ...(fix ? { fix } : {}) })
     }
   }
 
@@ -466,7 +476,8 @@ export function createNodeRunner({
     const lastJournalled = Math.max(0, ...events.map((e) => (typeof e.at === 'number' ? e.at : 0)))
     const signalled = ctx.latestSignal?.(id)
     if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
-    const missed = foldMissedHooks(events)
+    const known = nodeById(id)
+    const missed = foldMissedHooks(events, known?.kind === 'claude' ? known : undefined)
     tracker.seed(id, missed.status, missed.turns)
     if (missed.stopFailure) ctx.onMissedStopFailure?.(id, missed.stopFailure)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation
@@ -553,7 +564,7 @@ export function createNodeRunner({
       if (!node || (node.kind !== 'claude' && node.kind !== 'terminal')) return
       // Refused before anything is stopped, so a session that's running keeps running, with no start error over it.
       const off = node.kind === 'claude' ? agentOff(node) : null
-      if (off) return host.isRunning(id) ? undefined : setError(id, { code: 'spawn-failed', message: off })
+      if (off) return host.isRunning(id) ? undefined : setError(id, { code: 'spawn-failed', message: off, fix: 'agents' })
       const run = runs.get(id)
       if (run) run.stopping = true
       if (host.isRunning(id)) await host.kill(id)
@@ -631,6 +642,12 @@ export function createNodeRunner({
           })
         }
       }
+      // SessionStart can be lost (it's still a command hook); the hooks that do arrive say which conversation it is.
+      const learned = asking?.kind === 'claude' ? sessionFromHook(asking, payload) : null
+      if (learned) {
+        run.sessionStarted = true
+        store.dispatch({ op: 'patchNode', id, patch: learned })
+      }
       if (name === 'UserPromptSubmit') {
         run.hasConversation = true
         // It has done its job. Kept, it would start the same work again after /clear and a relaunch.
@@ -651,11 +668,14 @@ export function createNodeRunner({
       })
 
       if (name !== 'PermissionRequest' || !approvals) return {}
-      const decision = await approvals.request(id, payload, signal)
-      if (decision && !approvals.pending().some((p) => p.nodeId === id)) {
+      // Always allow is Claude's own permission update. Codex's answer to one hasn't been checked, so it isn't offered there.
+      const codex = asking?.kind === 'claude' && agentOf(asking) === 'codex'
+      const { permission_suggestions: _rules, ...withoutRules } = payload
+      const answer = await approvals.request(id, codex ? withoutRules : payload, signal)
+      if (answer && !approvals.pending().some((p) => p.nodeId === id)) {
         tracker.apply(id, { type: 'approval-answered' })
       }
-      return { decision }
+      return answer ?? { decision: null }
     },
 
     errors: () => Object.fromEntries(errors),

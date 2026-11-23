@@ -100,6 +100,10 @@ export interface Commands {
   closeNode(id: string): void
   renameNode(id: string): void
   restartNode(id: string): void
+  /** The window in use, as window actions mean it: renamed in place, restarted, or closed (asking first if it's busy). */
+  renameWindow(nodeId?: string): void
+  restartWindow(nodeId?: string): void
+  closeWindow(nodeId?: string): void
   toggleRecent(): void
   quit(): void
   stopAllAndQuit(): void
@@ -152,6 +156,8 @@ export interface MenuState {
   hasWindow: boolean
   /** That window can be named from its output. */
   canName: boolean
+  /** That window has ended or failed, so it can be started again. */
+  canRestart?: boolean
   /** There's another open project to show if this one closes. */
   canCloseProject: boolean
   closedProjects?: { id: string; name: string }[]

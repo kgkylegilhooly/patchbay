@@ -21,7 +21,7 @@ async function main() {
   const hash = L.settingsHash()
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
   const cwd = L.workDir('ui-real')
-  const app = await L.launch({ profile })
+  const app = await L.launch({ profile, realHome: true })
   const { page } = app
   const before = transcriptCount()
   try {

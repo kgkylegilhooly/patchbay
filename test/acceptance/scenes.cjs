@@ -734,6 +734,8 @@ function prepare(name, cwdRoot) {
     settings: { claudeCommand: `node "${fake}"`, notifications: 'off', sound: 'off' },
     // Other files for the profile, by name, as made-up readings.
     files: files[name]?.() ?? {},
+    // Waits for the seeded agents to show their statuses, which takes many seconds on a busy machine.
+    ready: (page) => require('./sceneReady.cjs').waitForAgents(page, doc),
     act: scenes[name]
   }
 }
@@ -761,3 +763,7 @@ Object.assign(seeds, require('./safeAreaScenes.cjs').seeds)
 Object.assign(scenes, require('./resourceScenes.cjs').scenes)
 Object.assign(files, require('./resourceScenes.cjs').files)
 Object.assign(scenes, require('./sessionSyncScenes.cjs').scenes)
+Object.assign(scenes, require('./startScenes.cjs').scenes)
+Object.assign(seeds, require('./startScenes.cjs').seeds)
+Object.assign(scenes, require('./keyboardScenes.cjs').scenes)
+Object.assign(seeds, require('./keyboardScenes.cjs').seeds)

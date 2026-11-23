@@ -2,6 +2,8 @@ import { commandAllowed } from '../shared/agents'
 import { useAgentChoice } from './agentChoice'
 import { ClaudeIcon, CodexIcon, Icon, TerminalIcon } from './icons'
 import type { Commands } from './menus'
+import { keyOf } from './a11y/keyHints'
+import { useKeyOverrides } from './a11y/useKeyOverrides'
 
 /**
  * What an empty project shows: the three ways most work starts, as buttons, and where the rest lives. The right-click
@@ -11,6 +13,10 @@ export function EmptyCanvas({ commands, onContextMenu }: { commands: Commands; o
   const agents = useAgentChoice()
   // Claude Code when it's on, otherwise Codex, so the first button always starts an agent that can run.
   const agent = commandAllowed('new-claude', agents) ? 'claude' : commandAllowed('new-codex', agents) ? 'codex' : null
+  // The one key that reaches everything, and the one that starts the agent, as bound now.
+  const keys = useKeyOverrides()
+  const paletteKey = keyOf('open-palette', keys)
+  const agentKey = agent ? keyOf(`new-${agent}`, keys) : null
   return (
     // "Right-click anywhere" includes the card itself, so it opens the canvas menu there too.
     <section className="stage-empty" aria-labelledby="stage-empty-title" onContextMenu={onContextMenu}>
@@ -38,6 +44,21 @@ export function EmptyCanvas({ commands, onContextMenu }: { commands: Commands; o
         </button>
       </div>
       <p>Or right-click anywhere for notes, browsers, whiteboards and more.</p>
+      {(paletteKey || agentKey) && (
+        <p className="stage-empty-keys" data-empty="keys">
+          {paletteKey && (
+            <>
+              <kbd>{paletteKey}</kbd> finds any action.
+            </>
+          )}
+          {paletteKey && agentKey && ' '}
+          {agentKey && (
+            <>
+              <kbd>{agentKey}</kbd> starts {agent === 'codex' ? 'Codex' : 'Claude Code'}.
+            </>
+          )}
+        </p>
+      )}
     </section>
   )
 }

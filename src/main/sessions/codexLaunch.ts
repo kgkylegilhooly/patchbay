@@ -121,7 +121,7 @@ export function codexKnowsNoDaemon(launch: { codex?: ClaudeProgram; codexCommand
   let program: { file: string; args: string[] }
   try {
     program = launch.codexCommand?.trim()
-      ? customLaunch({ command: launch.codexCommand }, ['--help'])
+      ? customLaunch({ command: launch.codexCommand, agent: 'codex' }, ['--help'])
       : (() => {
           const codex = launch.codex ?? resolveCodex()
           return { file: codex.file, args: programArgs(codex, ['--help']) }
@@ -199,7 +199,7 @@ export function buildCodexLaunch(node: ClaudeNode, ctx: CodexLaunchContext): Cla
   const args = resumed ? ['resume', ...options, node.sessionId as string] : [...options, ...(node.prompt?.trim() ? ['--', node.prompt] : [])]
   let program: { file: string; args: string[] }
   if (custom || !codex) {
-    program = customLaunch({ command: ctx.codexCommand }, args)
+    program = customLaunch({ command: ctx.codexCommand, agent: 'codex' }, args)
   } else {
     program = { file: codex.file, args: programArgs(codex, args) }
   }

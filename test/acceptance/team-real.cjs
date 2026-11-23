@@ -73,7 +73,7 @@ async function main() {
   const exe = process.argv.includes('--dev') ? undefined : L.packagedExe
   const work = L.workDir('team-real')
   const profile = L.newProfile({ permissionMode: 'default', notifications: 'off', sound: 'off' })
-  const app = await L.launch({ profile, exe })
+  const app = await L.launch({ profile, realHome: true, exe })
   const { page } = app
   const answered = []
   let stop = false

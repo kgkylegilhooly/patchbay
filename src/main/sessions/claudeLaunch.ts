@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { basename, delimiter, dirname, join } from 'node:path'
 import { runProgram } from '../../core/git/run'
 import type { SessionSpec } from '../../shared/contract'
-import type { ClaudeNode } from '../../shared/model'
+import { AGENT_NAMES, type AgentKind, type ClaudeNode } from '../../shared/model'
 import { needsTerminal } from '../../shared/settings'
 import { cleanEnv } from './env'
 import { httpHooksBlocked, withLoopbackNoProxy } from './httpHookSafety'
@@ -169,6 +169,19 @@ function askWhere(name: string): Promise<string | null> {
   return ask
 }
 
+/**
+ * Whether the program a command line starts can be found, asked off the main thread. For the New form's warning before
+ * Start (docs/plans/r3-start.md), so it says nothing a launch wouldn't: the same words are looked up the same way.
+ */
+export async function commandFound(line: string): Promise<boolean> {
+  const [word] = programWords(line)
+  if (!word) return false
+  if (/[\\/]/.test(word)) return existsSync(word)
+  const known = whereAnswers.get(word.toLowerCase())
+  if (known?.path && existsSync(known.path)) return true
+  return !!(await askWhere(word))
+}
+
 /** resolveClaude without waiting on where.exe on the main thread, for checks in the background. */
 export async function resolveClaudeAsync(): Promise<ClaudeProgram> {
   if (located && existsSync(located)) return claudeAt(located)
@@ -280,11 +293,11 @@ function throughTerminal(terminal: string, command: string, args: string[], find
   return { file, args: shell === 'bash' ? [...extra, '--login', '-i', '-c', line] : [...extra, '-c', line] }
 }
 
-function directly(command: string, args: string[], find: Find): { file: string; args: string[] } {
-  if (needsTerminal(command)) throw new Error('This Claude command needs a shell to run. Choose a terminal program in Settings.')
-  const [name, ...extra] = programWords(command)
-  const path = find(name)
-  if (!path) throw new Error(`The Claude command "${name}" was not found. Check it in Settings.`)
+function directly(command: string, args: string[], find: Find, name = 'Claude'): { file: string; args: string[] } {
+  if (needsTerminal(command)) throw new Error(`This ${name} command needs a shell to run. Choose a terminal program in Settings.`)
+  const [word, ...extra] = programWords(command)
+  const path = find(word)
+  if (!path) throw new Error(`The ${name} command "${word}" was not found. Check it in Settings.`)
   if (!/\.(exe|cmd|bat)$/i.test(path)) throw new Error(`Windows can't start "${path}" by itself. Choose the terminal program that runs it in Settings.`)
   const at = extra.indexOf('{args}')
   const all = at === -1 ? [...extra, ...args] : [...extra.slice(0, at), ...args, ...extra.slice(at + 1)]
@@ -292,10 +305,14 @@ function directly(command: string, args: string[], find: Find): { file: string; 
   return { file: claude.file, args: programArgs(claude, all) }
 }
 
-/** How to run Claude when Settings changes it. `find` is replaceable for tests. */
-export function customLaunch(setting: { terminal?: string; command?: string }, args: string[], find: Find = locate): { file: string; args: string[] } {
-  const command = setting.command?.trim() || 'claude'
-  return setting.terminal?.trim() ? throughTerminal(setting.terminal, command, args, find) : directly(command, args, find)
+/**
+ * How to run an agent when Settings changes it. `find` is replaceable for tests. `agent` names it in what's said when
+ * it can't start, and picks the program run when no command is set.
+ */
+export function customLaunch(setting: { terminal?: string; command?: string; agent?: AgentKind }, args: string[], find: Find = locate): { file: string; args: string[] } {
+  const command = setting.command?.trim() || (setting.agent === 'codex' ? 'codex' : 'claude')
+  const name = AGENT_NAMES[setting.agent ?? 'claude']
+  return setting.terminal?.trim() ? throughTerminal(setting.terminal, command, args, find) : directly(command, args, find, name)
 }
 
 /** The environment every session gets, so the patchbay CLI works in any of them. */

@@ -12,6 +12,11 @@ const LOG_MAX_BYTES = 1024 * 1024
  */
 const TICK_MS = 1000
 export const STALL_MS = 1000
+/**
+ * A check this late means the PC was asleep or the process suspended, not that work held it: nothing in Patchbay holds
+ * the main process for a minute. Windows' Modern Standby can sleep without the suspend event, so length alone counts.
+ */
+export const ASLEEP_MS = 60_000
 /** How often memory goes in the log, so a slow leak over a long day shows. */
 const MEMORY_EVERY_MS = 30 * 60_000
 /** Crashes this close together stop the automatic reload, so a window that dies on load doesn't loop forever. */
@@ -62,16 +67,36 @@ export function createLog(dir: string, now: () => Date = () => new Date()): Log 
  * Notes each time the main process was stuck for longer than STALL_MS. Everything in Patchbay goes through it, so a
  * stall there is a stall everywhere. `onStall` is told how long it lasted.
  */
-export function watchEventLoop(onStall: (ms: number) => void, tickMs = TICK_MS, now: () => number = () => Date.now()): () => void {
+export function watchEventLoop(
+  onStall: (ms: number) => void,
+  tickMs = TICK_MS,
+  now: () => number = () => Date.now(),
+  sleep: {
+    /** Told instead of onStall when the gap was a sleep. */
+    onAsleep?: (ms: number) => void
+    /** Whether the PC announced a suspend since the last check, clearing that. */
+    slept?: () => boolean
+  } = {}
+): () => void {
   let last = now()
   const timer = setInterval(() => {
     const at = now()
     const late = at - last - tickMs
     last = at
-    if (late >= STALL_MS) onStall(late)
+    // Asked every time, so a suspend heard during an ordinary tick doesn't carry over to a later stall.
+    const slept = sleep.slept?.() ?? false
+    if (late < STALL_MS) return
+    if (slept || late >= ASLEEP_MS) sleep.onAsleep?.(late)
+    else onStall(late)
   }, tickMs)
   timer.unref?.()
   return () => clearInterval(timer)
+}
+
+/** A sleep, for the log: in seconds, minutes or hours, as suits its length. */
+export function asleepText(ms: number): string {
+  const how = ms < 60_000 ? `${Math.round(ms / 1000)} s` : ms < 3600_000 ? `${Math.round(ms / 60_000)} min` : `${(ms / 3600_000).toFixed(1)} h`
+  return `Nothing ran for ${how}: the PC was asleep, or Patchbay was suspended. Not a stall.`
 }
 
 /** Whether to reload after a crash, given the times of recent crashes, oldest first. */

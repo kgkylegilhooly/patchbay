@@ -31,7 +31,7 @@ function rendererSeconds(profile) {
 const hide = (app) => spawnSync('powershell.exe', ['-NoProfile', '-Command', `(Get-Process -Id ${app.child.pid}).CloseMainWindow()`], { stdio: 'ignore' })
 /** Brings it back as the tray icon or a second launch does. */
 const show = (profile) => {
-  const env = { ...process.env, PATCHBAY_QUIET_WINDOW: '1' }
+  const env = { ...process.env, PATCHBAY_QUIET_WINDOW: '1', PATCHBAY_TEST_DIALOGS: '1' }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
   spawn(require('electron'), [`--user-data-dir=${profile}`, L.root], { cwd: L.root, env, stdio: 'ignore' })

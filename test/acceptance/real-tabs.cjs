@@ -66,7 +66,7 @@ function machine() {
 async function main() {
   const work = L.workDir('real-tabs')
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
-  const app = await L.launch({ profile })
+  const app = await L.launch({ profile, realHome: true })
   const { page } = app
   const signals = path.join(profile, 'sessions', 'signals')
   try {

@@ -25,7 +25,7 @@ async function main() {
   repo(repoDir)
   const branch = 'feat/with-slash'
   const profile = L.newProfile()
-  const app = await L.launch({ profile, exe })
+  const app = await L.launch({ profile, realHome: true, exe })
   const { page } = app
   try {
     await page.evaluate(() => window.patchbay.dispatch({

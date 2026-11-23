@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
-import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
+import { asleepText, createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { startProgramsOffThread } from './proc/setup'
 import { processGoneText } from './stuckParts'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
@@ -85,6 +85,7 @@ import { createUsageSecret } from './usage/usageSecret'
 import { createUsageService } from './usage/usageService'
 import { readClaudeAccount, readCodexUsage } from './usage/agentAccounts'
 import { createCodexGate } from './usage/codexGate'
+import { applyAgentUsageFixture } from './usage/agentUsageFixture'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
@@ -107,6 +108,7 @@ const AGENT_USAGE_EVERY_MS = 5 * 60_000
 const UPDATE_FIRST_CHECK_MS = 30_000
 const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60_000
 import { createUsagePoller, fetchEndpoint, sourceConfig, type ReadResult, type SourceConfig } from './usage/usageSource'
+import { createAppProblems, serveAppProblems } from './appProblems'
 
 let mainWindow: BrowserWindow | null = null
 /** Set up first thing in boot. */
@@ -251,7 +253,17 @@ async function boot(): Promise<void> {
   // What went wrong, and when, for a hang or crash that leaves nothing else behind. See watchdog.ts.
   log = createLog(join(dataDir, 'logs'))
   log.write(`Patchbay ${app.getVersion()} started (Electron ${process.versions.electron}, pid ${process.pid}).`)
-  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`))
+  // A sleep isn't a stall: the log once said "blocked for 39254.9 s" for a night with the lid shut.
+  let suspended = false
+  powerMonitor.on('suspend', () => (suspended = true))
+  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`), undefined, undefined, {
+    onAsleep: (ms) => log?.write(asleepText(ms)),
+    slept: () => {
+      const was = suspended
+      suspended = false
+      return was
+    }
+  })
   logMemoryNowAndThen(app, log)
   startProgramsOffThread(__dirname, (line) => log?.write(line))
   app.on('child-process-gone', (_e, details) => {
@@ -270,14 +282,14 @@ async function boot(): Promise<void> {
   }
   ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
 
-  let saveErrorShown = false
+  // A failed save is a banner in the window that clears when saving works again, not a dialog that held up the app.
+  const problems = createAppProblems({ retrySave: () => docStore.flush(), push: (p) => broadcast('pb:problems:onChange', p) })
   const docStore = createDocStore(dataDir, {
     onSaveError(e) {
       console.error('Patchbay autosave failed:', e)
-      if (saveErrorShown) return
-      saveErrorShown = true
-      dialog.showErrorBox('Patchbay can\'t save', `Your canvas could not be written to ${dataDir}. It retries with each change.\n\n${String(e)}`)
-    }
+      problems.saveFailed(e, dataDir)
+    },
+    onSaved: () => problems.saved()
   })
   let store: AppStore
   try {
@@ -616,6 +628,7 @@ async function boot(): Promise<void> {
     const ids = await startDead()
     ipcHooks.reattached(ids)
   }
+  serveAppProblems(problems, { replaceHost, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   const resolveOtherHost = async (choice: 'stop-it' | 'quit'): Promise<void> => {
     if (host.info().mode !== 'other-version') return
     if (choice === 'quit') quitWith('leave-running')
@@ -681,6 +694,8 @@ async function boot(): Promise<void> {
   // Codex's limits and both accounts come from asking the programs themselves, which spends no quota.
   const refreshAgents = async (): Promise<void> => {
     if (currentSettings().usageSource === 'off') return
+    // Scenes and acceptance runs show made-up numbers, never the person's own. See agentUsageFixture.ts.
+    if (applyAgentUsageFixture(process.env, usage)) return
     try {
       usage.setClaudeAccount(await readClaudeAccount(await resolveClaudeAsync()))
     } catch {
@@ -911,22 +926,8 @@ async function boot(): Promise<void> {
     })
   })
 
-  host.onLost(() => {
-    if (!mainWindow) return
-    void dialog
-      .showMessageBox(mainWindow, {
-        type: 'warning',
-        title: 'Background sessions stopped',
-        message: 'The background session host stopped unexpectedly, and its sessions ended with it.',
-        detail: 'Their output is kept. Claude nodes can resume their conversations, and terminals can start again below what they showed.',
-        buttons: ['Bring them back', 'Not now'],
-        defaultId: 0,
-        cancelId: 1
-      })
-      .then(({ response }) => {
-        if (response === 0) void replaceHost()
-      })
-  })
+  // A banner with Bring them back, rather than a native dialog. See appProblems.ts.
+  host.onLost(() => problems.hostLost())
 
   if (store.loaded.quarantined) {
     const from = store.loaded.recoveredFrom === 'backup' ? 'the backup copy' : 'an empty canvas'

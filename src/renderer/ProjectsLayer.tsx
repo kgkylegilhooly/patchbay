@@ -1,5 +1,6 @@
 import { ArchiveDialog } from './ArchiveDialog'
 import { ArchivedToastView } from './ArchivedToastView'
+import { FolderToast, useFolderToast } from './FolderToast'
 import type { Commands } from './menus'
 import { ProjectsManager } from './ProjectsManager'
 import { closeArchive, closeProjects, useProjectsUi } from './projectsUi'
@@ -10,12 +11,14 @@ export function ProjectsLayer({ commands }: { commands: Commands }): React.JSX.E
   const manager = useProjectsUi((s) => s.manager)
   const archive = useProjectsUi((s) => s.archive)
   const archived = useProjectsUi((s) => !!s.archived)
-  if (!manager && !archive && !archived) return null
+  const folderNote = useFolderToast((s) => !!s.note)
+  if (!manager && !archive && !archived && !folderNote) return null
   return (
     <>
       {manager && <ProjectsManager commands={commands} onClose={closeProjects} />}
       {archive && <ArchiveDialog key={archive} projectId={archive} onClose={closeArchive} />}
       <ArchivedToastView commands={commands} />
+      {!archived && <FolderToast commands={commands} />}
     </>
   )
 }

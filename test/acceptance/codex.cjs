@@ -16,7 +16,7 @@ async function main() {
   const profile = L.newProfile()
   // Outside any git repository, because Codex trusts a whole repository at once.
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'patchbay-codex-work-'))
-  const app = await L.launch({ profile, env: { CODEX_HOME: home } })
+  const app = await L.launch({ profile, realHome: true, env: { CODEX_HOME: home } })
   const page = app.page
   const text = async (id) => (await L.screen(page, id)).join('\n')
   /** Codex asks once to trust new hooks, and a new CODEX_HOME asks about its sandbox. Both are answered here. */

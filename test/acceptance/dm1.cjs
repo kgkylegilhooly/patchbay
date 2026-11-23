@@ -33,7 +33,7 @@ async function main() {
   const c = L.checker()
   const work = L.workDir('dm1')
   const profile = L.newProfile()
-  const app = await L.launch({ profile, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined })
+  const app = await L.launch({ profile, realHome: true, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined })
   const { page } = app
   try {
     const terminals = ['t0', 't1', 't2', 't3', 't4', 't5', 't6']

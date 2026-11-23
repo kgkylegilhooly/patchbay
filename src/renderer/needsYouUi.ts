@@ -75,11 +75,11 @@ export async function jumpToNext(c: Commands): Promise<void> {
   }
   // Loaded on use: the store reaches for the window's bridge, and the action list that calls this is loaded in tests.
   const { useStore } = await import('./store')
-  const { doc, statuses, attention } = useStore.getState()
+  const { doc, statuses, attention, errors } = useStore.getState()
   if (!doc) return
   const { last, includeUnread } = useNeedsYouUi.getState()
   const { useAgentStops } = await import('./agentStops')
-  const next = nextInQueue(needsYouQueue(doc, statuses, attention, waits, includeUnread, useAgentStops.getState().stops), last)
+  const next = nextInQueue(needsYouQueue(doc, statuses, attention, waits, includeUnread, useAgentStops.getState().stops, errors), last)
   if (!next) {
     useNeedsYouUi.setState({ peek: null })
     return notify(includeUnread ? 'Nothing needs you' : 'Nothing needs you. Unread sessions are left out')

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { agentOf, AGENT_NAMES, type ClaudeNode } from '../../shared/model'
+import { CONVERSATION_PAGE, earlierRow } from '../../shared/conversation'
+import './chatEarlier.css'
 import { bridge } from '../bridge'
 import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { useStore } from '../store'
@@ -31,14 +33,25 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
   const list = useRef<HTMLDivElement>(null)
   const links = useLinkMenu(node.id)
   const pinned = useRef(true)
+  // How many of the newest messages to show, a page more with each Show earlier, and whether there are more before.
+  const [limit, setLimit] = useState(CONVERSATION_PAGE)
+  const [earlier, setEarlier] = useState(false)
+  // Where the person was reading when earlier messages were asked for, so they arrive above it without a jump.
+  const anchor = useRef<{ height: number; top: number; count: number } | null>(null)
+
+  // The version of what's shown: main answers "unchanged" rather than sending the same messages again.
+  const version = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     let live = true
     const read = (): void => {
-      void bridge.readConversation(node.id).then((r) => {
+      void bridge.readConversation(node.id, limit, version.current).then((r) => {
         if (!live) return
         if (!r.ok) return setProblem(r.reason)
         setProblem(null)
+        if ('unchanged' in r) return
+        version.current = r.version
+        setEarlier(r.earlier)
         setMessages((old) => (old && old.length === r.messages.length && old.at(-1)?.text === r.messages.at(-1)?.text ? old : r.messages))
       })
     }
@@ -48,13 +61,26 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
       live = false
       clearInterval(timer)
     }
-  }, [node.id, status])
+  }, [node.id, status, limit])
 
-  // Stays at the newest message, unless the person has scrolled up to read.
-  useEffect(() => {
+  // Stays at the newest message, unless the person has scrolled up to read. Earlier messages keep the place.
+  useLayoutEffect(() => {
     const el = list.current
-    if (el && pinned.current) el.scrollTop = el.scrollHeight
+    if (!el) return
+    if (anchor.current && (messages?.length ?? 0) > anchor.current.count) {
+      el.scrollTop = el.scrollHeight - anchor.current.height + anchor.current.top
+      anchor.current = null
+    } else if (pinned.current) el.scrollTop = el.scrollHeight
   }, [messages])
+
+  const showEarlier = (): void => {
+    const el = list.current
+    if (el) anchor.current = { height: el.scrollHeight, top: el.scrollTop, count: messages?.length ?? 0 }
+    setLimit((n) => n + CONVERSATION_PAGE)
+  }
+  const row = messages ? earlierRow(messages.length, earlier) : null
+  // Asked for more, and they haven't come yet.
+  const asking = !!messages && earlier && messages.length < limit
 
   const send = async (): Promise<void> => {
     const text = draft.trim()
@@ -91,6 +117,16 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
         {messages === null && !problem && <p className="chat-empty">Loading…</p>}
         {problem && <p className="chat-empty chat-problem">{problem}</p>}
         {messages?.length === 0 && <p className="chat-empty">No messages yet. What you and {name} say appears here.</p>}
+        {row && (
+          <div className="chat-earlier" data-chat-earlier>
+            <span>{row.text}</span>
+            {row.more && (
+              <button type="button" className="btn" disabled={asking} onClick={showEarlier}>
+                Show {CONVERSATION_PAGE} earlier
+              </button>
+            )}
+          </div>
+        )}
         {messages?.map((m, i) => (
           <div key={i} className={`chat-msg chat-${m.role}`} data-chat-role={m.role}>
             <div className="chat-who">{m.role === 'user' ? 'You' : name}</div>
