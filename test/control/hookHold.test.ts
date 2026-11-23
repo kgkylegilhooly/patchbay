@@ -30,7 +30,7 @@ beforeEach(async () => {
     onHook: async (id, payload, signal) => {
       if (payload.hook_event_name === 'SessionStart') return { context: 'You are "Parser" on the Patchbay canvas.' }
       if (payload.hook_event_name !== 'PermissionRequest') return {}
-      return { decision: await approvals.request(id, payload, signal) }
+      return (await approvals.request(id, payload, signal)) ?? { decision: null }
     },
     onRpc: async (_caller, verb) => {
       rpcCalls.push(verb)
@@ -88,6 +88,19 @@ test('hook.cjs prints allow and deny JSON in the form Claude Code reads', async 
   expect(output.hookEventName).toBe('PermissionRequest')
   expect(output.decision.behavior).toBe('deny')
   expect(output.decision.message).toEqual(expect.any(String))
+})
+
+test("hook.cjs passes Claude's suggested rule to the buttons, and prints it back for Always allow", async () => {
+  const rule = { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'ls:*' }], behavior: 'allow', destination: 'localSettings' }
+  const hook = startHook({ ...request, permission_suggestions: [rule] })
+  const p = await pendingOne()
+  expect(p.always).toEqual({ rule: 'Bash(ls:*)', where: 'in this project' })
+  approvals.answer(p.requestId, 'allow-always')
+  const done = await hook.finished
+  expect(done.code).toBe(0)
+  expect(JSON.parse(done.stdout)).toEqual({
+    hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedPermissions: [rule] } }
+  })
 })
 
 test('hook.cjs hands the canvas context to the agent when its session starts, and prints nothing for other events', async () => {

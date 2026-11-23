@@ -40,7 +40,12 @@ export interface PendingApproval {
   summary: string
   /** The same text without the cut, for when the person asks to see all of it. */
   detail: string
+  /** Claude's own "don't ask again" rule for this call, when it offered one Patchbay passes on: see approvals.ts. */
+  always?: { rule: string; where: string }
 }
+
+/** How the person answers a permission request. `allow-always` also adds the rule in `PendingApproval.always`. */
+export type ApprovalChoice = 'allow' | 'deny' | 'allow-always'
 
 /** Task 10 implements this. Tests use an in-memory one over reduce. */
 export interface CanvasStore {
@@ -284,7 +289,7 @@ export interface PatchbayBridge {
   saveSettings(settings: Settings): Promise<{ ok: true } | { ok: false; reason: string }>
   getApprovals(): Promise<PendingApproval[]>
   onApprovals(cb: (a: PendingApproval[]) => void): () => void
-  answerApproval(requestId: string, decision: 'allow' | 'deny'): Promise<void>
+  answerApproval(requestId: string, choice: ApprovalChoice): Promise<void>
   savePastedImage(bytes: Uint8Array, mime: string): Promise<string>
   openTerminalLink(nodeId: string, target: string): Promise<{ ok: true } | { ok: false; reason: string }>
   /** The full path a terminal path means, against the node's folder, and the folder a terminal there would use. */

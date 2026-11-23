@@ -146,6 +146,17 @@ function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.E
         <button className="btn btn-solid" onClick={() => void bridge.answerApproval(approval.requestId, 'allow')}>
           Approve
         </button>
+        {approval.always && (
+          // Claude's own "don't ask again" rule, saved by Claude where it says: never your own or the shared settings.
+          <button
+            className="btn btn-always"
+            data-cmd="approve-always"
+            title={`Approve, and don't ask again for ${approval.always.rule} ${approval.always.where}`}
+            onClick={() => void bridge.answerApproval(approval.requestId, 'allow-always')}
+          >
+            Always allow
+          </button>
+        )}
         <button className="btn" onClick={() => void bridge.answerApproval(approval.requestId, 'deny')}>
           Deny
         </button>
