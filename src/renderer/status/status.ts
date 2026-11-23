@@ -1,5 +1,6 @@
 import type { RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
+import { setupLookFor, type SetupHold } from './setupStatus'
 import { stopHolds, stopLabel, type AgentStop } from '../../shared/agentStop'
 import type { SubagentStatus } from '../../shared/subagents'
 import type { AttemptState, RunState } from '../../shared/workflow'
@@ -63,8 +64,11 @@ export function stopLook(stop: AgentStop, now: number): Look {
  * An agent's look. Null status is a terminal or other node with nothing to report. An agent whose turn ended on
  * StopFailure keeps the status `unknown`, so the stop, when known, says what happened instead.
  */
-export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now()): Look {
+export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now(), setup?: SetupHold): Look {
   if (status === 'unknown' && stop) return stopLook(stop, now)
+  // A recipe agent held for its setup commands (see setupStatus): "Setup failed" or "Waiting for setup", not "Queued".
+  const held = setupLookFor(status, setup)
+  if (held) return held
   if (!status) return { tone: 'none', label: 'No status' }
   return { tone: AGENT_TONES[status], label: AGENT_LABELS[status] }
 }

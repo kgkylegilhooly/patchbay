@@ -32,7 +32,7 @@ interface TabProps {
 
 function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragStart, onDragEnd }: TabProps): React.JSX.Element {
   const stops = useAgentStops((s) => s.stops)
-  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops) : null))
+  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops, s.runs) : null))
   const [draft, setDraft] = useState<string | null>(null)
 
   if (draft !== null) {

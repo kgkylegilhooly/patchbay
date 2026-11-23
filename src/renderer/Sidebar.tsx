@@ -6,7 +6,7 @@ import { ContextMenu } from './Menu'
 import { PeekButton, peekFrom } from './NeedsYouLayer'
 import { closedProjectMenu, type Commands, type Point } from './menus'
 import { StatusMark } from './status/StatusMarks'
-import { RunDot, RunLabel, StatusBadge, StatusDot } from './nodes/StatusBadge'
+import { RunDot, RunLabel, StatusBadge, StatusDot, useSetupHold } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
 import type { Prefs } from './prefs'
@@ -47,7 +47,8 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   const at = useStore((s) => s.activity[session.id])
   const inStatus = tab === 'status'
   // Its section says Need attention, so the row says why.
-  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined)
+  const setupFailed = useSetupHold(session.kind === 'claude' ? session.id : undefined) === 'failed'
+  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined) || setupFailed
   const peekable = inStatus && session.kind === 'claude'
   // Under its own project's heading the badge and the project's folder would only repeat the heading.
   const where = whereShown(session)
@@ -120,6 +121,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const statuses = useStore((s) => s.statuses)
   const stops = useAgentStops((s) => s.stops)
   const attention = useStore((s) => s.attention)
+  const runs = useStore((s) => s.runs)
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
@@ -134,7 +136,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={now} onReveal={commands.revealNode} />
 
   const bySection = projectSections(doc, query)
-  const byStatus = statusSections(doc, statuses, attention, query, stops)
+  const byStatus = statusSections(doc, statuses, attention, query, stops, runs)
   const total = bySection.reduce((sum, s) => sum + s.tree.total, 0)
   const closed = closedProjects(doc)
   const recent = recentlyClosed(doc, query)

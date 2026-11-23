@@ -1,6 +1,8 @@
 import { isProjectArchived, isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
 import { matchesSession, sessionTree, type Session, type SessionTree } from './sessionTree'
 import type { Tone } from './status/status'
+import type { RunResult } from '../shared/contract'
+import { sessionBlocked } from './status/setupStatus'
 
 export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' | 'starting' | 'stopped' | 'plain'
 
@@ -11,7 +13,7 @@ export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' |
  * Stopped, and terminals and run commands, which have no way of reporting a status, get a section of their own.
  */
 export const BUCKETS: { id: BucketId; label: string; help: string; always: boolean; tone: Tone | null }[] = [
-  { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer, or stopped on a limit or an error', always: true, tone: 'needs' },
+  { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer, or stopped on a limit or an error (a failed setup or run too)', always: true, tone: 'needs' },
   { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: false, tone: null },
   { id: 'running', label: 'Working', help: 'Claude is working', always: false, tone: 'working' },
   { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: false, tone: 'done' },
@@ -21,11 +23,15 @@ export const BUCKETS: { id: BucketId; label: string; help: string; always: boole
   { id: 'plain', label: 'Terminals and commands', help: "These don't report a status, so none is shown", always: false, tone: 'none' }
 ]
 
-/** Never guesses: anything with no status from a hook is either Unknown or listed as having none. */
-export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean, stopped = false): BucketId {
+/**
+ * Never guesses: anything with no status from a hook is either Unknown or listed as having none. `blocked` is a
+ * session stopped on something only the person can clear: a recipe agent whose setup failed, or a failed run command.
+ */
+export function bucketOf(kind: Session['kind'], status: AgentStatus | null, unread: boolean, stopped = false, blocked = false): BucketId {
   if (status === 'needs-you') return 'needs-you'
   // Stopped at a usage limit, a failed login or an API error: Patchbay knows why, so it isn't Unknown.
   if (status === 'unknown' && stopped) return 'needs-you'
+  if (blocked) return 'needs-you'
   if (unread) return 'unread'
   switch (status) {
     case 'working':
@@ -57,7 +63,7 @@ export interface StatusSection {
  * Every session, by status, across projects. A closed project is out of sight on purpose, except for what the taskbar
  * badge is counting: a session waiting on you has to stay findable, wherever it is.
  */
-export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}): StatusSection[] {
+export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}, runs: Record<string, RunResult> = {}): StatusSection[] {
   const open = new Map(doc.projects.map((p) => [p.id, isProjectOpen(p)]))
   const names = new Map(doc.projects.map((p) => [p.id, p.name.toLowerCase()]))
   const q = query.trim().toLowerCase()
@@ -66,7 +72,7 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
   const sections = new Map<BucketId, Session[]>(BUCKETS.map((b) => [b.id, []]))
   for (const node of doc.nodes) {
     if (!isSessionNode(node) || !shown(node)) continue
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped)
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], runs[node.id]))
     const hidden = node.projectId !== undefined && open.get(node.projectId) === false
     if (hidden && bucket !== 'needs-you' && bucket !== 'unread') continue
     // An archived project's sessions were stopped on purpose, and can't be shown until it's unarchived.

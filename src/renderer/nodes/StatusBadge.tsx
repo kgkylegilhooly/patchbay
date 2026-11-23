@@ -2,12 +2,19 @@ import type { RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import { useAgentStop } from '../agentStops'
 import { agentLook, runLook, type Look } from '../status/status'
+import { setupHoldOf, type SetupHold } from '../status/setupStatus'
+import { useStore } from '../store'
 import { StatusMark, StatusText } from '../status/StatusMarks'
+
+/** A recipe agent's hold for its setup commands, if it has one. */
+export function useSetupHold(nodeId?: string): SetupHold | undefined {
+  return useStore((s) => (nodeId ? setupHoldOf(s.doc?.nodes.find((n) => n.id === nodeId)) : undefined))
+}
 
 /** An agent's look, with the stop its turn ended on when the status is still the `unknown` it left. */
 export function useAgentLook(status: AgentStatus | null, nodeId?: string): Look {
   const stop = useAgentStop(status === 'unknown' ? nodeId : undefined)
-  return agentLook(status, stop)
+  return agentLook(status, stop, Date.now(), useSetupHold(nodeId))
 }
 
 /** The mark beside a window's title. A plain terminal has no status, so it gets the small grey square. */
@@ -22,7 +29,8 @@ export function StatusDot({ status, nodeId }: { status: AgentStatus | null; node
  */
 export function StatusBadge({ status, nodeId }: { status: AgentStatus; nodeId?: string }): React.JSX.Element {
   const stop = useAgentStop(status === 'unknown' ? nodeId : undefined)
-  return <StatusText look={agentLook(status, stop)} className={`badge-${status}`} data-stop={stop?.kind} />
+  const setup = useSetupHold(nodeId)
+  return <StatusText look={agentLook(status, stop, Date.now(), setup)} className={`badge-${status}`} data-stop={stop?.kind} data-setup={setup} />
 }
 
 /** A run command's mark. */

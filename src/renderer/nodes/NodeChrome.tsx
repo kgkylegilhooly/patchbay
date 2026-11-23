@@ -17,6 +17,7 @@ import { SubagentEye } from '../subagents/SubagentEye'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStop } from '../agentStops'
 import { ledTokens, runMapColor, statusMapColor } from '../minimapColors'
+import { setupHoldOf } from '../status/setupStatus'
 import { headerFolder, keyBadge } from '../zoomTier'
 import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
@@ -236,7 +237,7 @@ export function NodeChrome({
   const folder = headerFolder(cwd, projectFolder)
   const stop = useAgentStop(status === 'unknown' ? node.id : undefined)
   // The colour a zoomed-out window's body is filled with: the minimap's, so the two always agree.
-  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens())
+  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens(), Date.now(), setupHoldOf(node))
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (
