@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useReactFlow } from '@xyflow/react'
 import { EXTRACTED_NOTE, handoffMarkdown, handoffPrompt, MAX_HANDOFF_CHARS } from '../core/search/handoffText'
 import type { Evidence, HandoffDraft, HandoffSection, HandoffSource } from '../core/search/types'
@@ -35,6 +35,12 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
   }, [agents, agent])
   const [title, setTitle] = useState(`Continue: ${source.title}`.slice(0, 80))
   const [cwd, setCwd] = useState('')
+  // A long folder shows its end, the part that tells folders apart, until the field is clicked.
+  const folderRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const el = folderRef.current
+    if (el && document.activeElement !== el) el.scrollLeft = el.scrollWidth
+  }, [cwd])
   const [starting, setStarting] = useState(false)
   const [copied, setCopied] = useState(false)
   /** The file the handoff was last saved to, and what it held, so Open in Reader is offered only while they match. */
@@ -148,7 +154,7 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
                 <label className="handoff-field handoff-folder">
                   <span className="field-label">Folder</span>
                   <span className="handoff-folder-row">
-                    <input value={cwd} onChange={(e) => setCwd(e.target.value)} spellCheck={false} />
+                    <input ref={folderRef} value={cwd} title={cwd} onChange={(e) => setCwd(e.target.value)} onBlur={(e) => (e.currentTarget.scrollLeft = e.currentTarget.scrollWidth)} spellCheck={false} />
                     <button className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setCwd(f))}>
                       Choose…
                     </button>

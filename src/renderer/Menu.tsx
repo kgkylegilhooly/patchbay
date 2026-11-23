@@ -8,6 +8,8 @@ import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
 import { confirmThen } from './shell/confirmStore'
 import { confirmWords } from './shell/panelKeys'
+import { drillEntries, firstUsable, MENU_BACK } from './menuDrill'
+import './polishC.css'
 
 /**
  * A menu panel. Pressing on it never moves focus, so a terminal keeps the keyboard and Edit > Copy
@@ -31,7 +33,9 @@ export function MenuPanel({
 }): React.JSX.Element {
   // Settings > Agents: an agent turned off isn't offered, in any menu.
   const agents = useAgentChoice()
-  entries = entries.filter((e) => e === 'separator' || commandAllowed(e.id, agents))
+  // A row with a submenu opens it in this panel's place; the row back leads out again.
+  const [sub, setSub] = useState<MenuItem | null>(null)
+  entries = drillEntries(entries, sub, () => undefined).filter((e) => e === 'separator' || commandAllowed(e.id, agents))
   const usable = entries.filter((e): e is MenuItem => e !== 'separator' && !e.disabled)
   const overrides = useStore((s) => s.keyOverrides)
   const shortcutOf = (item: MenuItem): string | null => {
@@ -43,6 +47,18 @@ export function MenuPanel({
   const ownRef = useRef<HTMLDivElement | null>(null)
   /** Set by the arrow keys, so a long menu scrolls to the row they reach, but not to a row under the mouse. */
   const keyed = useRef(false)
+  /** Where the pointer was last seen over the panel. After the keyboard, a row only takes over once the pointer moves. */
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  // Rows that slide under a still pointer, as when a submenu opens in place, get a hover the browser makes up. It
+  // would take the active row from the keyboard, so it counts only if the pointer is somewhere new.
+  const hover = (e: React.MouseEvent, id: string): void => {
+    const p = { x: e.clientX, y: e.clientY }
+    const was = pointer.current
+    pointer.current = p
+    if (keyed.current && (!was || (was.x === p.x && was.y === p.y))) return
+    keyed.current = false
+    setActive(id)
+  }
   const setPanel = (el: HTMLDivElement | null): void => {
     ownRef.current = el
     if (typeof panelRef === 'function') panelRef(el)
@@ -53,8 +69,16 @@ export function MenuPanel({
     if (keyed.current) ownRef.current?.querySelector('.menu-item-active')?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
+  const drill = (item: MenuItem | null): void => {
+    keyed.current = true
+    setActive(item?.submenu ? firstUsable(item.submenu) : (sub?.id ?? null))
+    setSub(item)
+  }
+
   const choose = (item: MenuItem): void => {
     if (item.disabled) return
+    if (item.id === MENU_BACK) return drill(null)
+    if (item.submenu) return drill(item)
     if (item.steps && !item.steps.canRun) return
     if (!item.keepOpen && !item.steps) onClose()
     // One confirmation for every destructive item, in its own dialog rather than a reworded menu row.
@@ -63,8 +87,8 @@ export function MenuPanel({
   }
 
   // Refs let the listener below stay attached for the life of the menu.
-  const latest = useRef({ usable, active, choose, onClose, onStep })
-  latest.current = { usable, active, choose, onClose, onStep }
+  const latest = useRef({ usable, active, choose, onClose, onStep, sub, drill })
+  latest.current = { usable, active, choose, onClose, onStep, sub, drill }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -76,16 +100,19 @@ export function MenuPanel({
         setActive(m.usable[next]?.id ?? null)
       }
       const handlers: Record<string, () => void> = {
-        Escape: m.onClose,
+        Escape: () => (m.sub ? m.drill(null) : m.onClose()),
         ArrowDown: () => move(1),
         ArrowUp: () => move(-1),
         ArrowLeft: () => {
+          if (m.sub) return m.drill(null)
           const steps = m.usable.find((i) => i.id === m.active)?.steps
           if (steps) return void (!steps.down.disabled && steps.down.run())
           m.onStep?.(-1)
         },
         ArrowRight: () => {
-          const steps = m.usable.find((i) => i.id === m.active)?.steps
+          const item = m.usable.find((i) => i.id === m.active)
+          if (item?.submenu) return m.drill(item)
+          const steps = item?.steps
           if (steps) return void (!steps.up.disabled && steps.up.run())
           m.onStep?.(1)
         },
@@ -109,9 +136,13 @@ export function MenuPanel({
       ref={setPanel}
       className="menu-panel"
       role="menu"
-      aria-label={label}
+      aria-label={sub ? sub.label : label}
+      data-submenu={sub ? sub.id : undefined}
       style={style}
       onMouseDown={(e) => e.preventDefault()}
+      onMouseMove={(e) => {
+        if (!keyed.current) pointer.current = { x: e.clientX, y: e.clientY }
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {entries.map((entry, i) =>
@@ -122,10 +153,7 @@ export function MenuPanel({
             key={entry.id}
             item={entry}
             active={active === entry.id}
-            onHover={() => {
-              keyed.current = false
-              setActive(entry.id)
-            }}
+            onHover={(e) => hover(e, entry.id)}
           />
         ) : (
           <button
@@ -135,16 +163,14 @@ export function MenuPanel({
             data-tool={entry.tool}
             role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             aria-checked={entry.checked}
+            aria-haspopup={entry.submenu ? 'menu' : undefined}
             disabled={entry.disabled}
             className={[
               'menu-item',
               active === entry.id ? 'menu-item-active' : '',
               entry.danger ? 'menu-item-danger' : ''
             ].join(' ')}
-            onMouseEnter={() => {
-              keyed.current = false
-              setActive(entry.id)
-            }}
+            onMouseEnter={(e) => hover(e, entry.id)}
             onClick={() => choose(entry)}
           >
             <span className="menu-check" aria-hidden="true">
@@ -152,6 +178,7 @@ export function MenuPanel({
             </span>
             <span className="menu-label">{entry.label}</span>
             {shortcutOf(entry) && <span className="menu-shortcut">{shortcutOf(entry)}</span>}
+            {entry.submenu && <span className="menu-more" aria-hidden="true"><Icon name="chevron" size={13} /></span>}
           </button>
         )
       )}
@@ -160,7 +187,7 @@ export function MenuPanel({
 }
 
 /** A − value + row in a menu, such as a window's text size. The value runs the item, when it can. */
-function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: () => void }): React.JSX.Element {
+function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: (e: React.MouseEvent) => void }): React.JSX.Element {
   const steps = item.steps!
   const step = (s: (typeof steps)['down'], icon: 'minus' | 'plus'): React.JSX.Element => (
     <button type="button" role="menuitem" className="menu-step" data-tool={s.tool} aria-label={s.label} title={s.label} disabled={s.disabled} onClick={s.run}>
@@ -210,9 +237,18 @@ export function ContextMenu({
   const [position, setPosition] = useState(at)
 
   useLayoutEffect(() => {
-    const box = ref.current?.getBoundingClientRect()
-    const from = anchor === 'end' && box ? { x: at.x - box.width, y: at.y } : at
-    if (box) setPosition(clampToViewport(from, box, { width: window.innerWidth, height: window.innerHeight }))
+    const place = (): void => {
+      const box = ref.current?.getBoundingClientRect()
+      const from = anchor === 'end' && box ? { x: at.x - box.width, y: at.y } : at
+      if (box) setPosition(clampToViewport(from, box, { width: window.innerWidth, height: window.innerHeight }))
+    }
+    place()
+    // A submenu opens in the panel's place and can be wider or taller than the menu was: placed again, it stays on screen.
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(place)
+    watch.observe(el)
+    return () => watch.disconnect()
   }, [at, anchor])
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import type { BrowserAttempt, EvidenceCapture } from '../../shared/browserEviden
 import type { TaskRevision } from '../../shared/task'
 import { bridge } from '../bridge'
 import { useStore } from '../store'
+import { evidenceTaskLabel } from '../idWords'
 import './browserEvidence.css'
 
 const revisionText = (r: TaskRevision | null | undefined): string => {
@@ -44,6 +45,9 @@ function EvidencePicture({ attempt, capture, index }: { attempt: BrowserAttempt;
 }
 
 function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
+  // Ids stay in tooltips; the text names the task.
+  const brief = useStore((s) => (a.taskId ? s.doc?.projects.flatMap((p) => p.tasks?.tasks ?? []).find((t) => t.id === a.taskId)?.brief : undefined))
+  const task = evidenceTaskLabel(a.taskId, brief)
   return (
     <>
       <p>
@@ -51,9 +55,9 @@ function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
         <br />
         {a.url}
       </p>
-      <p className="evidence-id">
-        Attempt {a.id}
-        {a.taskId && ` · Task ${a.taskId}`}
+      <p className="evidence-id" title={`Attempt ${a.id}${a.taskId ? `
+Task ${a.taskId}` : ''}`}>
+        {task ?? 'Recorded check'}
       </p>
       <p>
         Started by {a.startedBy ? `${a.startedBy.title}` : 'an agent'}
@@ -82,9 +86,7 @@ function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
               {new Date(s.at).toLocaleTimeString()} · {s.action} · {s.state}
               {s.by && ` · by ${s.by}`}
               <br />
-              <small>
-                {s.url} · page {s.pageId}
-              </small>
+              <small title={`Page ${s.pageId}`}>{s.url}</small>
             </li>
           ))}
         </ol>
@@ -98,9 +100,8 @@ function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
             <br />
             {d.method} {d.url}
             <br />
-            <small>
-              Page {d.pageId} · {d.pageUrl} · attempt {d.attemptId}
-            </small>
+            <small title={`Page ${d.pageId}
+Attempt ${d.attemptId}`}>{d.pageUrl}</small>
           </p>
         ))}
       </details>

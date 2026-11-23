@@ -113,7 +113,7 @@ export function ResourceSection({ agentLimit, onAgentLimit }: { agentLimit: stri
                 )}
               </>
             ) : (
-              <span className="set-value">…</span>
+              <span className="set-value res-reading">Reading memory…</span>
             )}
           </div>
         </div>
@@ -123,9 +123,10 @@ export function ResourceSection({ agentLimit, onAgentLimit }: { agentLimit: stri
             <div className="set-text">
               <span className="set-title">Sessions</span>
               <p className="set-help">
-                What the host runs, against what the canvas shows, and what each uses with every program it started, such as tests, servers and tools. Checked every minute or so; one the canvas shows
-                as ended but the host still runs is shown again, and one with no node is never ended without asking. <span data-sync-summary>{syncSummary(report)}</span>{' '}
-                {reading ? readAgo(reading.processesAt, now) : ''}
+                Each session the host runs, with the memory it and its programs use. Checked every minute or so: one still running comes back on the canvas, and none is ended without asking.
+                <span className="res-summary">
+                  <span data-sync-summary>{syncSummary(report)}</span> {reading ? readAgo(reading.processesAt, now) : ''}
+                </span>
               </p>
             </div>
             <button type="button" className="btn" onClick={check} disabled={busy} data-sync-action="check" data-cmd="resources-refresh">

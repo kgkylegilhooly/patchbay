@@ -5,6 +5,7 @@ import { Icon } from './icons'
 import { ReviewBar, ReviewDiff } from './ReviewDiff'
 import { shortPath } from './shortPath'
 import { useStore } from './store'
+import { bridge } from './bridge'
 import { work } from './workBridge'
 import { Panel } from './shell/Panel'
 import { confirmThen } from './shell/confirmStore'
@@ -194,7 +195,8 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
       onClose={close}
       flush
       sub={
-        <select className="git-repo" aria-label="Repository" title={root ?? undefined} value={root ?? ''} onChange={(e) => setRoot(e.target.value || null)} disabled={!repos?.length}>
+        // With no repository there's nothing to pick from, so no empty list: the body offers to choose a folder.
+        !!repos?.length && <select className="git-repo" aria-label="Repository" title={root ?? undefined} value={root ?? ''} onChange={(e) => setRoot(e.target.value || null)} disabled={!repos?.length}>
           {(repos ?? []).map((x) => (
             <option key={x.root} value={x.root} title={x.root}>
               {x.label}: {shortPath(x.root)}
@@ -208,7 +210,14 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
         </button>
       }
     >
-      {repos && repos.length === 0 && <p className="git-empty">No git repository here. Set the project's folder, or select a session or worktree group in one.</p>}
+      {repos && repos.length === 0 && (
+        <div className="git-empty" data-git="empty">
+          <p>{asked ? `${shortPath(asked)} isn't in a git repository.` : 'No git repository here.'} Choose a folder in one, or select a session or worktree group that's in one.</p>
+          <button type="button" className="btn" data-git="choose-folder" onClick={() => void bridge.pickFolder().then((f) => f && useStore.setState({ gitFolder: f }))}>
+            Choose folder…
+          </button>
+        </div>
+      )}
       {root && (
         <>
           <div className="git-branchbar">
