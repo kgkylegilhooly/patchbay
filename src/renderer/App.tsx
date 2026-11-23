@@ -67,6 +67,7 @@ import type { AgentStop } from '../shared/agentStop'
 import { EmptyCanvas } from './EmptyCanvas'
 import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
+import { AppProblems } from './AppProblems'
 import './styles.css'
 import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
@@ -522,6 +523,7 @@ function Canvas(): React.JSX.Element | null {
         {paletteOpen && <CommandPalette commands={commands} state={menuState()} recent={prefs.recentActions} onRan={(id) => updatePrefs({ recentActions: noteRecent(prefsRef.current.recentActions, id) })} onClose={closePalette} />}
         {recentOpen && <RecentPanel onClose={() => setRecentOpen(false)} />}
         <CanvasOverlays commands={commands} selected={selected} boardOpen={boardOpen} gitOpen={gitOpen} />
+        <AppProblems />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

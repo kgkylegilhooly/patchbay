@@ -1,0 +1,72 @@
+/* The app's own problems (AppProblems.tsx): banners at the top of the canvas, over the windows, under dialogs. */
+.app-problems {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  left: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 620px;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+/* Centred on the canvas beside the sidebar, not over it. */
+.stage:has(> .sidebar) > .app-problems {
+  left: 322px;
+}
+
+.app-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px 10px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--status-quiet);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+}
+
+.app-problem-bad {
+  border-left-color: var(--status-needs);
+}
+
+.app-problem-good {
+  border-left-color: var(--status-done);
+}
+
+.app-problem-text {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-problem-text strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.app-problem-text span {
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.app-problem-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.app-problem-actions .btn {
+  padding: 5px 12px;
+  white-space: nowrap;
+}

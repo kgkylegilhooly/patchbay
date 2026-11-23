@@ -17,6 +17,7 @@ import { exposeDocs } from './docs'
 import { exposeWorkflows } from './workflows'
 import { exposeResources } from './resources'
 import { exposeSessionSync } from './sessionSync'
+import { exposeAppProblems } from './appProblems'
 import { reportOutputTaken } from './outputAck'
 
 /**
@@ -117,7 +118,7 @@ const bridge: PatchbayBridge = {
   resolveTerminalPath: (nodeId, target) => invoke('resolveTerminalPath', nodeId, target),
   revealTerminalPath: (nodeId, target) => invoke('revealTerminalPath', nodeId, target),
   sendToAgent: (nodeId, text) => invoke('sendToAgent', nodeId, text),
-  readConversation: (nodeId) => invoke('readConversation', nodeId),
+  readConversation: (nodeId, limit) => invoke('readConversation', nodeId, limit),
   getUpdateState: () => invoke('getUpdateState'),
   onUpdateState: (cb) => listen('onUpdateState', cb),
   checkForUpdates: () => invoke('checkForUpdates'),
@@ -161,6 +162,7 @@ exposeDocs()
 exposeWorkflows()
 exposeResources()
 exposeSessionSync()
+exposeAppProblems()
 reportOutputTaken()
 
 // The main process's heartbeat. The answer comes from this window's own main thread, so a stuck page can't give one,

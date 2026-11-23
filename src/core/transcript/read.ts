@@ -110,19 +110,28 @@ async function readRange(handle: FileHandle, start: number, end: number): Promis
  * that only what was added. Throws if the file can't be read.
  */
 export async function readMessagesTail(path: string, tail: number): Promise<TranscriptMessage[]> {
+  return (await readMessagesTailAndMore(path, tail)).messages
+}
+
+/**
+ * As readMessagesTail, and whether there are messages before them, so a chat view can say it isn't showing the whole
+ * conversation. `earlier` can be true of a file whose start holds no messages at all: asking for more then finds none,
+ * and says false.
+ */
+export async function readMessagesTailAndMore(path: string, tail: number): Promise<{ messages: TranscriptMessage[]; earlier: boolean }> {
   const handle = await open(path, 'r')
   try {
     const { size, mtimeMs } = await handle.stat()
     const cached = tails.get(path)
     // Transcripts only grow. One that's shorter than what was read has been replaced, so it's read afresh.
     if (cached && cached.offset <= size && (cached.whole || cached.messages.length >= tail)) {
-      if (cached.offset === size) return cached.messages.slice(-tail)
+      if (cached.offset === size) return { messages: cached.messages.slice(-tail), earlier: !cached.whole || cached.messages.length > tail }
       // Only what was added, up to its last complete line. A line still being written is read next time.
       const added = await readRange(handle, cached.offset, size)
       const end = added.lastIndexOf(0x0a) + 1
       const all = [...cached.messages, ...parseText(added.subarray(0, end).toString('utf8'))]
       tails.set(path, { offset: cached.offset + end, mtimeMs, messages: all.slice(-tail * 2), whole: cached.whole && all.length <= tail * 2 })
-      return all.slice(-tail)
+      return { messages: all.slice(-tail), earlier: !cached.whole || all.length > tail }
     }
     let chunk = TAIL_CHUNK_BYTES
     for (;;) {
@@ -135,7 +144,7 @@ export async function readMessagesTail(path: string, tail: number): Promise<Tran
       if (messages.length >= tail || start === 0) {
         if (tails.size >= TAIL_CACHE_FILES) tails.delete(tails.keys().next().value as string)
         tails.set(path, { offset: start + end, mtimeMs, messages: messages.slice(-tail * 2), whole: start === 0 && messages.length <= tail * 2 })
-        return messages.slice(-tail)
+        return { messages: messages.slice(-tail), earlier: start > 0 || messages.length > tail }
       }
       chunk *= 4
     }

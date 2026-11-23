@@ -1,5 +1,5 @@
 import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { copyFile, open, readFile, rename, stat } from 'node:fs/promises'
+import { chmod, copyFile, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { docJson } from './docJson'
 import { sanitizeBoard } from '../../shared/board'
@@ -45,6 +45,8 @@ export interface DocStore {
 export interface DocStoreOptions {
   /** Called when a debounced save fails. The doc stays pending for the next flush. */
   onSaveError?: (e: unknown) => void
+  /** Called after each save that went through, so a failure shown earlier can be cleared. */
+  onSaved?: () => void
 }
 
 function emptyDoc(): CanvasDoc {
@@ -349,7 +351,11 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
   /** Copies a known-good primary to the backup by the file system alone, synced before it takes the backup's place. */
   async function copyToBackup(): Promise<void> {
     const temp = `${backup}.tmp`
+    // A read-only save file copies as read-only. Left behind by a failed save, that copy blocked every later one, even
+    // once the save file could be written again. So it goes first, and the copy is made writable.
+    await withLockRetry(() => rm(temp, { force: true }))
     await withLockRetry(() => copyFile(primary, temp))
+    await chmod(temp, 0o666)
     const handle = await open(temp, 'r+')
     try {
       await handle.sync()
@@ -415,6 +421,7 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       // Turned into text here, once, however many changes came while it waited.
       await persist(docJson(doc), order)
       if (pending === doc) pending = null
+      options.onSaved?.()
     })
     queue = run.catch(() => {})
     return run
