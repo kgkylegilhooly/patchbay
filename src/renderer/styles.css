@@ -973,6 +973,17 @@ select {
   background: rgb(52 199 89 / 0.24);
 }
 
+/* A kind of approve, so green like it, but lighter: it also saves a rule. */
+.strip-approval .btn-always {
+  color: #4cd964;
+  background: transparent;
+  border-color: rgb(52 199 89 / 0.45);
+}
+
+.strip-approval .btn-always:hover:not(:disabled) {
+  background: rgb(52 199 89 / 0.14);
+}
+
 .strip-held {
   color: var(--ink-dim);
 }

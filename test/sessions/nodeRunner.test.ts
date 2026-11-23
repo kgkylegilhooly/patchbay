@@ -320,7 +320,7 @@ describe('Codex', () => {
   })
 
   test('its read-only Patchbay calls go ahead without asking; the rest still ask', async () => {
-    const approvals = { request: vi.fn(async () => 'deny' as const), clearNode: vi.fn(), pending: () => [] }
+    const approvals = { request: vi.fn(async () => ({ decision: 'deny' as const })), clearNode: vi.fn(), pending: () => [] }
     const store = memoryStore([claude({ agent: 'codex', prompt: 'hi' })])
     const tracker = createStatusTracker({ notify: () => {} })
     const runner = createNodeRunner({ host: fakeHost(), tracker, store, approvals: approvals as never, ctx: ctx(codexCtx) })
@@ -333,6 +333,9 @@ describe('Codex', () => {
     expect(approvals.request).not.toHaveBeenCalled()
     expect(await ask(['send', '--node', 'x', '--text', 'hi'])).toEqual({ decision: 'deny' })
     expect(approvals.request).toHaveBeenCalledTimes(1)
+    // Always allow is Claude's own permission update: a Codex request goes to the buttons without one.
+    await runner.handleHook('c', { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [{ type: 'addRules' }] })
+    expect((approvals.request.mock.calls[1] as unknown[])[1]).not.toHaveProperty('permission_suggestions')
   })
 
   test('a new Codex runs codex with the hooks, and takes its session id from SessionStart', async () => {

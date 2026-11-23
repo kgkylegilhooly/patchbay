@@ -23,12 +23,12 @@ test('an ordinary tool request is pending until answered; answer resolves it', a
   const p = onlyPending(a)
   expect(p).toMatchObject({ nodeId: 'n', tool: 'Bash', summary: 'ls -la' })
   a.answer(p.requestId, 'allow')
-  await expect(result).resolves.toBe('allow')
+  await expect(result).resolves.toEqual({ decision: 'allow' })
   expect(a.pending()).toEqual([])
 
   const denied = a.request('n', bash())
   a.answer(onlyPending(a).requestId, 'deny')
-  await expect(denied).resolves.toBe('deny')
+  await expect(denied).resolves.toEqual({ decision: 'deny' })
 })
 
 test('the hold timeout resolves null and clears the buttons', async () => {
@@ -96,7 +96,7 @@ test('clearNode leaves other nodes pending', async () => {
   a.clearNode('one')
   expect(onlyPending(a).nodeId).toBe('two')
   a.answer(onlyPending(a).requestId, 'allow')
-  await expect(two).resolves.toBe('allow')
+  await expect(two).resolves.toEqual({ decision: 'allow' })
 })
 
 test('an aborted signal resolves null and clears the request', async () => {
@@ -351,3 +351,49 @@ function describe_runner(): void {
     expect(tracker.get('c')).toBe('needs-you')
   })
 }
+
+const rule = (destination: string, extra: Record<string, unknown> = {}) => ({
+  type: 'addRules',
+  rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }],
+  behavior: 'allow',
+  destination,
+  ...extra
+})
+
+test("Always allow sends back Claude's own rule for this project, cleaned to the documented fields", async () => {
+  const a = createApprovals()
+  const result = a.request('n', { ...bash('npm test'), permission_suggestions: [rule('session'), rule('localSettings', { extra: 'x' })] })
+  const p = onlyPending(a)
+  expect(p.always).toEqual({ rule: 'Bash(npm test:*)', where: 'in this project' })
+  a.answer(p.requestId, 'allow-always')
+  await expect(result).resolves.toEqual({
+    decision: 'allow',
+    updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }]
+  })
+})
+
+test('a rule kept to the session is offered as that, and plain Approve saves no rule', async () => {
+  const a = createApprovals()
+  const result = a.request('n', { ...bash('npm test'), permission_suggestions: [rule('session')] })
+  expect(onlyPending(a).always).toEqual({ rule: 'Bash(npm test:*)', where: 'for the rest of this session' })
+  a.answer(onlyPending(a).requestId, 'allow')
+  await expect(result).resolves.toEqual({ decision: 'allow' })
+})
+
+test.each([
+  ['your own settings', [rule('userSettings')]],
+  ["the project's shared settings", [rule('projectSettings')]],
+  ['a deny rule', [rule('localSettings', { behavior: 'deny' })]],
+  ['a mode change', [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }]],
+  ['a rule with no tool', [{ ...rule('localSettings'), rules: [{ ruleContent: 'x' }] }]],
+  ['nothing usable', 'not a list']
+])('no Always allow for %s, and answering it anyway does nothing', async (_what, permission_suggestions) => {
+  const a = createApprovals()
+  const result = a.request('n', { ...bash(), permission_suggestions })
+  const p = onlyPending(a)
+  expect(p.always).toBeUndefined()
+  a.answer(p.requestId, 'allow-always')
+  expect(a.pending()).toHaveLength(1)
+  a.answer(p.requestId, 'deny')
+  await expect(result).resolves.toEqual({ decision: 'deny' })
+})
