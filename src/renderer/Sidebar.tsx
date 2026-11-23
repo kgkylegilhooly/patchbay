@@ -74,12 +74,13 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
           <KindIcon kind={session.kind} agent={session.kind === 'claude' ? session.agent : undefined} />
           <span className="session-title">{session.title}</span>
           {unseen && <span className="session-unseen" role="img" aria-label="Not looked at yet" title="Finished while you were elsewhere" />}
-          {context && (
+          {/* A stopped row's reason, with its time, matters more than how full its context is: that's on the node. */}
+          {context && !stopped && (
             <span className={`session-context usage-${context.level}`} title={`${context.text}${context.detail ? `\n${context.detail}` : ''}`}>
               {context.text.replace(' context', '')}
             </span>
           )}
-          {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} />}
+          {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} compact />}
           {session.kind === 'run' && <RunLabel run={run} />}
         </span>
         {showWhere && (
@@ -272,7 +273,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
           label={menu.project.name}
           entries={closedProjectMenu(commands, menu.project.id, {
             sessionTitles: doc.nodes.filter((n) => n.projectId === menu.project.id && isSessionNode(n)).map((n) => n.title),
-            items: doc.nodes.filter((n) => n.projectId === menu.project.id && !isSessionNode(n)).length
+            items: doc.nodes.filter((n) => n.projectId === menu.project.id && !isSessionNode(n)).length,
+            name: menu.project.name
           })}
           onClose={() => setMenu(null)}
         />

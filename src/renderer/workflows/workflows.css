@@ -238,13 +238,17 @@
   color: var(--ink-dim);
 }
 
-/* A drawer at the right, above the canvas chips. */
-.workflow-panel {
-  --shell-w: 420px;
+/* Once the dock is laid out, the chips centre in the same free part of the bottom row, clear of the sidebar and of
+   the run panel, so the chip that says a step needs you is never cut at the panel's edge. */
+.stage[data-dock-placed] > .workflow-chips-bar {
+  left: calc((var(--safe-left, 0px) + var(--safe-right, 100%)) / 2);
+  max-width: calc(var(--safe-right, 100%) - var(--safe-left, 0px) - 2 * var(--safe-gap, 12px));
 }
 
-.shell-drawer.workflow-panel {
-  z-index: 40;
+/* A drawer at the right, like the Git panel: in the safe area's list of right panels, so the dock lays out beside
+   it, or runs over its padded last rows when there isn't room. */
+.workflow-panel {
+  --shell-w: 420px;
 }
 
 .workflow-panel-head {

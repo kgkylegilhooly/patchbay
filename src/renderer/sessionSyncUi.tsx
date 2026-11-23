@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { JOINED_NOTICE, type SyncRow } from '../shared/sessionSync'
 import { noteJoined, useJoined } from './sessionSync'
-import { confirmThen } from './shell/confirmStore'
+import { confirmThen, namedQuestion } from './shell/confirmStore'
+import { useStore } from './store'
 import './sessionSync.css'
 
 /**
@@ -12,6 +13,7 @@ import './sessionSync.css'
 /** On a node whose session was found still running: says so, and offers ending it first, through the confirm dialog. */
 export function JoinedStrip({ id }: { id: string }): React.JSX.Element | null {
   const joined = useJoined((s) => !!s.joined[id])
+  const name = useStore((s) => s.doc?.nodes.find((n) => n.id === id)?.title)
   const [busy, setBusy] = useState(false)
   if (!joined) return null
   const end = (): Promise<void> => {
@@ -24,7 +26,8 @@ export function JoinedStrip({ id }: { id: string }): React.JSX.Element | null {
   const ask = (): void =>
     void confirmThen(
       {
-        title: 'End and restart this session?',
+        title: namedQuestion('End and restart', name) ?? 'End and restart this session?',
+        icon: 'restart',
         message: 'It and everything it started end now, then it starts again. An agent resumes its conversation.',
         verb: 'End and restart',
         tone: 'danger',

@@ -1,3 +1,5 @@
+import type { IconName } from '../iconPaths'
+
 /** What a confirmation asks. One shape for every destructive action. */
 export interface ConfirmSpec {
   /** A question: "Delete project?" */
@@ -11,6 +13,8 @@ export interface ConfirmSpec {
   /** Danger: a red verb, and focus starts on Cancel so Enter is safe. Neutral: a white verb, focused. */
   tone?: 'danger' | 'neutral'
   cancelLabel?: string
+  /** The title's icon, when the action isn't a deletion: a restart. Danger defaults to the bin. */
+  icon?: IconName
   /** Hooks for tests and scripts, on the dialog and its two buttons. */
   attrs?: Record<string, string>
   verbAttrs?: Record<string, string>
@@ -69,6 +73,11 @@ export function cancelAllConfirms(): void {
 export function subscribeConfirm(listener: () => void): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+/** A confirmation's question that names what it acts on: 'Delete "Website"?'. Undefined without a name. */
+export function namedQuestion(verb: string, name: string | undefined): string | undefined {
+  return name?.trim() ? `${verb} "${name.trim()}"?` : undefined
 }
 
 /** Ask, then run only on yes. */

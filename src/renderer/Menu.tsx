@@ -58,7 +58,7 @@ export function MenuPanel({
     if (item.steps && !item.steps.canRun) return
     if (!item.keepOpen && !item.steps) onClose()
     // One confirmation for every destructive item, in its own dialog rather than a reworded menu row.
-    if (item.confirm) void confirmThen({ ...confirmWords(item.label === 'Close' ? 'Close window' : item.label), message: item.confirm, tone: item.danger ? 'danger' : 'neutral', attrs: { 'data-confirm': item.id } }, item.run)
+    if (item.confirm) void confirmThen({ ...confirmWords(item.label === 'Close' ? 'Close window' : item.label), ...(item.confirmTitle ? { title: item.confirmTitle } : {}), message: item.confirm, tone: item.danger ? 'danger' : 'neutral', attrs: { 'data-confirm': item.id } }, item.run)
     else item.run()
   }
 

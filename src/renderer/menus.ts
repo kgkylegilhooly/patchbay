@@ -10,6 +10,8 @@ import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
 import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
 import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
+import { namedQuestion } from './shell/confirmStore'
+import { askRemoveWorktree } from './worktreeUi'
 
 export interface Point {
   x: number
@@ -28,6 +30,8 @@ export interface MenuItem {
   checked?: boolean
   /** Asks before running, in the confirmation dialog: what happens, in a sentence. */
   confirm?: string
+  /** The confirmation's question when it names the thing, as 'Delete "Website"?'. Otherwise it's the label's. */
+  confirmTitle?: string
   danger?: boolean
   /** The menu stays open after it runs, so it can be used again, as when stepping a size. */
   keepOpen?: boolean
@@ -191,7 +195,7 @@ export function deleteProjectWarning(sessionTitles: string[], items: number): st
 export function projectMenu(
   c: Commands,
   id: string,
-  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null }
+  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null; name?: string }
 ): MenuEntry[] {
   return [
     { id: 'rename-project', label: 'Rename', icon: 'edit', run: ctx.rename },
@@ -202,17 +206,17 @@ export function projectMenu(
     { id: 'close-project', label: 'Close project, leaving its sessions running', icon: 'folder-closed', disabled: !ctx.canClose, run: () => c.closeProject(id) },
     { id: 'archive-project', label: 'Archive project, stopping its sessions…', icon: 'archive', disabled: !!ctx.archiveRefusal, run: () => askArchive(id) },
     { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
-    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
+    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), confirmTitle: namedQuestion('Delete', ctx.name), run: () => c.deleteProject(id) }
   ]
 }
 
 /** A closed project's right-click menu, in the sidebar's list. */
-export function closedProjectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number }): MenuEntry[] {
+export function closedProjectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number; name?: string }): MenuEntry[] {
   return [
     { id: 'reopen-project', label: 'Reopen', icon: 'folder-open', run: () => c.reopenProject(id) },
     { id: 'archive-project', label: 'Archive, stopping its sessions…', icon: 'archive', run: () => askArchive(id) },
     'separator',
-    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
+    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), confirmTitle: namedQuestion('Delete', ctx.name), run: () => c.deleteProject(id) }
   ]
 }
 
@@ -367,6 +371,7 @@ export function nodeMenu(
       { id: 'new-browser', label: 'New browser here', icon: 'browser', run: () => c.newBrowser(ctx.at, node.id) },
       'separator',
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
+      ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')

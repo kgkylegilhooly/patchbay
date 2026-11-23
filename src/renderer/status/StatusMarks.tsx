@@ -14,11 +14,12 @@ export function StatusMark({ look, size, className, title }: { look: Look; size?
   )
 }
 
-/** A look's words, coloured only when they ask for something or say why it stopped. */
-export function StatusText({ look, className, ...data }: { look: Look; className?: string } & Record<`data-${string}`, string | undefined>): React.JSX.Element {
+/** A look's words, coloured only when they ask for something or say why it stopped. `compact` uses its short words. */
+export function StatusText({ look, className, compact, ...data }: { look: Look; className?: string; compact?: boolean } & Record<`data-${string}`, string | undefined>): React.JSX.Element {
+  const words = compact && look.short ? look.short : look.label
   return (
-    <span className={`badge st-label st-${look.tone}${className ? ` ${className}` : ''}`} data-tone={look.tone} title={look.detail} {...data}>
-      {look.label}
+    <span className={`badge st-label st-${look.tone}${className ? ` ${className}` : ''}`} data-tone={look.tone} title={look.detail ?? (words !== look.label ? look.label : undefined)} {...data}>
+      {words}
     </span>
   )
 }

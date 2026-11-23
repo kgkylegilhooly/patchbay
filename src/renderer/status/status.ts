@@ -27,6 +27,8 @@ export interface Look {
   label: string
   /** Longer text for a tooltip, such as what Claude said when it stopped. */
   detail?: string
+  /** Fewer words for a narrow row, as the sidebar's: "Limit until 00:30". The full label is then in the tooltip. */
+  short?: string
 }
 
 /** The agent words. "Unknown" is never shown to people. */
@@ -57,7 +59,13 @@ const AGENT_TONES: Record<AgentStatus, Tone> = {
 export function stopLook(stop: AgentStop, now: number): Look {
   const label = stopLabel(stop, now)
   const tone: Tone = stop.holds === 'reset' && stopHolds(stop, now) ? 'waits' : 'held'
-  return { tone, label, detail: stop.message ? `${label}\n${stop.message}` : label }
+  const short = shortStopLabel(label)
+  return { tone, label, detail: stop.message ? `${label}\n${stop.message}` : label, ...(short !== label ? { short } : {}) }
+}
+
+/** A stop in the words a narrow row has room for, keeping the time, which is the fact that matters. */
+export function shortStopLabel(label: string): string {
+  return label.replace(/^Usage limit\b/, 'Limit').replace(/ · continues then$/, '')
 }
 
 /**

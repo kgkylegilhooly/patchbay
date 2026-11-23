@@ -129,6 +129,12 @@
   border-color: #a8352d;
 }
 
+/* Destroy: a risky button that deletes for good (Delete… beside Rename). Red words at rest, so it never reads as one
+   of its harmless neighbours; still an outline, not the filled red the confirmation's verb uses. */
+.btn-risky.btn-destroy:not(:disabled) {
+  color: var(--btn-danger-text);
+}
+
 /* Quiet: low-weight actions that sit in a row of content. */
 .btn-quiet,
 .git-mini {
@@ -153,6 +159,12 @@
 
 /* ---------- Layers ---------- */
 
+/* One dim for every dialog (modals, confirmations, the command palette): the same feel for "a dialog is open". Black,
+   not a canvas grey, so the sidebar and panels visibly dim too, not only the canvas, which is near black already. */
+:root {
+  --scrim: rgb(0 0 0 / 0.62);
+}
+
 /* A modal sits over the whole stage on a dim layer; nothing behind it takes a click. */
 .shell-layer {
   position: absolute;
@@ -162,7 +174,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgb(8 8 10 / 0.55);
+  background: var(--scrim);
 }
 
 .shell-layer-confirm {

@@ -152,7 +152,7 @@ function Row({
           </button>
           <button
             type="button"
-            className="btn btn-sm btn-risky"
+            className="btn btn-sm btn-risky btn-destroy"
             data-project-action="delete"
             disabled={!!refusals.remove}
             title={refusals.remove ?? 'Removes it and everything in it, for good. Asks first.'}

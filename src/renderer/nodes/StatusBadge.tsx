@@ -27,10 +27,10 @@ export function StatusDot({ status, nodeId }: { status: AgentStatus | null; node
  * The words for the status. An agent whose turn ended on StopFailure still has the status `unknown`, but what the
  * hook said is shown instead, such as "Usage limit until 00:30".
  */
-export function StatusBadge({ status, nodeId }: { status: AgentStatus; nodeId?: string }): React.JSX.Element {
+export function StatusBadge({ status, nodeId, compact }: { status: AgentStatus; nodeId?: string; compact?: boolean }): React.JSX.Element {
   const stop = useAgentStop(status === 'unknown' ? nodeId : undefined)
   const setup = useSetupHold(nodeId)
-  return <StatusText look={agentLook(status, stop, Date.now(), setup)} className={`badge-${status}`} data-stop={stop?.kind} data-setup={setup} />
+  return <StatusText look={agentLook(status, stop, Date.now(), setup)} compact={compact} className={`badge-${status}`} data-stop={stop?.kind} data-setup={setup} />
 }
 
 /** A run command's mark. */

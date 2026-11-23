@@ -32,7 +32,7 @@
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: rgb(0 0 0 / 0.35);
+  background: var(--scrim);
 }
 
 .archive-dialog {

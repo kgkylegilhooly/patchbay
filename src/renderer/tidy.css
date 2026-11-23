@@ -44,6 +44,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 10px;
+  /* Its own width, not what's left right of its centre (an absolute box shrinks to that), so it's one row when it fits. */
+  width: max-content;
   max-width: calc(100% - 32px);
   padding: 8px 10px;
   font: 13px var(--ui);
@@ -78,6 +80,17 @@
 
 .tidy-count {
   color: var(--ink-dim);
+}
+
+.tidy-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tidy-actions .tidy-count {
+  margin-right: 2px;
 }
 
 .tidy-previewing .react-flow__node {
