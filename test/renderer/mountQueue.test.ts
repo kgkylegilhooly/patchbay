@@ -58,3 +58,28 @@ test('a window gone before its turn is never built', () => {
   cancel()
   expect(q.pending()).toBe(0)
 })
+
+test('a window about to get the keyboard is built before everything else waiting', () => {
+  const { q, job, frame, built } = setup(40)
+  q.request(true, job('on1'), 'on1')
+  q.request(false, job('off1'), 'off1')
+  q.request(false, job('target'), 'target')
+  q.prioritize('target')
+  frame()
+  expect(built).toEqual(['target'])
+  // Asking for one already built, or never asked for, changes nothing.
+  q.prioritize('target')
+  q.prioritize('nobody')
+  frame()
+  frame()
+  expect(built).toEqual(['target', 'on1', 'off1'])
+})
+
+test('a prioritized window can still be cancelled', () => {
+  const { q, job, frame, built } = setup(1)
+  const cancel = q.request(false, job('gone'), 'gone')
+  q.prioritize('gone')
+  cancel()
+  frame()
+  expect(built).toEqual([])
+})

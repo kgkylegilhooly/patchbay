@@ -24,14 +24,30 @@ export interface TerminalShelf<T> {
   drop(id: string): void
   clear(): void
   ids(): string[]
+  /** About how many bytes the kept terminals hold, as weighed when kept. */
+  bytes(): number
+}
+
+/**
+ * How much the shelf may hold. A terminal's history is about 12 bytes a character cell (terminalParking.ts), so 27
+ * terminals with full 10,000-line scrollbacks would hold some 390 MB. Past either limit the terminal kept longest ago
+ * goes first, and is drawn afresh from its session when it's next shown, as every terminal was before.
+ */
+export interface ShelfBudget<T> {
+  maxCount: number
+  maxBytes: number
+  /** About how many bytes a kept terminal holds. */
+  weigh: (value: T) => number
 }
 
 export function createTerminalShelf<T>(
   dispose: (value: T) => void,
   keepMs: () => number,
-  timers: { set: (cb: () => void, ms: number) => unknown; clear: (t: unknown) => void } = { set: (cb, ms) => setTimeout(cb, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }
+  timers: { set: (cb: () => void, ms: number) => unknown; clear: (t: unknown) => void } = { set: (cb, ms) => setTimeout(cb, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) },
+  budget?: ShelfBudget<T>
 ): TerminalShelf<T> {
-  const kept = new Map<string, Shelved<T> & { timer: unknown }>()
+  // In the order kept, oldest first.
+  const kept = new Map<string, Shelved<T> & { timer: unknown; bytes: number }>()
 
   const drop = (id: string): void => {
     const e = kept.get(id)
@@ -50,7 +66,15 @@ export function createTerminalShelf<T>(
         for (const [other, e] of [...kept]) if (e.projectId !== entry.projectId && e.projectId !== activeProjectId) drop(other)
       }
       const timer = timers.set(() => drop(id), keepMs())
-      kept.set(id, { ...entry, timer })
+      kept.set(id, { ...entry, timer, bytes: budget ? budget.weigh(entry.value) : 0 })
+      if (!budget) return
+      let bytes = 0
+      for (const e of kept.values()) bytes += e.bytes
+      for (const [oldest, e] of [...kept]) {
+        if (kept.size <= budget.maxCount && bytes <= budget.maxBytes) break
+        bytes -= e.bytes
+        drop(oldest)
+      }
     },
     take(id, key) {
       const e = kept.get(id)
@@ -67,6 +91,7 @@ export function createTerminalShelf<T>(
     clear() {
       for (const id of [...kept.keys()]) drop(id)
     },
-    ids: () => [...kept.keys()]
+    ids: () => [...kept.keys()],
+    bytes: () => [...kept.values()].reduce((n, e) => n + e.bytes, 0)
   }
 }

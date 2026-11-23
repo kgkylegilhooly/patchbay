@@ -235,7 +235,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
     // Kept from when this window was last drawn (another project's tab, maximized, a Focus view pane), or built anew:
     // those on screen first, a few a frame, so opening a busy project doesn't freeze the window. See mountQueue.ts.
     const kept = terminalShelf.take(nodeId, key)
-    const cancel = kept ? null : terminalMounts.request(onScreen(host), () => attach(buildLiveTerminal(nodeId, host, lookRef.current, fontSizeRef.current, ui), true))
+    const cancel = kept ? null : terminalMounts.request(onScreen(host), () => attach(buildLiveTerminal(nodeId, host, lookRef.current, fontSizeRef.current, ui), true), nodeId)
     if (kept) attach(kept, false)
 
     return () => {

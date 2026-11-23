@@ -94,3 +94,33 @@ test('keeping one twice lets the first copy go', () => {
   expect(dispose).toHaveBeenCalledWith('first')
   expect(shelf.take('a', 'k')).toBe('second')
 })
+
+const budget = (maxCount: number, maxBytes: number) => ({ maxCount, maxBytes, weigh: (v: { mb: number }) => v.mb * 1024 * 1024 })
+
+test('past the count, the terminal kept longest ago goes first', () => {
+  const dispose = vi.fn()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(2, 1e12))
+  for (const name of ['a', 'b', 'c']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.ids()).toEqual(['b', 'c'])
+  expect(dispose.mock.calls.map((c) => c[0].name)).toEqual(['a'])
+})
+
+test('past the size, the oldest go until what is kept fits', () => {
+  const dispose = vi.fn()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(10, 100 * 1024 * 1024))
+  shelf.keep('a', { value: { name: 'a', mb: 40 }, key: 'k', projectId: 'p1' }, 'p2')
+  shelf.keep('b', { value: { name: 'b', mb: 40 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.bytes()).toBe(80 * 1024 * 1024)
+  shelf.keep('c', { value: { name: 'c', mb: 50 }, key: 'k', projectId: 'p1' }, 'p2')
+  // 130 MB: a goes, leaving 90.
+  expect(shelf.ids()).toEqual(['b', 'c'])
+  expect(shelf.bytes()).toBe(90 * 1024 * 1024)
+})
+
+test('one terminal bigger than the whole budget is not kept at all', () => {
+  const dispose = vi.fn()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(10, 100 * 1024 * 1024))
+  shelf.keep('huge', { value: { name: 'huge', mb: 200 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.ids()).toEqual([])
+  expect(dispose).toHaveBeenCalledTimes(1)
+})

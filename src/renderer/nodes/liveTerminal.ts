@@ -12,6 +12,7 @@ import { fontStack } from '../prefs'
 import { resourcesBridge } from '../resources/resourcesUi'
 import { useStore } from '../store'
 import { PARKING } from '../terminalParking'
+import { onFocusWanted } from '../terminalRegistry'
 import { canvasTier, paceFor } from '../terminalPace'
 import { findTerminalPathMatches, linkKind } from '../terminalPaths'
 import { createTerminalShelf } from '../terminalShelf'
@@ -261,7 +262,31 @@ export function shelfHolder(): HTMLElement {
   return holder
 }
 
-export const terminalShelf = createTerminalShelf<LiveTerminal>((t) => t.dispose(), () => PARKING.afterMs)
+/**
+ * At most this many kept, holding about this much history between them; past that the one kept longest ago goes.
+ * Enough for a busy project's terminals with ordinary scrollback. Measured (termshelf-memory.cjs), a kept terminal
+ * costs the window about twice its weight below: eight with full 10,000-line scrollbacks held ~100 MB. So 128 MB of
+ * weight is about 250 MB at most, the same order as the project on show. See terminalShelf.ts.
+ */
+export const SHELF_BUDGET = { maxCount: 32, maxBytes: 128 * 1024 * 1024 }
+/** About 12 bytes a character cell, for every line xterm holds, as terminalParking.ts reckons. */
+export const weighTerminal = (t: LiveTerminal): number => (t.term.buffer.normal.length + t.term.rows) * t.term.cols * 12
+/**
+ * Terminals let go of a few a frame, not all at once: leaving a project past the budget dropped a dozen inside the
+ * switch's own frame. Each stops taking output at once; tearing down its xterm waits its turn.
+ */
+const letGo: LiveTerminal[] = []
+function disposeSoon(t: LiveTerminal): void {
+  t.pacer.dispose()
+  letGo.push(t)
+  if (letGo.length === 1) nextFrame(drainLetGo)
+}
+function drainLetGo(): void {
+  const start = performance.now()
+  while (letGo.length && performance.now() - start < 4) letGo.shift()!.dispose()
+  if (letGo.length) nextFrame(drainLetGo)
+}
+export const terminalShelf = createTerminalShelf<LiveTerminal>(disposeSoon, () => PARKING.afterMs, undefined, { ...SHELF_BUDGET, weigh: weighTerminal })
 let lowMemoryHooked = false
 /** Memory short: kept terminals go first, before any on the canvas is unloaded. */
 export function hookShelfToMemory(): void {
@@ -271,3 +296,5 @@ export function hookShelfToMemory(): void {
 }
 
 export const terminalMounts = createMountQueue(nextFrame, () => performance.now())
+// A terminal about to be given the keyboard is built before the rest.
+onFocusWanted((id) => terminalMounts.prioritize(id))

@@ -18,14 +18,22 @@ function canvas(cwd) {
     version: 3,
     projects: [
       { id: 'p1', name: 'One', folder: cwd, viewport: { x: 40, y: 40, zoom: 0.9 } },
-      { id: 'p2', name: 'Two', folder: cwd, viewport: { x: 40, y: 40, zoom: 0.9 } }
+      { id: 'p2', name: 'Two', folder: cwd, viewport: { x: 40, y: 40, zoom: 0.9 } },
+      // Never drawn before the reveal check: many terminals to build, and the one asked for off-screen at its view.
+      { id: 'p3', name: 'Three', folder: cwd, viewport: { x: 40, y: 40, zoom: 0.9 } }
     ],
     activeProjectId: 'p1',
     viewport: { x: 40, y: 40, zoom: 0.9 },
     edges: [],
     closed: [],
     // Clear of the sessions sidebar on the left, so a click lands on the terminal.
-    nodes: [t('a', 380, 0, 'p1'), t('b', 940, 0, 'p1'), t('c', 380, 0, 'p2')]
+    nodes: [
+      t('a', 380, 0, 'p1'),
+      t('b', 940, 0, 'p1'),
+      t('c', 380, 0, 'p2'),
+      ...Array.from({ length: 12 }, (_, i) => t(`p3t${i}`, 380 + (i % 4) * 560, Math.floor(i / 4) * 360, 'p3')),
+      t('p3far', 8000, 3000, 'p3')
+    ]
   }
 }
 
@@ -130,6 +138,16 @@ async function main() {
       if (await page.$('.unit-maximized')) await page.click('.unit-maximized [data-tool="maximize"]').catch(() => {})
       await L.sleep(400)
       check('restored, it is back on the canvas', !(await page.$('.unit-maximized')) && (await rowsText(page, 'b')).includes('away'))
+    })
+
+    await step('reveal in a project not drawn yet', async () => {
+      await page.$eval('[data-session="p3far"]', (el) => el.scrollIntoView({ block: 'center' }))
+      await page.click('[data-session="p3far"]')
+      await L.waitFor('p3far to have the keyboard', () => page.evaluate(() => document.activeElement?.closest('.react-flow__node')?.dataset.id === 'p3far'), 4000).then(
+        () => check('revealing a session in a project not drawn yet gives its terminal the keyboard', true),
+        async () => check('revealing a session in a project not drawn yet gives its terminal the keyboard', false, await page.evaluate(() => document.activeElement?.className))
+      )
+      await switchTo(page, 'p1')
     })
 
     await step('overview', async () => {
