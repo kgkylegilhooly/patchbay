@@ -10,7 +10,7 @@ import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
  * Counts whole-file reads of the save, which a known-good primary no longer needs. A rename onto the primary can be
  * made to fail once as a locked file does, running something in its place.
  */
-const reads = vi.hoisted(() => ({ files: [] as string[], lockPrimaryOnce: null as null | (() => void) }))
+const reads = vi.hoisted(() => ({ files: [] as string[], lockPrimaryOnce: null as null | (() => void), inFlightPrimaryOnce: null as null | (() => void) }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
@@ -25,6 +25,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         reads.lockPrimaryOnce = null
         locked()
         throw Object.assign(new Error('locked'), { code: 'EBUSY' })
+      }
+      // Already handed to the thread pool: whatever runs now can't stop it landing.
+      const inFlight = reads.inFlightPrimaryOnce
+      if (inFlight && String(to).endsWith('canvas.json')) {
+        reads.inFlightPrimaryOnce = null
+        inFlight()
       }
       return actual.rename(from, to)
     }) as typeof actual.rename
@@ -196,4 +202,20 @@ test('the canvas is never changed in place, which the save cache relies on', asy
   store.dispatch({ op: 'removeNodes', ids: ['s'], at: 1 })
   expect(store.get().nodes.map((n) => n.id)).toEqual(['n1'])
   expect(loaded.nodes).toHaveLength(2)
+})
+
+test('a rename already under way when flushSync runs, landing after it, is put right with the newer doc', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  reads.inFlightPrimaryOnce = () => {
+    store.saveDebounced(doc('newest'))
+    store.flushSync()
+  }
+  await store.save(doc('older'))
+  await store.flush()
+  expect(titleOnDisk(primary())).toBe('newest')
+  // The repair is a whole save, so the next one rotates as usual.
+  await store.save(doc('after'))
+  expect(titleOnDisk(primary())).toBe('after')
+  expect(titleOnDisk(backup())).toBe('newest')
 })

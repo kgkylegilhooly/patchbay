@@ -40,6 +40,7 @@ import type { SignalWatcher } from './sessions/signals'
 import { removeRefusal } from '../core/canvas/projectOps'
 import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 import { createOutputPacer } from './outputPacer'
+import { onScreenIds } from './onScreen'
 import { inSettingsQueue } from './settingsQueue'
 
 export interface IpcServices {
@@ -122,7 +123,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   const noteOnScreen = (doc: CanvasDoc): boolean => {
     if (seen && seen.nodes === doc.nodes && seen.active === doc.activeProjectId) return false
     seen = { nodes: doc.nodes, active: doc.activeProjectId }
-    const next = new Set(doc.nodes.filter((n) => n.projectId === doc.activeProjectId).map((n) => n.id))
+    const next = onScreenIds(doc)
     const same = next.size === onScreen.size && [...next].every((id) => onScreen.has(id))
     onScreen = next
     return !same

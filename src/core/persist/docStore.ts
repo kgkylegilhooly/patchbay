@@ -387,6 +387,8 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
    */
   let asked = 0
   let flushedSyncAt = 0
+  /** What the last sync flush wrote, to put back if an older save's rename, already under way, landed after it. */
+  let flushedSyncDoc: CanvasDoc | null = null
 
   async function persist(json: string, order: number): Promise<void> {
     const temp = `${primary}.tmp`
@@ -401,6 +403,9 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     })
     if (!replaced) return
     trusted = await stat(primary).catch(() => null)
+    // A rename already handed to the file system can't be called back, so a sync flush during it may now lie under
+    // this older doc. Whichever landed last, writing the flushed doc again leaves the newest on top.
+    if (order < flushedSyncAt && flushedSyncDoc) await persist(docJson(flushedSyncDoc), flushedSyncAt)
   }
 
   function enqueue(doc: CanvasDoc): Promise<void> {
@@ -469,6 +474,7 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       if (pending === null) return
       const doc = pending
       flushedSyncAt = ++asked
+      flushedSyncDoc = doc
       // Temp names of its own, so a save already under way can't write into the same file.
       const replace = (target: string, fill: (temp: string) => void): void => {
         const temp = `${target}.now.tmp`
