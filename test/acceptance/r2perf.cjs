@@ -560,4 +560,4 @@ if (require.main === module) main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
-module.exports = { median }
+module.exports = { median, startupCanvas }

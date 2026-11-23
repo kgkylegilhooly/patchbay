@@ -1,11 +1,10 @@
 import { alignCableDots } from './cableActivity'
-import './nodes/cablePerf.css'
 
 /**
  * A busy cable's dots stop while the cable is off screen. They step twelve times a second, and Chromium still restyles
  * and repaints an animated path nobody can see: a canvas zoomed in on one corner kept every busy cable elsewhere
  * stepping. One IntersectionObserver watches every one-way cable's dots; off screen they get `cable-off`, which pauses
- * them (cablePerf.css), and back on screen they go on the beat every other cable steps to.
+ * them (nodes/cablePerf.css, imported by CableEdge), and back on screen they go on the beat every other cable steps to.
  */
 
 /** What this needs of an element, so a test can stand in for one. */

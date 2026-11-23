@@ -94,7 +94,7 @@ import { setupSessionSync } from './sessionSyncIpc'
 import { setupCodexStops } from './sessions/codexStopsSetup'
 import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
-import { autoUpdater } from 'electron-updater'
+import { lazyUpdater } from './lazyUpdater'
 import { createUpdates, type Updater } from './updates'
 import { lookUpClaudeAhead, resolveClaudeAsync, type ClaudeProgram } from './sessions/claudeLaunch'
 import { lookUpCodexAhead, resolveCodexAsync } from './sessions/codexLaunch'
@@ -777,7 +777,8 @@ async function boot(): Promise<void> {
 
   // Updates. The background host runs from this app's own program file, which an installer can't replace while it
   // runs, so updating ends every session first. Agents resume their conversations when the new version starts.
-  const updates = createUpdates({ updater: autoUpdater as unknown as Updater, feed: () => currentSettings().updateFeed, packaged: app.isPackaged })
+  // electron-updater loads when first used, not on the way to the window. See lazyUpdater.ts.
+  const updates = createUpdates({ updater: lazyUpdater(() => (require('electron-updater') as typeof import('electron-updater')).autoUpdater as unknown as Updater), feed: () => currentSettings().updateFeed, packaged: app.isPackaged })
   updates.onChange((s) => broadcast('pb:onUpdateState', s))
   ipcMain.handle('pb:getUpdateState', () => updates.state())
   ipcMain.handle('pb:checkForUpdates', () => updates.check())
