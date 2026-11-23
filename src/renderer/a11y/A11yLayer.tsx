@@ -3,6 +3,7 @@ import type { AriaLabelConfig } from '@xyflow/react'
 import { useAgentStops } from '../agentStops'
 import { setupHolds } from '../status/setupStatus'
 import { useStore } from '../store'
+import type { CanvasNode } from '../../shared/model'
 import { alertOf, AnnounceQueue, newAlerts, type Alert } from './announce'
 import { keyOf } from './keyHints'
 import { useKeyOverrides } from './useKeyOverrides'
@@ -37,6 +38,13 @@ function alertsNow(now: number): Map<string, Alert> {
     if (alert) out.set(node.id, alert)
   }
   return out
+}
+
+/** What an announcement can say about the windows: their ids, names and setup holds, as one string to compare. */
+function nodeWords(nodes: readonly CanvasNode[] | undefined): string {
+  if (!nodes) return ''
+  const holds = setupHolds(nodes)
+  return nodes.map((n) => `${n.id}\t${n.title}\t${holds.get(n.id) ?? ''}`).join('\n')
 }
 
 /** What a terminal tells a screen reader about getting out of it, and the words for a window on the canvas. */
@@ -101,8 +109,17 @@ export function A11yLayer(): React.JSX.Element {
         if (!flush) say()
       }, 150)
     }
+    // Of the windows themselves only what's said matters (their names and setup holds), so a drag or a resize, which
+    // makes a new node list every frame, looks at nothing more.
+    let words = nodeWords(useStore.getState().doc?.nodes)
     const offStore = useStore.subscribe((s, prev) => {
-      if (s.statuses !== prev.statuses || s.approvals !== prev.approvals || s.errors !== prev.errors || s.runs !== prev.runs || s.doc?.nodes !== prev.doc?.nodes) look()
+      let renamed = false
+      if (s.doc?.nodes !== prev.doc?.nodes) {
+        const next = nodeWords(s.doc?.nodes)
+        renamed = next !== words
+        words = next
+      }
+      if (renamed || s.statuses !== prev.statuses || s.approvals !== prev.approvals || s.errors !== prev.errors || s.runs !== prev.runs) look()
     })
     const offStops = useAgentStops.subscribe(look)
     return () => {

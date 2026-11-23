@@ -394,7 +394,9 @@ with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when 
 header zoom (double-click a node's header bar).
 
 `F6` moves the keyboard to the next part of the app: menu bar, sessions sidebar, canvas, dock (`Shift+F6` goes back).
-In a terminal, which keeps Tab and Esc, the first `F6` steps out to its window, and Enter goes back in. `F2` renames
+In a terminal, which keeps Tab and Esc, the first `F6` steps out to its window, and Enter goes back in. A program that
+needs F6 itself (Midnight Commander, htop) gets it back if you rebind Next part of the app in Settings > Keyboard
+shortcuts; the palette's entry still works. `F2` renames
 the window in use from the canvas; the palette also has Rename, Restart and Close this window. A screen reader hears
 each window's name and status, and is told when an agent needs you, fails or stops at a limit.
 

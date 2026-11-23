@@ -49,17 +49,21 @@ export function whereIs(el: Element | null): Here {
   const frame = frameOf(el)
   if (frame) return { region: 'canvas', inWindow: frame !== el }
   for (const r of REGION_ORDER) if (el.closest(ROOTS[r])) return { region: r, inWindow: false }
-  // The empty canvas card stands in for the canvas, and the board for the canvas it covers.
-  if (el.closest('.stage-empty, .shell.board')) return { region: 'canvas', inWindow: false }
+  // The empty canvas card stands in for the canvas, and what covers it (board, focus view, a maximized window) too.
+  if (el.closest(`.stage-empty, ${COVERS}`)) return { region: 'canvas', inWindow: false }
   return { region: null, inWindow: false }
 }
 
-/** The board, while it covers the canvas. Read from the page, so this file needs no store and loads anywhere. */
-const board = (): HTMLElement | null => document.querySelector<HTMLElement>('.shell.board')
+/**
+ * What covers the canvas while it's open: the board, the focus view, a window maximized over it. F6 goes there instead
+ * of to frames hidden underneath. Read from the page, so this file needs no store and loads anywhere.
+ */
+const COVERS = '.shell.board, .shell.focus-view, .stage > .unit-maximized'
+const cover = (): HTMLElement | null => [...document.querySelectorAll<HTMLElement>(COVERS)].find(shown) ?? null
 
 function presentRegions(): Region[] {
   return REGION_ORDER.filter((r) => {
-    if (r === 'canvas') return shown(board()) || shown(document.querySelector('.react-flow__node')) || shown(document.querySelector('.stage-empty'))
+    if (r === 'canvas') return !!cover() || shown(document.querySelector('.react-flow__node')) || shown(document.querySelector('.stage-empty'))
     return shown(document.querySelector(ROOTS[r]))
   })
 }
@@ -68,16 +72,26 @@ function presentRegions(): Region[] {
 let lastWindow: string | null = null
 
 export function noteFocusIn(target: EventTarget | null): void {
-  const frame = frameOf(target instanceof Element ? target : null)
-  if (frame?.dataset.id) lastWindow = frame.dataset.id
+  const el = target instanceof Element ? target : null
+  // A window's frame on the canvas, or the focus view pane its card was moved into.
+  const frame = el?.closest<HTMLElement>('.react-flow__node, [data-focus-slot]')
+  const id = frame?.dataset.id ?? frame?.dataset.focusSlot
+  if (id) lastWindow = id
 }
 
 const firstFocusable = (root: Element | null, selector = 'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]'): HTMLElement | null =>
   [...(root?.querySelectorAll<HTMLElement>(selector) ?? [])].find(shown) ?? null
 
+/** In what covers the canvas: the last window's terminal there, else the first terminal, else its first control. */
+function coverTarget(over: HTMLElement): HTMLElement {
+  if (over.classList.contains('board')) return over
+  const last = lastWindow ? over.querySelector<HTMLElement>(`[data-focus-slot="${CSS.escape(lastWindow)}"] .xterm-helper-textarea`) : null
+  return last ?? over.querySelector<HTMLElement>('.xterm-helper-textarea') ?? firstFocusable(over) ?? over
+}
+
 function canvasTarget(): HTMLElement | null {
-  const over = board()
-  if (over) return over
+  const over = cover()
+  if (over) return coverTarget(over)
   const nodes = [...document.querySelectorAll<HTMLElement>('.react-flow__node')].filter(shown)
   const byId = (id: string | null): HTMLElement | undefined => (id ? nodes.find((n) => n.dataset.id === id) : undefined)
   const selected = nodes.find((n) => n.classList.contains('selected') && !n.classList.contains('react-flow__node-group'))

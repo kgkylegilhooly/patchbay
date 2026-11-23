@@ -21,6 +21,7 @@ const where = (page) =>
     if (!e || e === document.body) return 'body'
     const node = e.closest('.react-flow__node')
     if (node) return e === node ? `frame:${node.dataset.id}` : e.classList.contains('xterm-helper-textarea') ? `terminal:${node.dataset.id}` : `in:${node.dataset.id}`
+    if (e.closest('.focus-view')) return e.classList.contains('xterm-helper-textarea') ? 'focusview-terminal' : 'focusview'
     if (e.closest('.app > .bar')) return 'menubar'
     if (e.closest('.stage > .sidebar')) return 'sidebar'
     if (e.closest('.stage > .dock')) return 'dock'
@@ -89,6 +90,21 @@ async function main() {
     c.check('#6 and back to the window it left', (await where(page)) === 'frame:a', await where(page))
     await key(page, 'Shift+F6')
     c.check('#6 Shift+F6 goes back', (await where(page)) === 'sidebar', await where(page))
+
+    // Review M1: with the focus view over the canvas, F6 goes into its panes, never to a frame hidden underneath.
+    await focusTerminal(page, 'a')
+    await key(page, 'Control+Shift+KeyL')
+    await page.waitForSelector('.focus-view', { timeout: 5000 })
+    await L.sleep(400)
+    const fvStops = []
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('F6')
+      fvStops.push(await where(page))
+    }
+    c.check('M1 F6 round the app in the focus view never lands on a hidden frame', !fvStops.some((s) => s.startsWith('frame:')) && fvStops.includes('focusview-terminal'), fvStops.join(' '))
+    await key(page, 'Control+Shift+KeyL')
+    await page.waitForFunction(() => !document.querySelector('.focus-view'), { timeout: 5000 })
+    await L.sleep(300)
 
     // #14: Settings gives the keyboard back to the terminal it was opened from.
     await focusTerminal(page, 'b')
@@ -172,14 +188,46 @@ async function main() {
     await L.sleep(200)
     c.check('#10 and Keep leaves it open', !!(await L.nodeOf(page, 'n')))
 
+    // Review H1: window actions act on the window the keyboard is on, never the terminal typed in last.
+    await focusTerminal(page, 'a')
+    await page.keyboard.type('x')
+    await page.evaluate(() => document.querySelector('.react-flow__node[data-id="b"]').focus())
+    await page.keyboard.press('F2')
+    await L.sleep(200)
+    const renaming = await page.evaluate(() => document.querySelector('.title-input')?.closest('.react-flow__node')?.dataset.id ?? null)
+    c.check('H1 F2 on B after typing in A renames B', renaming === 'b', renaming)
+    if (renaming) await page.keyboard.press('Escape')
+    await L.sleep(100)
+    await focusTerminal(page, 'a')
+    await page.keyboard.type('y')
+    // A click on empty canvas: nothing focused, nothing selected.
+    await page.mouse.click(1080, 200)
+    await L.sleep(200)
+    await page.keyboard.press('F2')
+    await L.sleep(200)
+    c.check('H1 F2 with nothing focused renames nothing', !(await page.$('.title-input')), await page.evaluate(() => ({ selected: [...document.querySelectorAll('.react-flow__node.selected')].map((n) => n.dataset.id), renaming: document.querySelector('.title-input')?.closest('.react-flow__node')?.dataset.id ?? null })))
+    if (await page.$('.title-input')) await page.keyboard.press('Escape')
+    await focusTerminal(page, 'a')
+    await page.keyboard.type('z')
+    await page.click('.react-flow__node[data-id="b"] .unit-head .title')
+    await L.sleep(200)
+    await key(page, 'Control+KeyK')
+    await page.waitForSelector('.palette input', { timeout: 5000 })
+    await page.keyboard.type('close this window')
+    await L.sleep(200)
+    await page.keyboard.press('Enter')
+    await L.sleep(800)
+    const left = (await L.doc(page)).nodes.map((n) => n.id).sort().join(',')
+    c.check('H1 palette Close with B clicked closes B, not A', left === 'a,n', left)
+
     // #9: the empty canvas names the two keys that start everything.
     await page.evaluate(() => window.patchbay.dispatch({ op: 'switchProject', id: 'p2' }))
     await page.waitForSelector('[data-empty="keys"]', { timeout: 5000 }).catch(() => null)
     const hint = await page.$eval('[data-empty="keys"]', (p) => p.textContent).catch(() => '')
     c.check('#9 the empty canvas says Ctrl+K and Ctrl+Shift+C', hint === 'Ctrl+K finds any action. Ctrl+Shift+C starts Claude Code.', hint)
-    // From the page: menu bar, sidebar, then the canvas, here its empty card.
+    // From the page round to the canvas, here its empty card (the sidebar may have closed with the click above).
     await page.evaluate(() => document.activeElement?.blur())
-    for (let i = 0; i < 3; i++) await page.keyboard.press('F6')
+    for (let i = 0; i < 4 && !(await page.evaluate(() => !!document.activeElement.closest('.stage-empty'))); i++) await page.keyboard.press('F6')
     c.check('#6 F6 reaches the empty canvas card too', await page.evaluate(() => !!document.activeElement.closest('.stage-empty')), await where(page))
 
     c.check('no renderer errors', app.problems.length === 0, app.problems.slice(0, 3))

@@ -7,6 +7,7 @@ import { nextStop, REGION_ORDER } from '../../src/renderer/a11y/regions'
 import { alertOf, AnnounceQueue, GAP_MS, joinAlerts, newAlerts, REPEAT_MS, type Alert } from '../../src/renderer/a11y/announce'
 import { keyOf, withKey } from '../../src/renderer/a11y/keyHints'
 import { closeQuestion } from '../../src/renderer/a11y/nodeLabel'
+import { windowFor } from '../../src/renderer/a11y/keyboardAt'
 import { trapsTab, windowEscCloses } from '../../src/renderer/shell/panelKeys'
 import { toFlow } from '../../src/renderer/flowMapping'
 import type { AgentStop } from '../../src/shared/agentStop'
@@ -139,31 +140,50 @@ describe('#8 what is announced', () => {
     const a = (key: string, text: string): Alert => ({ key, text })
     const before = new Map([['x', a('needs', 'X needs you')]])
     expect(newAlerts(before, new Map(before))).toEqual([])
-    expect(newAlerts(new Map(), before)).toEqual(['X needs you'])
+    expect(newAlerts(new Map(), before)).toEqual([{ id: 'x', key: 'needs', text: 'X needs you' }])
     // A new permission on a window already needing you is news.
-    expect(newAlerts(before, new Map([['x', a('ask:2', 'X needs you: Bash permission')]]))).toEqual(['X needs you: Bash permission'])
+    expect(newAlerts(before, new Map([['x', a('ask:2', 'X needs you: Bash permission')]])).map((n) => n.text)).toEqual(['X needs you: Bash permission'])
     // Gone back to work: nothing said.
     expect(newAlerts(before, new Map())).toEqual([])
   })
 
+  const news = (id: string, key: string, text: string) => ({ id, key, text })
+
   test('throttled: what comes together is said together, and not again too soon', () => {
     const q = new AnnounceQueue()
-    q.push(['A needs you', 'B failed: Exited 1'], 0)
+    q.push([news('a', 'needs', 'A needs you'), news('b', 'run:1', 'B failed: Exited 1')], 0)
     expect(q.take(0)).toBe('A needs you. B failed: Exited 1.')
-    q.push(['C needs you'], 100)
+    q.push([news('c', 'needs', 'C needs you')], 100)
     expect(q.take(100)).toBeNull()
     expect(q.dueAt()).toBe(GAP_MS)
     expect(q.take(GAP_MS)).toBe('C needs you.')
   })
 
-  test('deduplicated: the same words are not said twice within a while', () => {
+  test('deduplicated: the same alert on the same window is not said twice within a while', () => {
     const q = new AnnounceQueue()
-    q.push(['A needs you'], 0)
+    q.push([news('a', 'needs', 'A needs you')], 0)
     q.take(0)
-    q.push(['A needs you'], 2000)
+    // Flapping back to needs you a moment later.
+    q.push([news('a', 'needs', 'A needs you')], 2000)
     expect(q.take(2000)).toBeNull()
-    q.push(['A needs you'], REPEAT_MS + 1)
+    q.push([news('a', 'needs', 'A needs you')], REPEAT_MS + 1)
     expect(q.take(REPEAT_MS + 1)).toBe('A needs you.')
+  })
+
+  test('review M2: a second permission with the same words, 3 s later, is said too', () => {
+    const q = new AnnounceQueue()
+    q.push([news('a', 'ask:r1', 'Fix the login needs you: Bash permission')], 0)
+    expect(q.take(0)).toBe('Fix the login needs you: Bash permission.')
+    q.push([news('a', 'ask:r2', 'Fix the login needs you: Bash permission')], 3000)
+    expect(q.take(3000)).toBe('Fix the login needs you: Bash permission.')
+  })
+
+  test('the same words about two windows are both said', () => {
+    const q = new AnnounceQueue()
+    q.push([news('a', 'needs', 'Agent needs you')], 0)
+    q.take(0)
+    q.push([news('b', 'needs', 'Agent needs you')], 2000)
+    expect(q.take(2000)).toBe('Agent needs you.')
   })
 
   test('a burst is said as a count past three', () => {
@@ -183,6 +203,26 @@ describe('#9 tooltips teach the keys', () => {
   test('the empty canvas hint has its two keys', () => {
     expect(keyOf('open-palette', {})).toBe('Ctrl+K')
     expect(keyOf('new-claude', {})).toBe('Ctrl+Shift+C')
+  })
+})
+
+describe('review H1: window actions follow the keyboard, not the terminal typed in last', () => {
+  test('the window the keyboard is on wins over a selection', () => {
+    expect(windowFor({ frame: { id: 'b', session: true } }, null, 'c')).toBe('b')
+    expect(windowFor({ terminal: 'a' }, null, 'c')).toBe('a')
+  })
+
+  test('on a note or a board frame there is no window, even with a session selected', () => {
+    expect(windowFor({ frame: { id: 'note', session: false } }, null, 'c')).toBeNull()
+  })
+
+  test('with the keyboard nowhere, only a single selected session counts', () => {
+    expect(windowFor({}, null, 'c')).toBe('c')
+    expect(windowFor({}, null, null)).toBeNull()
+  })
+
+  test('a maximized window is always the one', () => {
+    expect(windowFor({ frame: { id: 'b', session: true } }, 'm', 'c')).toBe('m')
   })
 })
 
