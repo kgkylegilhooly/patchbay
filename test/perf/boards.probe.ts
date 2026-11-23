@@ -8,22 +8,33 @@
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { test } from 'vitest'
 import { createDocStore } from '../../src/core/persist/docStore'
 import { docJson } from '../../src/core/persist/docJson'
 import { writeAtomic } from '../../src/core/persist/atomicFile'
 import type { CanvasDoc, WhiteboardNode, WhiteboardShape } from '../../src/shared/model'
 
-/** The longest the event loop was held, and the wall time, while `work` ran. */
+/**
+ * The longest the main thread was held, and the wall time, while `work` ran. Held is the longest gap between turns of
+ * a 1 ms interval (monitorEventLoopDelay missed the synchronous stringify of a 14 MB board here).
+ */
 async function timed(work: () => Promise<unknown>): Promise<{ blockMs: number; wallMs: number }> {
-  const h = monitorEventLoopDelay({ resolution: 1 })
-  h.enable()
+  let last = performance.now()
+  let longest = 0
+  const tick = setInterval(() => {
+    const now = performance.now()
+    longest = Math.max(longest, now - last)
+    last = now
+  }, 1)
+  await new Promise((r) => setTimeout(r, 5))
+  last = performance.now()
+  longest = 0
   const t = performance.now()
   await work()
   const wallMs = performance.now() - t
-  h.disable()
-  return { blockMs: +(h.max / 1e6).toFixed(1), wallMs: +wallMs.toFixed(1) }
+  await new Promise((r) => setTimeout(r, 5))
+  clearInterval(tick)
+  return { blockMs: +longest.toFixed(1), wallMs: +wallMs.toFixed(1) }
 }
 const median = (xs: number[]): number => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
 
