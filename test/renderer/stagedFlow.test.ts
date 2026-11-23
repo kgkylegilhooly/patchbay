@@ -9,14 +9,14 @@ const view = { width: 1000, height: 800 }
 const at = { x: 0, y: 0, zoom: 1 }
 
 test('only the windows on or near the screen, in their order', () => {
-  const nodes = [node('on', 100, 100), node('near', 1300, 100), node('far', 5000, 100), node('below', 100, 3000)]
+  const nodes = [node('on', 100, 100), node('near', 1100, 100), node('far', 5000, 100), node('below', 100, 3000)]
   expect(nearView(nodes, at, view)?.map((n) => n.id)).toEqual(['on', 'near'])
 })
 
 test('the view and zoom place them: zoomed out, more is on screen', () => {
   const nodes = [node('a', 100, 100), node('b', 3000, 100)]
   expect(nearView(nodes, at, view)?.map((n) => n.id)).toEqual(['a'])
-  expect(nearView(nodes, { x: 0, y: 0, zoom: 0.4 }, view)).toBeNull()
+  expect(nearView(nodes, { x: 0, y: 0, zoom: 0.35 }, view)).toBeNull()
   // Panned so b is on screen and a off it.
   expect(nearView(nodes, { x: -2800, y: 0, zoom: 1 }, view)?.map((n) => n.id)).toEqual(['b'])
 })
