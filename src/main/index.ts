@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
-import { createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
+import { asleepText, createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { startProgramsOffThread } from './proc/setup'
 import { processGoneText } from './stuckParts'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
@@ -253,7 +253,17 @@ async function boot(): Promise<void> {
   // What went wrong, and when, for a hang or crash that leaves nothing else behind. See watchdog.ts.
   log = createLog(join(dataDir, 'logs'))
   log.write(`Patchbay ${app.getVersion()} started (Electron ${process.versions.electron}, pid ${process.pid}).`)
-  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`))
+  // A sleep isn't a stall: the log once said "blocked for 39254.9 s" for a night with the lid shut.
+  let suspended = false
+  powerMonitor.on('suspend', () => (suspended = true))
+  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`), undefined, undefined, {
+    onAsleep: (ms) => log?.write(asleepText(ms)),
+    slept: () => {
+      const was = suspended
+      suspended = false
+      return was
+    }
+  })
   logMemoryNowAndThen(app, log)
   startProgramsOffThread(__dirname, (line) => log?.write(line))
   app.on('child-process-gone', (_e, details) => {

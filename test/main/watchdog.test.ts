@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { createLog, shouldAutoReload, STALL_MS, watchEventLoop, watchWindow } from '../../src/main/watchdog'
+import { ASLEEP_MS, asleepText, createLog, shouldAutoReload, STALL_MS, watchEventLoop, watchWindow } from '../../src/main/watchdog'
 
 let dir: string
 beforeEach(() => {
@@ -45,6 +45,37 @@ test('a stalled main process is noted with how long it was stuck; an ordinary ti
   stop()
   expect(stalls).toEqual([3000])
   expect(STALL_MS).toBe(1000)
+})
+
+// The real log had "blocked for 39254.9 s" overnight: the PC asleep, not the app stuck.
+test('a gap the length of a sleep, or one that follows a suspend, is noted as a sleep, not a stall', () => {
+  vi.useFakeTimers()
+  let now = 0
+  let suspended = false
+  const stalls: number[] = []
+  const sleeps: number[] = []
+  const stop = watchEventLoop((ms) => stalls.push(ms), 500, () => now, {
+    onAsleep: (ms) => sleeps.push(ms),
+    slept: () => {
+      const was = suspended
+      suspended = false
+      return was
+    }
+  })
+  // Eleven hours with nothing run, and no suspend heard of, as with Modern Standby.
+  now += 11 * 3600_000 + 500
+  vi.advanceTimersByTime(500)
+  // A short sleep that Windows did announce.
+  suspended = true
+  now += 20_000 + 500
+  vi.advanceTimersByTime(500)
+  // Then a real stall, which is still one.
+  now += 2500
+  vi.advanceTimersByTime(500)
+  stop()
+  expect(sleeps).toEqual([11 * 3600_000, 20_000])
+  expect(stalls).toEqual([2000])
+  expect(ASLEEP_MS).toBe(60_000)
 })
 
 test('crashes reload by themselves until three come within two minutes', () => {
@@ -202,4 +233,10 @@ test('the heartbeat waits for a page, and ignores the PC sleeping and other wind
   vi.advanceTimersByTime(20_000)
   expect(t.dialog.showMessageBox).not.toHaveBeenCalled()
   t.watch.dispose()
+})
+
+test('a sleep reads in units that suit it, and says it is not a stall', () => {
+  expect(asleepText(20_000)).toBe('Nothing ran for 20 s: the PC was asleep, or Patchbay was suspended. Not a stall.')
+  expect(asleepText(2647_600)).toMatch(/^Nothing ran for 44 min:/)
+  expect(asleepText(39254_900)).toMatch(/^Nothing ran for 10\.9 h:/)
 })
