@@ -136,6 +136,8 @@ export interface BrowserState {
   notice: string | null
   /** The agent that last acted here and what it did. Typed text is never part of it. */
   driving: { by: string; action: string; at: number } | null
+  /** The latest load failed: what to show in the page's place. See browserFailure.ts. */
+  failure?: import('./browserFailure').BrowserFailure | null
 }
 
 export type BrowserStep = 'back' | 'forward' | 'reload' | 'stop'
@@ -293,8 +295,12 @@ export interface PatchbayBridge {
   checkForUpdates(): Promise<void>
   /** Ends every session, installs the downloaded update and starts the new version. */
   restartToUpdate(): Promise<void>
-  /** An agent window's conversation, newest last, for its chat view. */
-  readConversation(nodeId: string): Promise<{ ok: true; messages: Array<{ role: 'user' | 'assistant'; text: string }> } | { ok: false; reason: string }>
+  /**
+   * An agent window's conversation, newest last, for its chat view: the last `limit` messages (a page of 200 when not
+   * given; see shared/conversation.ts), and whether there are earlier ones. With `since`, the version of the last answer,
+   * an answer that would be the same comes back as `unchanged`.
+   */
+  readConversation(nodeId: string, limit?: number, since?: string): Promise<import('./conversation').ConversationAnswer>
   /** The person's own message to an agent window. A busy agent gets it once it's idle. */
   sendToAgent(nodeId: string, text: string): Promise<{ ok: true; queued: boolean } | { ok: false; reason: string }>
   reopenClosed(closedId: string): Promise<void>

@@ -11,6 +11,7 @@ import { Jacks, Resizer, EditableTitle } from './NodeChrome'
 import { BrowserEvidence } from './BrowserEvidence'
 import { isBlankPage } from './browserEmpty'
 import './browserEmpty.css'
+import { BrowserFailurePanel } from './BrowserFailure'
 import { useHeaderZoom } from '../useHeaderZoom'
 
 /** How long after an agent's last action the node keeps saying it's being driven. */
@@ -222,6 +223,7 @@ export const BrowserNode = memo(function BrowserNode({ data, selected }: NodePro
         <div className="unit-body">
           <PageView node={node} />
           <EmptyPage node={node} />
+          <BrowserFailurePanel nodeId={node.id} />
         </div>
       </div>
     </>

@@ -67,6 +67,7 @@ import type { AgentStop } from '../shared/agentStop'
 import { EmptyCanvas } from './EmptyCanvas'
 import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
+import { AppProblems } from './AppProblems'
 import './styles.css'
 import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
@@ -398,6 +399,7 @@ function Canvas(): React.JSX.Element | null {
   return (
     <div className="app">
       <TopBar commands={commands} state={menuState} />
+      <AppProblems />
       <main className="stage" ref={stage}>
         <ReactFlow<FlowNode, FlowEdge>
           nodes={nodes}
