@@ -122,9 +122,11 @@ async function main() {
           setTimeout(() => (off(), resolve([...ids].sort())), 3000)
         })
     )
-    const shownIds = [...tabs[0].agents, tabs[0].term]
+    // The tab just left is kept a while for a quick switch back (terminalShelf.ts), so its output still arrives. No other does.
+    const leftIds = [...tabs[TABS - 1].agents, tabs[TABS - 1].term]
+    const shownIds = [...tabs[0].agents, tabs[0].term, ...leftIds]
     console.log('OUTPUT REACHING THE WINDOW', JSON.stringify(reaching))
-    c.check("Only the shown tab's output reaches the window", reaching.every((id) => shownIds.includes(id)), reaching)
+    c.check("Only the shown tab's output, and the tab just left, reaches the window", reaching.every((id) => shownIds.includes(id)), reaching)
     await page.click(`.react-flow__node[data-id="${tabs[0].term}"] .xterm-screen`)
     const s0 = processStats(profile)
     const m0 = machine()
