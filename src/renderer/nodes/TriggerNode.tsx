@@ -7,7 +7,8 @@ import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
 import { Icon, KindIcon } from '../icons'
 import { closeNodes, useStore } from '../store'
-import { nextLabel, OUTCOME_LABELS, STATE_LABELS, triggerState } from '../triggerView'
+import { nextLabel, OUTCOME_LABELS, relative, STATE_LABELS, triggerState } from '../triggerView'
+import { triggerTileLine } from '../farTiles'
 import { EditableTitle, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
 
@@ -53,6 +54,11 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
         <KindIcon kind="trigger" />
         <EditableTitle node={node} />
         <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>
+        {/* The tile's second line, zoomed out (zoom.css): the chip, then what it waits for and when it next runs. */}
+        <span className="head-far" title={nextLabel(node, now)}>
+          <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>
+          <span className="key-badge">{triggerTileLine(describeSchedule(node.schedule, () => sourceTitle, node), { armed, nextAt: node.nextAt }, now, relative)}</span>
+        </span>
         <button className="icon-btn tool-btn nodrag" aria-label={`Delete ${node.title}`} title="Delete trigger" onClick={() => closeNodes([node.id])}>
           <Icon name="close" size={15} />
         </button>

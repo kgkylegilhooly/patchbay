@@ -99,7 +99,19 @@ async function main() {
 
     const near = await bodySizes(page)
     const pty = await U.ptySize(page, 'term', 'near')
-    await zoomTo(page, 'far')
+    // Between 85% and the far line the header strip draws larger in its own slot: step out through that band and
+    // check, at each step, that no body and no terminal changed size.
+    const band = []
+    for (let i = 0; i < 20 && (await tier(page)) !== 'far'; i++) {
+      await page.click('.dock [data-cmd="zoom-out"]')
+      await L.sleep(300)
+      const scaled = await page.$eval('.react-flow', (f) => 'headScaled' in f.dataset)
+      if ((await tier(page)) !== 'near' || !scaled) continue
+      const at = await page.$eval('.dock-zoom', (z) => z.textContent)
+      band.push({ at, title: Math.round((await titlePx(page, 'needs')) * 10) / 10, bodies: JSON.stringify(await bodySizes(page)) === JSON.stringify(near), pty: (await U.ptySize(page, 'term', `band${i}`)) === pty })
+    }
+    c.check('Inside the near band the header grows, and at every step no body or terminal changed size', band.length >= 1 && band.every((b) => b.bodies && b.pty), band)
+    c.check('And its title reads at about 11 px there, not 8 or 9', band.every((b) => b.title >= 10.5), band)
     c.check('Zoomed out, the canvas is far', (await tier(page)) === 'far', await tier(page))
     await L.waitFor('the approval', () => page.$(`${U.nodeSel('asks')} .strip-approval`), 20000)
     // Every window in view, which is still far out.
@@ -119,6 +131,25 @@ async function main() {
     const meta = await page.$eval(`${U.nodeSel('needs')} .head-far`, (m) => m.innerText)
     c.check('A far header says the status and the key badge', /Needs you/.test(meta) && /71% context/.test(meta), meta)
     c.check("No window's body changed size", JSON.stringify(await bodySizes(page)) === JSON.stringify(near), { near, far: await bodySizes(page) })
+
+    // The tile can't show the whole command, so it never approves one: Deny, or Review…, which zooms to the window
+    // with the whole command shown, where Approve is.
+    const answers = await page.$$eval(`${U.nodeSel('asks')} .head-far [data-far-answer]`, (b) => b.map((x) => x.dataset.farAnswer))
+    c.check('A far tile offers Review… and Deny, never Approve', JSON.stringify(answers) === JSON.stringify(['review', 'deny']), answers)
+    await page.click(`${U.nodeSel('asks')} [data-far-answer="review"]`)
+    await L.sleep(800)
+    const reviewed = await page.evaluate((sel) => {
+      const strip = document.querySelector(`${sel} .strip-approval`)
+      const b = strip?.querySelector('.btn-solid')
+      const r = b?.getBoundingClientRect()
+      const hit = r && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      return { open: !!strip?.classList.contains('strip-open'), hit: !!hit && b.contains(hit), tier: document.querySelector('.react-flow').dataset.zoomTier }
+    }, U.nodeSel('asks'))
+    c.check('Review… zooms in to the window with the whole command shown and Approve there to press', reviewed.open && reviewed.hit && reviewed.tier === 'near', reviewed)
+    c.check('And nothing was answered on the way', !!(await page.$(`${U.nodeSel('asks')} .strip-approval`)))
+    // The whole command takes the strip's room from the body; fold it back for the size checks that follow.
+    await page.click(`${U.nodeSel('asks')} .strip-more`)
+    await L.sleep(300)
 
     await zoomTo(page, 'overview')
     c.check('Further out, the canvas is the overview', (await tier(page)) === 'overview')

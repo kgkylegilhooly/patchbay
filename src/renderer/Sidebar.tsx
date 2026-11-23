@@ -6,9 +6,10 @@ import { ContextMenu } from './Menu'
 import { PeekButton, peekFrom } from './NeedsYouLayer'
 import { closedProjectMenu, type Commands, type Point } from './menus'
 import { StatusMark } from './status/StatusMarks'
-import { RunDot, RunLabel, StatusBadge, StatusDot } from './nodes/StatusBadge'
+import { RunDot, RunLabel, StatusBadge, StatusDot, useSetupHold } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
+import { placeLabel } from './placeLabel'
 import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, rowShowsWhere, statusSections } from './sidebarView'
@@ -47,7 +48,8 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
   const at = useStore((s) => s.activity[session.id])
   const inStatus = tab === 'status'
   // Its section says Need attention, so the row says why.
-  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined)
+  const setupFailed = useSetupHold(session.kind === 'claude' ? session.id : undefined) === 'failed'
+  const stopped = !!useAgentStop(status === 'unknown' ? session.id : undefined) || setupFailed
   const peekable = inStatus && session.kind === 'claude'
   // Under its own project's heading the badge and the project's folder would only repeat the heading.
   const where = whereShown(session)
@@ -73,17 +75,18 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
           <KindIcon kind={session.kind} agent={session.kind === 'claude' ? session.agent : undefined} />
           <span className="session-title">{session.title}</span>
           {unseen && <span className="session-unseen" role="img" aria-label="Not looked at yet" title="Finished while you were elsewhere" />}
-          {context && (
+          {/* A stopped row's reason, with its time, matters more than how full its context is: that's on the node. */}
+          {context && !stopped && (
             <span className={`session-context usage-${context.level}`} title={`${context.text}${context.detail ? `\n${context.detail}` : ''}`}>
               {context.text.replace(' context', '')}
             </span>
           )}
-          {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} />}
+          {(!inStatus || stopped) && status && <StatusBadge status={status} nodeId={session.id} compact />}
           {session.kind === 'run' && <RunLabel run={run} />}
         </span>
         {showWhere && (
           <span className="session-where-row">
-            <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : where || 'Home folder'}</span>
+            <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : placeLabel(where, project?.folder) || 'Home folder'}</span>
             {inStatus && at !== undefined && (
               <time className="session-time" dateTime={new Date(at).toISOString()} title="Last activity">
                 {relativeTime(at, now)}
@@ -120,6 +123,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const statuses = useStore((s) => s.statuses)
   const stops = useAgentStops((s) => s.stops)
   const attention = useStore((s) => s.attention)
+  const runs = useStore((s) => s.runs)
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
@@ -134,7 +138,7 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={now} onReveal={commands.revealNode} />
 
   const bySection = projectSections(doc, query)
-  const byStatus = statusSections(doc, statuses, attention, query, stops)
+  const byStatus = statusSections(doc, statuses, attention, query, stops, runs)
   const total = bySection.reduce((sum, s) => sum + s.tree.total, 0)
   const closed = closedProjects(doc)
   const recent = recentlyClosed(doc, query)
@@ -270,7 +274,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
           label={menu.project.name}
           entries={closedProjectMenu(commands, menu.project.id, {
             sessionTitles: doc.nodes.filter((n) => n.projectId === menu.project.id && isSessionNode(n)).map((n) => n.title),
-            items: doc.nodes.filter((n) => n.projectId === menu.project.id && !isSessionNode(n)).length
+            items: doc.nodes.filter((n) => n.projectId === menu.project.id && !isSessionNode(n)).length,
+            name: menu.project.name
           })}
           onClose={() => setMenu(null)}
         />

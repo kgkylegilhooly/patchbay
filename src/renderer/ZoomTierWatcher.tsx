@@ -7,7 +7,7 @@ import { headScale, nextTier, type ZoomTier } from './zoomTier'
  * What --head-scale is set on: the parts of a node zoom.css draws at their on-screen size, and the strips that move
  * down under a tile. Set there rather than on the whole canvas, so a zoom step restyles those and not every terminal.
  */
-const SCALED = '.react-flow :is(.unit > :not(.unit-body), .wb > .wb-head, .rack-head)'
+const SCALED = '.react-flow :is(.unit > :not(.unit-body), .wb > .wb-head, .rack-head, .note > :is(.note-head, .note-far))'
 
 /**
  * Puts the zoom tier on the canvas as `data-zoom-tier`, and the header scale as `--head-scale`, for zoom.css to draw
@@ -29,8 +29,15 @@ export function ZoomTierWatcher(): null {
       rule.current.dataset.headScale = ''
       document.head.appendChild(rule.current)
     }
-    const text = `${SCALED} { --head-scale: ${headScale(zoom, tier.current)}; }`
+    const scale = headScale(zoom, tier.current)
+    const text = `${SCALED} { --head-scale: ${scale}; }`
     if (rule.current.textContent !== text) rule.current.textContent = text
+    // Near headers drawn larger have less room, so zoom.css lets the status word outlast the context share.
+    const scaled = tier.current === 'near' && scale > 1
+    if (scaled !== ('headScaled' in canvas.dataset)) {
+      if (scaled) canvas.dataset.headScaled = ''
+      else delete canvas.dataset.headScaled
+    }
   }, [zoom, canvas])
   useEffect(() => () => rule.current?.remove(), [])
 

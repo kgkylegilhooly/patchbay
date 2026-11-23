@@ -5,11 +5,15 @@ import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
-import { terminalProfileItems } from './terminalProfilesUi'
+import { terminalProfileSubmenu } from './terminalProfilesUi'
+import { minimapItems } from './minimapItem'
+import { toggleFoldedMap, useChromeLayout } from './safeArea'
 import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
 import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
 import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
+import { namedQuestion } from './shell/confirmStore'
+import { askRemoveWorktree } from './worktreeUi'
 
 export interface Point {
   x: number
@@ -28,6 +32,8 @@ export interface MenuItem {
   checked?: boolean
   /** Asks before running, in the confirmation dialog: what happens, in a sentence. */
   confirm?: string
+  /** The confirmation's question when it names the thing, as 'Delete "Website"?'. Otherwise it's the label's. */
+  confirmTitle?: string
   danger?: boolean
   /** The menu stays open after it runs, so it can be used again, as when stepping a size. */
   keepOpen?: boolean
@@ -35,6 +41,8 @@ export interface MenuItem {
   steps?: { value: string; canRun: boolean; runLabel?: string; runTool?: string; down: MenuStep; up: MenuStep }
   /** A name for checks to find the row by, as its `data-tool`. */
   tool?: string
+  /** Opens these in the menu's place, with a way back, rather than running `run`. */
+  submenu?: MenuEntry[]
 }
 
 /** One side of a stepper row. */
@@ -154,12 +162,12 @@ export interface MenuState {
 
 export function addMenu(c: Commands, at?: Point): MenuEntry[] {
   return [
-    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
-    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
-    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
-    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
     { id: 'new-codex', label: 'New Codex…', icon: 'codex', run: () => c.newCodexForm(at) },
+    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileSubmenu((profile) => c.newTerminal(at, undefined, profile)),
+    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
+    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
@@ -191,7 +199,7 @@ export function deleteProjectWarning(sessionTitles: string[], items: number): st
 export function projectMenu(
   c: Commands,
   id: string,
-  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null }
+  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null; name?: string }
 ): MenuEntry[] {
   return [
     { id: 'rename-project', label: 'Rename', icon: 'edit', run: ctx.rename },
@@ -202,17 +210,17 @@ export function projectMenu(
     { id: 'close-project', label: 'Close project, leaving its sessions running', icon: 'folder-closed', disabled: !ctx.canClose, run: () => c.closeProject(id) },
     { id: 'archive-project', label: 'Archive project, stopping its sessions…', icon: 'archive', disabled: !!ctx.archiveRefusal, run: () => askArchive(id) },
     { id: 'manage-projects', label: 'Projects…', icon: 'project', run: () => openProjects() },
-    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
+    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, disabled: ctx.last, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), confirmTitle: namedQuestion('Delete', ctx.name), run: () => c.deleteProject(id) }
   ]
 }
 
 /** A closed project's right-click menu, in the sidebar's list. */
-export function closedProjectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number }): MenuEntry[] {
+export function closedProjectMenu(c: Commands, id: string, ctx: { sessionTitles: string[]; items: number; name?: string }): MenuEntry[] {
   return [
     { id: 'reopen-project', label: 'Reopen', icon: 'folder-open', run: () => c.reopenProject(id) },
     { id: 'archive-project', label: 'Archive, stopping its sessions…', icon: 'archive', run: () => askArchive(id) },
     'separator',
-    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), run: () => c.deleteProject(id) }
+    { id: 'delete-project', label: 'Delete project…', icon: 'trash', danger: true, confirm: deleteProjectWarning(ctx.sessionTitles, ctx.items), confirmTitle: namedQuestion('Delete', ctx.name), run: () => c.deleteProject(id) }
   ]
 }
 
@@ -263,7 +271,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
-    { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
+    ...minimapItems(s.minimap, useChromeLayout.getState(), { togglePref: () => c.togglePref('minimap'), toggleFolded: toggleFoldedMap }),
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
 }
@@ -292,12 +300,12 @@ export function canvasExtensions(c: Commands, at: Point): MenuItem[] {
 export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   const extensions = canvasExtensions(c, at)
   return [
-    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
-    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
-    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
-    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
     { id: 'new-codex', label: 'New Codex…', icon: 'codex', run: () => c.newCodexForm(at) },
+    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileSubmenu((profile) => c.newTerminal(at, undefined, profile)),
+    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
+    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
@@ -367,6 +375,7 @@ export function nodeMenu(
       { id: 'new-browser', label: 'New browser here', icon: 'browser', run: () => c.newBrowser(ctx.at, node.id) },
       'separator',
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
+      ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')

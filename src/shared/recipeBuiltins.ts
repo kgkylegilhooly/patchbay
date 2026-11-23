@@ -14,7 +14,7 @@ export const BUILT_IN_RECIPES: Recipe[] = [
         key: 'brief',
         kind: 'note',
         title: 'Brief',
-        text: '# {{task}}\n\nBranch: {{branch}}\nFolder: {{cwd}}\n\n- Implementer: Claude ({{node:implementer}})\n- Reviewer: Codex ({{node:reviewer}}), starts after the implementer\'s first turn\n\n## Decisions\n',
+        text: '# {{task}}\n\nBranch: {{branch}}\nFolder: {{cwd}}\n\n- Implementer: Claude\n- Reviewer: Codex, starts after the implementer\'s first turn\n\n## Decisions\n',
         layout: { x: 24, y: 712, width: 560, height: 216 }
       },
       {

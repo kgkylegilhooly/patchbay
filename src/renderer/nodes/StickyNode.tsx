@@ -12,6 +12,7 @@ import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useLinkMenu } from '../useLinkMenu'
 import { useHeaderZoom } from '../useHeaderZoom'
+import { noteTile } from '../farTiles'
 
 /** The first is the default, the tape yellow notes have always been. */
 export const NOTE_COLORS = ['#d9c64a', '#e8806f', '#6fc08a', '#6fa8f0', '#b08cf0', '#9a9aa2']
@@ -186,6 +187,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
   const [editing, setEditing] = useState(false)
   const [picking, setPicking] = useState(false)
   const html = useMemo(() => renderMarkdown(node.text, { tasks: true }), [node.text])
+  const tile = useMemo(() => noteTile(node.title, node.text), [node.title, node.text])
   const color = noteColor(node.color)
   // An agent's changes show until the person keeps or undoes them. Once the note changes some other way, they're past undoing.
   const edits = useStore((s) => s.noteEdits[node.id])
@@ -287,6 +289,15 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
           </button>
         </footer>
       )}
+      {/* Zoomed out, the note reads as a tile at its on-screen size (zoom.css). Hidden near. */}
+      <div className="note-far" aria-hidden="true">
+        <strong className="note-far-title">{tile.title}</strong>
+        {tile.lines.map((l, i) => (
+          <span key={i} className="note-far-line">
+            {l}
+          </span>
+        ))}
+      </div>
       {links.menu}
       {links.notice && (
         <p className="link-notice" role="status">

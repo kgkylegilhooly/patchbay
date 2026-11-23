@@ -1,0 +1,35 @@
+/* A browser on the blank page (BrowserNode.tsx EmptyPage): a dark panel over the white webview, with a hint. */
+.browser-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 24px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-dim);
+  text-align: center;
+  background: var(--well);
+  border: 0;
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+  cursor: text;
+}
+
+.browser-empty > span {
+  max-width: 30ch;
+}
+
+.browser-empty:hover {
+  color: var(--ink);
+}
+
+.browser-empty:focus-visible {
+  outline: 2px solid var(--cable-link);
+  outline-offset: -2px;
+}

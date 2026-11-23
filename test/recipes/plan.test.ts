@@ -19,8 +19,13 @@ test('every recipe node gets a new id, and prompts and notes name the new nodes'
   expect(reviewer.prompt).toContain(`patchbay read --node ${plan.ids.implementer}`)
   expect(reviewer.prompt).toContain('Add dark mode')
   expect(brief.text).toContain('# Add dark mode')
-  expect(brief.text).toContain(`Codex (${plan.ids.reviewer})`)
+  // The built-in brief is for the person, so it names the agents without their ids (UX audit #17).
+  expect(brief.text).toContain('- Reviewer: Codex, starts after')
   expect(JSON.stringify(plan.nodes)).not.toContain('{{')
+  // A note of one's own can still name a node by id.
+  const own = { ...recipe, nodes: recipe.nodes.map((n) => (n.key === 'brief' ? { ...n, text: 'Reviewer: {{node:reviewer}}' } : n)) }
+  const ownPlan = planRecipe(own, params, counter())
+  expect((ownPlan.nodes.find((n) => n.id === ownPlan.ids.brief) as StickyNode).text).toBe(`Reviewer: ${ownPlan.ids.reviewer}`)
 })
 
 test('connections join the new nodes', () => {

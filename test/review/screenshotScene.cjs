@@ -12,7 +12,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const openInbox = async (page) => {
   await page.waitForSelector('[data-cmd="toggle-board"]')
   await page.click('[data-cmd="toggle-board"]')
-  await page.waitForSelector('[data-task="task-ready"]', { timeout: 10000 })
+  // Task outcomes start folded to one line; the inbox button is on that line.
+  await page.waitForSelector('[data-task-outcomes="toggle"], [data-task="task-ready"]', { timeout: 10000 })
   // The inbox is opened from the board's task outcomes. Before it existed, the picture is the board itself.
   if (!(await page.$('.task-outcomes [data-cmd="review-inbox"]'))) return false
   await page.click('.task-outcomes [data-cmd="review-inbox"]')

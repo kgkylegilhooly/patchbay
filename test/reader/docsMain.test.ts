@@ -1,3 +1,4 @@
+import { READER_DEFAULT, readerSize } from '../../src/core/reader/readerSize'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -110,7 +111,7 @@ describe('docs service', () => {
   const agent = (id: string, transcriptPath: string | null, cwd: string): ClaudeNode => ({ id, kind: 'claude', title: 'Planner', x: 0, y: 0, width: 600, height: 400, parentId: null, cwd, sessionId: null, transcriptPath, after: [], projectId: 'p1' })
   const terminal = (cwd: string): TerminalNode => ({ id: 'term', kind: 'terminal', title: 'Shell', x: 0, y: 500, width: 500, height: 300, parentId: null, cwd, projectId: 'p1' })
 
-  const make = (nodes: (ClaudeNode | TerminalNode | ReaderNode)[] = []) => {
+  const make = (nodes: (ClaudeNode | TerminalNode | ReaderNode)[] = [], view?: { width: number; height: number }) => {
     const store = memoryStore(nodes)
     store.dispatch({ op: 'addProject', project: { id: 'p1', name: 'P', folder: dir, viewport: { x: 0, y: 0, zoom: 1 } } })
     const watcher: DocsWatcher = { watch: (p, cb) => watched.set(docKey(p), cb), unwatch: (p) => watched.delete(docKey(p)) }
@@ -125,6 +126,7 @@ describe('docs service', () => {
       watcher,
       changed: () => {},
       center: (id) => centered.push(id),
+      view: () => view ?? null,
       near: spotNear,
       link: { exists: existsSync, openExternal: async (u) => void opened.push(u), openPath: async (p) => (opened.push(p), ''), reveal: (p) => void opened.push(`reveal ${p}`) },
       system: SYSTEM,
@@ -152,6 +154,17 @@ describe('docs service', () => {
     expect(watched.has(docKey(join(dir, 'plan.md')))).toBe(true)
     const read = await service.read('id1')
     expect(read).toMatchObject({ ok: true, text: '# Ship the store\n\nEvery user moves.\n' })
+  })
+
+  it('sizes a reader the person opens to the visible window, and keeps the usual size for one an agent opens', async () => {
+    writeFileSync(join(dir, 'notes.md'), '# Notes\n')
+    const { store, service } = make([agent('a1', null, dir)], { width: 1500, height: 900 })
+    await service.open({ path: join(dir, 'plan.md') })
+    expect(readers(store)[0]).toMatchObject(readerSize({ width: 1500, height: 900 }, 1))
+    expect(readers(store)[0].width).toBeGreaterThan(READER_DEFAULT.width)
+    const byAgent = await service.openFile(join(dir, 'notes.md'), { from: store.get().nodes.find((x) => x.id === 'a1'), openedBy: 'a1' })
+    expect(byAgent.ok).toBe(true)
+    expect(readers(store).find((x) => x.path === join(dir, 'notes.md'))).toMatchObject(READER_DEFAULT)
   })
 
   it('brings forward the reader already open on a file instead of opening another', async () => {

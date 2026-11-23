@@ -2,6 +2,7 @@ import type { NodeMessage } from '../shared/contract'
 import type { AgentStop } from '../shared/agentStop'
 import type { AgentStatus, CanvasNode } from '../shared/model'
 import { agentLook, TONE_ORDER, type Look } from './status/status'
+import { setupHoldOf } from './status/setupStatus'
 
 /** How a group's agents are doing, for its header: one light each, and a few words. */
 export interface TeamStatus {
@@ -28,7 +29,7 @@ export function teamStatus(nodes: CanvasNode[], statuses: Record<string, AgentSt
     .filter((n) => n.kind === 'claude' && n.parentId === groupId)
     .map((n) => {
       const status = statuses[n.id] ?? 'unknown'
-      return { id: n.id, title: n.title, status, look: agentLook(status, stopped[n.id], now) }
+      return { id: n.id, title: n.title, status, look: agentLook(status, stopped[n.id], now, setupHoldOf(n)) }
     })
     .sort((a, b) => rank(a.look) - rank(b.look))
   const counts = new Map<string, number>()
