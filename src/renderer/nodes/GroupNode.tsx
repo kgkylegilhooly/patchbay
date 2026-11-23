@@ -1,10 +1,12 @@
 import type { NodeProps } from '@xyflow/react'
 import { memo, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import type { GroupNode as GroupModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
 import { closeNodes, patchNode, useStore } from '../store'
 import { teamStatus } from '../teamStatus'
+import { latestTeamMessage, memberStatuses } from '../teamSelect'
 import { StatusMark } from '../status/StatusMarks'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
@@ -127,10 +129,11 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
 /** A team at a glance: a light per agent, how many are in each state, and the latest thing one of them said. */
 function Team({ groupId }: { groupId: string }): React.JSX.Element {
   const nodes = useStore((s) => s.doc?.nodes)
-  const statuses = useStore((s) => s.statuses)
-  const messages = useStore((s) => s.messages)
+  // Only this team's statuses and latest message, so a change elsewhere on the canvas doesn't render this group.
+  const statuses = useStore(useShallow((s) => memberStatuses(s.doc?.nodes, s.statuses, groupId)))
+  const lastSaid = useStore((s) => latestTeamMessage(s.doc?.nodes, s.messages, groupId))
   const stops = useAgentStops((s) => s.stops)
-  const team = useMemo(() => teamStatus(nodes ?? [], statuses, messages, groupId, stops), [nodes, statuses, messages, groupId, stops])
+  const team = useMemo(() => teamStatus(nodes ?? [], statuses, lastSaid ? [lastSaid] : [], groupId, stops), [nodes, statuses, lastSaid, groupId, stops])
   if (!team.members.length) return <span className="rack-spacer" />
   const titleOf = (id: string): string => nodes?.find((n) => n.id === id)?.title ?? 'a closed node'
   const latest = team.latest

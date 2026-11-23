@@ -1319,9 +1319,13 @@ select {
   }
 }
 
-/* The view moving already means repainting everything. Far out, the dots are too small to read. */
+/*
+ * The view moving already means repainting everything. Far out, the dots are too small to read. A cable with nothing
+ * under way along it (see cableActivity.ts) keeps its dots still, so an idle canvas repaints nothing.
+ */
 .stage[data-canvas-moving] .cable-flow,
-.stage[data-canvas-far] .cable-flow {
+.stage[data-canvas-far] .cable-flow,
+.cable-flow.cable-still {
   animation-play-state: paused;
 }
 

@@ -1,11 +1,14 @@
 'use strict'
-// Renderer performance harness (from the renderer audit, .claude/audits/renderer-perf.md). A heavy canvas: terminals printing like Claude, fake
-// agents (claude-load.cjs), browser pages, notes, whiteboards, groups and cables, plus a second project. Each scenario
-// is measured in the window: rAF frame gaps, Chromium's busy metrics, optionally a CPU profile, a trace summary and
-// React commit/render counts (needs the profiling build: PB_RP_REACT=1).
+// Renderer performance harness, from the renderer audit (.claude/audits/renderer-perf.md). A heavy canvas: terminals
+// printing like Claude, fake agents (claude-load.cjs), browser pages, notes, whiteboards, groups and cables, plus a
+// second project. Each scenario is measured in the window: rAF frame gaps, Chromium's busy metrics, CPU per process
+// role (gpu-process included), terminal row rebuilds, optionally a CPU profile, a trace summary and React
+// commit/render counts. perf-canvas.cjs runs it a few times per build and takes medians; rperf-summary.cjs tabulates.
 //
 // Env: PB_RP_OUT=<file.json>  PB_RP_PROFILE=1 (CPU profile per scenario)  PB_RP_TRACE=1 (paint/raster per scenario)
-//      PB_RP_REACT=1 (React render counts; build with minify off + react-dom/profiling)  PB_RP_ONLY=a,b (scenarios)
+//      PB_RP_REACT=1 (React render counts; build with `npx electron-vite build -c test/acceptance/electron.vite.profile.config.ts`)
+//      PB_RP_ONLY=a,b (scenarios)  PB_RP_CSS=<css> (injected before measuring, A/B)  PB_RP_SHELL=cmd (see below)
+//      PB_RP_AGENT_SECONDS (how long each fake agent works; default 1500)
 //      PB_RP_TERMS (default 16) PB_RP_AGENTS (10) PB_RP_SLOW (CPU throttle) PB_RP_NOLOAD=1 (nothing printing)
 const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
@@ -18,8 +21,12 @@ if (require.main === module) U.watchdog(25 * 60_000)
 const LOAD = path.join(__dirname, 'claude-load.cjs').replace(/\\/g, '/')
 const TERMS = Number(process.env.PB_RP_TERMS ?? 16)
 const AGENTS = Number(process.env.PB_RP_AGENTS ?? 10)
+// PB_RP_SHELL=cmd starts the terminals in cmd.exe: Git Bash stops at 32 consoles on the PC (MSYS's limit), which a
+// busy PC with many agents' shells reaches, and then a terminal never gets a prompt.
+const SHELL = process.env.PB_RP_SHELL === 'cmd' ? 'C:\\Windows\\System32\\cmd.exe' : process.env.PB_RP_SHELL
+const PROMPT = SHELL && /cmd/i.test(SHELL) ? '>' : '$'
 const ONLY = process.env.PB_RP_ONLY ? process.env.PB_RP_ONLY.split(',') : null
-const SHOTS = process.env.PB_RP_SHOTS || path.join(__dirname, '..', '..', '..', 'shots')
+const SHOTS = process.env.PB_RP_SHOTS || path.join(L.workRoot, 'rperf-shots')
 const results = {}
 
 function site() {
@@ -56,7 +63,7 @@ function canvas(cwd, port) {
   nodes.push({ id: 'typing', kind: 'terminal', title: 'typing', x: -560, y: 0, width: 520, height: 320, parentId: null, cwd, projectId: 'p1' })
   for (let i = 0; i < TERMS; i++) nodes.push({ id: `t${i}`, kind: 'terminal', title: `build ${i}`, ...place(), width: W, height: H, cwd, projectId: 'p1' })
   for (let i = 0; i < AGENTS; i++) {
-    nodes.push({ id: `a${i}`, kind: 'claude', title: `agent ${i}`, ...place(), width: W, height: H, cwd, projectId: 'p1', prompt: process.env.PB_RP_NOLOAD ? 'idle' : '1500', sessionId: null, transcriptPath: null, after: [] })
+    nodes.push({ id: `a${i}`, kind: 'claude', title: `agent ${i}`, ...place(), width: W, height: H, cwd, projectId: 'p1', prompt: process.env.PB_RP_AGENT_SECONDS ?? (process.env.PB_RP_NOLOAD ? 'idle' : '1500'), sessionId: null, transcriptPath: null, after: [] })
     edges.push({ id: `ea${i}`, from: i ? 'a0' : 'typing', to: `a${i}`, kind: i % 2 ? 'opened' : 'link' })
   }
   // Below the groups: pages, notes and boards.
@@ -396,7 +403,7 @@ async function rowChanges(page, ms) {
 async function main() {
   const s = await site()
   const cwd = L.workDir('rperf')
-  const profile = L.newProfile({ claudeCommand: `node "${LOAD}"`, notifications: 'off', sound: 'off' })
+  const profile = L.newProfile({ claudeCommand: `node "${LOAD}"`, notifications: 'off', sound: 'off', ...(SHELL ? { shell: SHELL } : {}) })
   fs.writeFileSync(path.join(profile, 'canvas.json'), JSON.stringify(canvas(cwd, s.port)))
   fs.mkdirSync(SHOTS, { recursive: true })
   const app = await L.launch({ profile })
@@ -415,21 +422,41 @@ async function main() {
     const termIds = ['typing', ...Array.from({ length: TERMS }, (_, i) => `t${i}`)]
     await L.waitFor('the shells', async () => {
       const shown = await Promise.all(termIds.map((id) => L.snapshot(page, id)))
-      const waiting = shown.flatMap((x, i) => (x.includes('$') ? [] : [termIds[i]]))
-      return waiting.length ? Promise.reject(new Error(`waiting on ${waiting.join(',')}`)) : true
+      const waiting = shown.flatMap((x, i) => (x.includes(PROMPT) ? [] : [termIds[i]]))
+      const first = shown[termIds.indexOf(waiting[0])]
+      return waiting.length ? Promise.reject(new Error(`waiting on ${waiting.join(',')}; ${waiting[0]} shows ${JSON.stringify(String(first).slice(-300))}`)) : true
     }, 240000)
     await L.sleep(1500)
     const counts = await page.evaluate(() => ({ nodes: document.querySelectorAll('.react-flow__node').length, edges: document.querySelectorAll('.react-flow__edge').length, xterms: document.querySelectorAll('.xterm').length, webviews: document.querySelectorAll('webview').length, dom: document.getElementsByTagName('*').length }))
     console.log('SCENE', JSON.stringify(counts))
     results.scene = counts
 
+    if (process.env.PB_RP_CSS) await page.addStyleTag({ content: process.env.PB_RP_CSS })
+    // PB_RP_AGENT_SECONDS=2 has the agents finish at once: then 'quiet' is a canvas with nothing under way at all.
+    if (process.env.PB_RP_AGENT_SECONDS) {
+      await L.waitFor('the agents to finish', async () => !Object.values(await L.statuses(page)).some((x) => ['working', 'starting', 'queued', 'unknown'].includes(x)), 120000)
+      console.log('STATUSES', JSON.stringify(await L.statuses(page)))
+    }
     await scenario(ctx, 'quiet', () => L.sleep(5000))
     if (!process.env.PB_RP_NOLOAD) {
       for (const [i, id] of termIds.slice(1).entries()) await L.submit(page, id, `node "${LOAD}" 1500${i % 4 === 3 ? ' --heavy' : ''}`)
       await L.sleep(5000)
     }
     await page.screenshot({ path: path.join(SHOTS, `scene-${process.env.PB_RP_TAG || 'run'}.png`) })
+    // The cables' dots move only while an agent at an end is under way, so what the agents are doing matters here.
+    console.log('STATUSES', JSON.stringify(Object.values(await L.statuses(page)).reduce((c, x) => ({ ...c, [x]: (c[x] ?? 0) + 1 }), {})))
+    // Moving dots on different beats repaint more often than on one: the phases of the running cable animations.
+    console.log('CABLES', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('.cable-flow')].flatMap((el) => el.getAnimations().map((a) => `${a.playState}:${Math.round(Number(a.currentTime) % 1700)}`)))))
     await scenario(ctx, 'output', () => rowChanges(page, 6000))
+    // The dots pause while the view moves: their play states with the stage marked as moving.
+    console.log('CABLES-MOVING', JSON.stringify(await page.evaluate(async () => {
+      const stage = document.querySelector('.stage')
+      stage.toggleAttribute('data-canvas-moving', true)
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const states = [...document.querySelectorAll('.cable-flow')].flatMap((el) => el.getAnimations().map((x) => x.playState))
+      stage.toggleAttribute('data-canvas-moving', false)
+      return states
+    })))
 
     // Typing.
     const typingBox = await page.evaluate(() => {
@@ -565,4 +592,4 @@ if (require.main === module) main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
-module.exports = { site, canvas, startFrames, stopFrames, metrics, metricDelta, summarizeProfile, pan, wheelZoom, dragNode, keyLatency, stat, LOAD }
+module.exports = { cpuByRole, site, canvas, startFrames, stopFrames, metrics, metricDelta, summarizeProfile, pan, wheelZoom, dragNode, keyLatency, stat, LOAD }

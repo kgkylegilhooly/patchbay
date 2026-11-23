@@ -56,11 +56,12 @@ export function toFlow(doc: CanvasDoc, statuses: Record<string, AgentStatus>): {
 
 /**
  * Folds a new document into what's on screen. An unchanged node keeps its object, so it doesn't
- * re-render, and a node mid-drag or mid-resize keeps its local geometry until the gesture ends.
+ * re-render (and when none changed, the list from before is kept), and a node mid-drag or mid-resize keeps its local
+ * geometry until the gesture ends.
  */
 export function mergeFlowNodes(prev: FlowNode[], next: FlowNode[]): FlowNode[] {
   const byId = new Map(prev.map((n) => [n.id, n]))
-  return next.map((n) => {
+  const merged = next.map((n) => {
     const old = byId.get(n.id)
     if (!old) return n
     if (old.data.node === n.data.node && old.data.status === n.data.status) return old
@@ -72,6 +73,8 @@ export function mergeFlowNodes(prev: FlowNode[], next: FlowNode[]): FlowNode[] {
     }
     return merged
   })
+  // Nothing changed, as when only the view was saved: the list from before, so React Flow is handed nothing new.
+  return merged.length === prev.length && merged.every((n, i) => n === prev[i]) ? prev : merged
 }
 
 export interface Rect {

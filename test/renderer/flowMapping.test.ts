@@ -103,6 +103,19 @@ describe('mergeFlowNodes', () => {
     const first = next(doc([claude, sticky]))
     expect(mergeFlowNodes(first, next(doc([sticky]))).map((n) => n.id)).toEqual(['s'])
   })
+
+  test('when no node changed, as when only the view was saved, the list itself is kept', () => {
+    const first = next(doc([claude, sticky]))
+    expect(mergeFlowNodes(first, next(doc([claude, sticky])))).toBe(first)
+  })
+
+  test('a list with one node changed, added or reordered is a new list', () => {
+    const first = next(doc([claude, sticky]))
+    expect(mergeFlowNodes(first, next(doc([claude, { ...sticky, x: 5 }])))).not.toBe(first)
+    expect(mergeFlowNodes(first, next(doc([sticky, claude])))).not.toBe(first)
+    const one = first.slice(0, 1)
+    expect(mergeFlowNodes(one, next(doc([claude, sticky])))).not.toBe(one)
+  })
 })
 
 describe('dropParent', () => {
