@@ -318,7 +318,8 @@ describe('createAppStore', () => {
       load: () => ({ doc, recoveredFrom: 'primary' }),
       save: async () => {},
       saveDebounced: (d) => void saved.push(d),
-      flush: async () => {}
+      flush: async () => {},
+      flushSync: () => {}
     }
   }
 

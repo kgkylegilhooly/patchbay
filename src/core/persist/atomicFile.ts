@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { mkdir, open, rename } from 'node:fs/promises'
+import { mkdir, open, readFile, rename } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 // Windows briefly locks files that antivirus or the search indexer has open.
@@ -41,6 +41,19 @@ export function withLockRetrySync<T>(action: () => T): T {
 export function readIfPresentSync(path: string): string | null {
   try {
     return withLockRetrySync(() => readFileSync(path, 'utf8'))
+  } catch (e) {
+    if (isMissingFile(e)) return null
+    throw e
+  }
+}
+
+/**
+ * readIfPresentSync without holding up the thread. A file held briefly by antivirus made the sync one sleep for up to
+ * half a second, with every request to main waiting behind it.
+ */
+export async function readIfPresent(path: string): Promise<string | null> {
+  try {
+    return await withLockRetry(() => readFile(path, 'utf8'))
   } catch (e) {
     if (isMissingFile(e)) return null
     throw e
