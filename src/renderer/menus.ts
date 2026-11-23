@@ -5,7 +5,9 @@ import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
-import { terminalProfileItems } from './terminalProfilesUi'
+import { terminalProfileSubmenu } from './terminalProfilesUi'
+import { minimapItems } from './minimapItem'
+import { toggleFoldedMap, useChromeLayout } from './safeArea'
 import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
 import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
@@ -35,6 +37,8 @@ export interface MenuItem {
   steps?: { value: string; canRun: boolean; runLabel?: string; runTool?: string; down: MenuStep; up: MenuStep }
   /** A name for checks to find the row by, as its `data-tool`. */
   tool?: string
+  /** Opens these in the menu's place, with a way back, rather than running `run`. */
+  submenu?: MenuEntry[]
 }
 
 /** One side of a stepper row. */
@@ -154,12 +158,12 @@ export interface MenuState {
 
 export function addMenu(c: Commands, at?: Point): MenuEntry[] {
   return [
-    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
-    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
-    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
-    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
     { id: 'new-codex', label: 'New Codex…', icon: 'codex', run: () => c.newCodexForm(at) },
+    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileSubmenu((profile) => c.newTerminal(at, undefined, profile)),
+    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
+    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },
@@ -263,7 +267,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
-    { id: 'toggle-minimap', label: 'Minimap', icon: 'map', checked: s.minimap, run: () => c.togglePref('minimap') },
+    ...minimapItems(s.minimap, useChromeLayout.getState(), { togglePref: () => c.togglePref('minimap'), toggleFolded: toggleFoldedMap }),
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
 }
@@ -292,12 +296,12 @@ export function canvasExtensions(c: Commands, at: Point): MenuItem[] {
 export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   const extensions = canvasExtensions(c, at)
   return [
-    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
-    ...terminalProfileItems((profile) => c.newTerminal(at, undefined, profile)),
-    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
-    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-claude', label: 'New Claude Code…', icon: 'claude', run: () => c.newClaudeForm(at) },
     { id: 'new-codex', label: 'New Codex…', icon: 'codex', run: () => c.newCodexForm(at) },
+    { id: 'new-terminal', label: 'New terminal', icon: 'terminal', run: () => c.newTerminal(at) },
+    ...terminalProfileSubmenu((profile) => c.newTerminal(at, undefined, profile)),
+    { id: 'new-terminal-form', label: 'New terminal in a folder…', icon: 'folder', run: () => c.newTerminalForm(at) },
+    { id: 'new-ssh', label: 'SSH to host…', icon: 'server', run: () => c.newSshForm(at) },
     { id: 'new-run', label: 'New run command…', icon: 'run', run: () => c.newRunForm(at) },
     { id: 'new-run-config', label: 'New run configuration…', icon: 'launch', run: () => c.newRunConfigForm(at) },
     { id: 'new-browser', label: 'New browser', icon: 'browser', run: () => c.newBrowser(at) },

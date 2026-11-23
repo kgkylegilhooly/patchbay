@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { LaunchListing } from '../shared/contract'
 import type { LaunchItem } from '../shared/launch'
 import { bridge } from './bridge'
+import { shortPath } from './shortPath'
 import { FormShell } from './shell/FormShell'
 
 export type LaunchChoice = { folder: string; item: LaunchItem }
@@ -46,7 +47,7 @@ export function LaunchForm({ initialFolder, onCancel, onRun }: { initialFolder: 
         <span className="field-label">Folder with .vscode\launch.json</span>
         <div className="folder-row">
           <span className={folder ? 'folder' : 'folder folder-empty'} title={folder}>
-            {folder || 'Choose a folder'}
+            {folder ? shortPath(folder) : 'Choose a folder'}
           </span>
           <button ref={chooseRef} type="button" className="btn" onClick={() => void bridge.pickFolder().then((f) => f && setFolder(f))}>
             Choose folder

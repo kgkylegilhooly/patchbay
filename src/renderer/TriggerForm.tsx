@@ -175,8 +175,8 @@ export function TriggerForm({
         <span className="field-label">Prompt to send</span>
         <textarea name="prompt" rows={4} autoFocus={!editing} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         {isEventSchedule(schedule) && (
-          <span className="pop-note" data-trigger="placeholders">
-            Can use {PLACEHOLDERS[schedule.type].map((p) => `{{${p}}}`).join(' ')}. Write \{'{{'} for a literal {'{{'}.
+          <span className="pop-note" data-trigger="placeholders" title={'To send {{ itself, write \\{{'}>
+            Can use {PLACEHOLDERS[schedule.type].map((p) => `{{${p}}}`).join(' ')}.
           </span>
         )}
         {promptProblem && <p className="field-problem">{promptProblem}</p>}
@@ -184,7 +184,7 @@ export function TriggerForm({
       <label className="field">
         <span className="field-label">Sends to</span>
         <select name="target" value={targetId ?? ''} onChange={(e) => setTargetId(e.target.value || null)}>
-          <option value="">Choose later, by dragging from its jack</option>
+          <option value="">Choose later: drag a link from the trigger</option>
           {targets.map((t) => (
             <option key={t.id} value={t.id}>
               {t.title} ({t.kind === 'claude' ? 'Claude' : 'terminal'})
