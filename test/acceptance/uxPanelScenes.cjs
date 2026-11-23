@@ -47,7 +47,15 @@ const scenes = {
   board: openBoard,
   'board-remove': async (page) => {
     await openBoard(page)
-    await page.evaluate(() => document.querySelector('[data-col-tool="remove"]:not(:disabled)').click())
+    // A column's actions are in its … menu; Remove is the last row.
+    await page.evaluate(() => document.querySelector('[data-column="todo"] [data-col-tool="menu"]').click())
+    await sleep(200)
+    await page.click('.menu-panel [data-tool="remove"]')
+    await sleep(300)
+  },
+  'board-menu': async (page) => {
+    await openBoard(page)
+    await page.evaluate(() => document.querySelector('[data-column="review"] [data-col-tool="menu"]').click())
     await sleep(300)
   },
   'git-diff': async (page) => {
@@ -67,6 +75,7 @@ const scenes = {
 const seeds = {
   board: seedBoard,
   'board-remove': seedBoard,
+  'board-menu': seedBoard,
   'git-diff': seedRepo
 }
 

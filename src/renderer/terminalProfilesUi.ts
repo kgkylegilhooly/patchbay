@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProfileList, TerminalProfile, TerminalProfileBridge } from '../shared/terminalProfiles'
+import type { MenuItem } from './menus'
 
 declare global {
   interface Window {
@@ -72,6 +73,22 @@ export function terminalProfileItems(open: (profileId: string) => void): Array<{
   // Menus are built as they open and can't wait, so this one shows the last list read, and the next one the fresh one.
   void refreshTerminalProfiles()
   return otherProfiles().map((p) => ({ id: `new-terminal-profile:${p.id}`, label: `New terminal: ${p.name}`, icon: 'terminal' as const, run: () => open(p.id) }))
+}
+
+/**
+ * One "New terminal with" row that opens a list of the other profiles, so a New menu keeps the same short length at
+ * any profile count and starting an agent stays near the top. Nothing when there are no other profiles.
+ */
+export function profileSubmenu(id: string, label: string, profiles: Array<{ id: string; name: string }>, open: (profileId: string) => void): MenuItem[] {
+  if (!profiles.length) return []
+  return [{ id, label, icon: 'terminal', run: () => {}, submenu: profiles.map((p): MenuItem => ({ id: `${id}:${p.id}`, label: p.name, icon: 'terminal', run: () => open(p.id) })) }]
+}
+
+/** The New menus' "New terminal with" row, from the profiles as last read. */
+export function terminalProfileSubmenu(open: (profileId: string) => void): MenuItem[] {
+  // Menus are built as they open and can't wait, so this one shows the last list read, and the next one the fresh one.
+  void refreshTerminalProfiles()
+  return profileSubmenu('new-terminal-with', 'New terminal with', otherProfiles(), open)
 }
 
 void refreshTerminalProfiles()

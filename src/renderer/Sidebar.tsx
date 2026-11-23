@@ -9,6 +9,7 @@ import { StatusMark } from './status/StatusMarks'
 import { RunDot, RunLabel, StatusBadge, StatusDot, useSetupHold } from './nodes/StatusBadge'
 import { PortChips } from './PortChips'
 import { FilesChip } from './FilesChip'
+import { placeLabel } from './placeLabel'
 import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, rowShowsWhere, statusSections } from './sidebarView'
@@ -85,7 +86,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
         </span>
         {showWhere && (
           <span className="session-where-row">
-            <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : where || 'Home folder'}</span>
+            <span className={inStatus ? 'session-project' : 'session-where'}>{inStatus ? (project?.name ?? '') : placeLabel(where, project?.folder) || 'Home folder'}</span>
             {inStatus && at !== undefined && (
               <time className="session-time" dateTime={new Date(at).toISOString()} title="Last activity">
                 {relativeTime(at, now)}

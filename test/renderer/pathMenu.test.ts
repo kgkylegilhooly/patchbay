@@ -14,10 +14,9 @@ describe('pathMenu', () => {
   test('offers a terminal there with each other profile; plain New terminal here opens the default', () => {
     const act = { open: vi.fn(), newTerminal: vi.fn(), copy: vi.fn(), reveal: vi.fn(), profiles: [{ id: 'custom:vs', name: 'VS prompt' }, { id: 'builtin:wsl', name: 'WSL' }] }
     const items = pathMenu(act).filter((e): e is MenuItem => e !== 'separator')
-    expect(items.map((i) => i.label)).toEqual(['Open', 'New terminal here', 'New terminal here: VS prompt', 'New terminal here: WSL', 'Copy path', 'Show in File Explorer'])
+    expect(items.map((i) => i.label)).toEqual(['Open', 'New terminal here', 'New terminal here with', 'Copy path', 'Show in File Explorer'])
     items[1].run()
-    items[2].run()
-    items[3].run()
+    for (const p of items[2].submenu as MenuItem[]) p.run()
     expect(act.newTerminal.mock.calls).toEqual([[], ['custom:vs'], ['builtin:wsl']])
   })
 })
