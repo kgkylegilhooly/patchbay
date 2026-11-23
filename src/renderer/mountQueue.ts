@@ -70,6 +70,25 @@ export function createMountQueue(schedule: (cb: () => void) => void, now: () => 
   }
 }
 
+/**
+ * Once the next frame has been drawn: a task queued from that frame's animation callbacks runs after its paint. Or a
+ * moment from now if no frame comes. Returns a cancel. Used for work that would only make the frame of a project switch
+ * longer, such as kept terminals drawing what they gathered while away.
+ */
+export function afterNextPaint(cb: () => void, frame: (f: () => void) => unknown = requestAnimationFrame, later: (f: () => void, ms: number) => unknown = setTimeout): () => void {
+  let state: 'waiting' | 'done' | 'cancelled' = 'waiting'
+  const run = (): void => {
+    if (state !== 'waiting') return
+    state = 'done'
+    cb()
+  }
+  frame(() => later(run, 0))
+  later(run, 100)
+  return () => {
+    if (state === 'waiting') state = 'cancelled'
+  }
+}
+
 /** The next frame, or a moment from now if no frame comes, as when the window is minimized. */
 export function nextFrame(cb: () => void): void {
   let fired = false

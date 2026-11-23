@@ -19,6 +19,7 @@ import { otherProfiles, pickedProfile } from '../terminalProfilesUi'
 import { installZoomCompensation } from '../xtermZoom'
 import { parkedIds, useParked } from '../terminalParking'
 import { onCanvasTier } from '../terminalPace'
+import { afterNextPaint } from '../mountQueue'
 import { buildLiveTerminal, hookShelfToMemory, shelfHolder, terminalMounts, terminalShelf, type LiveTerminal, type TerminalUi } from './liveTerminal'
 
 const SEARCH_COLORS = {
@@ -219,7 +220,9 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
         refitRef.current = null
       })
       // Back from the shelf: what it gathered there is drawn now.
-      if (!fresh) pacer.flush()
+      // After the frame that shows it, so a project switch's first frame isn't spent parsing every kept terminal's
+      // catch-up: it shows what it showed when it left for that one frame. See afterNextPaint.
+      if (!fresh) wiring.push(afterNextPaint(pacer.flush))
 
       if (fresh && refreshed) {
         term.focus()

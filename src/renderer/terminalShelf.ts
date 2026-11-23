@@ -32,7 +32,15 @@ export interface TerminalShelf<T> {
  * How much the shelf may hold. A terminal's history is about 12 bytes a character cell (terminalParking.ts), so 27
  * terminals with full 10,000-line scrollbacks would hold some 390 MB. Past either limit the terminal kept longest ago
  * goes first, and is drawn afresh from its session when it's next shown, as every terminal was before.
+ *
+ * The limits are checked a moment after a terminal is kept (SETTLE_MS), not as each is kept. A project switch keeps the
+ * windows of the project left before it takes back those of the project shown, so for that moment the shelf holds
+ * both; and the windows of the project shown that are off screen are taken back a frame later (stagedFlow.ts).
+ * Checked at once, a canvas of 33 terminals across two projects let go of one about to be taken back, at every
+ * switch, and built it afresh in the switch's first frame.
  */
+export const SETTLE_MS = 500
+
 export interface ShelfBudget<T> {
   maxCount: number
   maxBytes: number
@@ -48,6 +56,7 @@ export function createTerminalShelf<T>(
 ): TerminalShelf<T> {
   // In the order kept, oldest first.
   const kept = new Map<string, Shelved<T> & { timer: unknown; bytes: number }>()
+  let checkDue = false
 
   const drop = (id: string): void => {
     const e = kept.get(id)
@@ -67,14 +76,18 @@ export function createTerminalShelf<T>(
       }
       const timer = timers.set(() => drop(id), keepMs())
       kept.set(id, { ...entry, timer, bytes: budget ? budget.weigh(entry.value) : 0 })
-      if (!budget) return
-      let bytes = 0
-      for (const e of kept.values()) bytes += e.bytes
-      for (const [oldest, e] of [...kept]) {
-        if (kept.size <= budget.maxCount && bytes <= budget.maxBytes) break
-        bytes -= e.bytes
-        drop(oldest)
-      }
+      if (!budget || checkDue) return
+      checkDue = true
+      timers.set(() => {
+        checkDue = false
+        let bytes = 0
+        for (const e of kept.values()) bytes += e.bytes
+        for (const [oldest, e] of [...kept]) {
+          if (kept.size <= budget.maxCount && bytes <= budget.maxBytes) break
+          bytes -= e.bytes
+          drop(oldest)
+        }
+      }, SETTLE_MS)
     },
     take(id, key) {
       const e = kept.get(id)

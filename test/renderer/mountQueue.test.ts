@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest'
-import { createMountQueue } from '../../src/renderer/mountQueue'
+import { describe, expect, test, vi } from 'vitest'
+import { afterNextPaint, createMountQueue } from '../../src/renderer/mountQueue'
 
 function setup(costMs: number, budgetMs = 8) {
   let clock = 0
@@ -82,4 +82,51 @@ test('a prioritized window can still be cancelled', () => {
   cancel()
   frame()
   expect(built).toEqual([])
+})
+
+describe('afterNextPaint', () => {
+  function clock() {
+    const frames: Array<() => void> = []
+    const timers: Array<{ f: () => void; ms: number }> = []
+    return {
+      frame: (f: () => void) => frames.push(f),
+      later: (f: () => void, ms: number) => timers.push({ f, ms }),
+      /** The frame's animation callbacks, then (as after its paint) the tasks they queued. */
+      paint() {
+        for (const f of frames.splice(0)) f()
+        for (const t of timers.filter((x) => x.ms === 0)) timers.splice(timers.indexOf(t), 1), t.f()
+      },
+      timeout() {
+        for (const t of timers.splice(0)) t.f()
+      }
+    }
+  }
+
+  test('runs once the next frame has been drawn, not in it, and only once', () => {
+    const c = clock()
+    const cb = vi.fn()
+    afterNextPaint(cb, c.frame, c.later)
+    expect(cb).not.toHaveBeenCalled()
+    c.paint()
+    expect(cb).toHaveBeenCalledTimes(1)
+    c.timeout()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  test('runs anyway when no frame comes, as in a minimized window', () => {
+    const c = clock()
+    const cb = vi.fn()
+    afterNextPaint(cb, c.frame, c.later)
+    c.timeout()
+    expect(cb).toHaveBeenCalledTimes(1)
+  })
+
+  test('cancelled, it never runs', () => {
+    const c = clock()
+    const cb = vi.fn()
+    afterNextPaint(cb, c.frame, c.later)()
+    c.paint()
+    c.timeout()
+    expect(cb).not.toHaveBeenCalled()
+  })
 })
