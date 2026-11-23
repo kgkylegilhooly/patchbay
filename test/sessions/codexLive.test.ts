@@ -87,7 +87,7 @@ describe('a failed Codex turn, as 0.170 really writes it', () => {
     const state = fold([...failed.slice(0, -2), line, ...failed.slice(-2)])
     const payload = codexStopFailure(state)!
     expect(payload).toMatchObject({ error: 'rate_limit', codex_error: 'usage_limit_exceeded' })
-    expect(stopFromHook(payload, Date.now(), state.plan)).toMatchObject({ kind: 'usage-limit', until: resetsAt * 1000, holds: 'reset' })
+    expect(stopFromHook(payload, resetsAt * 1000 - 3_600_000, state.plan)).toMatchObject({ kind: 'usage-limit', until: resetsAt * 1000, holds: 'reset' })
   })
 
   test('a turn that completes without an error is no failure', () => {
