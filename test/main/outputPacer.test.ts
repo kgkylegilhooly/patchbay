@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { createOutputPacer } from '../../src/main/outputPacer'
 
-function setup(opts: { wants?: (w: number, id: string) => boolean } = {}) {
+function setup(opts: { wants?: (w: number, id: string) => boolean; keepChars?: number } = {}) {
   const sent: Array<{ id: string; data: string; seq: number }> = []
   const buffers = new Map<string, { data: string; seq: number }>()
   const win = { id: 7, send: (_channel: string, id: unknown, data: unknown, seq: unknown) => void sent.push({ id: id as string, data: data as string, seq: seq as number }) }
@@ -9,7 +9,8 @@ function setup(opts: { wants?: (w: number, id: string) => boolean } = {}) {
     snapshot: (id) => buffers.get(id) ?? { data: '', seq: 0 },
     wants: opts.wants ?? (() => true),
     highWater: 100,
-    lowWater: 30
+    lowWater: 30,
+    keepChars: opts.keepChars ?? 50
   })
   /** Output as the host hands it on: the buffer grows and the count goes up, whether or not the window is sent it. */
   const print = (id: string, data: string): void => {
@@ -41,7 +42,24 @@ test('a window that stops taking output is sent no more past the high-water mark
   expect(t.pacer.state(7)).toMatchObject({ held: true, missed: 2 })
 })
 
-test('once caught up, each missed session gets its whole buffer from a clean slate, with its latest count', () => {
+test('a short stall: each session gets exactly what it missed, with no reset, so a selection or search survives', () => {
+  const t = setup({ keepChars: 1000 })
+  for (let i = 0; i < 30; i++) t.print(i % 2 ? 'a' : 'b', String(i).padStart(10, '-'))
+  const at = t.sent.length
+  for (let i = 0; i < 3; i++) t.pacer.ack(t.win, t.taken())
+  const caught = t.sent.slice(at)
+  // Together with what was sent before the stall, each session's output is whole, in order, and starts no afresh.
+  for (const id of ['a', 'b']) {
+    const all = t.sent.filter((c) => c.id === id).map((c) => c.data).join('')
+    const expected = Array.from({ length: 30 }, (_, i) => i).filter((i) => (i % 2 ? 'a' : 'b') === id).map((i) => String(i).padStart(10, '-')).join('')
+    expect(all).toBe(expected)
+  }
+  expect(caught.every((c) => !c.data.includes(String.fromCharCode(27) + 'c'))).toBe(true)
+  expect(caught.find((c) => c.id === 'a')?.seq).toBe(15)
+  expect(t.pacer.state(7)).toMatchObject({ held: false })
+})
+
+test('a long stall: a session that missed more than is kept gets its whole buffer from a clean slate, with its latest count', () => {
   const t = setup()
   for (let i = 0; i < 30; i++) t.print(i % 2 ? 'a' : 'b', 'z'.repeat(10))
   const before = t.sent.length
