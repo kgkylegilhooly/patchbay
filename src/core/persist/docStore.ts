@@ -381,18 +381,28 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     else quarantine(primary)
   }
 
-  async function persist(json: string): Promise<void> {
+  /**
+   * Saves in the order they were asked for, and the place of the last sync flush among them: a save asked for before
+   * it holds an older doc, so it mustn't put that back over the newer one, however far it had got.
+   */
+  let asked = 0
+  let flushedSyncAt = 0
+
+  async function persist(json: string, order: number): Promise<void> {
     const temp = `${primary}.tmp`
     await writeSynced(temp, json)
     await rotateBackup()
+    if (order < flushedSyncAt) return
     await renameWithRetry(temp, primary)
     trusted = await stat(primary).catch(() => null)
   }
 
   function enqueue(doc: CanvasDoc): Promise<void> {
+    const order = ++asked
     const run = queue.then(async () => {
+      if (order < flushedSyncAt) return
       // Turned into text here, once, however many changes came while it waited.
-      await persist(docJson(doc))
+      await persist(docJson(doc), order)
       if (pending === doc) pending = null
     })
     queue = run.catch(() => {})
@@ -452,6 +462,7 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       clearTimer()
       if (pending === null) return
       const doc = pending
+      flushedSyncAt = ++asked
       // Temp names of its own, so a save already under way can't write into the same file.
       const replace = (target: string, fill: (temp: string) => void): void => {
         const temp = `${target}.now.tmp`

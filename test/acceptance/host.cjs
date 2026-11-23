@@ -379,8 +379,12 @@ async function fallback(c) {
   await section(c, 'The host cannot start', [profile], async () => {
     const started = Date.now()
     const app = await launch({ profile, exe, env: { PATCHBAY_HOST_SCRIPT: path.join(work, 'no-such-host.js') } })
-    const info = await hostInfo(app.page)
     c.check('the app opens anyway', true, `${Date.now() - started} ms`)
+    // The window doesn't wait for a new host to start, so it learns the host failed once it has.
+    const info = await waitFor('the host to be given up on', async () => {
+      const i = await hostInfo(app.page)
+      return i.mode === 'starting' ? null : i
+    }, 30000).catch(() => hostInfo(app.page))
     c.check('it says what happened', info.mode === 'in-process' && /end when it quits/.test(info.problem ?? ''), info)
     await openNode(app.page, terminal('t', work, 40, 40, { command: 'echo works-without-a-host' }))
     await waitFor('the terminal to work', async () => (await snapshot(app.page, 't')).includes('works-without-a-host'), 20000)

@@ -138,3 +138,15 @@ test('a save loaded from disk is trusted the same way, and old saves still load'
   expect(reads.files.filter((f) => f === primary())).toEqual([])
   expect(titleOnDisk(backup())).toBe('saved')
 })
+
+test('a save already under way with an older doc does not put it back over what flushSync wrote', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  const older = store.save(doc('older'))
+  store.saveDebounced(doc('newest'))
+  // Windows ends the session while the older save is still writing.
+  store.flushSync()
+  await older
+  await store.flush()
+  expect(titleOnDisk(primary())).toBe('newest')
+})
