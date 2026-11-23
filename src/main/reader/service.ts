@@ -147,7 +147,9 @@ export function createDocsService(d: DocsDeps) {
     const projectId = o.projectId ?? o.from?.projectId ?? doc.activeProjectId
     const already = doc.nodes.find((n) => n.kind === 'reader' && (n.projectId ?? doc.activeProjectId) === projectId && docKey(n.path) === docKey(read.path))
     if (already) return { ok: true, nodeId: already.id, existed: true }
-    const size = readerSize(d.view?.() ?? null, doc.viewport.zoom)
+    // Opened by the person, it's brought into view, so it's sized to the window. An agent's opens beside it at the
+    // usual size, which doesn't move the person's view and leaves its neighbours room.
+    const size = o.openedBy ? READER_DEFAULT : readerSize(d.view?.() ?? null, doc.viewport.zoom)
     const spot = o.at ?? (o.from ? d.near(doc, o.from, size) : { x: (80 - doc.viewport.x) / doc.viewport.zoom, y: (80 - doc.viewport.y) / doc.viewport.zoom })
     const node: ReaderNode = {
       id: newId(),

@@ -313,18 +313,27 @@
 /*
  * zoomTier.ts headScale: under NEAR_READABLE a header's text would fall below about 11 px, so the strip is drawn
  * larger. Its height is divided by the same scale, so it keeps its 36 (or 38) canvas px and the body, terminal
- * included, never changes size with the zoom. At 85% and above the scale is 1 and nothing changes.
+ * included, never changes size with the zoom. Only while the canvas says data-head-scaled (ZoomTierWatcher: near, scale
+ * above 1), so at 85% and above no header is touched.
  */
-[data-zoom-tier='near'] :is(.unit > .unit-head, .note > .note-head) {
+.react-flow[data-head-scaled] :is(.unit > .unit-head, .note > .note-head) {
   zoom: var(--head-scale, 1);
   height: calc(36px / var(--head-scale, 1));
   min-height: 0;
   padding-block: 0;
 }
 
-[data-zoom-tier='near'] .wb > .wb-head {
+.react-flow[data-head-scaled] .wb > .wb-head {
   zoom: var(--head-scale, 1);
   height: calc(38px / var(--head-scale, 1));
+}
+
+/* A group's label too, so it doesn't draw smaller than the windows in it. It keeps its 38 px slot. */
+.react-flow[data-head-scaled] .rack-head {
+  zoom: var(--head-scale, 1);
+  height: calc(38px / var(--head-scale, 1));
+  overflow: hidden;
+  border-radius: calc(13px / var(--head-scale, 1)) calc(13px / var(--head-scale, 1)) 0 0;
 }
 
 /* ── Far and overview: notes and triggers read as tiles too ────────────────────────────────────────────────────── */
@@ -443,14 +452,15 @@
 
 /*
  * A near header drawn larger has less room by its own measure, so the header's container queries (styles.css) start
- * hiding sooner. There the status word outlasts the context share: Idle or Working is what a scan looks for.
+ * hiding sooner. There the status word outlasts an ordinary context share: Idle or Working is what a scan looks for.
+ * A share at warn or above (amber, red) stays, as that's the one worth seeing.
  */
 @container (max-width: 470px) {
   .react-flow[data-head-scaled] .unit-head-session > .badge:not(:has(.led)) {
     display: inline-flex;
   }
 
-  .react-flow[data-head-scaled] .unit-head-session > .unit-context {
+  .react-flow[data-head-scaled] .unit-head-session > .unit-context.usage-ok {
     display: none;
   }
 }

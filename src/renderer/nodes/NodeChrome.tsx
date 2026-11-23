@@ -1,4 +1,4 @@
-import { Handle, NodeResizer, Position } from '@xyflow/react'
+import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PendingApproval } from '../../shared/contract'
@@ -21,6 +21,8 @@ import { headerFolder, keyBadge } from '../zoomTier'
 import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
+import { askReview, reviewShown, reviewViewport, useFarReview } from '../farReview'
+import { measureSafeArea } from '../safeArea'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -107,6 +109,13 @@ function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.E
   const [open, setOpen] = useState(false)
   const [clipped, setClipped] = useState(false)
   const text = useRef<HTMLElement>(null)
+  // Review… on a zoomed-out tile brought the view here: show the whole command.
+  const reviewing = useFarReview((s) => s.requestId === approval.requestId)
+  useEffect(() => {
+    if (!reviewing) return
+    setOpen(true)
+    reviewShown()
+  }, [reviewing])
   useEffect(() => {
     const el = text.current
     if (!el || open) return
@@ -184,13 +193,26 @@ function FarMeta({ node, status, folder }: { node: CanvasNode; status: AgentStat
   )
 }
 
-/** Approve and Deny in a zoomed-out tile, at its size, so a prompt can be answered from the overview. */
+/**
+ * A prompt in a zoomed-out tile: Deny, which is safe, and Review…, which zooms to the window with the whole command
+ * shown in its strip, where Approve is. The tile can't show all of a command, so it never approves one (farReview.ts).
+ */
 function FarAnswer({ approval }: { approval: PendingApproval }): React.JSX.Element {
+  const flow = useReactFlow()
   const what = `${approval.tool}: ${approval.detail}`
+  const review = (): void => {
+    const internal = flow.getInternalNode(approval.nodeId)
+    const area = measureSafeArea()
+    if (!internal || !area) return
+    askReview(approval.requestId)
+    const node = { ...internal.internals.positionAbsolute, width: internal.measured.width ?? 0, height: internal.measured.height ?? 0 }
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    void flow.setViewport(reviewViewport(node, area), { duration: still ? 0 : 260 })
+  }
   return (
     <span className="far-answer">
-      <button type="button" className="far-act far-act-ok nodrag" data-far-answer="allow" title={`Approve ${what}`} onClick={() => void bridge.answerApproval(approval.requestId, 'allow')}>
-        Approve
+      <button type="button" className="far-act far-act-ok nodrag" data-far-answer="review" title={`Zoom in to read the whole command, then approve or deny it: ${what}`} onClick={review}>
+        Review…
       </button>
       <button type="button" className="far-act nodrag" data-far-answer="deny" title={`Deny ${what}`} onClick={() => void bridge.answerApproval(approval.requestId, 'deny')}>
         Deny
