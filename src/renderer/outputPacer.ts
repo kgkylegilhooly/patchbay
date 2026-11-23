@@ -14,11 +14,14 @@ export interface OutputPacer {
 
 /**
  * Hands output on at once while `immediate` says so, as for the terminal being typed in, so echo is never held up.
- * Otherwise it's gathered and handed on together, at most every `everyMs`. Order is always kept.
+ * Otherwise it's gathered and handed on together, at most every `everyMs`. Order is always kept. `everyMs` may be a
+ * function, for a pace that changes (see terminalPace.ts): a write asking for a sooner pace than the one waiting brings
+ * the drawing forward, and 0 hands it on at once.
  */
-export function createOutputPacer(write: (data: string) => void, immediate: () => boolean, everyMs = BACKGROUND_PACE_MS): OutputPacer {
+export function createOutputPacer(write: (data: string) => void, immediate: () => boolean, everyMs: number | (() => number) = BACKGROUND_PACE_MS): OutputPacer {
   let held: string[] = []
   let timer: ReturnType<typeof setTimeout> | null = null
+  let due = 0
   let disposed = false
 
   const flush = (): void => {
@@ -33,13 +36,18 @@ export function createOutputPacer(write: (data: string) => void, immediate: () =
   return {
     write(data) {
       if (disposed) return
-      if (immediate()) {
+      const pace = immediate() ? 0 : typeof everyMs === 'function' ? everyMs() : everyMs
+      if (pace <= 0) {
         flush()
         write(data)
         return
       }
       held.push(data)
-      timer ??= setTimeout(flush, everyMs)
+      const now = Date.now()
+      if (timer && now + pace >= due) return
+      if (timer) clearTimeout(timer)
+      due = now + pace
+      timer = setTimeout(flush, pace)
     },
     flush,
     dispose() {
