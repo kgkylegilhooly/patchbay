@@ -14,6 +14,7 @@ import { AGENT_KINDS, agentChoice, defaultAgentNote, withAgent } from '../shared
 import { AGENT_NAMES, type AgentKind } from '../shared/model'
 import { noteAgentSettings } from './agentChoice'
 import { confirmThen } from './shell/confirmStore'
+import { updateCheckRow } from './updateCheckRow'
 import './agents.css'
 
 /** Suggestions only. Any installed font can be typed. */
@@ -536,6 +537,7 @@ function UpdateSettings({ draft, set }: { draft: Settings; set: (key: keyof Sett
     return bridge.onUpdateState(setState)
   }, [])
   const busy = state?.phase === 'checking' || state?.phase === 'downloading'
+  const autoCheck = updateCheckRow(draft.updateFeed, draft.updateCheck)
   return (
     <div className="set-group" data-settings-updates>
       <Row
@@ -552,8 +554,8 @@ function UpdateSettings({ draft, set }: { draft: Settings; set: (key: keyof Sett
           <input id="updateFeed" name="updateFeed" placeholder="github:owner/repo" spellCheck={false} value={draft.updateFeed ?? ''} onChange={(e) => set('updateFeed', e.target.value)} />
         </div>
       </Row>
-      <Row title="Check for updates by itself" htmlFor="set-update-check" help="Shortly after Patchbay starts, then every 6 hours. A new version downloads, and waits for you to restart.">
-        <Toggle id="set-update-check" checked={draft.updateCheck !== 'off'} onChange={() => set('updateCheck', draft.updateCheck === 'off' ? '' : 'off')} />
+      <Row title="Check for updates by itself" htmlFor="set-update-check" help={autoCheck.help}>
+        <Toggle id="set-update-check" checked={autoCheck.checked} disabled={autoCheck.disabled} onChange={() => set('updateCheck', draft.updateCheck === 'off' ? '' : 'off')} />
       </Row>
       <Row title="Status" help={<span data-update-status>{updateText(state)}</span>}>
         {state?.phase === 'ready' ? (

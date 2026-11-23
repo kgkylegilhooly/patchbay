@@ -210,7 +210,7 @@ export function PeekCard({ id, place, commands }: { id: string; place: PeekPlace
           {place.from === 'jump' && (
             <label className="peek-check" title="After those waiting on you, go to sessions that finished or stopped while you were elsewhere">
               <input type="checkbox" checked={includeUnread} onChange={(e) => setIncludeUnread(e.target.checked)} />
-              Also unread
+              Then show the next unread
             </label>
           )}
           <span className="peek-grow" />

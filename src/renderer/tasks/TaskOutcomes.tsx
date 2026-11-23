@@ -4,6 +4,8 @@ import { bridge } from '../bridge'
 import { useStore } from '../store'
 import { openReviewInbox } from '../reviewInboxUi'
 import { TaskComparisons, tryApproachesFor } from './TaskComparisons'
+import { Icon } from '../icons'
+import { outcomeSummary } from './outcomeSummary'
 import './tasks.css'
 
 /**
@@ -64,6 +66,7 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
     catch (e) { setError(String(e)); setView(null) }
     finally { setBusy(false) }
   }
+  const open = task.state !== 'accepted' && task.state !== 'cancelled'
   const latest = (checkId: string): TaskVerification | undefined => commands.filter((a) => !a.comparison && a.checkId === checkId).at(-1)
   return <article className="task-outcome-card" data-task={task.id}>
     <div className="task-card-heading"><strong>{task.brief}</strong><span className={`task-state task-${task.state}`}>{STATE_LABEL[task.state]}</span></div>
@@ -80,7 +83,7 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
       {view.readiness.ready ? 'Ready for review now: the submission and every required check match the files as they are.' : `Not ready: ${view.readiness.reasons.join('; ')}`}
     </p>}
     {view && view.readiness.warnings.length > 0 && <p className="task-warning">{view.readiness.warnings.join('; ')}</p>}
-    <div className="task-card-tools"><span>{commands.length} command {commands.length === 1 ? 'attempt' : 'attempts'}</span><span className="task-card-buttons">{task.state !== 'accepted' && task.state !== 'cancelled' && <button className="btn btn-sm" data-try-approaches={task.id} title="Two attempts at this task, each in its own worktree. Their runs and your choice are recorded here" onClick={() => tryApproachesFor(task)}>Try two approaches…</button>}<button className="btn btn-sm" disabled={busy} onClick={() => { setExpanded(true); void refresh() }}>{busy ? 'Checking…' : expanded ? 'Refresh evidence' : 'Review outcome'}</button></span></div>
+    <div className="task-card-tools"><span>{commands.length} command {commands.length === 1 ? 'attempt' : 'attempts'}</span><span className="task-card-buttons">{task.state !== 'accepted' && task.state !== 'cancelled' && <button className="btn btn-sm" data-try-approaches={task.id} title="Two attempts at this task, each in its own worktree. Their runs and your choice are recorded here" onClick={() => tryApproachesFor(task)}>Try two approaches…</button>}<button className="btn btn-sm" disabled={busy} onClick={() => { setExpanded(true); void refresh() }}>{busy ? 'Checking…' : expanded ? 'Refresh evidence' : 'Review outcome'}</button>{open && <button className="btn btn-sm btn-solid" disabled={busy || !view?.readiness.ready} title={view?.readiness.ready ? 'Record that you accept this submission' : 'Not ready yet: see above. It can be accepted once the submission and every required check match the files'} onClick={() => void accept()}>Accept this submission</button>}</span></div>
     {expanded && <div className="task-details">
       <button className="btn btn-sm btn-quiet" onClick={() => setExpanded(false)}>Hide details</button>
       <ul>{task.acceptanceCriteria.map((c, i) => <li key={i}>{c}</li>)}</ul>
@@ -101,12 +104,16 @@ function TaskCard({ task, records }: { task: Task; records: TaskRecords }): Reac
       </div>)}
       {task.acceptances.map((a, i) => <p key={i}>Accepted by you on {new Date(a.at).toLocaleString()} (submission {a.submissionId}).</p>)}
     </div>}
-    {task.state !== 'accepted' && task.state !== 'cancelled' && <button className="btn btn-sm btn-solid" disabled={busy || !view?.readiness.ready} onClick={() => void accept()}>Accept this submission</button>}
     {error && <p role="alert">{error}</p>}
   </article>
 }
 
+/** Whether the board shows its task cards, for the rest of the session. Folded, they leave the board to its columns. */
+let outcomesShown = false
+
 export function TaskOutcomes({ records }: { records?: TaskRecords }): React.JSX.Element | null {
+  const [shown, setShown] = useState(outcomesShown)
   if (!records?.tasks.length) return null
-  return <section className="task-outcomes" aria-label="Task outcomes"><h3>Task outcomes <span>{records.tasks.length}</span> <button className="btn btn-sm btn-quiet" data-cmd="review-inbox" onClick={() => openReviewInbox()}>Review inbox</button></h3><div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div></section>
+  const toggle = (): void => setShown((outcomesShown = !shown))
+  return <section className={`task-outcomes${shown ? '' : ' task-outcomes-folded'}`} aria-label="Task outcomes"><h3><button type="button" className="task-outcomes-toggle" data-task-outcomes="toggle" aria-expanded={shown} title={shown ? 'Fold the task cards to one line' : 'Show the task cards'} onClick={toggle}><Icon name="chevron" size={13} />Task outcomes <span>{records.tasks.length}</span></button>{!shown && <span className="task-outcomes-summary">{outcomeSummary(records.tasks)}</span>} <button className="btn btn-sm btn-quiet" data-cmd="review-inbox" onClick={() => openReviewInbox()}>Review inbox</button></h3>{shown && <div className="task-outcome-list">{records.tasks.map((task) => <TaskCard key={task.id} task={task} records={records} />)}</div>}</section>
 }

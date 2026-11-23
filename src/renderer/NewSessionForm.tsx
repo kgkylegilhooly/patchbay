@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { bridge } from './bridge'
+import { shortPath } from './shortPath'
 import type { IconName } from './iconPaths'
 import { FormShell } from './shell/FormShell'
 import { ProfilePicker } from './TerminalProfilePicker'
@@ -54,7 +55,7 @@ export function NewSessionForm({
         <span className="field-label">Folder</span>
         <div className="folder-row">
           <span className={cwd ? 'folder' : 'folder folder-empty'} title={cwd}>
-            {cwd || (claude ? `Choose where ${agentName} will work` : 'Your home folder')}
+            {cwd ? shortPath(cwd) : claude ? `Choose where ${agentName} will work` : 'Your home folder'}
           </span>
           <button
             type="button"

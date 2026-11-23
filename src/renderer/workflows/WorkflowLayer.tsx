@@ -5,6 +5,7 @@ import { stepOutputs, type OutputValue, type StepAttempt, type WorkflowRun } fro
 import type { PersonAction } from '../../shared/workflowBridge'
 import { useStore } from '../store'
 import { workflows } from '../workflowBridge'
+import { shortPath } from '../shortPath'
 import { ATTEMPT_LABEL, chipRuns, earlierAttempts, needsPerson, runStrip, runSubject } from './runView'
 import { attemptLook, workflowRunLook } from '../status/status'
 import { StatusMark, StatusPair } from '../status/StatusMarks'
@@ -139,7 +140,7 @@ function RunPanel({ run, onClose }: { run: WorkflowRun; onClose: () => void }): 
       }
     >
       <p className="recipe-dim workflow-where">
-        {run.worktree ? <>Branch <code>{run.worktree.branch}</code> in <code>{run.worktree.path}</code></> : <>In <code>{run.cwd}</code></>}
+        {run.worktree ? <span title={run.worktree.path}>Branch <code>{run.worktree.branch}</code></span> : <span title={run.cwd}>In <code>{shortPath(run.cwd)}</code></span>}
       </p>
       <ol className="workflow-run-steps">
         {run.definition.steps.map((s, n) => {

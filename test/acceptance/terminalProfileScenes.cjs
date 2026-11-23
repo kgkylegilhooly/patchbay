@@ -116,6 +116,14 @@ const scenes = {
     await seedProfiles(page)
     await require('./scenes.cjs').rightClickCanvas(page)
     await sleep(300)
+  },
+  // The other profiles, opened from the canvas menu's one "New terminal with" row.
+  'terminal-menu-sub': async (page) => {
+    await seedProfiles(page)
+    await require('./scenes.cjs').rightClickCanvas(page)
+    await sleep(300)
+    await page.click('.menu-panel [data-cmd="new-terminal-with"]')
+    await sleep(300)
   }
 }
 

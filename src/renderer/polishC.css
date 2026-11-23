@@ -1,0 +1,129 @@
+/* Polish round 1, part C: menus, board, paths, wording, settings. */
+
+/* A menu row that opens a submenu in the menu's place. */
+.menu-more {
+  display: inline-flex;
+  margin-left: 14px;
+  color: var(--ink-dim);
+}
+
+/* The workflow run panel's place: one line, the branch cut at its end, the full path in its tooltip. */
+.workflow-where {
+  display: flex;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.workflow-where > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The board: columns fill the height (the dock sits under the board, so no room is kept for it), share the width
+   rather than scrolling it at 1024, and keep their actions in one … menu. */
+.board .board-columns {
+  padding-bottom: 18px;
+}
+
+.board .board-column:not(.board-add) {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 188px;
+  max-width: 320px;
+}
+
+.board .board-add {
+  width: 170px;
+}
+
+.board .board-column-head h3 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board .board-column-tools {
+  align-items: center;
+  flex: none;
+}
+
+.board-starts-mark {
+  display: inline-flex;
+  padding: 0 4px;
+}
+
+/* Task outcomes fold to one line by default. */
+.board .task-outcomes-folded {
+  padding-block: 8px;
+}
+
+.board .task-outcomes-folded h3 {
+  margin: 0;
+}
+
+.task-outcomes h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-outcomes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.task-outcomes-toggle:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+.task-outcomes-toggle .icon {
+  transition: transform 0.12s;
+}
+
+.task-outcomes-toggle[aria-expanded='true'] .icon {
+  transform: rotate(90deg);
+}
+
+.task-outcomes h3 .task-outcomes-summary {
+  font-weight: 400;
+  color: var(--ink-dim);
+  opacity: 1;
+}
+
+/* The git panel with no repository: what to do, and a button to do it. */
+.git-empty[data-git='empty'] p {
+  margin: 0 0 10px;
+}
+
+/* Settings > Background sessions: the last check on its own line, under the description. */
+.res-summary {
+  display: block;
+  margin-top: 4px;
+}
+
+.res-reading {
+  color: var(--ink-dim);
+}
+
+/* A Files shelf row keeps one … button, faint until the row is pointed at or focused, then at full contrast. */
+.shelf-row:hover .shelf-actions .icon-btn,
+.shelf-row:focus-within .shelf-actions .icon-btn,
+.shelf-row-menu .shelf-actions .icon-btn {
+  color: var(--ink);
+}
+
+.shelf-row-menu .shelf-actions {
+  opacity: 1;
+}

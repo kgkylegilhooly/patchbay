@@ -8,6 +8,8 @@ import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
 import { confirmThen } from './shell/confirmStore'
 import { confirmWords } from './shell/panelKeys'
+import { drillEntries, firstUsable, MENU_BACK } from './menuDrill'
+import './polishC.css'
 
 /**
  * A menu panel. Pressing on it never moves focus, so a terminal keeps the keyboard and Edit > Copy
@@ -31,7 +33,9 @@ export function MenuPanel({
 }): React.JSX.Element {
   // Settings > Agents: an agent turned off isn't offered, in any menu.
   const agents = useAgentChoice()
-  entries = entries.filter((e) => e === 'separator' || commandAllowed(e.id, agents))
+  // A row with a submenu opens it in this panel's place; the row back leads out again.
+  const [sub, setSub] = useState<MenuItem | null>(null)
+  entries = drillEntries(entries, sub, () => undefined).filter((e) => e === 'separator' || commandAllowed(e.id, agents))
   const usable = entries.filter((e): e is MenuItem => e !== 'separator' && !e.disabled)
   const overrides = useStore((s) => s.keyOverrides)
   const shortcutOf = (item: MenuItem): string | null => {
@@ -53,8 +57,16 @@ export function MenuPanel({
     if (keyed.current) ownRef.current?.querySelector('.menu-item-active')?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
+  const drill = (item: MenuItem | null): void => {
+    keyed.current = true
+    setActive(item?.submenu ? firstUsable(item.submenu) : (sub?.id ?? null))
+    setSub(item)
+  }
+
   const choose = (item: MenuItem): void => {
     if (item.disabled) return
+    if (item.id === MENU_BACK) return drill(null)
+    if (item.submenu) return drill(item)
     if (item.steps && !item.steps.canRun) return
     if (!item.keepOpen && !item.steps) onClose()
     // One confirmation for every destructive item, in its own dialog rather than a reworded menu row.
@@ -63,8 +75,8 @@ export function MenuPanel({
   }
 
   // Refs let the listener below stay attached for the life of the menu.
-  const latest = useRef({ usable, active, choose, onClose, onStep })
-  latest.current = { usable, active, choose, onClose, onStep }
+  const latest = useRef({ usable, active, choose, onClose, onStep, sub, drill })
+  latest.current = { usable, active, choose, onClose, onStep, sub, drill }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -76,16 +88,19 @@ export function MenuPanel({
         setActive(m.usable[next]?.id ?? null)
       }
       const handlers: Record<string, () => void> = {
-        Escape: m.onClose,
+        Escape: () => (m.sub ? m.drill(null) : m.onClose()),
         ArrowDown: () => move(1),
         ArrowUp: () => move(-1),
         ArrowLeft: () => {
+          if (m.sub) return m.drill(null)
           const steps = m.usable.find((i) => i.id === m.active)?.steps
           if (steps) return void (!steps.down.disabled && steps.down.run())
           m.onStep?.(-1)
         },
         ArrowRight: () => {
-          const steps = m.usable.find((i) => i.id === m.active)?.steps
+          const item = m.usable.find((i) => i.id === m.active)
+          if (item?.submenu) return m.drill(item)
+          const steps = item?.steps
           if (steps) return void (!steps.up.disabled && steps.up.run())
           m.onStep?.(1)
         },
@@ -135,6 +150,7 @@ export function MenuPanel({
             data-tool={entry.tool}
             role={entry.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             aria-checked={entry.checked}
+            aria-haspopup={entry.submenu ? 'menu' : undefined}
             disabled={entry.disabled}
             className={[
               'menu-item',
@@ -152,6 +168,7 @@ export function MenuPanel({
             </span>
             <span className="menu-label">{entry.label}</span>
             {shortcutOf(entry) && <span className="menu-shortcut">{shortcutOf(entry)}</span>}
+            {entry.submenu && <span className="menu-more" aria-hidden="true"><Icon name="chevron" size={13} /></span>}
           </button>
         )
       )}
