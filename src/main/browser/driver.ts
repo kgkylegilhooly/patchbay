@@ -17,6 +17,7 @@ import { linkAttemptToTask, taskRefusal } from './taskLink'
 import { readRevision, unknownRevision } from '../tasks/verification'
 import { restartTogether, watchHungPage, type HungPage } from './hungPage'
 import { hungPageNotice } from '../stuckParts'
+import { createLoadRetry } from './loadRetry'
 
 /** What the agent verbs need from a page. Anything they can't do comes back as a refusal saying why. */
 export interface BrowserDriver {
@@ -177,6 +178,16 @@ export function createBrowserDriver({
   const presets = new Map<string, ViewportPreset>()
   // Only a summary goes with the node's state, so a busy page doesn't send its whole record to the window on each push.
   // The panel fetches the attempts when it's open.
+  // A failed load, shown in the node in plain words, and a dev server's address tried again until it answers.
+  const loads = createLoadRetry<WebContents>({
+    reload: (guest) => {
+      if (!guest.isDestroyed()) guest.reload()
+    },
+    show: (guest, failure) => {
+      const id = idOf(guest)
+      if (id) change(id, { failure })
+    }
+  })
   const evidence = new BrowserEvidenceStore(dataDir, (id) => change(id, { evidence: evidence.summary(id) }))
   // Out of the store's own update, as an attempt can end while the canvas is being changed.
   evidence.lifecycle = (attempt) => queueMicrotask(() => linkAttemptToTask(store, attempt))
@@ -297,10 +308,7 @@ export function createBrowserDriver({
       if (isMainFrame) moved()
     })
     guest.on('page-title-updated', update)
-    guest.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
-      // -3 is a load replaced by another. Refusals have already said why.
-      if (isMainFrame && code !== -3 && code !== -20) change(id, { notice: `Couldn't open ${url.slice(0, 200)}: ${description}` })
-    })
+    // A failed load is shown in the page's place, from loadRetry, rather than as a notice.
     let hungNotice: string | null = null
     const hang = watchHungPage(guest, {
       onHung: () => {
@@ -435,6 +443,13 @@ export function createBrowserDriver({
           if (!lockAttach(prefs, params)) event.preventDefault()
         })
         if (contents.getType() !== 'webview') return
+        // From the start, so a first load that fails before the node has attached is still shown.
+        contents.on('did-start-loading', () => loads.started(contents))
+        contents.on('did-fail-load', (_e, code, description, url, isMainFrame) => {
+          if (isMainFrame) loads.failed(contents, code, description, url)
+        })
+        contents.on('did-stop-loading', () => loads.stopped(contents))
+        contents.once('destroyed', () => loads.forget(contents))
         lockGuest(contents, (message) => {
           const id = idOf(contents)
           if (id) change(id, { notice: message })
@@ -449,7 +464,7 @@ export function createBrowserDriver({
       if (guest.hostWebContents !== from || guest.session !== session.fromPartition(partitionFor(node))) return
       if (guests.get(id) === guest) return
       guests.set(id, guest)
-      states.set(id, { url: guest.getURL() || node.url, title: guest.getTitle(), loading: guest.isLoading(), canBack: false, canForward: false, notice: null, driving: null, evidence: evidence.summary(id) })
+      states.set(id, { url: guest.getURL() || node.url, title: guest.getTitle(), loading: guest.isLoading(), canBack: false, canForward: false, notice: null, driving: null, evidence: evidence.summary(id), failure: loads.current(guest) })
       follow(id, guest)
       pushSoon(id)
       for (const wake of waiting.get(id) ?? []) wake()
@@ -478,6 +493,7 @@ export function createBrowserDriver({
     async navigate(id, url) {
       const guest = guestOf(id)
       change(id, { notice: null })
+      loads.reset(guest)
       const started = Date.now()
       let timedOut = false
       await bounded(load(guest, url), TIMEOUTS.navigateMs, 'to load').catch((e) => {
@@ -497,6 +513,7 @@ export function createBrowserDriver({
       if (step === 'back' && !history.canGoBack()) return { moved: false, loaded: true }
       if (step === 'forward' && !history.canGoForward()) return { moved: false, loaded: true }
       change(id, { notice: null })
+      loads.reset(guest)
       if (step === 'back') history.goBack()
       else if (step === 'forward') history.goForward()
       else await reloadPage(id, guest)
@@ -656,6 +673,7 @@ export function createBrowserDriver({
       const guest = guests.get(id)
       if (!guest || guest.isDestroyed()) return { ok: false, reason: "This node isn't showing a page right now." }
       change(id, { notice: null })
+      loads.reset(guest)
       // Failures show on the node, from did-fail-load, so the answer here is only about the address.
       void guest.loadURL(checked.url).catch(() => {})
       return checked
@@ -665,6 +683,7 @@ export function createBrowserDriver({
       const guest = guests.get(id)
       if (!guest || guest.isDestroyed()) return
       change(id, { notice: null })
+      loads.reset(guest)
       const history = guest.navigationHistory
       if (step === 'back' && history.canGoBack()) history.goBack()
       if (step === 'forward' && history.canGoForward()) history.goForward()

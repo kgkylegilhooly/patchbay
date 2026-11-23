@@ -2,7 +2,7 @@ import { createElement, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
 import type { IconName } from '../iconPaths'
-import { keyTarget, panelKeyAction, panelStack, type PanelKind } from './panelKeys'
+import { keyTarget, panelKeyAction, panelStack, trapsTab, windowEscCloses, type PanelKind } from './panelKeys'
 
 export type { PanelKind }
 
@@ -34,8 +34,8 @@ export interface PanelProps {
   /** Where focus starts: the element marked data-autofocus, else the first field (forms, modals) or the panel. */
   initialFocus?: 'auto' | 'panel' | 'none'
   /**
-   * Answer Esc even when focus isn't inside the panel (only the top panel does, and never from a text box or terminal).
-   * On for modals, views and drawers; off for the small forms, so typed work isn't lost to an Esc meant for the canvas.
+   * Answer Esc even when focus isn't inside the panel (only the top panel does). On for every kind; a small form doesn't
+   * answer one from a text box or terminal (see windowEscCloses), so typed work isn't lost to an Esc meant for them.
    */
   globalEsc?: boolean
   /** Clicking the dim layer around a modal closes it. Off by default, so typed work isn't lost to a stray click. */
@@ -92,7 +92,7 @@ export function Panel({
   const latest = useRef({ onClose, busy })
   latest.current = { onClose, busy }
   const modalish = kind === 'modal' || kind === 'view'
-  const answersWindow = globalEsc ?? kind !== 'form'
+  const answersWindow = globalEsc ?? true
 
   // Focus in on open, back out on close: only when focus would otherwise fall to the page.
   useEffect(() => {
@@ -116,6 +116,7 @@ export function Panel({
       const target = e.target instanceof Element ? e.target : null
       if (target && root.current?.contains(target)) return
       if (target?.closest('.menu-panel, .shell')) return
+      if (!windowEscCloses(kind, keyTarget(target))) return
       if (panelKeyAction(kind, { key: e.key, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, target: keyTarget(target) }, { isForm: false, busy: latest.current.busy }) === 'close') {
         e.preventDefault()
         latest.current.onClose()
@@ -138,7 +139,7 @@ export function Panel({
     } else if (action === 'submit') {
       e.preventDefault()
       ;(e.currentTarget as HTMLFormElement).requestSubmit()
-    } else if (e.key === 'Tab' && modalish) trapTab(e)
+    } else if (e.key === 'Tab' && trapsTab(kind)) trapTab(e)
   }
 
   const head = (
@@ -192,7 +193,7 @@ export function Panel({
   return host ? createPortal(layer, host) : layer
 }
 
-/** Tab and Shift+Tab stay inside a modal or view, which say they are modal. */
+/** Tab and Shift+Tab stay inside a modal, a view or a small form. */
 function trapTab(e: React.KeyboardEvent<HTMLElement>): void {
   const items = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null)
   if (!items.length) return

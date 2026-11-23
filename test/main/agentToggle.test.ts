@@ -124,7 +124,7 @@ describe('starting, restarting and resuming', () => {
     const { runner, specs } = runnerWith([claudeNode('x', { agent: 'codex', cwd: dir, sessionId: 's' })], () => CODEX_OFF)
     await runner.startNode('x')
     expect(specs).toEqual([])
-    expect(runner.errors().x).toEqual({ code: 'spawn-failed', message: expect.stringMatching(/^Codex is turned off in Settings > Agents/) })
+    expect(runner.errors().x).toEqual({ code: 'spawn-failed', message: expect.stringMatching(/^Codex is turned off in Settings > Agents/), fix: 'agents' })
   })
 
   test('restart is refused before anything is stopped, so a running session keeps running', async () => {

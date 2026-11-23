@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { IconName } from '../iconPaths'
 import { Panel } from './Panel'
 
@@ -11,6 +12,12 @@ export interface FormShellProps {
   submitLabel: React.ReactNode
   /** The primary can't be used yet. */
   blocked?: boolean
+  /** Why, in a few words, shown while blocked in place of the Ctrl+Enter hint and said louder when Ctrl+Enter is tried. */
+  blockedWhy?: string | null
+  /** Ctrl+Enter or Enter while blocked: a way past the block, as a New form's folder picker. Instead of the louder why. */
+  onBlockedSubmit?: () => void
+  /** What Ctrl+Enter does while blocked, as the why's tooltip. */
+  blockedKeyHint?: string
   /** Working: the buttons wait and Esc does nothing. */
   busy?: boolean
   /** Show "Ctrl+Enter" by the buttons. On by default; a one-field form where Enter already submits can turn it off. */
@@ -37,6 +44,9 @@ export function FormShell({
   onSubmit,
   submitLabel,
   blocked = false,
+  blockedWhy,
+  onBlockedSubmit,
+  blockedKeyHint,
   busy = false,
   hint = true,
   extraActions,
@@ -46,6 +56,8 @@ export function FormShell({
   attrs,
   children
 }: FormShellProps): React.JSX.Element {
+  const [asked, setAsked] = useState(false)
+  const why = blocked && blockedWhy ? blockedWhy : null
   return (
     <Panel
       kind="form"
@@ -57,13 +69,19 @@ export function FormShell({
       attrs={attrs}
       onSubmit={(e) => {
         e.preventDefault()
+        if (blocked && !busy && onBlockedSubmit) return onBlockedSubmit()
+        if (blocked && why) setAsked(true)
         if (blocked || busy) return
         onSubmit()
       }}
       footer={
         footer ?? (
           <>
-            {hint && (
+            {why ? (
+              <span className={`shell-foot-hint shell-blocked-why${asked ? ' shell-blocked-why-asked' : ''}`} data-blocked-why title={blockedKeyHint} role={asked ? 'alert' : undefined}>
+                {why}
+              </span>
+            ) : hint && (
               <span className="shell-foot-hint" aria-hidden="true">
                 Ctrl+Enter
               </span>

@@ -61,6 +61,8 @@ body {
 .app {
   display: grid;
   grid-template-rows: auto 1fr;
+  /* Never wider than the window: the top bar's tabs scroll instead of pushing the dock and pill off-screen. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
 }
 
@@ -971,6 +973,17 @@ select {
 
 .strip-approval .btn-solid:hover:not(:disabled) {
   background: rgb(52 199 89 / 0.24);
+}
+
+/* A kind of approve, so green like it, but lighter: it also saves a rule. */
+.strip-approval .btn-always {
+  color: #4cd964;
+  background: transparent;
+  border-color: rgb(52 199 89 / 0.45);
+}
+
+.strip-approval .btn-always:hover:not(:disabled) {
+  background: rgb(52 199 89 / 0.14);
 }
 
 .strip-held {

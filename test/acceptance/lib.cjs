@@ -144,6 +144,8 @@ function appEnv({ profile, env: extraEnv, realHome = false, base = process.env }
     for (const key of Object.keys(env)) if (real.test(key)) delete env[key]
     Object.assign(env, isolatedHome(profile))
   }
+  // Always, PB_SHOW or not: the OS file pickers never open in a run; one with no answer fails. See src/main/testPickers.ts.
+  env.PATCHBAY_TEST_DIALOGS = '1'
   Object.assign(env, extraEnv)
   return env
 }

@@ -5,6 +5,18 @@ import { agentLook, runLook, type Look } from '../status/status'
 import { setupHolds, type SetupHold } from '../status/setupStatus'
 import { useStore } from '../store'
 import { StatusMark, StatusText } from '../status/StatusMarks'
+import { failedStart } from '../status/startFailure'
+import type { NodeError } from '../../shared/contract'
+import { RECONNECTING } from '../status/launchSettle'
+import { useReconnecting, watchLaunch } from '../status/launchSettleUi'
+
+// From the first canvas the window has: the agents it reopens say Reconnecting for a moment. See launchSettle.ts.
+watchLaunch()
+
+/** The start error an agent is stopped on, if it couldn't start. See startFailure.ts. */
+export function useStartFailure(status: AgentStatus | null, nodeId?: string): NodeError | null {
+  return useStore((s) => (nodeId ? failedStart(status, s.errors[nodeId]) : null))
+}
 
 /** A recipe agent's hold for its setup commands, if it has one. */
 export function useSetupHold(nodeId?: string): SetupHold | undefined {
@@ -14,7 +26,10 @@ export function useSetupHold(nodeId?: string): SetupHold | undefined {
 /** An agent's look, with the stop its turn ended on when the status is still the `unknown` it left. */
 export function useAgentLook(status: AgentStatus | null, nodeId?: string): Look {
   const stop = useAgentStop(status === 'unknown' ? nodeId : undefined)
-  return agentLook(status, stop, Date.now(), useSetupHold(nodeId))
+  const setup = useSetupHold(nodeId)
+  const failed = useStartFailure(status, nodeId)
+  const reconnecting = useReconnecting(status, nodeId, !!stop || !!setup)
+  return reconnecting ? RECONNECTING : agentLook(status, stop, Date.now(), setup, failed)
 }
 
 /** The mark beside a window's title. A plain terminal has no status, so it gets the small grey square. */
@@ -30,7 +45,9 @@ export function StatusDot({ status, nodeId }: { status: AgentStatus | null; node
 export function StatusBadge({ status, nodeId, compact }: { status: AgentStatus; nodeId?: string; compact?: boolean }): React.JSX.Element {
   const stop = useAgentStop(status === 'unknown' ? nodeId : undefined)
   const setup = useSetupHold(nodeId)
-  return <StatusText look={agentLook(status, stop, Date.now(), setup)} compact={compact} className={`badge-${status}`} data-stop={stop?.kind} data-setup={setup} />
+  const failed = useStartFailure(status, nodeId)
+  const reconnecting = useReconnecting(status, nodeId, !!stop || !!setup)
+  return <StatusText look={reconnecting ? RECONNECTING : agentLook(status, stop, Date.now(), setup, failed)} data-reconnecting={reconnecting ? '' : undefined} compact={compact} className={`badge-${status}`} data-stop={stop?.kind} data-setup={setup} data-start-failed={failed ? failed.fix ?? 'none' : undefined} />
 }
 
 /** A run command's mark. */

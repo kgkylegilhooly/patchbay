@@ -24,19 +24,31 @@ import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, focusTerminalWhenReady, terminalActions } from './terminalRegistry'
 import { copyFolderPath, toggleChatView } from './nodes/WindowTools'
+import { folderToKeep } from './startHints'
+import { showFolderToast } from './FolderToast'
+import { whenNodeDrawn } from './newNodeFocus'
+import { closeWindowAsking } from './a11y/windowActions'
+import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export type NewForm = { kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'; at?: Point; groupId?: string; editId?: string } | null
 
-/** The window that window actions mean: one filling the canvas, the terminal in use, or a single selected session. */
+/**
+ * The window that window actions mean: one filling the canvas, the one the keyboard is in, or a single selected
+ * session. Decided by where the keyboard is now (see a11y/keyboardAt.ts), not by the terminal typed in last.
+ */
 export function currentWindow(selected: string[]): string | null {
   const s = useStore.getState()
-  if (s.maximized) return s.maximized
-  const focused = focusedTerminalId()
-  if (focused) return focused
+  const el = keyboardElement()
+  const id = windowOfElement(el)
+  const inTerminal = !!el?.classList.contains('xterm-helper-textarea')
   const node = selected.length === 1 ? s.doc?.nodes.find((n) => n.id === selected[0]) : undefined
-  return isSessionNode(node) ? node.id : null
+  return windowFor(
+    { terminal: inTerminal ? (id ?? focusedTerminalId()) : null, frame: id ? { id, session: isSessionNode(s.doc?.nodes.find((n) => n.id === id)) } : null },
+    s.maximized,
+    isSessionNode(node) ? node.id : null
+  )
 }
 
 interface Options {
@@ -54,7 +66,7 @@ interface Options {
 /** Every action the menu bar, right-click menus and dock can take. */
 export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen }: Options): {
   commands: Commands
-  openFromForm: (form: NonNullable<NewForm>, fields: { cwd: string; text?: string }) => void
+  openFromForm: (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; chose?: boolean }) => void
   openLaunch: (form: NonNullable<NewForm>, choice: LaunchChoice) => void
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
@@ -126,10 +138,15 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       if (d.x || d.y) void flow.setViewport({ x: vp.x - d.x * vp.zoom, y: vp.y - d.y * vp.zoom, zoom: vp.zoom }, { duration: reducedMotion() ? 0 : 220 })
     }
 
-    const open = (node: CanvasNode): void => {
+    const open = (node: CanvasNode, opts: { focus?: boolean } = {}): void => {
       dispatch({ op: 'addNode', node })
       reveal(node)
       if (isSessionNode(node)) void bridge.startNode(node.id).then((r) => noteRunProblem(node.id, r))
+      // Made by the person just now, so it's what they'll type into next: selected, with the keyboard once it's built.
+      if (opts.focus && isSessionNode(node)) {
+        focusTerminalWhenReady(node.id)
+        whenNodeDrawn(node.id, (id) => flow.getNode(id), (id) => setNodes((nodes) => nodes.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id }))))
+      }
     }
 
     /** Fits everything into the safe area: the part of the canvas no chrome covers. */
@@ -203,7 +220,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         center(id)
       },
       newTerminal: (at, groupId, profileId) =>
-        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) })),
+        open(newTerminal(place(at, groupId), crypto.randomUUID(), { cwd: terminalFolder(groupId, profileId), profile: pickedProfile(profileId) }), { focus: true }),
       newTerminalForm: (at, groupId) => setForm({ kind: 'terminal', at, groupId }),
       newSshForm: (at, groupId) => setForm({ kind: 'ssh', at, groupId }),
       newClaudeForm: (at, groupId) => setForm({ kind: 'claude', at, groupId }),
@@ -243,6 +260,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       closeNode: (id) => closeNodes([id]),
       renameNode: (id) => useStore.setState({ renaming: id }),
       restartNode: (id) => void restartNode(id),
+      renameWindow: (nodeId) => onWindow(nodeId, (id) => useStore.setState({ renaming: id })),
+      restartWindow: (nodeId) => onWindow(nodeId, (id) => void restartNode(id)),
+      closeWindow: (nodeId) => onWindow(nodeId, closeWindowAsking),
       toggleRecent,
       quit: () => void bridge.quitApp(),
       stopAllAndQuit: () => void bridge.stopAllAndQuit(),
@@ -300,8 +320,14 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string; chose?: boolean }): void => {
       lastFolder.current = fields.cwd || lastFolder.current
+      // A project with no folder takes the one chosen for its first agent, so the next one starts with no picker.
+      const keep = form.editId ? null : folderToKeep(doc(), form.kind, fields)
+      if (keep) {
+        dispatch({ op: 'patchProject', id: keep.projectId, patch: { folder: keep.folder } })
+        showFolderToast(keep)
+      }
       if (form.editId) {
         // Applies from the next run. Whatever's running now keeps running.
         dispatch({ op: 'patchNode', id: form.editId, patch: { command: fields.text ?? '', cwd: fields.cwd } })
@@ -313,12 +339,12 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         void bridge.getSettings().then((settings) => {
           const agent = defaultAgentOf(settings)
           const lead = newClaude(p, crypto.randomUUID(), { cwd: fields.cwd, prompt: teamLeadPrompt(fields.text ?? ''), agent })
-          open({ ...lead, title: TEAM_LEAD_TITLE })
+          open({ ...lead, title: TEAM_LEAD_TITLE }, { focus: true })
         })
         return
       }
       if (form.kind === 'run') {
-        open(newRun(place(form.at, form.groupId), crypto.randomUUID(), { cwd: fields.cwd, command: fields.text ?? '' }))
+        open(newRun(place(form.at, form.groupId), crypto.randomUUID(), { cwd: fields.cwd, command: fields.text ?? '' }), { focus: true })
         return
       }
       const id = crypto.randomUUID()
@@ -326,12 +352,13 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       open(
         form.kind === 'claude' || form.kind === 'codex'
           ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
-          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) })
+          : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) }),
+        { focus: true }
       )
     }
 
     const openSsh = (form: NonNullable<NewForm>, fields: { host: string; home: string }): void => {
-      open(newSsh(place(form.at, form.groupId), crypto.randomUUID(), fields))
+      open(newSsh(place(form.at, form.groupId), crypto.randomUUID(), fields), { focus: true })
     }
 
     /** One run node, or for a compound a group holding one per configuration, each with its own state. Running is this click. */

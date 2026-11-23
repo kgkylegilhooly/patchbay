@@ -241,9 +241,11 @@ async function main() {
     await hook('UserPromptSubmit')
     await hook('Notification', { notification_type: 'permission_prompt' })
   } else if (/\bpermission\b/.test(prompt)) {
-    // Asks to run a long command, and isn't waited for: the request is held until someone answers it.
+    // Asks to run a long command, and isn't waited for: the request is held until someone answers it. Offers a rule for
+    // "don't ask again", as Claude does, in the shape its PermissionRequest hook documents.
     await hook('UserPromptSubmit')
-    void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND } })
+    const suggestion = { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npx vitest run:*' }], behavior: 'allow', destination: 'localSettings' }
+    void hook('PermissionRequest', { tool_name: 'Bash', tool_input: { command: LONG_COMMAND }, permission_suggestions: [suggestion] })
   } else if (/\blater=(\d+)\b/.test(prompt)) {
     // Works for that many seconds, then asks to run a command and ends its turn, as when the app may have closed.
     await hook('UserPromptSubmit')

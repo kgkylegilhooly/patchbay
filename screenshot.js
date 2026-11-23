@@ -101,7 +101,8 @@ async function main() {
   }
   // As in the acceptance runs: nothing from another agent's session this may run inside, a home of the profile's own (so
   // no picture reads the person's ~/.claude or ~/.codex, or shows their real accounts and Codex usage), and a window
-  // that opens beside the screens without taking focus (PB_SHOW=1 shows it as usual). See appEnv in lib.cjs.
+  // that opens beside the screens without taking focus (PB_SHOW=1 shows it as usual), with
+  // the OS file pickers never opening (PATCHBAY_TEST_DIALOGS). See appEnv in lib.cjs.
   const env = require('./test/acceptance/lib.cjs').appEnv({ profile })
 
   const child = spawn(

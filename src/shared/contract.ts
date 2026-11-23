@@ -16,7 +16,12 @@ import type { DesignPick } from './design'
 export interface NodeError {
   code: 'cwd-missing' | 'spawn-failed' | 'resume-failed'
   message: string
+  /** What the person can do about a start that failed, offered as a button on the node. See docs/plans/r3-start.md. */
+  fix?: StartFix
 }
+
+/** agents: Settings › Agents. sessions: Settings › Background sessions. folder: choose another folder. */
+export type StartFix = 'agents' | 'sessions' | 'folder'
 
 /** Where an update stands. */
 export type UpdateState =
@@ -35,7 +40,12 @@ export interface PendingApproval {
   summary: string
   /** The same text without the cut, for when the person asks to see all of it. */
   detail: string
+  /** Claude's own "don't ask again" rule for this call, when it offered one Patchbay passes on: see approvals.ts. */
+  always?: { rule: string; where: string }
 }
+
+/** How the person answers a permission request. `allow-always` also adds the rule in `PendingApproval.always`. */
+export type ApprovalChoice = 'allow' | 'deny' | 'allow-always'
 
 /** Task 10 implements this. Tests use an in-memory one over reduce. */
 export interface CanvasStore {
@@ -131,6 +141,8 @@ export interface BrowserState {
   notice: string | null
   /** The agent that last acted here and what it did. Typed text is never part of it. */
   driving: { by: string; action: string; at: number } | null
+  /** The latest load failed: what to show in the page's place. See browserFailure.ts. */
+  failure?: import('./browserFailure').BrowserFailure | null
 }
 
 export type BrowserStep = 'back' | 'forward' | 'reload' | 'stop'
@@ -273,11 +285,13 @@ export interface PatchbayBridge {
   noteSlow(ms: number, what?: string): void
   getAppInfo(): Promise<{ version: string; dataDir: string }>
   getSettings(): Promise<Settings>
+  /** Why an agent of this kind (the default one, with none) won't start because its program isn't found, or null. */
+  agentProgramProblem(kind?: 'claude' | 'codex'): Promise<string | null>
   /** Applies to sessions started from now on. */
   saveSettings(settings: Settings): Promise<{ ok: true } | { ok: false; reason: string }>
   getApprovals(): Promise<PendingApproval[]>
   onApprovals(cb: (a: PendingApproval[]) => void): () => void
-  answerApproval(requestId: string, decision: 'allow' | 'deny'): Promise<void>
+  answerApproval(requestId: string, choice: ApprovalChoice): Promise<void>
   savePastedImage(bytes: Uint8Array, mime: string): Promise<string>
   openTerminalLink(nodeId: string, target: string): Promise<{ ok: true } | { ok: false; reason: string }>
   /** The full path a terminal path means, against the node's folder, and the folder a terminal there would use. */
@@ -288,8 +302,12 @@ export interface PatchbayBridge {
   checkForUpdates(): Promise<void>
   /** Ends every session, installs the downloaded update and starts the new version. */
   restartToUpdate(): Promise<void>
-  /** An agent window's conversation, newest last, for its chat view. */
-  readConversation(nodeId: string): Promise<{ ok: true; messages: Array<{ role: 'user' | 'assistant'; text: string }> } | { ok: false; reason: string }>
+  /**
+   * An agent window's conversation, newest last, for its chat view: the last `limit` messages (a page of 200 when not
+   * given; see shared/conversation.ts), and whether there are earlier ones. With `since`, the version of the last answer,
+   * an answer that would be the same comes back as `unchanged`.
+   */
+  readConversation(nodeId: string, limit?: number, since?: string): Promise<import('./conversation').ConversationAnswer>
   /** The person's own message to an agent window. A busy agent gets it once it's idle. */
   sendToAgent(nodeId: string, text: string): Promise<{ ok: true; queued: boolean } | { ok: false; reason: string }>
   reopenClosed(closedId: string): Promise<void>

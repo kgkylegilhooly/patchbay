@@ -108,6 +108,7 @@ const AGENT_USAGE_EVERY_MS = 5 * 60_000
 const UPDATE_FIRST_CHECK_MS = 30_000
 const UPDATE_CHECK_EVERY_MS = 6 * 60 * 60_000
 import { createUsagePoller, fetchEndpoint, sourceConfig, type ReadResult, type SourceConfig } from './usage/usageSource'
+import { createAppProblems, serveAppProblems } from './appProblems'
 
 let mainWindow: BrowserWindow | null = null
 /** Set up first thing in boot. */
@@ -271,14 +272,14 @@ async function boot(): Promise<void> {
   }
   ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
 
-  let saveErrorShown = false
+  // A failed save is a banner in the window that clears when saving works again, not a dialog that held up the app.
+  const problems = createAppProblems({ retrySave: () => docStore.flush(), push: (p) => broadcast('pb:problems:onChange', p) })
   const docStore = createDocStore(dataDir, {
     onSaveError(e) {
       console.error('Patchbay autosave failed:', e)
-      if (saveErrorShown) return
-      saveErrorShown = true
-      dialog.showErrorBox('Patchbay can\'t save', `Your canvas could not be written to ${dataDir}. It retries with each change.\n\n${String(e)}`)
-    }
+      problems.saveFailed(e, dataDir)
+    },
+    onSaved: () => problems.saved()
   })
   let store: AppStore
   try {
@@ -617,6 +618,7 @@ async function boot(): Promise<void> {
     const ids = await startDead()
     ipcHooks.reattached(ids)
   }
+  serveAppProblems(problems, { replaceHost, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   const resolveOtherHost = async (choice: 'stop-it' | 'quit'): Promise<void> => {
     if (host.info().mode !== 'other-version') return
     if (choice === 'quit') quitWith('leave-running')
@@ -913,22 +915,8 @@ async function boot(): Promise<void> {
     })
   })
 
-  host.onLost(() => {
-    if (!mainWindow) return
-    void dialog
-      .showMessageBox(mainWindow, {
-        type: 'warning',
-        title: 'Background sessions stopped',
-        message: 'The background session host stopped unexpectedly, and its sessions ended with it.',
-        detail: 'Their output is kept. Claude nodes can resume their conversations, and terminals can start again below what they showed.',
-        buttons: ['Bring them back', 'Not now'],
-        defaultId: 0,
-        cancelId: 1
-      })
-      .then(({ response }) => {
-        if (response === 0) void replaceHost()
-      })
-  })
+  // A banner with Bring them back, rather than a native dialog. See appProblems.ts.
+  host.onLost(() => problems.hostLost())
 
   if (store.loaded.quarantined) {
     const from = store.loaded.recoveredFrom === 'backup' ? 'the backup copy' : 'an empty canvas'

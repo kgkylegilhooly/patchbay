@@ -1,6 +1,8 @@
 import type { RunResult } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import { setupLookFor, type SetupHold } from './setupStatus'
+import { startFailureLook } from './startFailure'
+import type { NodeError } from '../../shared/contract'
 import { stopHolds, stopLabel, type AgentStop } from '../../shared/agentStop'
 import type { SubagentStatus } from '../../shared/subagents'
 import type { AttemptState, RunState } from '../../shared/workflow'
@@ -72,7 +74,9 @@ export function shortStopLabel(label: string): string {
  * An agent's look. Null status is a terminal or other node with nothing to report. An agent whose turn ended on
  * StopFailure keeps the status `unknown`, so the stop, when known, says what happened instead.
  */
-export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now(), setup?: SetupHold): Look {
+export function agentLook(status: AgentStatus | null | undefined, stop?: AgentStop, now = Date.now(), setup?: SetupHold, startFailed?: NodeError | null): Look {
+  // It never started, so it isn't over: "Couldn't start", for the person to fix (see startFailure.ts).
+  if (startFailed && status === 'exited') return startFailureLook(startFailed)
   if (status === 'unknown' && stop) return stopLook(stop, now)
   // A recipe agent held for its setup commands (see setupStatus): "Setup failed" or "Waiting for setup", not "Queued".
   const held = setupLookFor(status, setup)

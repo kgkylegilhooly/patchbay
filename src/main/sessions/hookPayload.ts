@@ -6,6 +6,8 @@
 
 /** A bigger input is withheld, which leaves that request to the terminal prompt. */
 export const MAX_TOOL_INPUT_CHARS = 256 * 1024
+/** Claude's suggested permission updates are a rule or two. More than this is left out, and the button with it. */
+export const MAX_SUGGESTIONS_CHARS = 16 * 1024
 /** The fields Patchbay uses. Tool responses can be huge and could push the event past the server's limit. */
 const FORWARDED = ['hook_event_name', 'session_id', 'transcript_path', 'cwd', 'notification_type', 'reason', 'source']
 /** Codex's SubagentStart and SubagentStop: which subagent, of what kind, and where its own transcript is. */
@@ -34,13 +36,16 @@ export function pickHookFields(event: Record<string, unknown>, name: string): Re
     out.tool_name = event.tool_name
     const input = JSON.stringify(event.tool_input)
     if (input && input.length <= MAX_TOOL_INPUT_CHARS) out.tool_input = event.tool_input
+    // Claude's own "don't ask again" rules, for the Always allow button. Small, or left out.
+    const suggestions = Array.isArray(event.permission_suggestions) ? JSON.stringify(event.permission_suggestions) : ''
+    if (suggestions && suggestions.length <= MAX_SUGGESTIONS_CHARS) out.permission_suggestions = event.permission_suggestions
   }
   return out
 }
 
 /** A journal line, as hook.cjs writes one. Tool input is only for the approval buttons, which a journalled request no longer has. */
 export function journalLine(fields: Record<string, unknown>, at: number): string {
-  const { tool_name: _name, tool_input: _input, ...kept } = fields
+  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, ...kept } = fields
   return `${JSON.stringify({ ...kept, at })}\n`
 }
 
@@ -54,6 +59,8 @@ export function claudeOutput(event: string, answer: unknown): Record<string, unk
     if (a.decision !== 'allow' && a.decision !== 'deny') return {}
     // Agents read a bare "denied" as Patchbay ruling out what the call does, and give up on it for good.
     const decision: Record<string, unknown> = { behavior: a.decision, ...(a.decision === 'deny' ? { message: DENIED } : {}) }
+    // Always allow: the rule Claude itself suggested, echoed back so Claude saves it. See approvals.ts.
+    if (a.decision === 'allow' && Array.isArray(a.updatedPermissions) && a.updatedPermissions.length) decision.updatedPermissions = a.updatedPermissions
     return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision } }
   }
   if (event === 'SessionStart' && typeof a.context === 'string' && a.context) {
