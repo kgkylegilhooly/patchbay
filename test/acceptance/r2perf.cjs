@@ -200,6 +200,11 @@ async function withReactHook(page) {
   await page.evaluateOnNewDocument(`(${R.REACT_HOOK.toString()})()`)
   await page.reload()
   await page.waitForSelector('.react-flow', { timeout: 20000 })
+  // The reload dropped what lib.cjs's launch set up in the page: the statuses seen, which ticks counts.
+  await page.evaluate(() => {
+    window.__seen = {}
+    window.patchbay.onStatus((id, s) => (window.__seen[id] ??= []).push(s))
+  })
 }
 
 // ---- switch: rperf.cjs's scene ----
@@ -260,10 +265,11 @@ async function switchScenario() {
       'worst frame (all)': median(runs.map((r) => r.worstFrame)),
       'over 50 ms per switch': median(runs.map((r) => r.over50)),
       'terminals built per switch': median(runs.map((r) => r.built)),
-      'top LoAF ms': median(runs.map((r) => r.top?.dur ?? 0)),
-      'top LoAF script ms': median(runs.map((r) => r.top?.work ?? 0)),
-      'top LoAF style+layout ms': median(runs.map((r) => r.top?.style ?? 0)),
-      'top LoAF render ms': median(runs.map((r) => r.top?.render ?? 0))
+      // Chromium reports a long animation frame only past 50 ms: these are the switches that had one, and theirs.
+      'switches with a frame over 50 ms': runs.filter((r) => r.top).length,
+      'that frame ms': median(runs.filter((r) => r.top).map((r) => r.top.dur)),
+      'that frame: script ms': median(runs.filter((r) => r.top).map((r) => r.top.work)),
+      'that frame: style+layout ms': median(runs.filter((r) => r.top).map((r) => r.top.style))
     }
     out.runs = runs
     out.problems = app.problems.slice(0, 5)
