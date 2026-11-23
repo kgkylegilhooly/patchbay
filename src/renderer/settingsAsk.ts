@@ -4,7 +4,7 @@ import { create } from 'zustand'
  * Something outside the menus asking for Settings open at one section, as a node that couldn't start does with
  * "Open Settings › Agents". The canvas opens Settings when one is asked for, and Settings takes the section once.
  */
-export type SettingsSection = 'claude' | 'sessions'
+export type SettingsSection = 'claude' | 'sessions' | 'keys' | 'about'
 
 export const useSettingsAsk = create<{ section: SettingsSection | null }>(() => ({ section: null }))
 
