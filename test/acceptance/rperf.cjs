@@ -7,6 +7,7 @@
 // Env: PB_RP_OUT=<file.json>  PB_RP_PROFILE=1 (CPU profile per scenario)  PB_RP_TRACE=1 (paint/raster per scenario)
 //      PB_RP_REACT=1 (React render counts; build with minify off + react-dom/profiling)  PB_RP_ONLY=a,b (scenarios)
 //      PB_RP_TERMS (default 16) PB_RP_AGENTS (10) PB_RP_SLOW (CPU throttle) PB_RP_NOLOAD=1 (nothing printing)
+const { execFileSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
@@ -194,6 +195,20 @@ const REACT_HOOK = () => {
   }
 }
 
+/** CPU seconds so far of this run's Electron processes, by role (main, renderer, gpu-process, utility, host). */
+function cpuByRole(profile) {
+  const ps = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*${profile}*' } | ForEach-Object { '{0}|{1}|{2}|{3}' -f $_.KernelModeTime, $_.UserModeTime, $_.Name, $_.CommandLine }`
+  const text = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 30000 })
+  const cpu = {}
+  for (const line of text.split(/\r?\n/).filter(Boolean)) {
+    const [k, u, name, cmd] = line.split('|')
+    if (!/^electron\.exe$/i.test(name)) continue
+    const role = /--type=([\w-]+)/.exec(cmd)?.[1] ?? (/sessionHost/.test(cmd) ? 'host' : 'main')
+    cpu[role] = (cpu[role] ?? 0) + (Number(k) + Number(u)) / 1e7
+  }
+  return cpu
+}
+
 async function scenario(ctx, name, fn) {
   if (ONLY && !ONLY.includes(name)) return
   const { page, cdp, browserCdp } = ctx
@@ -216,12 +231,18 @@ async function scenario(ctx, name, fn) {
     browserCdp.on('Tracing.dataCollected', onData)
     await browserCdp.send('Tracing.start', { traceConfig: { includedCategories: ['toplevel', 'cc', 'gpu', 'viz', 'blink', 'disabled-by-default-devtools.timeline', 'v8'] }, transferMode: 'ReportEvents' })
   }
+  const c0 = ctx.profile ? cpuByRole(ctx.profile) : null
   await startFrames(page)
   const m0 = await metrics(cdp)
   const t0 = Date.now()
   const extra = (await fn()) ?? {}
   const seconds = (Date.now() - t0) / 1000
   const m1 = await metrics(cdp)
+  if (c0) {
+    const c1 = cpuByRole(ctx.profile)
+    // Percent of one core over the scenario, per process role. The sampling itself sits outside the window.
+    extra.cpu = Object.fromEntries(Object.keys(c1).map((k) => [k, Math.round(((c1[k] - (c0[k] ?? 0)) / seconds) * 100)]))
+  }
   const frames = await stopFrames(page)
   const r = { seconds: +seconds.toFixed(1), frames, busy: metricDelta(m0, m1, seconds), ...extra }
   if (process.env.PB_RP_PROFILE) {
@@ -383,7 +404,7 @@ async function main() {
   const cdp = await page.createCDPSession()
   await cdp.send('Performance.enable')
   const browserCdp = await app.browser.target().createCDPSession()
-  const ctx = { page, cdp, browserCdp }
+  const ctx = { page, cdp, browserCdp, profile }
   try {
     if (process.env.PB_RP_REACT) {
       await page.evaluateOnNewDocument(`(${REACT_HOOK.toString()})()`)
@@ -441,16 +462,15 @@ async function main() {
       const split = []
       for (let i = 0; i < 30; i++) {
         const ch = 'abcdefghij'[i % 10]
-        const shownAt = page.evaluate((c, n) => new Promise((resolve) => {
-          const t0 = performance.now()
-          const want = (document.querySelector('.react-flow__node[data-id="typing"] .xterm-rows')?.textContent ?? '').split(c).length
-          const check = () => {
-            const t = document.querySelector('.react-flow__node[data-id="typing"] .xterm-rows')?.textContent ?? ''
-            if (t.split(c).length > want || performance.now() - t0 > 5000) resolve(performance.now())
-            else requestAnimationFrame(check)
-          }
-          check()
-        }), ch, i)
+        // Shown: the moment xterm puts the echo in its rows (a mutation, not a frame poll, so it isn't rounded up a frame).
+        const shownAt = page.evaluate((c) => new Promise((resolve) => {
+          const rows = document.querySelector('.react-flow__node[data-id="typing"] .xterm-rows')
+          const want = (rows?.textContent ?? '').split(c).length
+          const done = (t) => { obs.disconnect(); clearTimeout(timer); resolve(t) }
+          const obs = new MutationObserver(() => { if ((rows.textContent ?? '').split(c).length > want) done(performance.now()) })
+          obs.observe(rows, { childList: true, subtree: true, characterData: true })
+          const timer = setTimeout(() => done(null), 5000)
+        }), ch)
         await page.keyboard.press(ch)
         const shown = await shownAt
         const r = await page.evaluate((c) => {
@@ -459,12 +479,14 @@ async function main() {
           const o = w.outs.find(([d, t]) => t >= k && d.includes(c))?.[1]
           return { k, o }
         }, ch)
-        if (r.k && r.o) split.push({ roundTrip: Math.round(r.o - r.k), draw: Math.round(shown - r.o), total: Math.round(shown - r.k) })
+        if (r.k && r.o && shown) split.push({ roundTrip: Math.round(r.o - r.k), draw: Math.round(shown - r.o), total: Math.round(shown - r.k) })
         await L.sleep(150)
         if (i % 10 === 9) {
           await page.keyboard.down('Control')
           await page.keyboard.press('u')
           await page.keyboard.up('Control')
+          // The shell redraws the cleared line a moment later: wait, so the next key's starting count is taken after it.
+          await L.sleep(400)
         }
       }
       return { roundTrip: stat(split.map((x) => x.roundTrip)), draw: stat(split.map((x) => x.draw)), total: stat(split.map((x) => x.total)) }
