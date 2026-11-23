@@ -107,6 +107,43 @@ async function backpressure(L) {
   }
 }
 
+/**
+ * As backpressure, but the page is busy rather than paused in the debugger: a debugger pause stops only the page's own
+ * scripts, while the preload (its own world, on the same thread) still takes every message. A busy page stops both.
+ */
+async function stall(L) {
+  const cwd = L.workDir('probe-stall-' + Date.now())
+  const emitter = path.join(cwd, 'emit.cjs')
+  fs.writeFileSync(emitter, "process.stdout.write('$ ');process.stdin.once('data',()=>{const chunk=('0123456789abcdef'.repeat(63)+String.fromCharCode(13,10)).repeat(16);const t=setInterval(()=>process.stdout.write(chunk),20);setTimeout(()=>{clearInterval(t);console.log('DONE')},20000)});")
+  const profile = L.newProfile({ notifications: 'off', sound: 'off', usageSource: 'off', terminalProfiles: [{ id: 'fake', name: 'Fake output', program: process.execPath, args: [emitter] }], defaultTerminalProfile: 'fake' })
+  const { app, main } = await launchWithDebugger(L, profile)
+  try {
+    const ids = Array.from({ length: 10 }, (_, i) => 'out' + i)
+    for (const [i, id] of ids.entries()) await L.openNode(app.page, L.terminal(id, cwd, (i % 4) * 500, Math.floor(i / 4) * 320))
+    await L.waitFor('shells', async () => (await Promise.all(ids.map((id) => L.snapshot(app.page, id)))).every((x) => x.includes('$')))
+    await L.fitView(app.page)
+    for (const id of ids) await L.submit(app.page, id, 'go')
+    await L.sleep(1500)
+    const snap = () => main.eval('({at:Date.now(),count:__audit.outputCount,bytes:__audit.outputBytes,memory:process.memoryUsage()})')
+    const a = await snap()
+    // Not awaited: the page is busy for 5 s, and main is watched meanwhile.
+    const busyDone = app.page.evaluate(() => { const end = Date.now() + 5000; while (Date.now() < end); return 1 }).catch(() => 0)
+    await L.sleep(5000)
+    const b = await snap()
+    await busyDone
+    const t = Date.now()
+    await app.page.evaluate(() => 1)
+    const answerMs = Date.now() - t
+    await L.sleep(3000)
+    const tails = await Promise.all(ids.map((id) => L.snapshot(app.page, id)))
+    record({ busyMs: b.at - a.at, sentChunks: b.count - a.count, sentBytes: b.bytes - a.bytes, mainRssGrowthMB: (b.memory.rss - a.memory.rss) / 1048576, answerMs, terminalsShowingOutput: tails.filter((s) => s.includes('0123456789abcdef')).length })
+  } finally {
+    main.ws.close()
+    await app.forceKill()
+    L.stopHostOf(profile)
+  }
+}
+
 async function busy(L) {
   const cwd = L.workDir('probe-busy-' + Date.now())
   const profile = L.newProfile({ notifications: 'off', sound: 'off', usageSource: 'off', terminalProfiles: [{ id: 'fake', name: 'Fake busy', program: process.execPath, args: [path.join(root, 'test/acceptance/claude-load.cjs'), '90', '--heavy'] }], defaultTerminalProfile: 'fake' })
@@ -192,7 +229,7 @@ async function idle(L) {
 async function main() {
   if (scenario === 'instrument') return instrument()
   const L = require(path.join(root, 'test/acceptance/lib.cjs'))
-  await { backpressure, busy, idle }[scenario](L)
+  await { backpressure, stall, busy, idle }[scenario](L)
 }
 main().catch((e) => {
   console.error(e)

@@ -1,6 +1,7 @@
 import { open, stat } from 'node:fs/promises'
 import { codexStopFailure, emptyCodexTurn, foldCodexLine, type CodexTurnState } from '../../core/status/codexRollout'
 import type { AgentStatus } from '../../shared/model'
+import { backoffInterval } from '../backoff'
 import type { PlanUsage } from '../../shared/usage'
 
 /**
@@ -153,8 +154,14 @@ export function createCodexStops(d: {
       ticking = false
     }
   }
-  const timer = d.everyMs === 0 ? null : setInterval(() => void tick(), d.everyMs ?? 2000)
-  timer?.unref?.()
+  // With no Codex window there's nothing to read, so the look slows down until there is one.
+  const timer =
+    d.everyMs === 0
+      ? null
+      : backoffInterval(async () => {
+          await tick()
+          return d.nodes().length > 0
+        }, d.everyMs ?? 2000, (d.everyMs ?? 2000) * 4)
 
   return {
     async translate(id, payload) {
@@ -178,7 +185,7 @@ export function createCodexStops(d: {
     tick,
     close() {
       closed = true
-      if (timer) clearInterval(timer)
+      timer?.close()
     }
   }
 }

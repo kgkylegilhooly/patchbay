@@ -4,6 +4,7 @@ import { agentIdOf, emptyProgress, foldLines, parseMeta, type Progress, type Sub
 import type { CanvasStore } from '../../shared/contract'
 import { agentOf, type AgentStatus } from '../../shared/model'
 import type { SubagentCard, SubagentSnapshot } from '../../shared/subagents'
+import { backoffInterval } from '../backoff'
 
 /**
  * Follows the subagents of Claude windows, from the files Claude Code writes beside each transcript. Only windows
@@ -279,19 +280,25 @@ export function createSubagentWatcher(opts: {
     return out
   }
 
+  /** Whether the last look found anything moving: a busy window, or cards that changed. See backoff.ts. */
+  let active = true
   const tick = async (): Promise<void> => {
     if (ticking || closed) return
     ticking = true
     try {
       const watched = opts.parents()
+      active = watched.some((w) => w.busy)
       const ids = new Set(watched.map((w) => w.nodeId))
       for (const id of [...parents.keys()]) if (!ids.has(id)) parents.delete(id)
       for (const w of watched) await look(w.nodeId, w)
+      // A subagent can still be running after its window's turn has ended.
+      for (const p of parents.values()) for (const a of p.agents.values()) if (a.status === 'running') active = true
       await opts.also?.refresh().catch((e: unknown) => opts.log?.(`Codex subagent cards: ${String(e)}`))
       const snap = { ...build(), ...(opts.also?.snapshot() ?? {}) }
       const text = JSON.stringify(snap)
       if (text !== last && !closed) {
         last = text
+        active = true
         opts.push(snap)
       }
     } finally {
@@ -299,8 +306,14 @@ export function createSubagentWatcher(opts: {
     }
   }
 
-  const timer = opts.everyMs === 0 ? null : setInterval(() => void tick(), opts.everyMs ?? 1000)
-  timer?.unref?.()
+  // Every second while a window is busy or cards change; slower while nothing does. A status change ticks at once.
+  const timer =
+    opts.everyMs === 0
+      ? null
+      : backoffInterval(async () => {
+          await tick()
+          return active
+        }, opts.everyMs ?? 1000)
 
   return {
     tick,
@@ -314,7 +327,7 @@ export function createSubagentWatcher(opts: {
     },
     close() {
       closed = true
-      if (timer) clearInterval(timer)
+      timer?.close()
     }
   }
 }
