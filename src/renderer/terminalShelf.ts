@@ -46,6 +46,11 @@ export interface ShelfBudget<T> {
   maxBytes: number
   /** About how many bytes a kept terminal holds. */
   weigh: (value: T) => number
+  /**
+   * Runs the check once things have settled. By default SETTLE_MS from now; the app also waits for two frames after
+   * that, so a frame slower than SETTLE_MS (a busy PC) can't check before a switch's staged second frame takes back its terminals.
+   */
+  settle?: (check: () => void) => void
 }
 
 export function createTerminalShelf<T>(
@@ -78,7 +83,8 @@ export function createTerminalShelf<T>(
       kept.set(id, { ...entry, timer, bytes: budget ? budget.weigh(entry.value) : 0 })
       if (!budget || checkDue) return
       checkDue = true
-      timers.set(() => {
+      const settle = budget.settle ?? ((check: () => void) => void timers.set(check, SETTLE_MS))
+      settle(() => {
         checkDue = false
         let bytes = 0
         for (const e of kept.values()) bytes += e.bytes
@@ -87,7 +93,7 @@ export function createTerminalShelf<T>(
           bytes -= e.bytes
           drop(oldest)
         }
-      }, SETTLE_MS)
+      })
     },
     take(id, key) {
       const e = kept.get(id)

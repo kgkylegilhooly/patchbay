@@ -6,7 +6,7 @@ import { createAttachGate } from '../attachGate'
 import { bridge, subscribeOutput } from '../bridge'
 import { noteShared } from '../fileShelfActions'
 import type { Point } from '../menus'
-import { createMountQueue, nextFrame } from '../mountQueue'
+import { afterNextPaint, createMountQueue, nextFrame } from '../mountQueue'
 import { createOutputPacer, type OutputPacer } from '../outputPacer'
 import { fontStack } from '../prefs'
 import { resourcesBridge } from '../resources/resourcesUi'
@@ -15,7 +15,7 @@ import { PARKING } from '../terminalParking'
 import { onFocusWanted } from '../terminalRegistry'
 import { canvasTier, paceFor } from '../terminalPace'
 import { findTerminalPathMatches, linkKind } from '../terminalPaths'
-import { createTerminalShelf } from '../terminalShelf'
+import { createTerminalShelf, SETTLE_MS } from '../terminalShelf'
 import type { TerminalLook } from '../prefs'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { screenPoint } from '../xtermZoom'
@@ -286,7 +286,11 @@ function drainLetGo(): void {
   while (letGo.length && performance.now() - start < 4) letGo.shift()!.dispose()
   if (letGo.length) nextFrame(drainLetGo)
 }
-export const terminalShelf = createTerminalShelf<LiveTerminal>(disposeSoon, () => PARKING.afterMs, undefined, { ...SHELF_BUDGET, weigh: weighTerminal })
+export const terminalShelf = createTerminalShelf<LiveTerminal>(disposeSoon, () => PARKING.afterMs, undefined, {
+  ...SHELF_BUDGET,
+  weigh: weighTerminal,
+  settle: (check) => void setTimeout(() => afterNextPaint(() => afterNextPaint(check)), SETTLE_MS)
+})
 let lowMemoryHooked = false
 /** Memory short: kept terminals go first, before any on the canvas is unloaded. */
 export function hookShelfToMemory(): void {

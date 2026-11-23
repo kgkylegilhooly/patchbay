@@ -1,23 +1,38 @@
 import { expect, test } from 'vitest'
-import { applySight, type Sighted } from '../../src/renderer/cableSight'
+import { applySight, OFF, type Sighted } from '../../src/renderer/cableSight'
 
-function cable(off = false, playState = 'running'): Sighted & { classes: Set<string>; animation: { playState: string; startTime: CSSNumberish | null } } {
-  const classes = new Set<string>(off ? ['cable-off'] : [])
+/** A dots path as the page has it: React's class attribute and other attributes kept apart, as in the DOM. */
+function cable(off = false, playState = 'running') {
+  const attrs = new Set<string>(off ? [OFF] : [])
   const animation = { playState, startTime: 480 as CSSNumberish | null }
-  return {
-    classes,
+  const el = {
+    className: 'cable-flow cable-still',
+    attrs,
     animation,
-    classList: { toggle: (name: string, on: boolean) => (on ? classes.add(name) : classes.delete(name)), contains: (name: string) => classes.has(name) },
+    toggleAttribute: (name: string, on: boolean) => (on ? attrs.add(name) : attrs.delete(name)),
+    hasAttribute: (name: string) => attrs.has(name),
     getAnimations: () => [animation]
   }
+  return el satisfies Sighted
 }
 
 test('a cable leaving the screen has its dots paused; one coming back moves again', () => {
   const a = cable()
   applySight([{ target: a, isIntersecting: false }])
-  expect(a.classes.has('cable-off')).toBe(true)
+  expect(a.attrs.has(OFF)).toBe(true)
   applySight([{ target: a, isIntersecting: true }])
-  expect(a.classes.has('cable-off')).toBe(false)
+  expect(a.attrs.has(OFF)).toBe(false)
+})
+
+test('an off-screen cable that turns busy stays paused: React writing its class leaves the mark alone', () => {
+  const a = cable()
+  applySight([{ target: a, isIntersecting: false }])
+  // Its agent starts working: CableEdge renders className="cable-flow" (no longer cable-still).
+  a.className = 'cable-flow'
+  expect(a.attrs.has(OFF)).toBe(true)
+  // Back on screen, it's marked off still, so it joins the beat.
+  applySight([{ target: a, isIntersecting: true }])
+  expect(a.animation.startTime).toBe(0)
 })
 
 test('back on screen, a moving cable joins the beat every other cable steps to', () => {

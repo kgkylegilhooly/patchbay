@@ -380,6 +380,26 @@ async function ticksScenario() {
       }).length
     })
     console.log('cables on screen after moving away:', out.offscreenCables)
+    // A cable off screen whose agent goes idle and busy again: React writes its class anew each time, and it must
+    // stay paused (review M1). a5's two cables, e5 and e6.
+    const dotsOf = (ids) => page.evaluate((list) => list.map((id) => {
+      const p = document.querySelector(`.react-flow__edge[data-id="${id}"] .cable-flow`) ?? document.querySelector(`[data-testid="rf__edge-${id}"] .cable-flow`)
+      return p ? { cls: p.getAttribute('class'), off: p.hasAttribute('data-off'), play: p.getAnimations().map((a) => a.playState).join() } : null
+    }), ids)
+    // a4 and a6 idle too, so both cables go still (React writes cable-still), then a5 alone turns busy again.
+    for (const id of ['a4', 'a5', 'a6']) await L.input(page, id, 'done\r')
+    await L.waitFor('a4-a6 idle', async () => {
+      const st = await L.statuses(page)
+      return ['a4', 'a5', 'a6'].every((id) => st[id] === 'idle')
+    }, 10000)
+    await L.sleep(300)
+    const stilled = await dotsOf(['e5', 'e6'])
+    await L.input(page, 'a5', 'busy\r')
+    await L.waitFor('a5 working', async () => (await L.statuses(page)).a5 === 'working', 10000)
+    await L.sleep(300)
+    const turned = await dotsOf(['e5', 'e6'])
+    out.offscreenTurnedBusy = { pass: stilled.every((d) => d && /cable-still/.test(d.cls)) && turned.every((d) => d && d.play === 'paused' && !/cable-still/.test(d.cls)), stilled, turned }
+    console.log(`${out.offscreenTurnedBusy.pass ? 'PASS' : 'FAIL'}  an off-screen cable whose agent turns busy stays paused`, JSON.stringify({ stilled, turned }))
     await measure('quiet-cables-offscreen', () => L.sleep(8000).then(() => 0))
     await moveViewTo(page, { x: 40, y: 40, zoom: 0.5 })
     await measure('quiet-cables-onscreen', () => L.sleep(8000).then(() => 0))

@@ -165,3 +165,13 @@ test('the budget is checked once for a batch of keeps, after it', () => {
   t.settle()
   expect(shelf.ids()).toEqual(['c', 'd'])
 })
+
+test('the check waits for whatever the budget says has settled, as the app waits for frames after the timer', () => {
+  const dispose = vi.fn()
+  let due: (() => void) | null = null
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, { ...budget(1, 1e12), settle: (check) => (due = check) })
+  for (const name of ['a', 'b']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.ids()).toEqual(['a', 'b'])
+  due!()
+  expect(shelf.ids()).toEqual(['b'])
+})
