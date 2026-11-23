@@ -9,6 +9,8 @@ import { commandAllowed } from '../shared/agents'
 import { toggleFoldedMap, useChromeLayout } from './safeArea'
 import { menuLeftWithin, waitingForReview, workLabel, workMenu } from './workDock'
 import './safeArea.css'
+import { keyOf, withKey } from './a11y/keyHints'
+import { useKeyOverrides } from './a11y/useKeyOverrides'
 
 function DockButton({
   cmd,
@@ -25,8 +27,10 @@ function DockButton({
   className?: string
   onClick: () => void
 }): React.JSX.Element {
+  // The tooltip teaches the key, following any rebinding.
+  const keys = useKeyOverrides()
   return (
-    <button type="button" className={`dock-btn${className ? ` ${className}` : ''}`} data-cmd={cmd} aria-label={label} title={label} aria-pressed={pressed} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
+    <button type="button" className={`dock-btn${className ? ` ${className}` : ''}`} data-cmd={cmd} aria-label={label} title={withKey(label, cmd, keys)} aria-keyshortcuts={keyOf(cmd, keys) ?? undefined} aria-pressed={pressed} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
       <Icon name={icon} />
     </button>
   )
@@ -47,6 +51,7 @@ function DockView({
   const git = useStore((s) => s.gitOpen)
   const agents = useAgentChoice()
   const waiting = useStore((s) => waitingForReview(s.doc?.projects.find((p) => p.id === s.doc?.activeProjectId)?.tasks?.tasks))
+  const keys = useKeyOverrides()
   const foldMap = useChromeLayout((s) => s.foldMap)
   const mapOpen = useChromeLayout((s) => s.mapOpen)
   const [open, setOpen] = useState<'add' | 'work' | null>(null)
@@ -100,12 +105,12 @@ function DockView({
         <Icon name="plus" />
       </button>
       {commandAllowed('new-claude', agents) && (
-      <button type="button" className="dock-btn" data-cmd="new-claude" aria-label="New Claude Code" title="New Claude Code" onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newClaudeForm()}>
+      <button type="button" className="dock-btn" data-cmd="new-claude" aria-label="New Claude Code" title={withKey('New Claude Code', 'new-claude', keys)} aria-keyshortcuts={keyOf('new-claude', keys) ?? undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newClaudeForm()}>
         <ClaudeIcon size={18} />
       </button>
       )}
       {commandAllowed('new-codex', agents) && (
-      <button type="button" className="dock-btn" data-cmd="new-codex" aria-label="New Codex" title="New Codex" onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newCodexForm()}>
+      <button type="button" className="dock-btn" data-cmd="new-codex" aria-label="New Codex" title={withKey('New Codex', 'new-codex', keys)} aria-keyshortcuts={keyOf('new-codex', keys) ?? undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => commands.newCodexForm()}>
         <CodexIcon size={18} />
       </button>
       )}
@@ -136,7 +141,7 @@ function DockView({
       <span className="dock-sep" />
       {foldMap && <DockButton cmd="toggle-map" className="dock-map" label="Map of the canvas" icon="map" pressed={mapOpen} onClick={toggleFoldedMap} />}
       <DockButton cmd="zoom-out" label="Zoom out" icon="minus" onClick={commands.zoomOut} />
-      <button type="button" className="dock-zoom" data-cmd="zoom-reset" title="Actual size" onMouseDown={(e) => e.preventDefault()} onClick={commands.zoomReset}>
+      <button type="button" className="dock-zoom" data-cmd="zoom-reset" title={withKey('Actual size', 'zoom-reset', keys)} aria-keyshortcuts={keyOf('zoom-reset', keys) ?? undefined} onMouseDown={(e) => e.preventDefault()} onClick={commands.zoomReset}>
         {Math.round(zoom * 100)}%
       </button>
       <DockButton cmd="zoom-in" label="Zoom in" icon="plus" onClick={commands.zoomIn} />

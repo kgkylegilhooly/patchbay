@@ -162,6 +162,8 @@ export function SettingsPage({
       setDraft(settings)
     })
     void bridge.getAppInfo().then(setInfo)
+    // Closing gives the keyboard back to what had it, a terminal in use included, as the palette does.
+    const opener = document.activeElement as HTMLElement | null
     // A menu never takes focus, so a terminal behind this page would otherwise still get what's typed.
     rootRef.current?.focus()
     const onKey = (e: KeyboardEvent): void => {
@@ -174,6 +176,8 @@ export function SettingsPage({
     return () => {
       window.removeEventListener('keydown', onKey, true)
       commitRef.current()
+      const now = document.activeElement
+      if ((!now || now === document.body || rootRef.current?.contains(now)) && opener?.isConnected && opener !== document.body) opener.focus({ preventScroll: true })
     }
   }, [])
 
@@ -495,6 +499,9 @@ export function SettingsPage({
               <button type="button" className="btn" data-cmd="open-log" onClick={() => void bridge.openLog()}>
                 Open log
               </button>
+            </Row>
+            <Row title="Built with" help="The canvas is drawn with React Flow (xyflow), under the MIT licence.">
+              <span className="set-value">React Flow</span>
             </Row>
             <Row title="Settings file" help="The Claude and terminal settings as text, for editing by hand.">
               <button type="button" className="btn" data-cmd="edit-settings" onClick={() => void bridge.openSettingsFile()}>

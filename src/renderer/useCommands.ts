@@ -24,19 +24,28 @@ import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, focusTerminalWhenReady, terminalActions } from './terminalRegistry'
 import { copyFolderPath, toggleChatView } from './nodes/WindowTools'
+import { closeWindowAsking } from './a11y/windowActions'
+import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export type NewForm = { kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'; at?: Point; groupId?: string; editId?: string } | null
 
-/** The window that window actions mean: one filling the canvas, the terminal in use, or a single selected session. */
+/**
+ * The window that window actions mean: one filling the canvas, the one the keyboard is in, or a single selected
+ * session. Decided by where the keyboard is now (see a11y/keyboardAt.ts), not by the terminal typed in last.
+ */
 export function currentWindow(selected: string[]): string | null {
   const s = useStore.getState()
-  if (s.maximized) return s.maximized
-  const focused = focusedTerminalId()
-  if (focused) return focused
+  const el = keyboardElement()
+  const id = windowOfElement(el)
+  const inTerminal = !!el?.classList.contains('xterm-helper-textarea')
   const node = selected.length === 1 ? s.doc?.nodes.find((n) => n.id === selected[0]) : undefined
-  return isSessionNode(node) ? node.id : null
+  return windowFor(
+    { terminal: inTerminal ? (id ?? focusedTerminalId()) : null, frame: id ? { id, session: isSessionNode(s.doc?.nodes.find((n) => n.id === id)) } : null },
+    s.maximized,
+    isSessionNode(node) ? node.id : null
+  )
 }
 
 interface Options {
@@ -243,6 +252,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       closeNode: (id) => closeNodes([id]),
       renameNode: (id) => useStore.setState({ renaming: id }),
       restartNode: (id) => void restartNode(id),
+      renameWindow: (nodeId) => onWindow(nodeId, (id) => useStore.setState({ renaming: id })),
+      restartWindow: (nodeId) => onWindow(nodeId, (id) => void restartNode(id)),
+      closeWindow: (nodeId) => onWindow(nodeId, closeWindowAsking),
       toggleRecent,
       quit: () => void bridge.quitApp(),
       stopAllAndQuit: () => void bridge.stopAllAndQuit(),

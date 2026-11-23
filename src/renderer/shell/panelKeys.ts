@@ -35,6 +35,20 @@ export function panelKeyAction(kind: PanelKind, e: PanelKey, opts: { isForm: boo
   return null
 }
 
+/**
+ * Whether an Esc that reached the window from outside a panel closes it (for the top panel only). A small form answers
+ * too, so one left open after a click elsewhere still closes on Esc, but never from a text box or a terminal, where Esc
+ * means something else (it interrupts Claude) and typed work would be lost.
+ */
+export function windowEscCloses(kind: PanelKind, target: PanelKey['target']): boolean {
+  return !(kind === 'form' && target.textEntry)
+}
+
+/** Tab and Shift+Tab wrap inside modals, views and small forms, so focus never walks out of a form left open. */
+export function trapsTab(kind: PanelKind): boolean {
+  return kind !== 'drawer'
+}
+
 /** Reads the target facts from a DOM element. */
 export function keyTarget(el: Element | null): PanelKey['target'] {
   if (!el) return { textEntry: false, ownsEsc: false }
