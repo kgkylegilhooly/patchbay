@@ -651,11 +651,14 @@ export function createNodeRunner({
       })
 
       if (name !== 'PermissionRequest' || !approvals) return {}
-      const decision = await approvals.request(id, payload, signal)
-      if (decision && !approvals.pending().some((p) => p.nodeId === id)) {
+      // Always allow is Claude's own permission update. Codex's answer to one hasn't been checked, so it isn't offered there.
+      const codex = asking?.kind === 'claude' && agentOf(asking) === 'codex'
+      const { permission_suggestions: _rules, ...withoutRules } = payload
+      const answer = await approvals.request(id, codex ? withoutRules : payload, signal)
+      if (answer && !approvals.pending().some((p) => p.nodeId === id)) {
         tracker.apply(id, { type: 'approval-answered' })
       }
-      return { decision }
+      return answer ?? { decision: null }
     },
 
     errors: () => Object.fromEntries(errors),

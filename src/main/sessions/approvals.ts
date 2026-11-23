@@ -2,6 +2,25 @@ import { randomUUID } from 'node:crypto'
 import type { PendingApproval } from '../../shared/contract'
 
 export type ApprovalDecision = 'allow' | 'deny'
+/** What the person can answer. `allow-always` also applies the rule Claude itself offered for "don't ask again". */
+export type ApprovalChoice = ApprovalDecision | 'allow-always'
+
+/** Never the person's own settings or the project's shared file: only what stays with this project and person, or this session. */
+type AlwaysWhere = 'localSettings' | 'session'
+
+/** One of Claude's own permission updates, as a PermissionRequest hook receives and may echo back. Only rule additions that allow. */
+export interface AllowRuleUpdate {
+  type: 'addRules'
+  rules: Array<{ toolName: string; ruleContent?: string }>
+  behavior: 'allow'
+  destination: AlwaysWhere
+}
+
+export interface ApprovalAnswer {
+  decision: ApprovalDecision
+  /** Applied by Claude with the allow. See https://code.claude.com/docs/en/hooks, PermissionRequest. */
+  updatedPermissions?: AllowRuleUpdate[]
+}
 
 export interface Approvals {
   /** Resolves with the answer, or null when the terminal prompt should decide instead. */
@@ -9,9 +28,12 @@ export interface Approvals {
     nodeId: string,
     payload: Record<string, unknown>,
     signal?: AbortSignal
-  ): Promise<ApprovalDecision | null>
-  /** Only the renderer's answerApproval IPC may call this. No agent-reachable path may. */
-  answer(requestId: string, decision: ApprovalDecision): void
+  ): Promise<ApprovalAnswer | null>
+  /**
+   * Only the renderer's answerApproval IPC may call this. No agent-reachable path may. `allow-always` applies the rule
+   * kept from the request, never one sent with the answer, and does nothing for a request that offered none.
+   */
+  answer(requestId: string, choice: ApprovalChoice): void
   clearNode(nodeId: string): void
   pending(): PendingApproval[]
   onChange(cb: (pending: PendingApproval[]) => void): void
@@ -33,9 +55,45 @@ function describe(input: Record<string, unknown>): Pick<PendingApproval, 'summar
   return { summary: cut(line, SUMMARY_MAX), detail: cut(line, DETAIL_MAX) }
 }
 
+const WHERE: Record<AlwaysWhere, string> = { localSettings: 'in this project', session: 'for the rest of this session' }
+const MAX_RULES = 10
+
+/** A copy of a suggestion holding only the fields Claude documents, or null for anything else. */
+function allowRule(s: unknown): AllowRuleUpdate | null {
+  if (!s || typeof s !== 'object') return null
+  const o = s as Record<string, unknown>
+  if (o.type !== 'addRules' || o.behavior !== 'allow' || (o.destination !== 'localSettings' && o.destination !== 'session')) return null
+  if (!Array.isArray(o.rules) || o.rules.length === 0 || o.rules.length > MAX_RULES) return null
+  const rules: AllowRuleUpdate['rules'] = []
+  for (const r of o.rules as unknown[]) {
+    const rule = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>
+    if (typeof rule.toolName !== 'string' || !rule.toolName) return null
+    if (rule.ruleContent !== undefined && typeof rule.ruleContent !== 'string') return null
+    rules.push({ toolName: rule.toolName, ...(typeof rule.ruleContent === 'string' && { ruleContent: rule.ruleContent }) })
+  }
+  return { type: 'addRules', rules, behavior: 'allow', destination: o.destination }
+}
+
+/** The rule Claude offers for "don't ask again": one kept to this project first, else this session. */
+function alwaysRule(suggestions: unknown): AllowRuleUpdate | null {
+  const usable = (Array.isArray(suggestions) ? suggestions : []).map(allowRule).filter((r): r is AllowRuleUpdate => r !== null)
+  return usable.find((r) => r.destination === 'localSettings') ?? usable[0] ?? null
+}
+
+/** As Claude writes rules in its settings: Bash(npm test), or the bare tool name for the whole tool. */
+const ruleText = (u: AllowRuleUpdate): string =>
+  cut(
+    u.rules
+      .map((r) => (r.ruleContent === undefined ? r.toolName : `${r.toolName}(${r.ruleContent})`))
+      .join(', ')
+      .replace(/[\s\x00-\x1f\x7f]+/g, ' '),
+    SUMMARY_MAX
+  )
+
 interface Entry {
   approval: PendingApproval
-  settle(decision: ApprovalDecision | null): void
+  rule: AllowRuleUpdate | null
+  settle(answer: ApprovalAnswer | null): void
 }
 
 export function createApprovals({ holdMs = 540000 }: { holdMs?: number } = {}): Approvals {
@@ -67,25 +125,30 @@ export function createApprovals({ holdMs = 540000 }: { holdMs?: number } = {}): 
         const timer = setTimeout(() => settle(null), holdMs)
         timer.unref?.()
         const onAbort = (): void => settle(null)
-        function settle(decision: ApprovalDecision | null): void {
+        function settle(answer: ApprovalAnswer | null): void {
           if (!entries.delete(requestId)) return
           clearTimeout(timer)
           signal?.removeEventListener('abort', onAbort)
-          resolve(decision)
+          resolve(answer)
           changed()
         }
         signal?.addEventListener('abort', onAbort)
+        const rule = alwaysRule(payload.permission_suggestions)
+        const always = rule && { always: { rule: ruleText(rule), where: WHERE[rule.destination] } }
         entries.set(requestId, {
-          approval: { nodeId, requestId, tool, ...describe(input as Record<string, unknown>) },
+          approval: { nodeId, requestId, tool, ...describe(input as Record<string, unknown>), ...always },
+          rule,
           settle
         })
         changed()
       })
     },
 
-    answer(requestId, decision) {
-      if (decision !== 'allow' && decision !== 'deny') return
-      entries.get(requestId)?.settle(decision)
+    answer(requestId, choice) {
+      const entry = entries.get(requestId)
+      if (!entry) return
+      if (choice === 'allow' || choice === 'deny') entry.settle({ decision: choice })
+      else if (choice === 'allow-always' && entry.rule) entry.settle({ decision: 'allow', updatedPermissions: [entry.rule] })
     },
 
     clearNode(nodeId) {

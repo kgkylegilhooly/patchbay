@@ -14,6 +14,8 @@ const path = require('node:path')
 const LIMIT_MS = 1500
 /** A bigger input is withheld, which leaves that request to the terminal prompt. */
 const MAX_TOOL_INPUT_CHARS = 256 * 1024
+/** Claude's suggested permission updates are a rule or two. More than this is left out, and the Always allow button with it. */
+const MAX_SUGGESTIONS_CHARS = 16 * 1024
 /** Rolled over past this. Only the latest events decide a status, so the older part is dispensable. */
 const MAX_JOURNAL_BYTES = 256 * 1024
 
@@ -35,7 +37,7 @@ let undelivered = null
 function journal(fields) {
   const { PATCHBAY_ENDPOINT_FILE: file, PATCHBAY_NODE_ID: nodeId } = process.env
   // Tool input is only for the approval buttons, which this request no longer has.
-  const { tool_name: _name, tool_input: _input, ...kept } = fields
+  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, ...kept } = fields
   const dir = path.join(path.dirname(file), 'missed')
   const target = path.join(dir, `${encodeURIComponent(nodeId)}.jsonl`)
   fs.mkdirSync(dir, { recursive: true })
@@ -90,6 +92,9 @@ function pick(raw) {
     out.tool_name = event.tool_name
     const input = JSON.stringify(event.tool_input)
     if (input && input.length <= MAX_TOOL_INPUT_CHARS) out.tool_input = event.tool_input
+    // Claude's own "don't ask again" rules, for the Always allow button. Small, or left out.
+    const suggestions = Array.isArray(event.permission_suggestions) ? JSON.stringify(event.permission_suggestions) : ''
+    if (suggestions && suggestions.length <= MAX_SUGGESTIONS_CHARS) out.permission_suggestions = event.permission_suggestions
   }
   return out
 }
@@ -97,12 +102,14 @@ function pick(raw) {
 const DENIED = "The person declined this tool call at Patchbay's permission prompt. It's their answer to this call, not a Patchbay rule against the feature it uses."
 
 function printDecision(text) {
-  const { decision } = JSON.parse(text)
+  const { decision, updatedPermissions } = JSON.parse(text)
   if (decision !== 'allow' && decision !== 'deny') return done()
   const answer = { behavior: decision }
   // Agents read a bare "denied" as Patchbay ruling out what the call does, such as opening a browser, and give up on
   // it for good. It's the person's answer to this one call.
   if (decision === 'deny') answer.message = DENIED
+  // Always allow: the rule Claude itself suggested, echoed back so Claude saves it.
+  if (decision === 'allow' && Array.isArray(updatedPermissions) && updatedPermissions.length) answer.updatedPermissions = updatedPermissions
   const output = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: answer } }
   process.stdout.write(JSON.stringify(output), done)
 }
