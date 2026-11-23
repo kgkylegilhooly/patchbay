@@ -58,3 +58,13 @@ test('a big frame in small pieces costs about the same as the frame whole', () =
   // Joining each piece onto everything before it was quadratic: 40x slower in 4 KB pieces.
   expect(pieces).toBeLessThan(whole * 8 + 50)
 })
+
+test('an empty frame is refused cleanly, never thrown out of push', () => {
+  const errors: string[] = []
+  const reader = createFrameReader({ limit: 1000, onFrame: () => {}, onError: (e) => errors.push(e) })
+  expect(() => reader.push(Buffer.alloc(4))).not.toThrow()
+  expect(errors).toHaveLength(1)
+  // Nothing more is read once it has failed.
+  expect(() => reader.push(encodeFrame({ t: 'o', id: 'x', d: 'y' }))).not.toThrow()
+  expect(errors).toHaveLength(1)
+})

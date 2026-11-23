@@ -40,6 +40,7 @@ import type { SignalWatcher } from './sessions/signals'
 import { removeRefusal } from '../core/canvas/projectOps'
 import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 import { createOutputPacer } from './outputPacer'
+import { inSettingsQueue } from './settingsQueue'
 
 export interface IpcServices {
   dataDir: string
@@ -444,9 +445,13 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   ipcMain.handle('pb:getAppInfo', () => ({ version: app.getVersion(), dataDir }))
   ipcMain.handle('pb:getSettings', async () => parseSettings(await readIfPresent(settingsFile)))
   ipcMain.handle('pb:saveSettings', async (_e, next: Settings) => {
-    const text = mergeSettings(await readIfPresent(settingsFile), next)
+    // One read-merge-write at a time, so a save from another page can't undo this one. See settingsQueue.ts.
+    const text = await inSettingsQueue(async () => {
+      const merged = mergeSettings(await readIfPresent(settingsFile), next)
+      if (merged !== null) await writeAtomic(settingsFile, merged)
+      return merged
+    })
     if (text === null) return { ok: false, reason: 'settings.json has a mistake in it, so saving would overwrite it. Fix it with Open file, under About, then try again.' }
-    await writeAtomic(settingsFile, text)
     // A half-typed address is never fetched: reads only happen on the timer or on Test now, once one is set.
     const saved = parseSettings(text)
     usage.setOff(saved.usageSource === 'off')

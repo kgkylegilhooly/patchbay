@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -78,7 +78,8 @@ export async function saveBoardImageAsync(dir: string, bytes: Uint8Array, mime: 
   const there = await access(path).then(() => true, () => false)
   // Named by its content, so a half-written file is the only way one could differ: written whole, under a temp name.
   if (!there) {
-    const temp = `${path}.${process.pid}.tmp`
+    // Its own temp name, so two saves of one picture at once can't write into each other's.
+    const temp = `${path}.${randomUUID()}.tmp`
     await writeFile(temp, bytes)
     await rename(temp, path).catch(async (e: unknown) => {
       await rm(temp, { force: true })

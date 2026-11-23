@@ -151,6 +151,8 @@ export function createFrameReader(opts: { limit: number; onFrame: (message: Host
           if (buffered < HEADER_BYTES) return
           need = take(HEADER_BYTES).readUInt32LE(0)
           if (need > limit) return fail(`A frame of ${need} bytes is over the limit of ${limit}.`)
+          // Nothing sends one, and reading nothing would take from no piece at all.
+          if (need === 0) return fail('An empty frame.')
         }
         if (buffered < need) return
         const body = take(need)

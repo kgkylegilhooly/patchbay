@@ -82,7 +82,7 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   /** The Node a Claude launch's hooks start directly, when `hookNode` isn't set. Defaults to hookNodeFor. */
   findHookNode?: (launch: HookLaunch) => Promise<string | null>
   /** The connected session host's hook port, or null when sessions keep command hooks. See docs/plans/host-hooks.md. */
-  hostHookPort?: () => number | null
+  hostHookPort?: () => number | null | Promise<number | null>
   /** Whether a Claude launch's hooks can be http hooks. Defaults to httpHooksPossible. */
   findHttpHooks?: (launch: HookLaunch) => Promise<boolean>
 }
@@ -287,7 +287,8 @@ export function createNodeRunner({
       const hookLaunch = { claude, claudeCommand: now.claudeCommand, claudeTerminal: now.claudeTerminal }
       const hookNode = now.hookNode !== undefined ? now.hookNode : await (ctx.findHookNode ?? hookNodeFor)(hookLaunch)
       // Served by the session host, so its events start nothing. Chosen now, for this session's life.
-      const hostPort = ctx.hostHookPort?.() ?? null
+      // Waited for: a host still coming up after a quick start has its port in a moment, and this is for the session's life.
+      const hostPort = (await ctx.hostHookPort?.()) ?? null
       const hookPort = hostPort && (await (ctx.findHttpHooks ?? httpHooksPossible)(hookLaunch)) ? hostPort : undefined
       launch = buildClaudeLaunch(node, { ...now, claude, token, hookNode, hookPort })
     }

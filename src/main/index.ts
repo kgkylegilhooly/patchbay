@@ -36,6 +36,7 @@ import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
 import { pruneBoardImagesAsync } from './boardImages'
+import { adoptAfterQuickBoot } from './bootAdopt'
 import { createTriggerService } from './triggers/service'
 import { triggerEventDeps } from './triggers/eventDeps'
 import { broadcast, registerIpc } from './ipc'
@@ -400,7 +401,8 @@ async function boot(): Promise<void> {
         takeMissedHooks(journalDir, id).filter((e) => !hookFromAnotherNode(id, { session_id: e.session_id }, store.get().nodes, (n) => host.isRunning(n))),
       onMissedStopFailure: (id, event) => stops.noteHook(id, event),
       // Sessions in the background host post their hooks to it, and start nothing. See docs/plans/host-hooks.md.
-      hostHookPort: () => host.hookPort()
+      // A host still starting after a quick boot is waited for, so a session started meanwhile still gets its port.
+      hostHookPort: () => (host.info().mode === 'starting' ? host.connect().then(() => host.hookPort()) : host.hookPort())
     }
   })
   const usage = createUsageService({ dataDir })
@@ -490,21 +492,22 @@ async function boot(): Promise<void> {
   const hostAtBoot = await host.connect({ quick: true })
   // Copies of older builds that no host runs from any more. Once things have settled, so it costs start-up nothing.
   if (app.isPackaged) setTimeout(() => void pruneHostRuntimes(hostRuntimeDir, runtimeInUse), 60_000).unref()
-  const adoptLive = (): string[] => {
+  const adoptLive = (skip: ReadonlySet<string> = new Set()): string[] => {
     const plan = planReconnect(store.get(), host.sessions())
+    const adopt = plan.adopt.filter((id) => !skip.has(id))
     for (const id of plan.strays) {
       // A session with no node can't be seen or used. After a damaged save, though, the node may be what's missing.
       if (!host.isRunning(id)) host.forget(id)
       else if (!store.loaded.quarantined) void host.kill(id)
     }
-    for (const id of plan.adopt) {
+    for (const id of adopt) {
       runner.adoptNode(id)
       const kind = store.get().nodes.find((n) => n.id === id)?.kind
       // Claude draws its own screen without the alternate screen, so its mode alone wouldn't show it needs this.
       if (kind === 'claude') host.repaintOnNextResize(id)
       else saver.markDirty(id)
     }
-    return plan.adopt
+    return adopt
   }
   const adopted = adoptLive()
   // A node at its usage limit before the app restarted still is, if its session came back.
@@ -628,6 +631,13 @@ async function boot(): Promise<void> {
     launchRunner: join(resourceDir, 'launch-run.cjs'),
     onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh())
   })
+  // A host that was there but slow to answer boot's first knock is found by the connect that goes on: its sessions are
+  // adopted then, and their views fetched again. See bootAdopt.ts.
+  void adoptAfterQuickBoot(hostAtBoot, () => host.connect(), () => adoptLive(new Set(adopted)), (more) => {
+    stops.retain(more)
+    for (const id of more) runner.catchUpHooks(id)
+    ipcHooks.reattached(more)
+  }).catch((e: unknown) => log?.write(`Adopting sessions after start-up failed: ${String(e)}`))
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })

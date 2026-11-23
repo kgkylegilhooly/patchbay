@@ -6,8 +6,11 @@ import { docJson } from '../../src/core/persist/docJson'
 import { createDocStore } from '../../src/core/persist/docStore'
 import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
 
-/** Counts whole-file reads of the save, which a known-good primary no longer needs. */
-const reads = vi.hoisted(() => ({ files: [] as string[] }))
+/**
+ * Counts whole-file reads of the save, which a known-good primary no longer needs. A rename onto the primary can be
+ * made to fail once as a locked file does, running something in its place.
+ */
+const reads = vi.hoisted(() => ({ files: [] as string[], lockPrimaryOnce: null as null | (() => void) }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
@@ -15,7 +18,16 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     readFile: (async (...args: Parameters<typeof actual.readFile>) => {
       reads.files.push(String(args[0]))
       return actual.readFile(...args)
-    }) as typeof actual.readFile
+    }) as typeof actual.readFile,
+    rename: (async (from: string, to: string) => {
+      const locked = reads.lockPrimaryOnce
+      if (locked && String(to).endsWith('canvas.json')) {
+        reads.lockPrimaryOnce = null
+        locked()
+        throw Object.assign(new Error('locked'), { code: 'EBUSY' })
+      }
+      return actual.rename(from, to)
+    }) as typeof actual.rename
   }
 })
 
@@ -149,4 +161,39 @@ test('a save already under way with an older doc does not put it back over what 
   await older
   await store.flush()
   expect(titleOnDisk(primary())).toBe('newest')
+})
+
+test('a save whose rename is retried after a lock never puts its older doc over what flushSync wrote meanwhile', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  // The older save's rename meets a lock; Windows ends the session while it waits to try again.
+  reads.lockPrimaryOnce = () => {
+    store.saveDebounced(doc('newest'))
+    store.flushSync()
+  }
+  await store.save(doc('older'))
+  await store.flush()
+  expect(titleOnDisk(primary())).toBe('newest')
+})
+
+test('the canvas is never changed in place, which the save cache relies on', async () => {
+  const { createAppStore } = await import('../../src/main/appStore')
+  const deepFreeze = <T>(o: T): T => {
+    if (o && typeof o === 'object' && !Object.isFrozen(o)) {
+      Object.freeze(o)
+      for (const v of Object.values(o)) deepFreeze(v)
+    }
+    return o
+  }
+  const sticky = { kind: 'sticky', id: 's', title: 'S', x: 0, y: 0, width: 100, height: 100, parentId: null, projectId: 'p', text: 'hi' } as CanvasNode
+  const loaded = deepFreeze(doc('frozen', { nodes: [...doc('frozen').nodes, sticky] }))
+  const docs = { load: () => ({ doc: loaded, recoveredFrom: 'primary' as const }), save: async () => {}, saveDebounced: (d: CanvasDoc) => void deepFreeze(d), flush: async () => {}, flushSync: () => {} }
+  const store = createAppStore(docs)
+  // Strict mode: any write into a frozen doc throws here.
+  store.dispatch({ op: 'setViewport', viewport: { x: 1, y: 2, zoom: 1 } })
+  store.dispatch({ op: 'patchNode', id: 's', patch: { text: 'changed' } })
+  store.dispatch({ op: 'moveNodes', moves: [{ id: 'n1', x: 50, y: 60 }] })
+  store.dispatch({ op: 'removeNodes', ids: ['s'], at: 1 })
+  expect(store.get().nodes.map((n) => n.id)).toEqual(['n1'])
+  expect(loaded.nodes).toHaveLength(2)
 })

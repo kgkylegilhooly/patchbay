@@ -11,7 +11,8 @@
  * gets what it missed as one chunk, exactly, so a selection or a search in it is left alone; those on screen first, one
  * at a time while the window keeps up. Only a session that printed more than KEEP_CHARS meanwhile gets its whole buffer
  * from a clean slate instead (ESC c and the buffer, as a view gets after the host reconnects), so it's shown right
- * however much it missed.
+ * however much it missed. A session brought up to date in a catch-up is sent its output straight on until the round
+ * ends, so a slow page never sees one session start afresh over and over.
  */
 
 /** Characters of output sent to a window and not yet taken, past which background sessions are held. */
@@ -68,6 +69,8 @@ interface Pace {
   holding: 'none' | 'background' | 'all'
   /** Held sessions with output waiting, in the order they had it. A session here stays held until it's caught up. */
   missed: Map<string, Missed>
+  /** Sessions already brought up to date in the catch-up under way. Null when none is. */
+  caught: Set<string> | null
 }
 
 export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
@@ -80,7 +83,7 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
 
   const paceOf = (windowId: number): Pace => {
     let pace = paces.get(windowId)
-    if (!pace) paces.set(windowId, (pace = { sent: 0, taken: 0, holding: 'none', missed: new Map() }))
+    if (!pace) paces.set(windowId, (pace = { sent: 0, taken: 0, holding: 'none', missed: new Map(), caught: null }))
     return pace
   }
 
@@ -95,10 +98,12 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
 
   /** Brings held sessions up to date one at a time, those on screen first, for as long as the window keeps up. */
   const catchUp = (win: PacedWindow, pace: Pace): void => {
+    pace.caught ??= new Set()
     const order = [...pace.missed].sort((a, b) => Number(b[1].foreground) - Number(a[1].foreground))
     for (const [id, m] of order) {
       if (behind(pace) > high) return
       pace.missed.delete(id)
+      pace.caught.add(id)
       if (!opts.wants(win.id, id)) continue
       if (m.parts) {
         send(win, pace, id, m.parts.join(''), m.seq)
@@ -114,7 +119,9 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
       const pace = paceOf(win.id)
       const front = foreground(id)
       const held = pace.missed.get(id)
-      if (held || pace.holding === 'all' || (pace.holding === 'background' && !front)) {
+      // Already up to date in this catch-up: on it goes, unless the page has stopped taking anything at all again.
+      const caught = !held && pace.caught?.has(id) && behind(pace) <= hard + high
+      if (!caught && (held || pace.holding === 'all' || (pace.holding === 'background' && !front))) {
         const m = held ?? { parts: [], size: 0, seq, foreground: front }
         pace.missed.set(id, m)
         m.seq = seq
@@ -134,7 +141,9 @@ export function createOutputPacer(opts: OutputPacerOptions): OutputPacer {
       pace.taken = Math.min(taken, pace.sent)
       if (behind(pace) > low) return
       pace.holding = 'none'
+      // The round ends once nothing is waiting and the window has taken what the round sent it.
       if (pace.missed.size) catchUp(win, pace)
+      else pace.caught = null
     },
 
     forget(windowId) {

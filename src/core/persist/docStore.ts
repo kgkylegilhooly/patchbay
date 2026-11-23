@@ -1,5 +1,5 @@
 import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { copyFile, open, readFile, stat } from 'node:fs/promises'
+import { copyFile, open, readFile, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { docJson } from './docJson'
 import { sanitizeBoard } from '../../shared/board'
@@ -392,8 +392,14 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     const temp = `${primary}.tmp`
     await writeSynced(temp, json)
     await rotateBackup()
-    if (order < flushedSyncAt) return
-    await renameWithRetry(temp, primary)
+    // Checked again before every try: a locked file means waiting, and a sync flush can write a newer doc meanwhile.
+    let replaced = false
+    await withLockRetry(async () => {
+      if (order < flushedSyncAt) return
+      await rename(temp, primary)
+      replaced = true
+    })
+    if (!replaced) return
     trusted = await stat(primary).catch(() => null)
   }
 

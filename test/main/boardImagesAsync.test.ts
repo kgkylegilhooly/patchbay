@@ -45,3 +45,11 @@ test('pruning later, off the thread, removes only what was unused at start-up an
   expect(readdirSync(dir).sort()).toEqual([used, fresh, 'notes.txt'].sort())
   expect(await pruneBoardImagesAsync(join(dir, 'missing'), new Set())).toBe(0)
 })
+
+test('the same picture saved several times at once is saved whole, once', async () => {
+  const big = new Uint8Array(2 * 1024 * 1024).map((_, i) => i % 251)
+  const names = await Promise.all(Array.from({ length: 8 }, () => saveBoardImageAsync(dir, big, 'image/png')))
+  expect(new Set(names).size).toBe(1)
+  expect(readdirSync(dir)).toEqual([names[0]])
+  expect(await readBoardImageAsync(dir, names[0])).toBe(`data:image/png;base64,${Buffer.from(big).toString('base64')}`)
+})

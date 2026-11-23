@@ -150,3 +150,28 @@ test('catching up sends what the screen missed first, and every session ends up 
   }
   expect(caught.every((c) => !c.data.startsWith(String.fromCharCode(27)))).toBe(true)
 })
+
+test('a catch-up never starts the same session afresh twice, even while output keeps coming', () => {
+  // Sessions kept warm out of sight, held first. A buffer is far smaller than the marks, as 1 MB is beside 4 and 8 MB.
+  const t = setup({ keepChars: 5, hardWater: 2000, foreground: () => false })
+  for (let i = 0; i < 120; i++) {
+    t.print('a', 'x'.repeat(10))
+    t.print('b', 'y'.repeat(10))
+  }
+  // A slow page: it takes what it's given a little at a time, and both sessions keep printing throughout.
+  for (let round = 0; round < 40; round++) {
+    t.pacer.ack(t.win, t.taken())
+    t.print('a', 'x'.repeat(10))
+    t.print('b', 'y'.repeat(10))
+  }
+  for (let i = 0; i < 10; i++) t.pacer.ack(t.win, t.taken())
+  const resets = (id: string): number => t.sent.filter((c) => c.id === id && c.data.startsWith(String.fromCharCode(27) + 'c')).length
+  expect(resets('a')).toBe(1)
+  expect(resets('b')).toBe(1)
+  // And each still ends up exactly as its session's buffer.
+  for (const id of ['a', 'b']) {
+    const chunks = t.sent.filter((c) => c.id === id)
+    const last = chunks.map((c) => c.data.startsWith(String.fromCharCode(27) + 'c')).lastIndexOf(true)
+    expect(chunks[last].seq).toBeLessThan(chunks[chunks.length - 1].seq)
+  }
+})
