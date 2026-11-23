@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, type Dirent } from 'node:fs'
+import { readdir, rmdir, unlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
 export interface Worktree {
@@ -102,9 +103,47 @@ export async function checkRemovable(wt: Worktree): Promise<RemoveResult> {
   }
 }
 
+/**
+ * Every link in a folder, not followed: symbolic links and, on Windows, junctions, which Node reports as links. The
+ * worktree's own .git is a file, but a folder of that name is passed over all the same.
+ */
+async function linksIn(dir: string, out: string[] = []): Promise<string[]> {
+  let entries: Dirent[]
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry.name)
+    if (entry.isSymbolicLink()) out.push(path)
+    else if (entry.isDirectory() && entry.name !== '.git') await linksIn(path, out)
+  }
+  return out
+}
+
+/**
+ * Takes out each link itself. rmdir removes a junction or a folder link and nothing it points at, and can't remove a
+ * real folder that has anything in it; unlink is for a link to a file, and can't remove a folder.
+ */
+export async function takeOutLinks(path: string): Promise<RemoveResult> {
+  for (const link of await linksIn(path)) {
+    try {
+      await rmdir(link).catch(() => unlink(link))
+    } catch (e) {
+      return { ok: false, reason: `Couldn't take out the link ${link} first, so the worktree wasn't removed: ${(e as Error).message}` }
+    }
+  }
+  return { ok: true }
+}
+
 export async function removeWorktree(wt: Worktree): Promise<RemoveResult> {
   const removable = await checkRemovable(wt)
   if (!removable.ok) return removable
+  // git deletes ignored files with the worktree, and on Windows it deletes what a junction points at rather than the
+  // junction (seen with git 2.45.1): a linked node_modules would empty the one it shares. So the links go first.
+  const unlinked = await takeOutLinks(wt.path)
+  if (!unlinked.ok) return unlinked
   try {
     // Never --force: git's own checks are a second guard against losing work.
     await git(wt.repo, 'worktree', 'remove', wt.path)

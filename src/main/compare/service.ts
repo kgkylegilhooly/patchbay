@@ -29,6 +29,7 @@ import {
 import { AGENT_NAMES, isSessionNode, type CanvasNode, type ClaudeNode, type GroupNode } from '../../shared/model'
 import type { CompareReads } from './reads'
 import { placeInProject } from '../../core/canvas/place'
+import { takeOutLinks } from '../../core/worktree/service'
 import { viewSize } from '../viewSize'
 import { agentsNow } from '../agentsAllowed'
 import type { CompareTaskLink } from './taskLink'
@@ -304,7 +305,9 @@ export function createCompareService(d: CompareServiceDeps) {
     }
     const wt = { path: a.path, branch: a.branch, repo: c.base.repo }
     if (needs?.uncommitted) {
-      // Confirmed for exactly these changes, above.
+      // Confirmed for exactly these changes, above. Links go first, as removeWorktree does: --force deletes through them.
+      const unlinked = await takeOutLinks(a.path)
+      if (!unlinked.ok) return unlinked
       const r = await d.git(c.base.repo, ['worktree', 'remove', '--force', a.path])
       if (r.code !== 0) return { ok: false, reason: `${r.stderr || r.stdout}`.trim() || 'git could not remove the worktree.' }
     } else {
