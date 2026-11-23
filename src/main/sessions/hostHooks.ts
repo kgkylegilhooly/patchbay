@@ -68,6 +68,8 @@ export interface HostHooks {
   answer(hid: number, body: unknown): void
   /** Writes what's kept to the journal now. For stopping. */
   flush(): Promise<void>
+  /** How many forwarded events the app hasn't answered yet. */
+  unanswered(): number
   close(): Promise<void>
 }
 
@@ -171,9 +173,30 @@ export function startHostHooks(opts: HostHooksOptions): Promise<HostHooks> {
     if (held.length > maxHeld || appsWithoutHooks > 0) void flushHeld()
   }
 
+  /**
+   * An app that's connected but not answering, as when its main thread hangs, would otherwise be owed every event
+   * from then on: 6,000 events left 6,000 here. Past the limit, the oldest that nobody waits on any more go to the
+   * journal, as they would if the app had gone, and down to a margin below it so this isn't done for every event.
+   * A request Claude is still waiting on stays: its answer can still come.
+   */
+  const spillUnanswered = (): void => {
+    if (pending.size <= maxHeld) return
+    const spill: Kept[] = []
+    const target = Math.floor(maxHeld * 0.8)
+    // A Map keeps the order events came in, so the oldest are first.
+    for (const p of pending.values()) {
+      if (pending.size - spill.length <= target) break
+      if (p.respond) continue
+      spill.push({ hid: p.hid, nodeId: p.nodeId, fields: p.fields, at: p.at })
+    }
+    for (const e of spill) pending.delete(e.hid)
+    if (spill.length) void writeJournal(spill)
+  }
+
   const forward = (e: Kept, event: string, respond: Pending['respond']): void => {
     pending.set(e.hid, { ...e, event, respond })
     forwarder?.forward(e.hid, e.nodeId, respond ? e.fields : asNews(e.fields), !!respond)
+    spillUnanswered()
   }
 
   const noteRefused = (nodeId: string): void => {
@@ -223,6 +246,7 @@ export function startHostHooks(opts: HostHooksOptions): Promise<HostHooks> {
         const p = pending.get(kept.hid)
         if (p) p.respond = null
         send(res, 200, {})
+        spillUnanswered()
       }, replyLimit)
     }
     res.on('close', () => {
@@ -283,6 +307,7 @@ export function startHostHooks(opts: HostHooksOptions): Promise<HostHooks> {
           p.respond?.(claudeOutput(p.event, answer))
         },
         flush: flushHeld,
+        unanswered: () => pending.size,
         close: () =>
           new Promise((done) => {
             for (const p of pending.values()) p.respond?.({})

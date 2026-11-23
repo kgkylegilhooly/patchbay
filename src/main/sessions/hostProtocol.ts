@@ -51,6 +51,11 @@ export type HostMessage =
   | { t: 'req'; id: number; op: HostOp; args?: HostRequestArgs }
   | { t: 'w'; id: string; d: string }
   | { t: 'r'; id: string; cols: number; rows: number }
+  /**
+   * The sessions no window shows, which send their output in bigger, rarer pieces. Replaces the last such list. A host
+   * from before this ignores it, as any host ignores a message it doesn't know, so it changes no message's meaning.
+   */
+  | { t: 'quiet'; ids: string[] }
 
 export interface HostRequestArgs {
   id?: string
@@ -88,16 +93,49 @@ export interface FrameReader {
   setLimit(bytes: number): void
 }
 
-/** Reassembles frames however the stream splits them. `onError` is final: the connection should be closed. */
+/**
+ * Reassembles frames however the stream splits them. `onError` is final: the connection should be closed.
+ * The pieces of a frame are kept as they came and joined once, when the frame is whole: joining each new piece onto
+ * all before it copied a big frame over and over, 600 ms for twenty 1 MB frames in 4 KB pieces.
+ */
 export function createFrameReader(opts: { limit: number; onFrame: (message: HostMessage) => void; onError: (reason: string) => void }): FrameReader {
   let limit = opts.limit
-  let pending: Buffer = Buffer.alloc(0)
+  /** What has come and not been read yet, oldest first. The first piece may be partly read already. */
+  let chunks: Buffer[] = []
+  let buffered = 0
+  /** The size the next frame says it has, once its header is in. */
+  let need = -1
   let failed = false
 
   const fail = (reason: string): void => {
     failed = true
-    pending = Buffer.alloc(0)
+    chunks = []
+    buffered = 0
     opts.onError(reason)
+  }
+
+  /** Takes the first `n` bytes waiting. A copy only when they span pieces. */
+  const take = (n: number): Buffer => {
+    const first = chunks[0]
+    if (first.length >= n) {
+      const out = first.subarray(0, n)
+      if (first.length === n) chunks.shift()
+      else chunks[0] = first.subarray(n)
+      buffered -= n
+      return out
+    }
+    const out = Buffer.allocUnsafe(n)
+    let at = 0
+    while (at < n) {
+      const c = chunks[0]
+      const used = Math.min(c.length, n - at)
+      c.copy(out, at, 0, used)
+      at += used
+      if (used === c.length) chunks.shift()
+      else chunks[0] = c.subarray(used)
+    }
+    buffered -= n
+    return out
   }
 
   return {
@@ -105,15 +143,18 @@ export function createFrameReader(opts: { limit: number; onFrame: (message: Host
       limit = bytes
     },
     push(chunk) {
-      if (failed) return
-      pending = pending.length ? Buffer.concat([pending, chunk]) : chunk
-      let at = 0
-      while (pending.length - at >= HEADER_BYTES) {
-        const size = pending.readUInt32LE(at)
-        if (size > limit) return fail(`A frame of ${size} bytes is over the limit of ${limit}.`)
-        if (pending.length - at - HEADER_BYTES < size) break
-        const body = pending.subarray(at + HEADER_BYTES, at + HEADER_BYTES + size)
-        at += HEADER_BYTES + size
+      if (failed || !chunk.length) return
+      chunks.push(chunk)
+      buffered += chunk.length
+      for (;;) {
+        if (need < 0) {
+          if (buffered < HEADER_BYTES) return
+          need = take(HEADER_BYTES).readUInt32LE(0)
+          if (need > limit) return fail(`A frame of ${need} bytes is over the limit of ${limit}.`)
+        }
+        if (buffered < need) return
+        const body = take(need)
+        need = -1
         let message: HostMessage
         try {
           message = JSON.parse(body.toString('utf8')) as HostMessage
@@ -123,7 +164,6 @@ export function createFrameReader(opts: { limit: number; onFrame: (message: Host
         opts.onFrame(message)
         if (failed) return
       }
-      pending = at === pending.length ? Buffer.alloc(0) : pending.subarray(at)
     }
   }
 }

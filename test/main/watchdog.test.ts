@@ -144,8 +144,25 @@ function heartbeatSetup() {
   const log = { write: (l: string) => lines.push(l), file: '', flush: () => Promise.resolve() }
   const watch = watchWindow(win as never, { dialog: dialog as never, log, app: app as never, ipcMain: ipcMain as never, heartbeat: { everyMs: 1000, hungAfterMs: 5000 } })
   const pong = () => ipcMain.emit('pb:pong', { sender: contents }, 1)
-  return { contents, ipcMain, dialog, lines, pong, watch, signal: () => signal }
+  return { win, contents, ipcMain, dialog, lines, pong, watch, signal: () => signal }
 }
+
+test('a window hidden in the tray is not pinged, and is not taken to be stuck until it shows and stays silent', () => {
+  const t = heartbeatSetup()
+  let visible = false
+  ;(t.win as Record<string, unknown>).isVisible = () => visible
+  t.contents.emit('did-finish-load')
+  vi.advanceTimersByTime(60_000)
+  expect(t.contents.send).not.toHaveBeenCalled()
+  expect(t.dialog.showMessageBox).not.toHaveBeenCalled()
+  visible = true
+  vi.advanceTimersByTime(1000)
+  expect(t.contents.send).toHaveBeenCalledWith('pb:ping', expect.any(Number))
+  expect(t.dialog.showMessageBox).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(6000)
+  expect(t.dialog.showMessageBox).toHaveBeenCalledTimes(1)
+  t.watch.dispose()
+})
 
 test('a window that stops answering the heartbeat is taken to be stuck, with nobody typing', () => {
   const t = heartbeatSetup()

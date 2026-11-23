@@ -1,6 +1,7 @@
-import { existsSync, renameSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { copyFile, open, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { docJson } from './docJson'
 import { sanitizeBoard } from '../../shared/board'
 import { recoverTasks, sanitizeTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
@@ -34,6 +35,11 @@ export interface DocStore {
   saveDebounced(doc: CanvasDoc): void
   /** Rejects if the pending doc can't be written. */
   flush(): Promise<void>
+  /**
+   * Writes the pending doc now, on this thread, for when there's no time to wait: Windows ending the session. Still
+   * whole or not at all, and a known-good primary still becomes the backup first.
+   */
+  flushSync(): void
 }
 
 export interface DocStoreOptions {
@@ -299,14 +305,36 @@ function parseDoc(text: string): CanvasDoc | null {
   }
 }
 
+interface FileStamp {
+  size: number
+  mtimeMs: number
+}
+
+const sameStamp = (a: FileStamp, b: FileStamp | null): boolean => b !== null && a.size === b.size && a.mtimeMs === b.mtimeMs
+
+function stampOf(file: string): FileStamp | null {
+  try {
+    const { size, mtimeMs } = statSync(file)
+    return { size, mtimeMs }
+  } catch {
+    return null
+  }
+}
+
 export function createDocStore(dir: string, options: DocStoreOptions = {}): DocStore {
   const primary = join(dir, 'canvas.json')
   const backup = join(dir, 'canvas.json.bak')
   const onSaveError = options.onSaveError ?? ((e) => console.error('Patchbay autosave failed:', e))
 
   let queue: Promise<unknown> = Promise.resolve()
-  let pending: string | null = null
+  /** The newest doc not yet on disk. Kept as the doc, and turned into text only when it's written. */
+  let pending: CanvasDoc | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * The primary as this store last wrote or loaded it, by size and time. One that still matches is known good, so it's
+   * copied to the backup as it is, rather than read and checked again with every save.
+   */
+  let trusted: FileStamp | null = null
 
   /** Moves a bad file aside so that no later save can overwrite it. */
   function quarantine(file: string): string {
@@ -314,11 +342,33 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     let target = join(dir, `canvas.corrupt-${stamp}.json`)
     for (let n = 1; existsSync(target); n++) target = join(dir, `canvas.corrupt-${stamp}-${n}.json`)
     withLockRetrySync(() => renameSync(file, target))
+    if (file === primary) trusted = null
     return target
+  }
+
+  /** Copies a known-good primary to the backup by the file system alone, synced before it takes the backup's place. */
+  async function copyToBackup(): Promise<void> {
+    const temp = `${backup}.tmp`
+    await withLockRetry(() => copyFile(primary, temp))
+    const handle = await open(temp, 'r+')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    await renameWithRetry(temp, backup)
   }
 
   /** Copies the primary to the backup, leaving the primary in place in case of a crash. */
   async function rotateBackup(): Promise<void> {
+    let now: FileStamp
+    try {
+      now = await withLockRetry(() => stat(primary))
+    } catch (e) {
+      if (isMissingFile(e)) return
+      throw e
+    }
+    if (sameStamp(now, trusted)) return copyToBackup()
     let previous: string
     try {
       previous = await withLockRetry(() => readFile(primary, 'utf8'))
@@ -336,12 +386,14 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     await writeSynced(temp, json)
     await rotateBackup()
     await renameWithRetry(temp, primary)
+    trusted = await stat(primary).catch(() => null)
   }
 
-  function enqueue(json: string): Promise<void> {
+  function enqueue(doc: CanvasDoc): Promise<void> {
     const run = queue.then(async () => {
-      await persist(json)
-      if (pending === json) pending = null
+      // Turned into text here, once, however many changes came while it waited.
+      await persist(docJson(doc))
+      if (pending === doc) pending = null
     })
     queue = run.catch(() => {})
     return run
@@ -356,7 +408,10 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     load() {
       const primaryText = readIfPresentSync(primary)
       const primaryDoc = primaryText === null ? null : parseDoc(primaryText)
-      if (primaryDoc) return { doc: primaryDoc, recoveredFrom: 'primary' }
+      if (primaryDoc) {
+        trusted = stampOf(primary)
+        return { doc: primaryDoc, recoveredFrom: 'primary' }
+      }
       const badPrimary = primaryText === null ? undefined : quarantine(primary)
 
       const backupText = readIfPresentSync(backup)
@@ -372,12 +427,13 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     save(doc) {
       clearTimer()
       pending = null
-      return enqueue(JSON.stringify(doc))
+      return enqueue(doc)
     },
 
     // The timer isn't reset by later calls, so nonstop changes such as a long drag can't starve autosave.
+    // Only the doc is held until then: turning a big canvas into text took 60 ms, with every change.
     saveDebounced(doc) {
-      pending = JSON.stringify(doc)
+      pending = doc
       if (timer) return
       timer = setTimeout(() => {
         timer = null
@@ -390,6 +446,29 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       await queue
       clearTimer()
       if (pending !== null) await enqueue(pending)
+    },
+
+    flushSync() {
+      clearTimer()
+      if (pending === null) return
+      const doc = pending
+      // Temp names of its own, so a save already under way can't write into the same file.
+      const replace = (target: string, fill: (temp: string) => void): void => {
+        const temp = `${target}.now.tmp`
+        fill(temp)
+        const fd = openSync(temp, 'r+')
+        try {
+          fsyncSync(fd)
+        } finally {
+          closeSync(fd)
+        }
+        withLockRetrySync(() => renameSync(temp, target))
+      }
+      const now = stampOf(primary)
+      if (now && sameStamp(now, trusted)) replace(backup, (temp) => copyFileSync(primary, temp))
+      replace(primary, (temp) => writeFileSync(temp, docJson(doc)))
+      if (pending === doc) pending = null
+      trusted = stampOf(primary)
     }
   }
 }

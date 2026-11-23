@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
-import { readIfPresentSync, writeAtomic } from '../core/persist/atomicFile'
+import { readIfPresent, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
@@ -31,7 +31,7 @@ import type { UsageSecret } from './usage/usageSecret'
 import type { UsageService } from './usage/usageService'
 import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
-import { readBoardImage, saveBoardImage } from './boardImages'
+import { readBoardImageAsync, saveBoardImageAsync } from './boardImages'
 import { agentOffNow } from './agentsAllowed'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
@@ -39,6 +39,7 @@ import type { SendGuard } from './sessions/sendGuard'
 import type { SignalWatcher } from './sessions/signals'
 import { removeRefusal } from '../core/canvas/projectOps'
 import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
+import { createOutputPacer } from './outputPacer'
 
 export interface IpcServices {
   dataDir: string
@@ -111,17 +112,45 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
    * window only for it to be thrown away. A window that hasn't said yet gets everything.
    */
   const watching = new Map<number, Set<string>>()
+  // The host sends what no window shows in bigger, rarer pieces. See sessions/host.ts.
+  const tellShown = (): void => {
+    if (watching.size === 0) return host.setShown?.(null)
+    const all = new Set<string>()
+    for (const ids of watching.values()) for (const id of ids) all.add(id)
+    host.setShown?.(all)
+  }
   ipcMain.on('pb:watchOutput', (e, ids: unknown) => {
     if (!Array.isArray(ids)) return
     const contents = e.sender
-    if (!watching.has(contents.id)) contents.once('destroyed', () => watching.delete(contents.id))
-    watching.set(contents.id, new Set(ids.filter((x): x is string => typeof x === 'string')))
+    const contentsId = contents.id
+    if (!watching.has(contentsId)) contents.once('destroyed', () => (watching.delete(contentsId), tellShown()))
+    watching.set(contentsId, new Set(ids.filter((x): x is string => typeof x === 'string')))
+    tellShown()
+  })
+  // A window that falls behind is sent no more output until it catches up, then each session it missed afresh.
+  const pacer = createOutputPacer({
+    snapshot: (id) => host.snapshot(id),
+    wants: (contentsId, id) => watching.get(contentsId)?.has(id) ?? true
+  })
+  const paced = new Set<number>()
+  ipcMain.on('pb:outputAck', (e, taken: unknown) => {
+    if (typeof taken === 'number') pacer.ack(e.sender, taken)
   })
   const sendOutput = (id: string, data: string, seq: number): void => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed()) continue
-      const shown = watching.get(win.webContents.id)
-      if (!shown || shown.has(id)) win.webContents.send('pb:onOutput', id, data, seq)
+      const contents = win.webContents
+      const shown = watching.get(contents.id)
+      if (shown && !shown.has(id)) continue
+      if (!paced.has(contents.id)) {
+        const contentsId = contents.id
+        paced.add(contentsId)
+        // A reloaded page counts what it takes from nothing again.
+        const restart = (): void => pacer.forget(contentsId)
+        contents.on('did-navigate', restart)
+        contents.once('destroyed', () => (restart(), paced.delete(contentsId)))
+      }
+      pacer.deliver(contents, id, data, seq)
     }
   }
 
@@ -209,10 +238,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     return statuses
   })
   ipcMain.handle('pb:getErrors', () => runner.errors())
-  ipcMain.handle('pb:attach', (_e, id: string) => {
+  ipcMain.handle('pb:attach', async (_e, id: string) => {
     const snapshot = host.snapshot(id)
     // A run node doesn't start on launch, so until it does this is the only way to show its last output.
-    if (!snapshot.data && find(id)?.kind === 'run') return { data: scrollback.read(id) ?? '', seq: snapshot.seq }
+    if (!snapshot.data && find(id)?.kind === 'run') return { data: (await scrollback.readAsync(id)) ?? '', seq: snapshot.seq }
     return snapshot
   })
 
@@ -255,13 +284,13 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     if (refused) return refused
     const node = find(id)
     if (node?.kind === 'run' && !host.isRunning(id) && !host.snapshot(id).data) {
-      await runner.startNode(id, { initialScrollback: scrollback.read(id) ?? undefined })
+      await runner.startNode(id, { initialScrollback: (await scrollback.readAsync(id)) ?? undefined })
       return
     }
     // A terminal that never started this launch, such as one whose folder was missing, still has its
     // saved scrollback on disk. Restarting without it would let the next save overwrite that file.
     if (node?.kind === 'terminal' && !host.isRunning(id) && !host.snapshot(id).data) {
-      await runner.startNode(id, { initialScrollback: restoreSeed('terminal', scrollback.read(id)) })
+      await runner.startNode(id, { initialScrollback: restoreSeed('terminal', await scrollback.readAsync(id)) })
     } else if ((await runner.restartOrJoin(id, { shownExited: opts?.shownExited === true })) === 'joined') {
       // It was still running unseen, so it's shown again: the notice offers ending it first. See docs/plans/session-sync.md.
       clearExited(id)
@@ -372,9 +401,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   })
   ipcMain.handle('pb:testUsageSource', async () => (await usagePoller.refreshNow()) ?? { ok: false, problem: 'Choose an endpoint or page first.' })
   ipcMain.handle('pb:hasUsageSecret', () => usageSecret.has())
-  ipcMain.handle('pb:setUsageSecret', (_e, header: string) => usageSecret.save(header, parseSettings(readIfPresentSync(settingsFile)).usageUrl ?? ''))
+  ipcMain.handle('pb:setUsageSecret', async (_e, header: string) => usageSecret.save(header, parseSettings(await readIfPresent(settingsFile)).usageUrl ?? ''))
   ipcMain.handle('pb:removeUsageSecret', () => usageSecret.remove())
-  ipcMain.handle('pb:openUsageSignIn', () => openUsageSignIn(parseSettings(readIfPresentSync(settingsFile)).usageUrl ?? ''))
+  ipcMain.handle('pb:openUsageSignIn', async () => openUsageSignIn(parseSettings(await readIfPresent(settingsFile)).usageUrl ?? ''))
   ipcMain.on('pb:markSeen', (_e, id: string) => notifier.markSeen(id))
   ipcMain.handle('pb:openDataFolder', async () => {
     await shell.openPath(dataDir)
@@ -394,9 +423,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     s.log?.write(`The window was busy for ${(ms / 1000).toFixed(1)} s${typeof what === 'string' && what ? ` (${what.slice(0, 120)})` : ''}.`)
   })
   ipcMain.handle('pb:getAppInfo', () => ({ version: app.getVersion(), dataDir }))
-  ipcMain.handle('pb:getSettings',() => parseSettings(readIfPresentSync(settingsFile)))
+  ipcMain.handle('pb:getSettings', async () => parseSettings(await readIfPresent(settingsFile)))
   ipcMain.handle('pb:saveSettings', async (_e, next: Settings) => {
-    const text = mergeSettings(readIfPresentSync(settingsFile), next)
+    const text = mergeSettings(await readIfPresent(settingsFile), next)
     if (text === null) return { ok: false, reason: 'settings.json has a mistake in it, so saving would overwrite it. Fix it with Open file, under About, then try again.' }
     await writeAtomic(settingsFile, text)
     // A half-typed address is never fetched: reads only happen on the timer or on Test now, once one is set.
@@ -422,9 +451,9 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   ipcMain.handle('pb:runTriggerNow', (_e, id: string) => triggers.runNow(id))
   ipcMain.handle('pb:readLaunchConfigs', (_e, folder: string) => listLaunchConfigs(folder))
   // PATCHBAY_SSH_CONFIG lets a test give its own file in place of the person's.
-  ipcMain.handle('pb:listSshHosts', () => {
+  ipcMain.handle('pb:listSshHosts', async () => {
     const config = process.env.PATCHBAY_SSH_CONFIG || join(homedir(), '.ssh', 'config')
-    return { hosts: sshHosts(readIfPresentSync(config) ?? ''), home: homedir(), installed: findSsh() !== null }
+    return { hosts: sshHosts((await readIfPresent(config)) ?? ''), home: homedir(), installed: findSsh() !== null }
   })
 
   ipcMain.handle('pb:getApprovals', () => approvals.pending())
@@ -434,8 +463,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   })
 
   ipcMain.handle('pb:savePastedImage', (_e, bytes: Uint8Array, mime: string) => savePastedImage(dataDir, bytes, mime))
-  ipcMain.handle('pb:saveBoardImage', (_e, bytes: Uint8Array, mime: string) => saveBoardImage(join(dataDir, 'whiteboards', 'images'), bytes, mime))
-  ipcMain.handle('pb:readBoardImage', (_e, file: string) => readBoardImage(join(dataDir, 'whiteboards', 'images'), file))
+  ipcMain.handle('pb:saveBoardImage', (_e, bytes: Uint8Array, mime: string) => saveBoardImageAsync(join(dataDir, 'whiteboards', 'images'), bytes, mime))
+  ipcMain.handle('pb:readBoardImage', (_e, file: string) => readBoardImageAsync(join(dataDir, 'whiteboards', 'images'), file))
   ipcMain.handle('pb:openTerminalLink', (_e, nodeId: string, target: string) => {
     const node = find(nodeId)
     const cwd = isSession(node) ? node.cwd : homedir()
@@ -504,8 +533,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     // An empty folder of its own, so the run picks up no project's settings or CLAUDE.md.
     const neutral = join(dataDir, 'naming')
     mkdirSync(neutral, { recursive: true })
+    const settings = parseSettings(await readIfPresent(settingsFile))
     return nameFromOutput(await titleMaterial(node), (stdin) => {
-      const settings = parseSettings(readIfPresentSync(settingsFile))
       const program = customLaunch({ terminal: settings.claudeTerminal, command: settings.claudeCommand }, TITLE_ARGS)
       return runToEnd(program, stdin, { cwd: neutral, env: cleanEnv(process.env, {}) })
     })

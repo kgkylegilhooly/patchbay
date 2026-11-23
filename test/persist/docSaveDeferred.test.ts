@@ -1,0 +1,140 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { docJson } from '../../src/core/persist/docJson'
+import { createDocStore } from '../../src/core/persist/docStore'
+import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
+
+/** Counts whole-file reads of the save, which a known-good primary no longer needs. */
+const reads = vi.hoisted(() => ({ files: [] as string[] }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    readFile: (async (...args: Parameters<typeof actual.readFile>) => {
+      reads.files.push(String(args[0]))
+      return actual.readFile(...args)
+    }) as typeof actual.readFile
+  }
+})
+
+let dir: string
+const primary = () => join(dir, 'canvas.json')
+const backup = () => join(dir, 'canvas.json.bak')
+
+function doc(title: string, extra: Partial<CanvasDoc> = {}): CanvasDoc {
+  return {
+    version: 3,
+    projects: [{ id: 'p', name: 'P', folder: '', viewport: { x: 0, y: 0, zoom: 1 } }],
+    activeProjectId: 'p',
+    nodes: [{ kind: 'terminal', id: 'n1', title, x: 0, y: 0, width: 400, height: 300, parentId: null, projectId: 'p', cwd: 'C:/a' }],
+    edges: [],
+    closed: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+    ...extra
+  }
+}
+
+/** A doc whose node counts each time it's turned into text. */
+function counted(title: string): { doc: CanvasDoc; times: () => number } {
+  let n = 0
+  const d = doc(title)
+  const node = d.nodes[0] as CanvasNode & { toJSON?: () => unknown }
+  const { ...plain } = node
+  node.toJSON = () => (n++, plain)
+  return { doc: d, times: () => n }
+}
+
+const titleOnDisk = (file: string) => JSON.parse(readFileSync(file, 'utf8')).nodes[0].title
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'patchbay deferred-'))
+  reads.files.length = 0
+})
+afterEach(() => {
+  vi.useRealTimers()
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+})
+
+test('a debounced save turns the doc into text only once, when it is written, however many changes came', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  const store = createDocStore(dir)
+  const docs = Array.from({ length: 30 }, (_, i) => counted(`drag ${i}`))
+  for (const d of docs) store.saveDebounced(d.doc)
+  expect(docs.map((d) => d.times()).reduce((a, b) => a + b)).toBe(0)
+  vi.advanceTimersByTime(500)
+  await store.flush()
+  expect(docs.slice(0, -1).every((d) => d.times() === 0)).toBe(true)
+  expect(docs[29].times()).toBe(1)
+  expect(titleOnDisk(primary())).toBe('drag 29')
+})
+
+test('flush writes what is pending at once, without waiting for the timer', async () => {
+  const store = createDocStore(dir)
+  store.saveDebounced(doc('pending'))
+  await store.flush()
+  expect(titleOnDisk(primary())).toBe('pending')
+})
+
+test('flushSync writes the pending doc on the spot, and the old primary becomes the backup', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  store.saveDebounced(doc('second'))
+  store.flushSync()
+  expect(titleOnDisk(primary())).toBe('second')
+  expect(titleOnDisk(backup())).toBe('first')
+  expect(existsSync(`${primary()}.now.tmp`)).toBe(false)
+  // Nothing left for the timer or a later flush.
+  await store.flush()
+  expect(titleOnDisk(primary())).toBe('second')
+})
+
+test('the text written is exactly JSON.stringify, and a big unchanged node is not turned into text again', () => {
+  const board = { kind: 'whiteboard', id: 'w', title: 'b', x: 0, y: 0, width: 9, height: 9, parentId: null, projectId: 'p', shapes: Array.from({ length: 500 }, () => ({ type: 'pen', color: '#111111', size: 2, points: [1, 2, 3, 4, 5, 6] })) }
+  let stringified = 0
+  const watched = { ...board, toJSON: () => (stringified++, board) } as unknown as CanvasNode
+  const a = doc('a', { nodes: [watched, doc('x').nodes[0]] })
+  expect(docJson(a)).toBe(JSON.stringify(a))
+  stringified = 0
+  // A new doc after a viewport move: the same node object, so its text is reused.
+  const b = { ...a, viewport: { x: 5, y: 6, zoom: 1 } }
+  expect(docJson(b)).toBe(JSON.stringify({ ...b, nodes: [board, b.nodes[1]] }))
+  expect(stringified).toBe(0)
+  // Undefined fields are left out, as JSON.stringify leaves them.
+  const c = { ...doc('c'), extra: undefined } as unknown as CanvasDoc
+  expect(docJson(c)).toBe(JSON.stringify(c))
+})
+
+test('a primary this store wrote is copied to the backup without being read again', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('one'))
+  await store.save(doc('two'))
+  await store.save(doc('three'))
+  expect(reads.files.filter((f) => f === primary())).toEqual([])
+  expect(titleOnDisk(backup())).toBe('two')
+})
+
+test('a primary changed by something else is checked before it becomes the backup, and a bad one is set aside', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('good'))
+  await store.save(doc('newer'))
+  writeFileSync(primary(), '{ not json')
+  // Same size and time can't be told apart, so the test makes sure the time moves.
+  const later = statSync(primary()).mtimeMs / 1000 + 5
+  utimesSync(primary(), later, later)
+  await store.save(doc('after'))
+  expect(reads.files).toContain(primary())
+  expect(titleOnDisk(backup())).toBe('good')
+  expect(titleOnDisk(primary())).toBe('after')
+})
+
+test('a save loaded from disk is trusted the same way, and old saves still load', async () => {
+  await createDocStore(dir).save(doc('saved'))
+  const store = createDocStore(dir)
+  expect(store.load().doc.nodes[0].title).toBe('saved')
+  reads.files.length = 0
+  await store.save(doc('next'))
+  expect(reads.files.filter((f) => f === primary())).toEqual([])
+  expect(titleOnDisk(backup())).toBe('saved')
+})

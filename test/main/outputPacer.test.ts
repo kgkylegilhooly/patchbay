@@ -1,0 +1,89 @@
+import { expect, test } from 'vitest'
+import { createOutputPacer } from '../../src/main/outputPacer'
+
+function setup(opts: { wants?: (w: number, id: string) => boolean } = {}) {
+  const sent: Array<{ id: string; data: string; seq: number }> = []
+  const buffers = new Map<string, { data: string; seq: number }>()
+  const win = { id: 7, send: (_channel: string, id: unknown, data: unknown, seq: unknown) => void sent.push({ id: id as string, data: data as string, seq: seq as number }) }
+  const pacer = createOutputPacer({
+    snapshot: (id) => buffers.get(id) ?? { data: '', seq: 0 },
+    wants: opts.wants ?? (() => true),
+    highWater: 100,
+    lowWater: 30
+  })
+  /** Output as the host hands it on: the buffer grows and the count goes up, whether or not the window is sent it. */
+  const print = (id: string, data: string): void => {
+    const b = buffers.get(id) ?? { data: '', seq: 0 }
+    const next = { data: b.data + data, seq: b.seq + 1 }
+    buffers.set(id, next)
+    pacer.deliver(win, id, data, next.seq)
+  }
+  const taken = (): number => sent.reduce((n, c) => n + c.data.length, 0)
+  return { pacer, win, sent, print, taken }
+}
+
+test('a window that keeps up is sent every chunk, in order', () => {
+  const t = setup()
+  for (let i = 0; i < 20; i++) {
+    t.print('a', 'x'.repeat(10))
+    t.pacer.ack(t.win, t.taken())
+  }
+  expect(t.sent).toHaveLength(20)
+  expect(t.sent.map((c) => c.seq)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1))
+  expect(t.pacer.state(7)).toMatchObject({ unacked: 0, held: false })
+})
+
+test('a window that stops taking output is sent no more past the high-water mark, however much comes', () => {
+  const t = setup()
+  for (let i = 0; i < 1000; i++) t.print(i % 2 ? 'a' : 'b', 'y'.repeat(10))
+  // 100 characters of room, so no more than one chunk past it.
+  expect(t.taken()).toBeLessThanOrEqual(110)
+  expect(t.pacer.state(7)).toMatchObject({ held: true, missed: 2 })
+})
+
+test('once caught up, each missed session gets its whole buffer from a clean slate, with its latest count', () => {
+  const t = setup()
+  for (let i = 0; i < 30; i++) t.print(i % 2 ? 'a' : 'b', 'z'.repeat(10))
+  const before = t.sent.length
+  t.pacer.ack(t.win, t.taken())
+  // One buffer of 150 is past the high-water mark of 100, so the other waits for the next ack: one at a time.
+  expect(t.sent.length).toBe(before + 1)
+  expect(t.pacer.state(7)).toMatchObject({ held: true, missed: 1 })
+  t.pacer.ack(t.win, t.taken())
+  const resent = t.sent.slice(before)
+  expect(resent.map((c) => c.id).sort()).toEqual(['a', 'b'])
+  for (const c of resent) {
+    expect(c.data.startsWith('\x1bc')).toBe(true)
+    expect(c.data.slice(2)).toBe('z'.repeat(150))
+    expect(c.seq).toBe(15)
+  }
+  t.pacer.ack(t.win, t.taken())
+  expect(t.pacer.state(7)).toMatchObject({ held: false })
+  // And live output flows again after.
+  t.print('a', 'live')
+  expect(t.sent[t.sent.length - 1]).toMatchObject({ id: 'a', data: 'live', seq: 16 })
+})
+
+test('a session the window no longer shows is not caught up', () => {
+  let shows = true
+  const t = setup({ wants: () => shows })
+  for (let i = 0; i < 30; i++) t.print('a', 'w'.repeat(10))
+  shows = false
+  const before = t.sent.length
+  t.pacer.ack(t.win, t.taken())
+  expect(t.sent.length).toBe(before)
+  expect(t.pacer.state(7)).toMatchObject({ held: false })
+})
+
+test('an ack for more than was sent, or an old one, changes nothing; a reloaded window starts afresh', () => {
+  const t = setup()
+  for (let i = 0; i < 30; i++) t.print('a', 'v'.repeat(10))
+  t.pacer.ack(t.win, 1e9)
+  // Capped at what was sent: caught up exactly once.
+  expect(t.pacer.state(7)?.unacked).toBeGreaterThanOrEqual(0)
+  t.pacer.ack(t.win, 5)
+  t.pacer.forget(7)
+  expect(t.pacer.state(7)).toBeNull()
+  t.print('a', 'fresh')
+  expect(t.sent[t.sent.length - 1].data).toBe('fresh')
+})

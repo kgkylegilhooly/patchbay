@@ -186,6 +186,8 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
         if (!me.limited) sessions.write(message.id, message.d)
       } else if (message.t === 'r') {
         if (!me.limited) sessions.resize(message.id, message.cols, message.rows)
+      } else if (message.t === 'quiet') {
+        if (!me.limited && Array.isArray(message.ids)) sessions.setQuiet?.(message.ids.filter((x): x is string => typeof x === 'string'))
       } else if (message.t === 'req') {
         const { id: requestId, op, args } = message
         serve(me, op, args ?? {}).then(
@@ -223,6 +225,8 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
       if (client?.socket !== socket) return
       client = null
       resumeAll()
+      // The next app says for itself what it shows.
+      sessions.setQuiet?.([])
       opts.onConnectionChange?.(false)
     })
     send(socket, { t: 'challenge', nonce, protocol: opts.protocol })

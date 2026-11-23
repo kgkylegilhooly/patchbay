@@ -81,8 +81,11 @@ export function setupSessionSync(deps: {
     else void sync.check('a session came back with no node', true)
   })
   let mode = host.info().mode
+  // A host still starting when this was set up is the first one this launch, so its arrival is no reconnect.
+  let firstStart = mode === 'starting'
   host.onInfo((info) => {
-    if (info.mode === 'background' && mode !== 'background') void sync.check('reconnected', true)
+    if (info.mode === 'background' && mode !== 'background' && !firstStart) void sync.check('reconnected', true)
+    if (info.mode !== 'starting') firstStart = false
     mode = info.mode
   })
   powerMonitor.on('resume', () => void sync.check('woke from sleep', true))

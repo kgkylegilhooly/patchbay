@@ -81,6 +81,8 @@ export interface SessionHost {
   onExit(cb: (id: string, code: number) => void): void
   /** Drops what's kept of an ended session whose node has closed. */
   forget?(id: string): void
+  /** The sessions some window shows, or null if that isn't known. The rest may send output in bigger, rarer pieces. */
+  setShown?(ids: ReadonlySet<string> | null): void
 }
 
 export interface HostInfo {
