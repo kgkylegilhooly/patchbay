@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, statSync, watch, type FSWatcher } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
+import { backoffInterval } from '../backoff'
 
 /**
  * Claude Code starts a program for every hook and every status line update, through Git Bash. A busy agent does that
@@ -54,9 +55,9 @@ export interface SignalWatcher {
   close(): void
 }
 
-/** Catches any tool call the folder watch misses. Only stats a few small files. */
+/** Catches any tool call the folder watch misses. Only stats a few small files. Slower while nothing happens. */
 const POLL_MS = 2000
-/** How often status lines are looked at. */
+/** How often status lines are looked at while they're changing. Up to 8 times slower while they aren't. */
 const STATUS_EVERY_MS = 1000
 
 /** Each file's modified time, from a folder as it is now. Files that vanish meanwhile are left out. */
@@ -106,6 +107,14 @@ export function watchSignals(opts: {
   for (const [name, at] of timesIn(statusDir)) statusSeen.set(join(statusDir, name), at)
   for (const [name, at] of seen) if (parseSignalName(name)?.kind === STATUS_SIGNAL) statusSeen.set(join(dir, name), at)
   const statusText = new Map<string, string>()
+  /**
+   * Whether a session from the build before is writing its status line beside the tool signals, so that folder must
+   * be read for status lines too. The folder watch and the fallback look both notice one.
+   */
+  let legacyStatus = [...seen.keys()].some((name) => parseSignalName(name)?.kind === STATUS_SIGNAL)
+  const noteName = (name: string): void => {
+    if (!legacyStatus && parseSignalName(name)?.kind === STATUS_SIGNAL) legacyStatus = true
+  }
 
   const check = async (name: string): Promise<void> => {
     const parsed = parseSignalName(name)
@@ -138,7 +147,12 @@ export function watchSignals(opts: {
     if (closed || watcher) return
     try {
       watcher = watch(dir, (_event, filename) => {
-        if (filename) void check(filename.toString())
+        if (!filename) return
+        const name = filename.toString()
+        noteName(name)
+        // A tool call means a status line is changing again too.
+        statusPoll.wake()
+        void check(name)
       })
       watcher.on('error', (e) => {
         opts.log?.(`Signal folder watch stopped: ${e.message}`)
@@ -150,33 +164,43 @@ export function watchSignals(opts: {
       watcher = null
     }
   }
-  startWatching()
 
-  const poll = setInterval(() => {
-    if (!watcher) {
-      mkdirSync(statusDir, { recursive: true })
-      startWatching()
-    }
-    readdir(dir).then(
-      (names) => {
-        for (const name of names) void check(name)
-      },
-      () => {}
-    )
-  }, opts.pollMs ?? POLL_MS)
-  poll.unref?.()
+  // Nothing found counts as nothing new, so this slows down until a hook says agents are busy again.
+  const pollMs = opts.pollMs ?? POLL_MS
+  const poll = backoffInterval(
+    () => {
+      if (!watcher) {
+        mkdirSync(statusDir, { recursive: true })
+        startWatching()
+      }
+      readdir(dir).then(
+        (names) => {
+          for (const name of names) {
+            noteName(name)
+            void check(name)
+          }
+        },
+        () => {}
+      )
+      return false
+    },
+    pollMs,
+    pollMs * 4
+  )
 
   /** Reads each status file that changed since it was last read. A half-written one is read again next time. */
   let lookingAtStatus = false
-  const lookAtStatus = async (): Promise<void> => {
-    if (lookingAtStatus || closed) return
+  /** True if a status line changed. */
+  const lookAtStatus = async (): Promise<boolean> => {
+    if (lookingAtStatus || closed) return true
     lookingAtStatus = true
+    let changed = false
     try {
       // Sessions started by the build before this one write their status line beside the tool signals. They're read
       // there too, until they restart.
       const names = [
         ...(await readdir(statusDir).catch(() => [] as string[])).map((name) => ({ name, file: join(statusDir, name) })),
-        ...(await readdir(dir).catch(() => [] as string[])).map((name) => ({ name, file: join(dir, name) }))
+        ...(legacyStatus ? await readdir(dir).catch(() => [] as string[]) : []).map((name) => ({ name, file: join(dir, name) }))
       ]
       await Promise.all(
         names.map(async ({ name, file }) => {
@@ -188,6 +212,7 @@ export function watchSignals(opts: {
             const text = await readFile(file, 'utf8')
             JSON.parse(text)
             statusSeen.set(file, at)
+            changed = true
             // Claude reruns the status line on every message, mostly with nothing new to say.
             if (text === statusText.get(file)) return
             statusText.set(file, text)
@@ -200,14 +225,19 @@ export function watchSignals(opts: {
     } finally {
       lookingAtStatus = false
     }
+    return changed
   }
-  const statusPoll = setInterval(() => void lookAtStatus(), opts.statusEveryMs ?? STATUS_EVERY_MS)
-  statusPoll.unref?.()
+  const statusEveryMs = opts.statusEveryMs ?? STATUS_EVERY_MS
+  const statusPoll = backoffInterval(lookAtStatus, statusEveryMs, statusEveryMs * 8)
+  startWatching()
 
   return {
     latestHook: (nodeId) => latest.get(nodeId),
     heardHook(nodeId, at = Date.now()) {
       heard.set(nodeId, Math.max(heard.get(nodeId) ?? 0, at))
+      // An agent is busy, so its tool signals and status line are worth looking at often again.
+      poll.wake()
+      statusPoll.wake()
     },
     forget(nodeId) {
       heard.delete(nodeId)
@@ -226,8 +256,8 @@ export function watchSignals(opts: {
     },
     close() {
       closed = true
-      clearInterval(poll)
-      clearInterval(statusPoll)
+      poll.close()
+      statusPoll.close()
       watcher?.close()
       watcher = null
     }

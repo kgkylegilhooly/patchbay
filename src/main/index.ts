@@ -35,7 +35,8 @@ import { createTaskService } from './tasks/service'
 import { createWhiteboardExporter } from './whiteboardExport'
 import { createMessageLog } from './messageLog'
 import { createAgentEditLog } from './agentEdits'
-import { pruneBoardImages } from './boardImages'
+import { pruneBoardImagesAsync } from './boardImages'
+import { adoptAfterQuickBoot } from './bootAdopt'
 import { createTriggerService } from './triggers/service'
 import { triggerEventDeps } from './triggers/eventDeps'
 import { broadcast, registerIpc } from './ipc'
@@ -113,8 +114,11 @@ let log: Log | null = null
 /** Held here because Electron removes a tray icon that's been collected. */
 let tray: Tray | null = null
 
-/** How often the tray catches up. Sessions start and stop in several places, and this is cheap. */
-const TRAY_REFRESH_MS = 1500
+/**
+ * How often the tray catches up. Sessions start and stop in several places, and this is cheap. A fallback only: status
+ * changes, sessions ending and unseen changes refresh the tray as they happen.
+ */
+const TRAY_REFRESH_MS = 5000
 const APP_ID = 'local.patchbay.app'
 /**
  * Run from source with `npm run dev`, as when Patchbay is used to work on itself. It keeps its own data, session host
@@ -125,6 +129,8 @@ const DEV_COPY = !app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')
 const PORT_CHECK_MS = 5000
 /** A hook that read the old endpoint just before this launch's was written can still land in a journal. */
 const LATE_JOURNAL_CHECK_MS = 3000
+/** Unused whiteboard pictures are cleared once start-up has settled. */
+const BOARD_IMAGE_PRUNE_DELAY_MS = 30_000
 
 /**
  * Windows only shows an app's notifications if a Start Menu shortcut carries its id. Test runs use a throwaway
@@ -286,10 +292,9 @@ async function boot(): Promise<void> {
     return
   }
   // Nothing can bring back a deleted board at startup, so pictures no board uses can go, once they're old enough.
-  pruneBoardImages(
-    join(dataDir, 'whiteboards', 'images'),
-    new Set(store.get().nodes.flatMap((n) => (n.kind === 'whiteboard' ? n.shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])) : [])))
-  )
+  // Which those are is settled now, but they go later and off the main thread: looking took 120 ms before the window.
+  const boardImagesAtStart = new Set(store.get().nodes.flatMap((n) => (n.kind === 'whiteboard' ? n.shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])) : [])))
+  setTimeout(() => void pruneBoardImagesAsync(join(dataDir, 'whiteboards', 'images'), boardImagesAtStart).catch(() => {}), BOARD_IMAGE_PRUNE_DELAY_MS).unref()
 
   // Held until clicked: Electron drops the click handler of a notification that's been collected.
   const showing = new Set<Notification>()
@@ -396,7 +401,8 @@ async function boot(): Promise<void> {
         takeMissedHooks(journalDir, id).filter((e) => !hookFromAnotherNode(id, { session_id: e.session_id }, store.get().nodes, (n) => host.isRunning(n))),
       onMissedStopFailure: (id, event) => stops.noteHook(id, event),
       // Sessions in the background host post their hooks to it, and start nothing. See docs/plans/host-hooks.md.
-      hostHookPort: () => host.hookPort()
+      // A host still starting after a quick boot is waited for, so a session started meanwhile still gets its port.
+      hostHookPort: () => (host.info().mode === 'starting' ? host.connect().then(() => host.hookPort()) : host.hookPort())
     }
   })
   const usage = createUsageService({ dataDir })
@@ -482,24 +488,26 @@ async function boot(): Promise<void> {
   } })
 
   // Before anything can report in: a session's hooks need its node to be known, and the first of them might be next.
-  const hostAtBoot = await host.connect()
+  // With no host running there's nothing to report in, so the window doesn't wait for a new one to start.
+  const hostAtBoot = await host.connect({ quick: true })
   // Copies of older builds that no host runs from any more. Once things have settled, so it costs start-up nothing.
   if (app.isPackaged) setTimeout(() => void pruneHostRuntimes(hostRuntimeDir, runtimeInUse), 60_000).unref()
-  const adoptLive = (): string[] => {
+  const adoptLive = (skip: ReadonlySet<string> = new Set()): string[] => {
     const plan = planReconnect(store.get(), host.sessions())
+    const adopt = plan.adopt.filter((id) => !skip.has(id))
     for (const id of plan.strays) {
       // A session with no node can't be seen or used. After a damaged save, though, the node may be what's missing.
       if (!host.isRunning(id)) host.forget(id)
       else if (!store.loaded.quarantined) void host.kill(id)
     }
-    for (const id of plan.adopt) {
+    for (const id of adopt) {
       runner.adoptNode(id)
       const kind = store.get().nodes.find((n) => n.id === id)?.kind
       // Claude draws its own screen without the alternate screen, so its mode alone wouldn't show it needs this.
       if (kind === 'claude') host.repaintOnNextResize(id)
       else saver.markDirty(id)
     }
-    return plan.adopt
+    return adopt
   }
   const adopted = adoptLive()
   // A node at its usage limit before the app restarted still is, if its session came back.
@@ -575,6 +583,8 @@ async function boot(): Promise<void> {
 
   /** Starts whatever should be running and isn't, below what it last showed. Returns what it started. */
   const startDead = async (): Promise<string[]> => {
+    // A host started at boot may still be coming up. Its sessions' hooks need its port, so starting waits for it.
+    await host.connect()
     const plan = planReconnect(store.get(), host.sessions())
     for (const id of plan.finishedRuns) {
       const ended = host.sessions().find((s) => s.id === id)
@@ -621,6 +631,13 @@ async function boot(): Promise<void> {
     launchRunner: join(resourceDir, 'launch-run.cjs'),
     onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh())
   })
+  // A host that was there but slow to answer boot's first knock is found by the connect that goes on: its sessions are
+  // adopted then, and their views fetched again. See bootAdopt.ts.
+  void adoptAfterQuickBoot(hostAtBoot, () => host.connect(), () => adoptLive(new Set(adopted)), (more) => {
+    stops.retain(more)
+    for (const id of more) runner.catchUpHooks(id)
+    ipcHooks.reattached(more)
+  }).catch((e: unknown) => log?.write(`Adopting sessions after start-up failed: ${String(e)}`))
   registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
@@ -812,6 +829,14 @@ async function boot(): Promise<void> {
   reportViewSize(() => (mainWindow ? { width: mainWindow.getContentSize()[0], height: mainWindow.getContentSize()[1] } : null))
   registerViewIpc((sender) => sender === mainWindow?.webContents)
   mainWindow.on('focus', () => notifier.windowFocused())
+  // Windows is signing out or shutting down, and won't wait for the usual quit: the canvas is written now, whole.
+  mainWindow.on('session-end', () => {
+    try {
+      docStore.flushSync()
+    } catch (e) {
+      log?.write(`Saving the canvas as Windows ended the session failed: ${String(e)}`)
+    }
+  })
   app.on('activate', () => {
     if (!mainWindow) mainWindow = createWindow(onWindowClose, windowIcon)
   })
@@ -853,6 +878,7 @@ async function boot(): Promise<void> {
   setInterval(refreshTray, TRAY_REFRESH_MS).unref()
   // So the badge goes up with the chime, not at the next refresh.
   tracker.onChange(refreshTray)
+  host.onExit(() => refreshTray())
   notifier.onUnseenChange(refreshTray)
   getAttention = () => currentTrayState().attention
 
@@ -873,14 +899,16 @@ async function boot(): Promise<void> {
   }
   void askAboutOtherHost()
 
-  if (hostAtBoot.mode === 'in-process') {
+  // A host started at boot may still be coming up, and only then is it known whether it did.
+  void (hostAtBoot.mode === 'starting' ? host.connect() : Promise.resolve(hostAtBoot)).then((atBoot) => {
+    if (atBoot.mode !== 'in-process' || !mainWindow) return
     void dialog.showMessageBox(mainWindow, {
       type: 'warning',
       title: "Sessions won't keep running",
-      message: hostAtBoot.problem ?? "Patchbay couldn't start its background session host.",
+      message: atBoot.problem ?? "Patchbay couldn't start its background session host.",
       detail: 'Everything else works as usual. Your canvas is safe, Claude nodes resume their conversations, and terminals start again below their saved output. Patchbay tries the host again next time it opens.'
     })
-  }
+  })
 
   host.onLost(() => {
     if (!mainWindow) return

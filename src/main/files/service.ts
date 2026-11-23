@@ -20,6 +20,7 @@ import {
 } from './touched'
 import type { DiffScope, FileDiff, FilesSummary, SessionFiles, TurnMark } from '../../shared/filesTouched'
 import type { AgentStatus } from '../../shared/model'
+import { backoffInterval, type Backoff } from '../backoff'
 
 /**
  * Which files each agent session edited, and a snapshot of its checkout as each turn started. Reads each session's
@@ -426,8 +427,11 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     changed()
   }
 
+  /** Set below. A status change brings its look back to full speed. */
+  let poll: Backoff | null = null
   d.onStatus((id, status) => {
     if (closed) return
+    poll?.wake()
     const before = last.get(id)
     last.set(id, status)
     if (!agent(id)) return
@@ -439,10 +443,16 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     publish()
   })
 
-  const poll = setInterval(() => {
-    for (const a of d.agents()) if (IN_TURN.has(d.status(a.id))) void scan(a.id)
+  // Only agents in a turn are looked at, so with none, the look slows down until a status changes.
+  poll = backoffInterval(() => {
+    let any = false
+    for (const a of d.agents()) {
+      if (!IN_TURN.has(d.status(a.id))) continue
+      any = true
+      void scan(a.id)
+    }
+    return any
   }, d.pollMs ?? POLL_MS)
-  poll.unref?.()
 
   const prune = (): void => {
     if (pruneRecords(records, new Set(d.agents().map((a) => a.id)), now()).length) changed()
@@ -517,7 +527,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     close() {
       closed = true
       clearTimeout(firstStorePrune)
-      clearInterval(poll)
+      poll?.close()
       clearInterval(pruner)
       if (saveTimer) clearTimeout(saveTimer)
       saveTimer = null

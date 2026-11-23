@@ -51,8 +51,12 @@ interface Mirror {
 
 export interface BackgroundHost extends SessionHost {
   start(spec: SessionSpec): Promise<void>
-  /** Reaches this profile's host, starting one if needed. Falls back to running sessions in the app. Never rejects. */
-  connect(): Promise<HostInfo>
+  /**
+   * Reaches this profile's host, starting one if needed. Falls back to running sessions in the app. Never rejects.
+   * With `quick`, resolves as soon as it's clear no host was running, while a new one starts: nothing can be running in
+   * it yet, so there's nothing to wait for before showing the window. Starting one can mean copying the program first.
+   */
+  connect(opts?: { quick?: boolean }): Promise<HostInfo>
   info(): HostInfo
   onInfo(cb: (info: HostInfo) => void): void
   /** What the host was already running or holding when this app connected, and what's happened since. */
@@ -81,6 +85,8 @@ export interface BackgroundHost extends SessionHost {
   hookPort(): number | null
   /** Starts handling the hook events the host hands on. Those that came first have waited, in order. */
   serveHooks(handler: HookHandler): void
+  /** The sessions some window shows, or null if none has said. The host sends the rest in bigger, rarer pieces. */
+  setShown(ids: ReadonlySet<string> | null): void
 }
 
 export interface BackgroundHostOptions {
@@ -114,6 +120,10 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   const reviveListeners: Array<(id: string) => void> = []
   /** Connected once already, so what a later connection finds running is a session coming back, not one to adopt. */
   let booted = false
+  /** The sessions windows show, or null when no window has said. See setShown. */
+  let shown: ReadonlySet<string> | null = null
+  /** What the host was last told no window shows, so it's told only of a change. */
+  let toldQuiet = ''
   let generation = 0
 
   let connection: HostConnection | null = null
@@ -123,6 +133,8 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   let problem: string | undefined
   let leaving = false
   let connecting: Promise<void> | null = null
+  /** Waiting to hear that no host was running and one is being started. See connect's `quick`. */
+  let spawning: Array<() => void> = []
   const hooks = createHookRelay()
   const connectOpts = { pipe: opts.pipe, secret: opts.secret, protocol, hooks: true }
 
@@ -229,6 +241,16 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     }
   }
 
+  /** Tells the host, or the sessions in the app, which sessions no window shows. Only those this app knows. */
+  const tellQuiet = (force = false): void => {
+    const ids = shown ? [...mirrors.keys(), ...(local?.list().map((s) => s.id) ?? [])].filter((id) => !shown?.has(id)).sort() : []
+    const key = JSON.stringify(ids)
+    if (key === toldQuiet && !force) return
+    toldQuiet = key
+    local?.setQuiet?.(ids)
+    if (mode === 'background') connection?.send({ t: 'quiet', ids })
+  }
+
   const wire = (conn: HostConnection): void => {
     connection = conn
     welcome = conn.welcome
@@ -271,6 +293,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         await Promise.all(list.map((session) => attach(result.connection, session, false)))
         booted = true
         setMode('background')
+        tellQuiet(true)
         return
       }
       if (result.kind === 'other-protocol') {
@@ -284,6 +307,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       }
       if (!spawned) {
         spawned = true
+        for (const cb of spawning.splice(0)) cb()
         try {
           await opts.spawnHost()
           // Starting it can mean copying the program first, on a slow disk for a while: the wait counts from now.
@@ -341,6 +365,8 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
           const known = new Set(list.map((s) => s.id))
           for (const [id, mirror] of mirrors) if (!known.has(id) && !mirror.starting) markExited(id, mirror, -1)
           changed()
+          // A new connection starts with every session shown.
+          tellQuiet(true)
           return
         } catch {
           return // The connection dropped again, so its close handler has taken over.
@@ -359,8 +385,17 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
   }
 
   return {
-    connect() {
-      return ensure().then(info)
+    connect(o) {
+      const done = ensure().then(info)
+      if (!o?.quick) return done
+      return new Promise<HostInfo>((resolve) => {
+        const early = (): void => resolve(info())
+        spawning.push(early)
+        void done.then((i) => {
+          spawning = spawning.filter((cb) => cb !== early)
+          resolve(i)
+        })
+      })
     },
 
     info,
@@ -405,6 +440,11 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
     },
 
     serveHooks: (handler) => hooks.serve(handler),
+
+    setShown(ids) {
+      shown = ids
+      tellQuiet()
+    },
 
     sessions() {
       return [...mirrors].map(([id, m]) => ({ id, pid: m.pid, running: m.running, exitCode: m.exitCode, exitedAt: m.exitedAt }))
@@ -478,6 +518,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         if (size) local.resize(id, size.cols, size.rows)
         local.start(spec)
         changed()
+        tellQuiet()
         return
       }
       const conn = connection
@@ -491,6 +532,7 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
         // A very short-lived program may already have reported its exit.
         if (mirror.running) mirror.pid = pid
         changed()
+        tellQuiet()
       } catch (e) {
         // The host already runs it, out of this app's sight: join it rather than leave it unreachable.
         if (isAlreadyRunning(e) && connection === conn) {

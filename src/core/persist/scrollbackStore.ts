@@ -1,11 +1,13 @@
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { readIfPresentSync, writeAtomic } from './atomicFile'
+import { readIfPresent, readIfPresentSync, writeAtomic } from './atomicFile'
 
 export const DEFAULT_SCROLLBACK_CAP_BYTES = 1048576
 
 export interface ScrollbackStore {
   read(id: string): string | null
+  /** read, without holding up the thread while a locked file is retried. */
+  readAsync(id: string): Promise<string | null>
   write(id: string, data: string): Promise<void>
   remove(id: string): Promise<void>
 }
@@ -42,6 +44,7 @@ export function createScrollbackStore(dir: string, capBytes = DEFAULT_SCROLLBACK
 
   return {
     read: (id) => readIfPresentSync(pathFor(id)),
+    readAsync: (id) => readIfPresent(pathFor(id)),
     write: (id, data) => enqueue(() => writeAtomic(pathFor(id), keepTail(data, capBytes))),
     remove: (id) => enqueue(() => rm(pathFor(id), { force: true, maxRetries: 5, retryDelay: 100 }))
   }
