@@ -9,6 +9,8 @@ import { patchNode, useStore } from '../store'
 import { DesignStrip, startPicking, type DesignState } from './DesignStrip'
 import { Jacks, Resizer, EditableTitle } from './NodeChrome'
 import { BrowserEvidence } from './BrowserEvidence'
+import { isBlankPage } from './browserEmpty'
+import './browserEmpty.css'
 import { useHeaderZoom } from '../useHeaderZoom'
 
 /** How long after an agent's last action the node keeps saying it's being driven. */
@@ -52,6 +54,26 @@ function PageView({ node }: { node: BrowserNodeModel }): React.JSX.Element {
     return () => view.remove()
   }, [node.id])
   return <div ref={host} className="browser-host nodrag nopan nowheel" />
+}
+
+/**
+ * Over a blank page, which a webview draws white: what to do here, in the canvas's own colours. Clicking it puts the
+ * cursor in the address bar. Gone as soon as a page loads, by the person or an agent.
+ */
+function EmptyPage({ node }: { node: BrowserNodeModel }): React.JSX.Element | null {
+  const blank = useStore((s) => isBlankPage(s.browsers[node.id], node.url))
+  if (!blank) return null
+  return (
+    <button
+      type="button"
+      className="browser-empty nodrag"
+      data-browser-empty
+      onClick={(e) => e.currentTarget.closest('.unit-browser')?.querySelector<HTMLInputElement>('.browser-address')?.focus()}
+    >
+      <Icon name="browser" size={22} />
+      <span>Type an address above, or an agent can open a page here.</span>
+    </button>
+  )
 }
 
 function useDriving(nodeId: string): { by: string; action: string } | null {
@@ -199,6 +221,7 @@ export const BrowserNode = memo(function BrowserNode({ data, selected }: NodePro
         )}
         <div className="unit-body">
           <PageView node={node} />
+          <EmptyPage node={node} />
         </div>
       </div>
     </>

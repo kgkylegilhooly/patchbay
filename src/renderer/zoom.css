@@ -307,3 +307,150 @@
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) .react-flow__node:is(:hover, .selected, :focus-within) .unit-head > .reader-tools {
   opacity: 1;
 }
+
+/* ── Near, below 85%: the header strip draws larger, in the same slot ─────────────────────────────────────────── */
+
+/*
+ * zoomTier.ts headScale: under NEAR_READABLE a header's text would fall below about 11 px, so the strip is drawn
+ * larger. Its height is divided by the same scale, so it keeps its 36 (or 38) canvas px and the body, terminal
+ * included, never changes size with the zoom. At 85% and above the scale is 1 and nothing changes.
+ */
+[data-zoom-tier='near'] :is(.unit > .unit-head, .note > .note-head) {
+  zoom: var(--head-scale, 1);
+  height: calc(36px / var(--head-scale, 1));
+  min-height: 0;
+  padding-block: 0;
+}
+
+[data-zoom-tier='near'] .wb > .wb-head {
+  zoom: var(--head-scale, 1);
+  height: calc(38px / var(--head-scale, 1));
+}
+
+/* ── Far and overview: notes and triggers read as tiles too ────────────────────────────────────────────────────── */
+
+.note-far {
+  display: none;
+}
+
+/* A note's tile covers the note at its on-screen size: its title, then its first lines (farTiles.ts noteTile). */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .note > .note-far {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  zoom: var(--head-scale, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  padding: 8px 10px;
+  color: var(--note-ink);
+  background: color-mix(in srgb, var(--note) 14%, #1c1c1f);
+  border-radius: calc(var(--radius) / var(--head-scale, 1));
+  box-shadow: inset 0 calc(3px / var(--head-scale, 1)) 0 var(--note);
+  pointer-events: none;
+}
+
+.note-far-title {
+  flex: none;
+  overflow: hidden;
+  font-size: var(--far-title);
+  font-weight: 650;
+  line-height: 1.25;
+  color: #f3f2ec;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-far-line {
+  flex: none;
+  overflow: hidden;
+  font-size: var(--far-meta);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A trigger's tile is a session's shape: the title, then its state chip, what it waits for and when it next runs. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .trigger > .unit-head {
+  height: var(--tile-h);
+  align-content: center;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .trigger > .unit-head > .trigger-chip {
+  display: none;
+}
+
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .trigger > .unit-head > .head-far {
+  padding-left: 22px;
+}
+
+.head-far .trigger-chip {
+  margin-left: 0;
+  font-size: inherit;
+}
+
+/* The body starts under the whole tile, not under its 36 px slot, so nothing sits behind the header. */
+:is([data-zoom-tier='far'], [data-zoom-tier='overview']) .trigger > .trigger-body {
+  margin-top: calc(var(--tile-h) * var(--head-scale, 1) - 36px);
+}
+
+/* ── Far: a prompt is answered in the tile ─────────────────────────────────────────────────────────────────────── */
+
+.head-far:has(> .far-answer) {
+  align-items: center;
+}
+
+.far-answer {
+  flex: none;
+  display: inline-flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.far-act {
+  height: 20px;
+  padding: 0 9px;
+  font: inherit;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--ink);
+  white-space: nowrap;
+  background: var(--face-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.far-act:hover {
+  background: #3a3a3e;
+}
+
+.far-act-ok {
+  color: #161618;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.far-act-ok:hover {
+  background: #fff;
+}
+
+.far-act:focus-visible {
+  outline: 2px solid var(--cable-link);
+  outline-offset: 1px;
+}
+
+/*
+ * A near header drawn larger has less room by its own measure, so the header's container queries (styles.css) start
+ * hiding sooner. There the status word outlasts the context share: Idle or Working is what a scan looks for.
+ */
+@container (max-width: 470px) {
+  .react-flow[data-head-scaled] .unit-head-session > .badge:not(:has(.led)) {
+    display: inline-flex;
+  }
+
+  .react-flow[data-head-scaled] .unit-head-session > .unit-context {
+    display: none;
+  }
+}

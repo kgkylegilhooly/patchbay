@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FAR_BELOW, HYSTERESIS, MAX_HEAD_SCALE, OVERVIEW_BELOW, headScale, headerFolder, keyBadge, nextTier } from '../../src/renderer/zoomTier'
+import { FAR_BELOW, HYSTERESIS, MAX_HEAD_SCALE, NEAR_READABLE, OVERVIEW_BELOW, headScale, headerFolder, keyBadge, nextTier } from '../../src/renderer/zoomTier'
 import { headerMenuEntries, type HeaderMenuActions, type HeaderMenuState } from '../../src/renderer/nodes/headerMenu'
 import type { MenuItem } from '../../src/renderer/menus'
 
@@ -30,7 +30,6 @@ describe('zoom tiers', () => {
 
   it('draws a far header at its on-screen size, up to a cap', () => {
     expect(headScale(1, 'near')).toBe(1)
-    expect(headScale(0.5, 'near')).toBe(1)
     expect(headScale(0.5, 'far')).toBe(2)
     expect(headScale(0.55, 'far')).toBeCloseTo(1.8, 5)
     expect(headScale(0.1, 'overview')).toBe(MAX_HEAD_SCALE)
@@ -38,6 +37,28 @@ describe('zoom tiers', () => {
     expect(headScale(0.62, 'far')).toBe(1.6)
     expect(headScale(1.2, 'far')).toBe(1)
     expect(headScale(0, 'far')).toBe(1)
+  })
+
+  it('keeps a near header readable at the zooms people scan at, with no jump in text size at the far line', () => {
+    // At or above NEAR_READABLE, a near header is its own size.
+    expect(headScale(NEAR_READABLE, 'near')).toBe(1)
+    expect(headScale(1.5, 'near')).toBe(1)
+    // At 72% the title (13 px) draws at about 11 px on screen, not 9.
+    const at72 = headScale(0.72, 'near')
+    expect(at72).toBeCloseTo(1.2, 5)
+    expect(13 * at72 * 0.72).toBeGreaterThanOrEqual(11)
+    // Down to the far line it grows smoothly, a step of 0.05 at a time, and never shrinks as the zoom falls.
+    let last = 1
+    for (let z = 1; z >= FAR_BELOW - HYSTERESIS; z -= 0.005) {
+      const s = headScale(z, 'near')
+      expect(s).toBeGreaterThanOrEqual(last)
+      expect(s - last).toBeLessThanOrEqual(0.05 + 1e-9)
+      last = s
+    }
+    // Just above the far line, near text is within a few px of the far tile's.
+    const nearText = 13 * headScale(0.6, 'near') * 0.6
+    const farText = 15 * headScale(0.59, 'far') * 0.59
+    expect(farText - nearText).toBeLessThan(5)
   })
 
   it('quantizes the scale, so a wheel zoom re-lays headers out a few times, not every frame', () => {

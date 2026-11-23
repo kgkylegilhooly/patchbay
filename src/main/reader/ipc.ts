@@ -9,6 +9,7 @@ import { DOC_EXTENSIONS, type DocsBridge } from '../../shared/reader'
 import { createCommentStore, type CommentStore } from './commentStore'
 import { createImageReader } from './images'
 import { createDocsService, type DocsService, type DocsWatcher } from './service'
+import { viewSize } from '../viewSize'
 
 /** How often a watched file is looked at. Cheap: one stat per open reader. */
 const WATCH_INTERVAL_MS = 1000
@@ -59,6 +60,7 @@ export function registerDocsIpc(s: {
     watcher: pollingWatcher(),
     changed: (path) => s.broadcast('pb:docs:changed', path),
     center: (id) => s.broadcast('pb:onCenterNode', id),
+    view: viewSize,
     near: s.near,
     link: { exists: existsSync, openExternal: (url) => shell.openExternal(url), openPath: (p) => shell.openPath(p), reveal: (p) => shell.showItemInFolder(p) }
   })

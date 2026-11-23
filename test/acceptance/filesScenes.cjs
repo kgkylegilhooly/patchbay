@@ -41,7 +41,7 @@ const scenes = {
     await chip.click()
     await page.waitForSelector('.files-popover .files-row', { timeout: 10000 })
     await sleep(300)
-    const diff = await page.$('.files-popover .files-row-shared [data-diff="turn"]')
+    const diff = await page.$('.files-popover .files-row-shared [data-diff]')
     if (diff) {
       await diff.click()
       await page.waitForSelector('.files-popover .files-diff-text, .files-popover .files-problem', { timeout: 15000 }).catch(() => {})

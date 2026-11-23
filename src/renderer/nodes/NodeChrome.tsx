@@ -172,12 +172,29 @@ function FarMeta({ node, status, folder }: { node: CanvasNode; status: AgentStat
   const badge = keyBadge({ approval: approval ? { tool: approval.tool, summary: approval.summary } : null, context, folder })
   return (
     <span className="head-far">
-      {node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
+      {/* Asking: what's asked and the answer buttons say it, so the status word makes room for them. */}
+      {approval ? null : node.kind === 'run' ? <RunLabel run={run} /> : status && <StatusBadge status={status} nodeId={node.id} />}
       {badge && (
-        <span className={`key-badge key-badge-${badge.tone}`} title={badge.title}>
+        <span className={`key-badge key-badge-${badge.tone}`} title={approval ? `${approval.tool}: ${approval.detail}` : badge.title}>
           {badge.text}
         </span>
       )}
+      {approval && <FarAnswer approval={approval} />}
+    </span>
+  )
+}
+
+/** Approve and Deny in a zoomed-out tile, at its size, so a prompt can be answered from the overview. */
+function FarAnswer({ approval }: { approval: PendingApproval }): React.JSX.Element {
+  const what = `${approval.tool}: ${approval.detail}`
+  return (
+    <span className="far-answer">
+      <button type="button" className="far-act far-act-ok nodrag" data-far-answer="allow" title={`Approve ${what}`} onClick={() => void bridge.answerApproval(approval.requestId, 'allow')}>
+        Approve
+      </button>
+      <button type="button" className="far-act nodrag" data-far-answer="deny" title={`Deny ${what}`} onClick={() => void bridge.answerApproval(approval.requestId, 'deny')}>
+        Deny
+      </button>
     </span>
   )
 }
