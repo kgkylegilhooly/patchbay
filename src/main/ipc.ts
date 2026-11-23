@@ -43,6 +43,9 @@ import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 import { createOutputPacer } from './outputPacer'
 import { onScreenIds } from './onScreen'
 import { inSettingsQueue } from './settingsQueue'
+import { agentProgramProblem } from './sessions/agentProgramCheck'
+import { defaultAgentOf } from '../shared/agents'
+import { pickOrStub } from './testPickers'
 
 export interface IpcServices {
   dataDir: string
@@ -444,6 +447,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   })
   ipcMain.handle('pb:getAppInfo', () => ({ version: app.getVersion(), dataDir }))
   ipcMain.handle('pb:getSettings', async () => parseSettings(await readIfPresent(settingsFile)))
+  ipcMain.handle('pb:agentProgramProblem', async (_e, kind: unknown) => {
+    const settings = parseSettings(await readIfPresent(settingsFile))
+    return agentProgramProblem(kind === 'codex' || kind === 'claude' ? kind : defaultAgentOf(settings), settings)
+  })
   ipcMain.handle('pb:saveSettings', async (_e, next: Settings) => {
     // One read-merge-write at a time, so a save from another page can't undo this one. See settingsQueue.ts.
     const text = await inSettingsQueue(async () => {
@@ -459,14 +466,24 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     onSettingsSaved?.()
     return { ok: true }
   })
-  ipcMain.handle('pb:pickProgram', async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
-    return r.canceled ? null : r.filePaths[0]
-  })
-  ipcMain.handle('pb:pickFolder', async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
-    return r.canceled ? null : r.filePaths[0]
-  })
+  // Never opened by an off-screen test run: see testPickers.ts.
+  // Modal to the window that asked, so it can't be asked for twice while one is open.
+  const openDialog = (e: Electron.IpcMainInvokeEvent, options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+  }
+  ipcMain.handle('pb:pickProgram', (e) =>
+    pickOrStub('file', async () => {
+      const r = await openDialog(e, { properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
+      return r.canceled ? null : r.filePaths[0]
+    })
+  )
+  ipcMain.handle('pb:pickFolder', (e) =>
+    pickOrStub('folder', async () => {
+      const r = await openDialog(e, { properties: ['openDirectory'] })
+      return r.canceled ? null : r.filePaths[0]
+    })
+  )
 
   // The only way to arm a trigger. The control server has no route to the trigger service.
   ipcMain.handle('pb:armTrigger', (_e, id: string, shownSpec: string) => triggers.arm(id, shownSpec))

@@ -129,7 +129,8 @@ asking.
 which you can answer once you reconnect. The `patchbay` command says the app is closed and fails straight away.
 
 **Status after reconnecting** comes only from what Claude's hooks reported while the app was away. A session with
-nothing reported shows "No status yet" until its next hook, never a guessed "Idle".
+nothing reported shows "No status yet" until its next hook, never a guessed "Idle". For the first few seconds after
+Patchbay opens, while it takes its agents on again, those say "Reconnecting…" instead.
 
 **When a session has really died,** because the host was stopped or the PC restarted, it comes back as before.
 Terminals start a new shell below their saved output and a divider, and don't rerun their command. Claude nodes resume
@@ -303,6 +304,9 @@ and spends a little quota.
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.
   A closed project's sessions stay out of this list unless they need you or have something to look at.
   Empty sections are left out, except Need attention, which says "All clear."
+- **Couldn't start.** An agent whose program isn't found, whose folder is gone, or that Settings won't start, says
+  "Couldn't start" (a red ring) and goes under Need attention. Its strip has the fix: Open Settings › Agents, or
+  Choose folder…, which starts it again there. New Claude Code and New Codex say up front when the program isn't found.
 - **Stopped on an error.** When a Claude turn ends on an API error instead of finishing, its status stays unknown but
   its badge says why: "Usage limit until 00:30", "Rate limited", "Login failed", "Billing problem" or "Server error".
   It goes under Need attention. The reset time comes from Claude's status line, or from its message. A Codex turn
@@ -433,6 +437,9 @@ project's folder, and **Open in Reader** then shows that file on the canvas.
 - **Closing a project** takes it off the tabs, keeps its windows, and leaves its sessions running. Reopen it from
   Recently closed projects in the sidebar, the File menu or the palette. A session waiting on you still shows under
   Status. Clicking it reopens the project.
+- **Many projects**: the tabs scroll, the tab on screen is kept in view, and "▾ N more" lists the ones out of sight.
+- **A project's folder**: the folder you choose for a project's first agent becomes the project's, so later agents
+  and terminals start there. A toast says so, with Change. With no folder, Ctrl+Enter in New Claude Code asks for one.
 - **Moving a tab**: drag it along the top bar, use Move left or Move right on its right-click menu, or press
   Alt+Shift+Left/Right with the tab focused. The order is saved, and Ctrl+Z puts it back.
 - **Archiving a project** stops its sessions, run commands, browser pages and armed triggers, and takes it off the tabs

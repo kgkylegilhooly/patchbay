@@ -64,7 +64,7 @@ test('past the soft limit a new agent does not start and says why; running ones 
   await runner.startNode('b')
   await runner.startNode('c')
   expect(started(specs)).toEqual(['a', 'b'])
-  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: expect.stringMatching(/^Not started: 2 agents are already running, and your limit is 2/) })
+  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: expect.stringMatching(/^Not started: 2 agents are already running, and your limit is 2/), fix: 'sessions' })
 
   // Lowering the limit stops nothing.
   settings = { agentLimit: '1' }

@@ -89,6 +89,8 @@ async function launch({ profile, exe, env: extraEnv }) {
   // The window opens beside the screens without taking focus, so runs don't pop up over whatever else is open.
   // PB_SHOW=1 shows it as usual, to watch a run.
   if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
+  // Always, PB_SHOW or not: the OS file pickers never open in a run; one with no answer fails. See src/main/testPickers.ts.
+  env.PATCHBAY_TEST_DIALOGS = '1'
   Object.assign(env, extraEnv)
   const file = exe ?? require('electron')
   const args = [

@@ -16,7 +16,12 @@ import type { DesignPick } from './design'
 export interface NodeError {
   code: 'cwd-missing' | 'spawn-failed' | 'resume-failed'
   message: string
+  /** What the person can do about a start that failed, offered as a button on the node. See docs/plans/r3-start.md. */
+  fix?: StartFix
 }
+
+/** agents: Settings › Agents. sessions: Settings › Background sessions. folder: choose another folder. */
+export type StartFix = 'agents' | 'sessions' | 'folder'
 
 /** Where an update stands. */
 export type UpdateState =
@@ -280,6 +285,8 @@ export interface PatchbayBridge {
   noteSlow(ms: number, what?: string): void
   getAppInfo(): Promise<{ version: string; dataDir: string }>
   getSettings(): Promise<Settings>
+  /** Why an agent of this kind (the default one, with none) won't start because its program isn't found, or null. */
+  agentProgramProblem(kind?: 'claude' | 'codex'): Promise<string | null>
   /** Applies to sessions started from now on. */
   saveSettings(settings: Settings): Promise<{ ok: true } | { ok: false; reason: string }>
   getApprovals(): Promise<PendingApproval[]>

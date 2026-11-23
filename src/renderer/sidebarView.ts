@@ -1,7 +1,7 @@
 import { isProjectArchived, isProjectOpen, isSessionNode, type AgentStatus, type CanvasDoc, type ClosedSession, type Project } from '../shared/model'
 import { matchesSession, sessionTree, type Session, type SessionTree } from './sessionTree'
 import type { Tone } from './status/status'
-import type { RunResult } from '../shared/contract'
+import type { NodeError, RunResult } from '../shared/contract'
 import { sessionBlocked } from './status/setupStatus'
 
 export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' | 'starting' | 'stopped' | 'plain'
@@ -13,7 +13,7 @@ export type BucketId = 'needs-you' | 'unread' | 'running' | 'idle' | 'unknown' |
  * Stopped, and terminals and run commands, which have no way of reporting a status, get a section of their own.
  */
 export const BUCKETS: { id: BucketId; label: string; help: string; always: boolean; tone: Tone | null }[] = [
-  { id: 'needs-you', label: 'Need attention', help: 'Waiting on you to answer, or stopped on a limit or an error (a failed setup, or a failed run not yet seen)', always: true, tone: 'needs' },
+  { id: 'needs-you', label: 'Need attention', help: "Waiting on you to answer, or stopped on a limit or an error (a failed setup, an agent that couldn't start, or a failed run not yet seen)", always: true, tone: 'needs' },
   { id: 'unread', label: 'Unread', help: "Finished or stopped, and you haven't looked yet", always: false, tone: null },
   { id: 'running', label: 'Working', help: 'Claude is working', always: false, tone: 'working' },
   { id: 'idle', label: 'Idle', help: 'Claude finished its turn', always: false, tone: 'done' },
@@ -63,7 +63,7 @@ export interface StatusSection {
  * Every session, by status, across projects. A closed project is out of sight on purpose, except for what the taskbar
  * badge is counting: a session waiting on you has to stay findable, wherever it is.
  */
-export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}, runs: Record<string, RunResult> = {}): StatusSection[] {
+export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentStatus>, attention: string[], query: string, stopped: Record<string, unknown> = {}, runs: Record<string, RunResult> = {}, errors: Record<string, NodeError> = {}): StatusSection[] {
   const open = new Map(doc.projects.map((p) => [p.id, isProjectOpen(p)]))
   const names = new Map(doc.projects.map((p) => [p.id, p.name.toLowerCase()]))
   const q = query.trim().toLowerCase()
@@ -72,7 +72,7 @@ export function statusSections(doc: CanvasDoc, statuses: Record<string, AgentSta
   const sections = new Map<BucketId, Session[]>(BUCKETS.map((b) => [b.id, []]))
   for (const node of doc.nodes) {
     if (!isSessionNode(node) || !shown(node)) continue
-    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], runs[node.id], unread.has(node.id)))
+    const bucket = bucketOf(node.kind, statuses[node.id] ?? null, unread.has(node.id), node.id in stopped, sessionBlocked(node, statuses[node.id], runs[node.id], unread.has(node.id), errors[node.id]))
     const hidden = node.projectId !== undefined && open.get(node.projectId) === false
     if (hidden && bucket !== 'needs-you' && bucket !== 'unread') continue
     // An archived project's sessions were stopped on purpose, and can't be shown until it's unarchived.

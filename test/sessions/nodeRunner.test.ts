@@ -263,6 +263,8 @@ test('startNode with a deleted cwd: status exited, error surfaced, no throw', as
   expect(tracker.get('c')).toBe('exited')
   expect(runner.errors().c?.code).toBe('cwd-missing')
   expect(runner.errors().c?.message).toContain(gone)
+  // Its node offers "Choose folder…" (docs/plans/r3-start.md).
+  expect(runner.errors().c?.fix).toBe('folder')
   expect(seen.map(([id, e]) => [id, e?.code])).toEqual([['c', 'cwd-missing']])
   expect(node('c').sessionId).toBeNull()
 })
@@ -291,7 +293,7 @@ test('a missing claude executable is surfaced as spawn-failed', async () => {
     }
   })
   await runner.startNode('c')
-  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: 'claude was not found on PATH' })
+  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: 'claude was not found on PATH', fix: 'agents' })
 })
 
 test('a resumed Claude that exits within 5 s with nonzero code surfaces resume-failed', async () => {
@@ -668,4 +670,14 @@ describe("Git Bash's limit on consoles", () => {
     expect(consolesFull(dump + 'x'.repeat(5000))).toBe(false)
     expect(consolesFull(dump)).toBe(true)
   })
+})
+
+test('a failure outside the program lookup carries no Settings fix (docs/plans/r3-start.md)', async () => {
+  const { runner } = setup([claude()], {
+    hostHookPort: async () => {
+      throw new Error('port gone')
+    }
+  })
+  await runner.startNode('c')
+  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: 'port gone' })
 })

@@ -1,0 +1,60 @@
+/* First run and starting agents: see docs/plans/r3-start.md. */
+
+/* "▾ 4 more" after the project tabs, when there are more than fit. */
+.project-more {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding-inline: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  background: none;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 6px;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.project-more:hover,
+.project-more[aria-expanded='true'] {
+  color: var(--ink);
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* A form that can't start yet says why, where the Ctrl+Enter hint was. */
+.shell-foot .shell-blocked-why {
+  color: var(--ink);
+}
+
+/* Asked to start anyway: said louder. */
+.shell-foot .shell-blocked-why-asked {
+  color: var(--led-working, #ff9f43);
+}
+
+/* The agent's program wasn't found: said in the New form, before Start. */
+.pop-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 7px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: rgb(255 69 58 / 0.1);
+  border: 1px solid rgb(255 69 58 / 0.35);
+  border-radius: 6px;
+}
+
+.pop-warn span {
+  flex: 1;
+}
+
+/* A muted "None" under a project that isn't on screen and has no sessions. */
+.sidebar-none {
+  opacity: 0.7;
+}

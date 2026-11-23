@@ -24,6 +24,8 @@ import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
 import { askReview, reviewShown, reviewViewport, useFarReview } from '../farReview'
 import { measureSafeArea } from '../safeArea'
+import { StartFixActions } from './StartFixActions'
+import { failedStart } from '../status/startFailure'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -287,7 +289,7 @@ export function NodeChrome({
   const folder = headerFolder(cwd, projectFolder)
   const stop = useAgentStop(status === 'unknown' ? node.id : undefined)
   // The colour a zoomed-out window's body is filled with: the minimap's, so the two always agree.
-  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens(), Date.now(), setupHoldOf(node))
+  const fill = isRun ? runMapColor(run, ledTokens()) : statusMapColor(status, stop, ledTokens(), Date.now(), setupHoldOf(node), failedStart(status, error))
   const classes = ['unit', selected ? 'unit-selected' : '', status === 'needs-you' ? 'unit-needs-you' : '', slot ? 'unit-in-pane' : maximized ? 'unit-maximized' : '']
 
   const card = (
@@ -347,6 +349,7 @@ export function NodeChrome({
           <div className="strip-text">
             <span>{error.message}</span>
           </div>
+          <StartFixActions node={node} error={error} />
         </div>
       )}
       {status !== 'exited' && <JoinedStrip id={node.id} />}

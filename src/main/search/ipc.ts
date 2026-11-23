@@ -1,12 +1,13 @@
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { app, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import type { GitService } from '../../core/git/service'
 import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
 import type { SearchBridge } from '../../shared/searchBridge'
 import { createHandoffSaver } from './saveHandoff'
+import { pickOrStub } from '../testPickers'
 import { createSearchService, workerBackend } from './service'
 
 /** The repository a folder is in, and its uncommitted files, from the same git the git panel uses. */
@@ -58,10 +59,15 @@ export function registerSearchIpc(s: {
     home: homedir(),
     writeFile: (p, text, exclusive) => writeFile(p, text, { encoding: 'utf8', flag: exclusive ? 'wx' : 'w' }),
     async pickFile(defaultPath) {
-      // Screenshot scenes answer the dialog this way (see test/acceptance/readerPictureScenes.cjs). Never when installed.
-      if (!app.isPackaged && process.env.PB_SCENE_SAVE_AS) return process.env.PB_SCENE_SAVE_AS
-      const r = await dialog.showSaveDialog({ title: 'Save the handoff', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] })
-      return r.canceled || !r.filePath ? null : r.filePath
+      // Screenshot scenes answer the dialog with PB_SCENE_SAVE_AS (see test/acceptance/readerPictureScenes.cjs). Never
+      // opened by an off-screen test run: see testPickers.ts.
+      return pickOrStub('save', async () => {
+        const options: Electron.SaveDialogOptions = { title: 'Save the handoff', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] }
+        // Modal to the window, so a second ask can't open a second picker.
+        const win = BrowserWindow.getFocusedWindow()
+        const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+        return r.canceled || !r.filePath ? null : r.filePath
+      })
     }
   })
   ipcMain.handle('pb:search:saveHandoff', (_e, a: unknown) => saveHandoff(a as never))

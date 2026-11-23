@@ -61,6 +61,8 @@ body {
 .app {
   display: grid;
   grid-template-rows: auto 1fr;
+  /* Never wider than the window: the top bar's tabs scroll instead of pushing the dock and pill off-screen. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
 }
 

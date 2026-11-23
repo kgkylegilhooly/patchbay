@@ -16,6 +16,7 @@ import { noteAgentSettings } from './agentChoice'
 import { confirmThen } from './shell/confirmStore'
 import { updateCheckRow } from './updateCheckRow'
 import './agents.css'
+import { takeSettingsSection, useSettingsAsk } from './settingsAsk'
 
 /** Suggestions only. Any installed font can be typed. */
 const MONO_FONTS = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono', 'Hack', 'Iosevka', 'Courier New']
@@ -130,7 +131,9 @@ export function SettingsPage({
   onClose: () => void
 }): React.JSX.Element | null {
   const setLook = (patch: Partial<TerminalLook>): void => onPrefs({ terminal: { ...prefs.terminal, ...patch } })
-  const [section, setSection] = useState<SectionId>('canvas')
+  const [section, setSection] = useState<SectionId>(() => takeSettingsSection() ?? 'canvas')
+  // Asked for again while open, as from another node's "Open Settings › Agents".
+  useEffect(() => useSettingsAsk.subscribe((s) => { if (s.section) setSection(takeSettingsSection() ?? 'canvas') }), [])
   const [draft, setDraft] = useState<Settings | null>(null)
   const [saved, setSaved] = useState<{ ok: boolean; text: string } | null>(null)
   const [info, setInfo] = useState<{ version: string; dataDir: string } | null>(null)

@@ -107,6 +107,9 @@ async function main() {
   // As in the acceptance runs, the window opens beside the screens without taking focus, so pictures don't pop up over
   // whatever the person is doing. PB_SHOW=1 shows it as usual.
   if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
+  // Always: the OS file pickers never open for a picture; a scene that reaches one with no answer fails. See
+  // src/main/testPickers.ts.
+  env.PATCHBAY_TEST_DIALOGS = '1'
 
   const child = spawn(
     electronPath,
