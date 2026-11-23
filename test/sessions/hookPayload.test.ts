@@ -75,3 +75,7 @@ test('Always allow echoes the rule back with the allow, and never with a deny', 
     hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: DENIED } }
   })
 })
+
+test("any event from inside a subagent keeps its agent_id, so it's never taken for the window's own conversation", () => {
+  expect(pickHookFields({ hook_event_name: 'PostToolUse', session_id: 's', agent_id: 'a2' }, 'PostToolUse')).toEqual({ hook_event_name: 'PostToolUse', session_id: 's', agent_id: 'a2' })
+})

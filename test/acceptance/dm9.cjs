@@ -22,7 +22,7 @@ async function main() {
   const exe = process.argv.includes('--packaged') ? L.packagedExe : undefined
   const work = L.workDir('dm9')
   const profile = L.newProfile({ permissionMode: 'default' })
-  const app = await L.launch({ profile, exe })
+  const app = await L.launch({ profile, realHome: true, exe })
   const { page } = app
   const node = (id) => `.react-flow__node[data-id="${id}"]`
   const inWork = (n) => path.join(work, n)

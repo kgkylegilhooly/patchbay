@@ -85,6 +85,7 @@ import { createUsageSecret } from './usage/usageSecret'
 import { createUsageService } from './usage/usageService'
 import { readClaudeAccount, readCodexUsage } from './usage/agentAccounts'
 import { createCodexGate } from './usage/codexGate'
+import { applyAgentUsageFixture } from './usage/agentUsageFixture'
 import { sendToAgent } from './agentMessages'
 import { setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
@@ -683,6 +684,8 @@ async function boot(): Promise<void> {
   // Codex's limits and both accounts come from asking the programs themselves, which spends no quota.
   const refreshAgents = async (): Promise<void> => {
     if (currentSettings().usageSource === 'off') return
+    // Scenes and acceptance runs show made-up numbers, never the person's own. See agentUsageFixture.ts.
+    if (applyAgentUsageFixture(process.env, usage)) return
     try {
       usage.setClaudeAccount(await readClaudeAccount(await resolveClaudeAsync()))
     } catch {

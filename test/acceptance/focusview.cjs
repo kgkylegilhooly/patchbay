@@ -9,6 +9,14 @@ const before = process.argv[2] === 'before'
 const c = L.checker()
 U.watchdog(3 * 60_000)
 
+/**
+ * What the shell printed, without its escape sequences. Bash wraps each command in bracketed-paste switches, and whether
+ * one lands between a line break and the command's output varies, so matching the raw text failed now and then.
+ */
+const plain = (text) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+const shown = async (page, id) => plain(await L.snapshot(page, id))
+/** A UI change, waited for rather than slept on: a busy machine draws later. Gives back what it waited for, or null. */
+const until = (what, fn, ms = 10000) => L.waitFor(what, fn, ms, 100).catch(() => null)
 const panes = (page) => page.$$eval('[data-focus-pane]', (ps) => ps.map((p) => ({ id: p.dataset.focusPane, shows: p.querySelector('select').value, card: !!p.querySelector('.unit-in-pane') })))
 
 async function main() {
@@ -18,7 +26,7 @@ async function main() {
   const page = app.page
   try {
     for (const [i, id] of ['one', 'two', 'three'].entries()) await L.openNode(page, L.terminal(id, cwd, i * 520, 0))
-    await L.waitFor('the shells', async () => (await Promise.all(['one', 'two', 'three'].map((id) => L.snapshot(page, id)))).every((s) => s.length > 0), 20000)
+    await L.waitFor('the shells', async () => (await Promise.all(['one', 'two', 'three'].map((id) => L.snapshot(page, id)))).every((s) => s.length > 0), 60000)
     await L.fitView(page)
     if (before) {
       console.log('SHOT', await L.shot(page, 'focusview-before'))
@@ -26,8 +34,8 @@ async function main() {
     }
 
     await page.click('.dock [data-cmd="toggle-focus"]')
-    await page.waitForSelector('.focus-view', { timeout: 5000 })
-    await L.sleep(500)
+    await page.waitForSelector('.focus-view', { timeout: 15000 })
+    await until('the panes', async () => (await panes(page)).filter((p) => p.card).length === 3)
     let now = await panes(page)
     c.check('The focus view puts the windows in panes', JSON.stringify(now.map((p) => p.shows)) === JSON.stringify(['one', 'two', 'three']) && now.every((p) => p.card), now)
     console.log('SHOT', await L.shot(page, 'focusview-after-open'))
@@ -36,7 +44,7 @@ async function main() {
     await page.keyboard.type('echo in-a-pane')
     await page.keyboard.press('Enter')
     // The command's output, alone on its line. The echoed command itself can come back with redraws inside it.
-    const typed = await L.waitFor('the echo', async () => /[\r\n]in-a-pane\r?\n/.test(await L.snapshot(page, 'one')), 8000).catch(() => false)
+    const typed = await L.waitFor('the echo', async () => /[\r\n]in-a-pane\r?\n/.test(await shown(page, 'one')), 30000).catch(() => false)
     c.check('A terminal in a pane takes typing as usual', !!typed, typed ? undefined : JSON.stringify((await L.snapshot(page, 'one')).slice(-300)))
 
     // Leaving and opening the view resizes every terminal, and Git Bash used to drop the first key typed after that.
@@ -45,7 +53,7 @@ async function main() {
       await page.click('.focus-view [data-focus="leave"]')
       await L.sleep(250)
       await page.click('.dock [data-cmd="toggle-focus"]')
-      await page.waitForSelector('[data-focus-pane="a"] .xterm-screen')
+      await page.waitForSelector('[data-focus-pane="a"] .xterm-screen', { timeout: 15000 })
       await L.sleep(150)
       await page.click('[data-focus-pane="a"] .xterm-screen')
       await page.keyboard.type(`echo first-key-${i}`)
@@ -53,19 +61,19 @@ async function main() {
       await L.sleep(500)
     }
     const after = await L.waitFor('the echoes', async () => {
-      const s = await L.snapshot(page, 'one')
+      const s = await shown(page, 'one')
       return (s.match(/\r?\nfirst-key-\d/g) ?? []).length >= 6 ? s : null
-    }, 8000).catch(async () => L.snapshot(page, 'one'))
+    }, 30000).catch(async () => shown(page, 'one'))
     const ran = new Set((after.match(/(?<=[\r\n])first-key-\d(?=\r?\n)/g) ?? []))
     c.check('The first key typed after a resize is never lost', !/command not found/.test(after) && ran.size === 6, { ran: [...ran], lost: after.match(/[^\r\n]{0,8}cho first-key-\d[^\r\n]*\r?\n[^\r\n]*/g)?.filter((l) => /not found/.test(l)) })
     c.check('The guard byte never shows on screen', !/\^@/.test((await L.screen(page, 'one')).join('\n')))
 
     await page.click('[data-focus-pane="a"] [data-focus="split-down"]')
-    await L.sleep(300)
+    await until('the new pane', async () => (await panes(page)).length === 4)
     now = await panes(page)
     c.check('Split down adds an empty pane under it', now.length === 4 && now[1].shows === '', now)
     await page.select('[data-focus-pane="ab"] select', 'three')
-    await L.sleep(300)
+    await until('the window to move', async () => (await panes(page))[1]?.shows === 'three')
     now = await panes(page)
     c.check('Choosing a window for a pane moves it there', now[1].shows === 'three' && now.filter((p) => p.shows === 'three').length === 1, now)
 
@@ -76,13 +84,13 @@ async function main() {
     await page.mouse.down()
     await page.mouse.move(bar.x + 200, bar.y + bar.height / 2, { steps: 6 })
     await page.mouse.up()
-    await L.sleep(300)
+    await until('the panes to resize', async () => (await width()) > w1 + 120)
     const w2 = await width()
     c.check('Dragging a divider resizes the panes', w2 > w1 + 120, { w1, w2 })
     console.log('SHOT', await L.shot(page, 'focusview-after-split'))
 
     await page.click('[data-focus-pane="bb"] [data-focus="close-pane"]')
-    await L.sleep(300)
+    await until('the pane to close', async () => (await panes(page)).length === 3)
     now = await panes(page)
     c.check('Closing a pane gives its space to the others', now.length === 3 && now.some((p) => p.id === 'b' && p.shows === 'two'), now)
 
@@ -90,7 +98,7 @@ async function main() {
     const typingIn = () => page.evaluate(() => document.activeElement?.closest('[data-focus-pane]')?.dataset.focusPane ?? null)
     const edge = (id) => page.$eval(`[data-focus-pane="${id}"]`, (p) => getComputedStyle(p).borderTopColor)
     await page.click('[data-focus-pane="aa"] .xterm-screen')
-    await L.sleep(200)
+    await until('the keyboard in the pane', async () => (await typingIn()) === 'aa')
     c.check('The pane being typed in is marked out from the others', (await edge('aa')) !== (await edge('b')), { typing: await edge('aa'), other: await edge('b') })
     await page.keyboard.down('Control')
     await page.keyboard.down('Shift')
@@ -104,35 +112,35 @@ async function main() {
 
     // An empty pane offers the windows that aren't in the view, one click each.
     await page.click('[data-focus-pane="ab"] [data-focus="close-pane"]')
-    await L.sleep(250)
+    await until('the pane to close', async () => !(await page.$('[data-focus-pane="ab"]')))
     await page.click('[data-focus-pane="b"] [data-focus="split-down"]')
-    await L.sleep(300)
+    await until('the empty pane', () => page.$('[data-focus-pane="bb"] [data-focus-choice]'))
     const offered = await page.$$eval('[data-focus-pane="bb"] [data-focus-choice]', (bs) => bs.map((b) => b.dataset.focusChoice))
     c.check('An empty pane lists the windows not in the view', JSON.stringify(offered) === '["three"]', offered)
     console.log('SHOT', await L.shot(page, 'focusview-empty-pane'))
     await page.click('[data-focus-pane="bb"] [data-focus-choice="three"]')
-    await L.sleep(400)
+    await until('it to show there', async () => (await panes(page)).find((p) => p.id === 'bb')?.shows === 'three' && (await typingIn()) === 'bb')
     now = await panes(page)
     c.check('Choosing one shows it there and gives it the keyboard', now.find((p) => p.id === 'bb')?.shows === 'three' && (await typingIn()) === 'bb', { now, typing: await typingIn() })
 
     // The sidebar, while the view covers the canvas, brings a window to a pane rather than centering the hidden canvas.
     await page.click('[data-focus-pane="bb"] [data-focus="close-pane"]')
-    await L.sleep(250)
+    await until('the pane to close', async () => !(await page.$('[data-focus-pane="bb"]')))
     if (!(await page.$('.sidebar [data-session="three"]'))) await page.click('.dock [data-cmd="toggle-sidebar"]').catch(() => {})
     await page.click('[data-session="three"]')
-    await L.sleep(400)
+    await until('it in a pane with the keyboard', async () => (await panes(page)).find((p) => p.shows === 'three')?.id === (await typingIn()))
     now = await panes(page)
     c.check('Clicking a session in the sidebar puts it in a pane, ready to type in', now.some((p) => p.shows === 'three') && now.find((p) => p.shows === 'three')?.id === (await typingIn()), { now, typing: await typingIn() })
     console.log('SHOT', await L.shot(page, 'focusview-after-sidebar'))
 
     await page.click('[data-focus="leave"]')
-    await L.sleep(500)
+    await until('the windows back on the canvas', async () => (await page.$$eval('.react-flow__node .unit', (us) => us.length)) === 3 && !(await page.$('.focus-view')))
     const back = await page.$$eval('.react-flow__node .unit', (us) => us.length)
     c.check('Back to canvas puts every window back on it', back === 3 && !(await page.$('.focus-view')), back)
 
     await page.click('.dock [data-cmd="toggle-focus"]')
-    await page.waitForSelector('.focus-view', { timeout: 5000 })
-    await L.sleep(300)
+    await page.waitForSelector('.focus-view', { timeout: 15000 })
+    await until('the same layout', async () => JSON.stringify((await panes(page)).map((p) => p.id)) === JSON.stringify(now.map((p) => p.id)))
     const again = await panes(page)
     c.check('Opening it again brings back the same layout', JSON.stringify(again.map((p) => p.id)) === JSON.stringify(now.map((p) => p.id)), again)
     const still = await L.snapshot(page, 'one')

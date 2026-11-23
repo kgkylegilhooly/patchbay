@@ -30,6 +30,7 @@ import { startupQuestion, STARTUP_SCREEN_CHARS } from '../../core/status/startup
 import { stripAnsi } from '../../core/transcript/read'
 import type { StatusTracker } from './statusTracker'
 import { asPaste } from './paste'
+import { sessionFromHook } from './sessionFromHook'
 import { ARCHIVED_START, inArchivedProject } from '../../core/canvas/projectOps'
 import { fixOf, withFix } from './startFix'
 
@@ -475,7 +476,8 @@ export function createNodeRunner({
     const lastJournalled = Math.max(0, ...events.map((e) => (typeof e.at === 'number' ? e.at : 0)))
     const signalled = ctx.latestSignal?.(id)
     if (lastJournalled && signalled !== undefined && signalled > lastJournalled) events.push({ hook_event_name: 'PostToolUse' })
-    const missed = foldMissedHooks(events)
+    const known = nodeById(id)
+    const missed = foldMissedHooks(events, known?.kind === 'claude' ? known : undefined)
     tracker.seed(id, missed.status, missed.turns)
     if (missed.stopFailure) ctx.onMissedStopFailure?.(id, missed.stopFailure)
     if (missed.hasConversation !== undefined) run.hasConversation = missed.hasConversation
@@ -639,6 +641,12 @@ export function createNodeRunner({
             patch: { sessionId, transcriptPath: text(payload.transcript_path) ?? null }
           })
         }
+      }
+      // SessionStart can be lost (it's still a command hook); the hooks that do arrive say which conversation it is.
+      const learned = asking?.kind === 'claude' ? sessionFromHook(asking, payload) : null
+      if (learned) {
+        run.sessionStarted = true
+        store.dispatch({ op: 'patchNode', id, patch: learned })
       }
       if (name === 'UserPromptSubmit') {
         run.hasConversation = true

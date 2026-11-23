@@ -66,7 +66,7 @@ async function main() {
     viewport: { x: 20, y: 20, zoom: 0.6 }, nodes: [], edges: [], closed: []
   }))
   const env = process.env.PB_MODEL ? { ANTHROPIC_MODEL: process.env.PB_MODEL } : undefined
-  const app = await L.launch({ profile, env })
+  const app = await L.launch({ profile, realHome: true, env })
   const { page } = app
   const folders = [work]
   const answered = []

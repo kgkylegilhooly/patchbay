@@ -48,7 +48,7 @@ async function main() {
   }
   fs.writeFileSync(path.join(profile, 'canvas.json'), JSON.stringify(old))
 
-  let app = await lib.launch({ profile, exe })
+  let app = await lib.launch({ profile, realHome: true, exe })
   let { page } = app
   try {
     check('An old save opens as one project', (await tabNames(page)).join() === 'My project', await tabNames(page))
@@ -156,7 +156,7 @@ async function main() {
     // Restart with both projects alive.
     const active = await activeTab(page)
     await app.quit().catch(() => app.forceKill())
-    app = await lib.launch({ profile, exe })
+    app = await lib.launch({ profile, realHome: true, exe })
     page = app.page
     check('After a restart both tabs are back', (await tabNames(page)).join() === 'My project,Renamed', await tabNames(page))
     check('The same project is on screen', (await activeTab(page)) === active)

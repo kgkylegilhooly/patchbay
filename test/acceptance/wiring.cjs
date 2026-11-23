@@ -8,7 +8,7 @@ async function main() {
   const work = L.workDir('wiring')
   // A variable from another app Patchbay was started in, named in envNotPassed, must not reach its sessions.
   const profile = L.newProfile({ envNotPassed: 'OTHERAPP_' })
-  const app = await L.launch({ profile, exe, env: { OTHERAPP_NODE_ID: 'outer' } })
+  const app = await L.launch({ profile, realHome: true, exe, env: { OTHERAPP_NODE_ID: 'outer' } })
   const { page } = app
   try {
     await L.openNode(page, L.terminal('t1', work, 20, 20))

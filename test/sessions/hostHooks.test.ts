@@ -192,7 +192,10 @@ test('a slow app: Claude gets nothing to say by the limit, and the app still get
 test("the app going away: a held request is left to Claude, and what it hadn't answered goes to the next app under the same ids", async () => {
   const app = fakeApp()
   hooks.connect(app)
+  // One after another: two connections at once can arrive either way round. Claude can overlap a session's events
+  // (parallel tool calls), but never a held request with the Stop that ends its turn.
   const held = post('PermissionRequest', { tool_name: 'Bash' })
+  await until(() => app.got.length === 1)
   const stop = post('Stop', {})
   await until(() => app.got.length === 2)
   hooks.disconnect(app)
@@ -237,8 +240,11 @@ test('a newer connection takes over what the older one hadn\'t answered', async 
   expect(newer.got.map((g) => [g.payload.hook_event_name, g.live])).toEqual([['UserPromptSubmit', false]])
   // The older one's close comes later and changes nothing.
   hooks.disconnect(older)
-  void post('Stop', {})
+  const stop = post('Stop', {})
   await until(() => newer.got.length === 2)
+  // Answered before the test ends, so no request is still open when the server closes.
+  hooks.answer(newer.got[1].hid, {})
+  expect((await stop).status).toBe(200)
 })
 
 test('events for different nodes go to their own journals, and flush writes at once', async () => {
@@ -261,8 +267,14 @@ test('a journal past its size rolls over, and both parts are read', async () => 
 test('a body too big to parse, or not JSON, still counts as its event, named by the path', async () => {
   const app = fakeApp()
   hooks.connect(app)
-  void post('PostToolUse', JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'x'.repeat(MAX_PARSED_BYTES + 10) }))
-  void post('Stop', 'not json')
+  // One after another: sent at once, the small one could overtake the big one, as it did now and then in a full run.
+  // Nothing relies on events of different connections keeping their order.
+  const big = post('PostToolUse', JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'x'.repeat(MAX_PARSED_BYTES + 10) }))
+  await until(() => app.got.length === 1)
+  const bad = post('Stop', 'not json')
   await until(() => app.got.length === 2)
   expect(app.got.map((g) => g.payload)).toEqual([{ hook_event_name: 'PostToolUse' }, { hook_event_name: 'Stop' }])
+  for (const g of app.got) hooks.answer(g.hid, {})
+  expect((await big).status).toBe(200)
+  expect((await bad).status).toBe(200)
 })

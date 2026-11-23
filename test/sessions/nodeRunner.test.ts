@@ -181,6 +181,56 @@ test('a SessionStart hook updates sessionId and transcriptPath on the node', asy
   expect(tracker.get('c')).toBe('idle')
 })
 
+describe('a lost SessionStart: the session is learned from the hooks that do come', () => {
+  test('any hook of the session fills in a transcript Patchbay never heard of', async () => {
+    // Started with --session-id, so the id is known, but the SessionStart that names the transcript never arrived.
+    const { runner, node } = setup([claude({ sessionId: 'sid', transcriptPath: null })])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'UserPromptSubmit', session_id: 'sid', transcript_path: 'C:\\t\\sid.jsonl' })
+    expect(node('c').transcriptPath).toBe('C:\\t\\sid.jsonl')
+    expect(node('c').sessionId).toBe('sid')
+  })
+
+  test('a session taken on with none recorded at all: its first hook records it', async () => {
+    // A launch always names the session (--session-id); one found running in the host may have nothing on record.
+    const { runner, node } = setup([claude({ sessionId: null, transcriptPath: null })])
+    runner.adoptNode('c')
+    await runner.handleHook('c', { hook_event_name: 'PostToolUse', session_id: 'learned', transcript_path: 'C:\\t\\learned.jsonl' })
+    expect(node('c')).toMatchObject({ sessionId: 'learned', transcriptPath: 'C:\\t\\learned.jsonl' })
+  })
+
+  test("a turn of a newer conversation (a /clear whose SessionStart was lost) moves the node to it", async () => {
+    const { runner, node } = setup([claude({ sessionId: 'old', transcriptPath: 'C:\\t\\old.jsonl' })])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'UserPromptSubmit', session_id: 'new', transcript_path: 'C:\\t\\new.jsonl' })
+    expect(node('c')).toMatchObject({ sessionId: 'new', transcriptPath: 'C:\\t\\new.jsonl' })
+  })
+
+  test('tool calls and subagents never move a recorded session: they can belong to a subagent', async () => {
+    const { runner, node } = setup([claude({ sessionId: 'main', transcriptPath: 'C:\\t\\main.jsonl' })])
+    await runner.startNode('c')
+    for (const name of ['PostToolUse', 'PreToolUse', 'SubagentStart', 'SubagentStop', 'Notification', 'PermissionRequest', 'SessionEnd']) {
+      await runner.handleHook('c', { hook_event_name: name, session_id: 'other', transcript_path: 'C:\\t\\other.jsonl' })
+    }
+    expect(node('c')).toMatchObject({ sessionId: 'main', transcriptPath: 'C:\\t\\main.jsonl' })
+  })
+
+  test('an event from inside a subagent (it carries agent_id) neither fills nor moves the session', async () => {
+    const { runner, node } = setup([claude({ sessionId: 'main', transcriptPath: null })])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'PreToolUse', session_id: 'main', transcript_path: 'C:\t\sub.jsonl', agent_id: 'a2' })
+    await runner.handleHook('c', { hook_event_name: 'Stop', session_id: 'other', transcript_path: 'C:\t\other.jsonl', agent_id: 'a2' })
+    expect(node('c')).toMatchObject({ sessionId: 'main', transcriptPath: null })
+  })
+
+  test("a Codex window's hooks can be a child thread's, so only its SessionStart sets the session", async () => {
+    const { runner, node } = setup([claude({ agent: 'codex', sessionId: 'thread', transcriptPath: 'C:\\t\\rollout.jsonl' })])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'Stop', session_id: 'child', transcript_path: 'C:\\t\\child.jsonl' })
+    expect(node('c')).toMatchObject({ sessionId: 'thread', transcriptPath: 'C:\\t\\rollout.jsonl' })
+  })
+})
+
 test('a SessionEnd hook never changes the stored session', async () => {
   const { runner, node } = setup([claude({ sessionId: 'good' })])
   await runner.startNode('c')

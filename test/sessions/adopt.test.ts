@@ -106,6 +106,16 @@ describe('adopting a Claude node', () => {
 })
 
 describe('catching up on hooks from while the app was closed', () => {
+  test("a journal without the session's SessionStart still gives a window its transcript, and no subagent's", () => {
+    const { runner, node } = setup(
+      [claudeNode({ sessionId: 'sid', transcriptPath: null })],
+      [ev('PostToolUse', { session_id: 'sub', transcript_path: 'C:\\t\\sub.jsonl' }), ev('UserPromptSubmit', { session_id: 'sid', transcript_path: 'C:\\t\\sid.jsonl' })]
+    )
+    runner.adoptNode('c')
+    runner.catchUpHooks('c')
+    expect(node()).toMatchObject({ sessionId: 'sid', transcriptPath: 'C:\\t\\sid.jsonl' })
+  })
+
   test('an empty journal tells nothing, so unknown stands', () => {
     const { tracker, runner } = setup([claudeNode()])
     runner.adoptNode('c')
