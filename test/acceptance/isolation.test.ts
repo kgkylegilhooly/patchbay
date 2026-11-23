@@ -33,6 +33,30 @@ test("the app gets a home of its own in the throwaway profile, so it never reads
   expect(readFileSync(join(env.HOME!, '.config', 'git', 'git-prompt.sh'), 'utf8')).toMatch(/^PS1='.*you@patchbay/)
 })
 
+test("nothing inherited points git or gh back at the person's own settings or sign-ins", () => {
+  const inherited = {
+    ...base,
+    XDG_CONFIG_HOME: 'C:\\real\\xdg',
+    GIT_CONFIG_GLOBAL: 'C:\\real\\.gitconfig',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'user.email',
+    GIT_CONFIG_VALUE_0: 'real@person',
+    GIT_AUTHOR_NAME: 'Real Person',
+    GIT_COMMITTER_EMAIL: 'real@person',
+    GH_TOKEN: 'real-token',
+    GITHUB_TOKEN: 'real-token',
+    GH_CONFIG_DIR: 'C:\\real\\gh'
+  }
+  const env = appEnv({ profile, base: inherited })
+  for (const key of ['XDG_CONFIG_HOME', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'GIT_AUTHOR_NAME', 'GIT_COMMITTER_EMAIL', 'GH_TOKEN', 'GITHUB_TOKEN']) {
+    expect(env[key], key).toBeUndefined()
+  }
+  // gh reads its sign-in from %APPDATA%\GitHub CLI otherwise.
+  expect(inside(env.GH_CONFIG_DIR)).toBe(true)
+  // A real-agent run keeps them all.
+  expect(appEnv({ profile, base: inherited, realHome: true }).GH_TOKEN).toBe('real-token')
+})
+
 test('agent accounts and Codex limits come from made-up numbers, so no picture shows real ones', () => {
   const env = appEnv({ profile, base })
   const file = env.PATCHBAY_AGENT_USAGE!

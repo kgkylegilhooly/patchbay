@@ -60,3 +60,8 @@ test('gives up after its limit, saying which agents never got there', async () =
   expect(await waitForAgents(slowPage([{ needs: 'idle' }]), doc, { timeoutMs: 30, everyMs: 5, log: (l) => said.push(l) })).toBe(false)
   expect(said.join('\n')).toMatch(/needs.*needs-you.*idle/)
 })
+
+test("an agent that ended, as when the scene's settings turn Claude off, counts as settled at once", async () => {
+  const doc = { nodes: [{ id: 'off', kind: 'claude', prompt: 'idle', after: [] }], projects: [] }
+  expect(await waitForAgents(slowPage([{ off: 'exited' }]), doc, { timeoutMs: 30, everyMs: 5, log: () => {} })).toBe(true)
+})

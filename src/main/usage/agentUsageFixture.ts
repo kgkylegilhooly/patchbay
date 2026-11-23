@@ -12,6 +12,9 @@ import type { UsageService } from './usageService'
  *
  * `resetsInMinutes` counts from when it's read, so a saved file never runs out. A missing or broken file means no
  * account and no Codex limits, still without asking anything.
+ *
+ * It's honoured by the packaged app too, deliberately: acceptance runs against a packaged build need it. It only
+ * changes what the usage pill shows, and only when someone sets the variable.
  */
 export const AGENT_USAGE_ENV = 'PATCHBAY_AGENT_USAGE'
 

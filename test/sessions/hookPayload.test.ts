@@ -18,7 +18,9 @@ const EVENTS: Array<[string, Record<string, unknown>]> = [
   ['Notification', { hook_event_name: 'Notification', notification_type: 'permission_prompt', message: 'm' }],
   ['SubagentStop', { hook_event_name: 'SubagentStop', agent_id: 'a1', agent_type: 'Explore', agent_transcript_path: 'p', turn_id: 't' }],
   ['PermissionRequest', { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } }],
-  ['SessionEnd', { reason: 'exit' }]
+  ['SessionEnd', { reason: 'exit' }],
+  // From inside a subagent: Claude adds agent_id, which says the event isn't the window's own conversation.
+  ['PreToolUse', { hook_event_name: 'PreToolUse', session_id: 's', transcript_path: 't', agent_id: 'a2', agent_type: 'Explore', tool_name: 'Read' }]
 ]
 
 /** What hook.cjs journals for this event when no app is there. */
@@ -56,4 +58,8 @@ test("the app's answer becomes Claude's hook output, as hook.cjs prints it", () 
   expect(claudeOutput('PermissionRequest', undefined)).toEqual({})
   expect(claudeOutput('SessionStart', { context: 'c'.repeat(5000) })).toEqual({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'c'.repeat(4000) } })
   expect(claudeOutput('Stop', { decision: 'allow', context: 'x' })).toEqual({})
+})
+
+test("any event from inside a subagent keeps its agent_id, so it's never taken for the window's own conversation", () => {
+  expect(pickHookFields({ hook_event_name: 'PostToolUse', session_id: 's', agent_id: 'a2' }, 'PostToolUse')).toEqual({ hook_event_name: 'PostToolUse', session_id: 's', agent_id: 'a2' })
 })

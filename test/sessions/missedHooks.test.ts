@@ -95,3 +95,12 @@ test("a tool call's or subagent's session in the journal is never taken for the 
   ])
   expect(summary).toMatchObject({ sessionId: 'main', transcriptPath: 'main.jsonl' })
 })
+
+test('in the journal, a turn written before the session it would replace never moves the window back to it', () => {
+  const summary = foldMissedHooks([
+    ev('SessionStart', { session_id: 'new', transcript_path: 'new.jsonl', source: 'clear', at: 200 }),
+    // The old conversation's last Stop, journalled late from another route.
+    ev('Stop', { session_id: 'old', transcript_path: 'old.jsonl', at: 150 })
+  ])
+  expect(summary).toMatchObject({ sessionId: 'new', transcriptPath: 'new.jsonl' })
+})

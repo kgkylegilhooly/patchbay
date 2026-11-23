@@ -215,6 +215,14 @@ describe('a lost SessionStart: the session is learned from the hooks that do com
     expect(node('c')).toMatchObject({ sessionId: 'main', transcriptPath: 'C:\\t\\main.jsonl' })
   })
 
+  test('an event from inside a subagent (it carries agent_id) neither fills nor moves the session', async () => {
+    const { runner, node } = setup([claude({ sessionId: 'main', transcriptPath: null })])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'PreToolUse', session_id: 'main', transcript_path: 'C:\t\sub.jsonl', agent_id: 'a2' })
+    await runner.handleHook('c', { hook_event_name: 'Stop', session_id: 'other', transcript_path: 'C:\t\other.jsonl', agent_id: 'a2' })
+    expect(node('c')).toMatchObject({ sessionId: 'main', transcriptPath: null })
+  })
+
   test("a Codex window's hooks can be a child thread's, so only its SessionStart sets the session", async () => {
     const { runner, node } = setup([claude({ agent: 'codex', sessionId: 'thread', transcriptPath: 'C:\\t\\rollout.jsonl' })])
     await runner.startNode('c')

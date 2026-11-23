@@ -80,6 +80,8 @@ function pick(raw) {
   const out = {}
   for (const key of FORWARDED) if (event[key] !== undefined) out[key] = event[key]
   if (!out.hook_event_name) out.hook_event_name = process.argv[2]
+  // Claude adds it to any event from inside a subagent: such an event says nothing about the window's own conversation.
+  if (typeof event.agent_id === 'string') out.agent_id = event.agent_id.slice(0, 1000)
   if (out.hook_event_name === 'StopFailure') {
     for (const key of STOP_FAILURE_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, MAX_STOP_TEXT_CHARS)
   }

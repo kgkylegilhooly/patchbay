@@ -192,7 +192,8 @@ test('a slow app: Claude gets nothing to say by the limit, and the app still get
 test("the app going away: a held request is left to Claude, and what it hadn't answered goes to the next app under the same ids", async () => {
   const app = fakeApp()
   hooks.connect(app)
-  // One after another, as Claude sends a session's events: two connections at once can arrive either way round.
+  // One after another: two connections at once can arrive either way round. Claude can overlap a session's events
+  // (parallel tool calls), but never a held request with the Stop that ends its turn.
   const held = post('PermissionRequest', { tool_name: 'Bash' })
   await until(() => app.got.length === 1)
   const stop = post('Stop', {})
@@ -267,6 +268,7 @@ test('a body too big to parse, or not JSON, still counts as its event, named by 
   const app = fakeApp()
   hooks.connect(app)
   // One after another: sent at once, the small one could overtake the big one, as it did now and then in a full run.
+  // Nothing relies on events of different connections keeping their order.
   const big = post('PostToolUse', JSON.stringify({ hook_event_name: 'PostToolUse', tool_response: 'x'.repeat(MAX_PARSED_BYTES + 10) }))
   await until(() => app.got.length === 1)
   const bad = post('Stop', 'not json')

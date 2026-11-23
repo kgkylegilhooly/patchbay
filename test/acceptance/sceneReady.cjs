@@ -25,7 +25,8 @@ function agentsToWaitFor(doc) {
     .map((n) => ({ id: n.id, want: (n.agent ?? 'claude') === 'claude' ? expectedStatus(n.prompt) : null }))
 }
 
-const settled = (status, want) => (want === null ? status !== undefined && status !== 'starting' : status === want)
+/** An agent that ended (as when a scene's settings turn Claude off) won't change again, so it counts as settled. */
+const settled = (status, want) => status === 'exited' || (want === null ? status !== undefined && status !== 'starting' : status === want)
 
 /** True once every agent got there; false, having said which didn't, after the limit. The picture is taken either way. */
 async function waitForAgents(page, doc, { timeoutMs = 120_000, everyMs = 250, log = (line) => console.error(line) } = {}) {

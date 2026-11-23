@@ -113,6 +113,8 @@ function isolatedHome(profile) {
     CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
     CODEX_HOME: path.join(home, '.codex'),
     PATCHBAY_SSH_CONFIG: path.join(home, '.ssh', 'config'),
+    // gh keeps its sign-in under %APPDATA%GitHub CLI otherwise: the GitHub reader would act as the person.
+    GH_CONFIG_DIR: path.join(home, '.config', 'gh'),
     PATCHBAY_AGENT_USAGE: usage,
     // A packaged build copies its host here: not into the person's own %LOCALAPPDATA%\Patchbay.
     PATCHBAY_HOST_RUNTIME_DIR: path.join(profile, 'host-runtime')
@@ -135,8 +137,11 @@ function appEnv({ profile, env: extraEnv, realHome = false, base = process.env }
   // PB_SHOW=1 shows it as usual, to watch a run.
   if (!base.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
   if (!realHome) {
-    // Windows spells some of these in other cases; one spelling each, so the app can't pick up the real one.
-    for (const key of Object.keys(env)) if (/^(USERPROFILE|HOME|CLAUDE_CONFIG_DIR|CODEX_HOME)$/i.test(key)) delete env[key]
+    // Windows spells some of these in other cases; one spelling each, so the app can't pick up the real one. Git's and
+    // gh's own variables go too: an inherited one (XDG_CONFIG_HOME, GIT_CONFIG_GLOBAL, a GIT_AUTHOR_* name, a token)
+    // would beat the made-up home.
+    const real = /^(USERPROFILE|HOME|CLAUDE_CONFIG_DIR|CODEX_HOME|XDG_[A-Z_]+|GIT_CONFIG(_[A-Z0-9_]+)?|GIT_(AUTHOR|COMMITTER)_[A-Z]+|GH_[A-Z_]+|GITHUB_[A-Z_]*TOKEN)$/i
+    for (const key of Object.keys(env)) if (real.test(key)) delete env[key]
     Object.assign(env, isolatedHome(profile))
   }
   Object.assign(env, extraEnv)

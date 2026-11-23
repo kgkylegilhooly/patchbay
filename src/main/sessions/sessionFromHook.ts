@@ -6,7 +6,8 @@
  * confirmed. See docs/plans/r2-reliability.md.
  *
  * Careful about what may move a window to another session:
- * - Never SessionEnd (the ending session, as on /clear), nor a subagent's own events.
+ * - Never SessionEnd (the ending session, as on /clear), a subagent's own events, nor any event carrying `agent_id`,
+ *   which Claude adds to every event fired inside a subagent.
  * - A tool call or a prompt can come from inside a subagent, so those only fill in what's missing.
  * - A turn of the main conversation (UserPromptSubmit, Stop, StopFailure) can move it: that's a /clear or resume whose
  *   SessionStart was lost.
@@ -34,7 +35,7 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' && v ? v
 export function sessionFromHook(known: KnownSession, payload: Record<string, unknown>): LearnedSession | null {
   if ((known.agent ?? 'claude') !== 'claude') return null
   const name = text(payload.hook_event_name)
-  if (!name || NEVER.has(name)) return null
+  if (!name || NEVER.has(name) || typeof payload.agent_id === 'string') return null
   const sessionId = text(payload.session_id)
   if (!sessionId) return null
   const transcriptPath = text(payload.transcript_path)

@@ -40,6 +40,8 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : un
  */
 export function foldMissedHooks(events: MissedHook[], known?: KnownSession): MissedSummary {
   const summary: MissedSummary = { status: 'unknown', turns: 0, promptSubmitted: false }
+  /** When the session on record was set: a different session written down before that is an older one, not a newer. */
+  let sessionAt = 0
   for (const event of events) {
     const name = text(event.hook_event_name)
     if (!name) continue
@@ -60,13 +62,16 @@ export function foldMissedHooks(events: MissedHook[], known?: KnownSession): Mis
       if (sessionId) {
         summary.sessionId = sessionId
         summary.transcriptPath = text(event.transcript_path)
+        if (typeof event.at === 'number') sessionAt = Math.max(sessionAt, event.at)
       }
     }
     const current: KnownSession = summary.sessionId
       ? { sessionId: summary.sessionId, transcriptPath: summary.transcriptPath ?? null, agent: known?.agent }
       : { sessionId: known?.sessionId ?? null, transcriptPath: known?.transcriptPath ?? null, agent: known?.agent }
     const learned = sessionFromHook(current, event as Record<string, unknown>)
-    if (learned) {
+    const older = learned && learned.sessionId !== current.sessionId && typeof event.at === 'number' && event.at < sessionAt
+    if (learned && !older) {
+      if (learned.sessionId !== current.sessionId && typeof event.at === 'number') sessionAt = Math.max(sessionAt, event.at)
       summary.sessionId = learned.sessionId
       summary.transcriptPath = learned.transcriptPath ?? undefined
     }
