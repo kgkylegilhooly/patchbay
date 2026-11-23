@@ -6,7 +6,7 @@ import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
 import { toggleReviewInbox } from './reviewInboxUi'
 import { terminalProfileSubmenu } from './terminalProfilesUi'
-import { minimapItem } from './minimapItem'
+import { minimapItems } from './minimapItem'
 import { toggleFoldedMap, useChromeLayout } from './safeArea'
 import { openComparisons, openTryApproach } from './compareUi'
 import { askArchive, openProjects } from './projectsUi'
@@ -267,7 +267,7 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'toggle-git', label: 'Git panel', icon: 'branch', checked: !!s.gitPanel, run: () => c.toggleGit() },
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
-    minimapItem(s.minimap, useChromeLayout.getState(), { togglePref: () => c.togglePref('minimap'), toggleFolded: toggleFoldedMap }),
+    ...minimapItems(s.minimap, useChromeLayout.getState(), { togglePref: () => c.togglePref('minimap'), toggleFolded: toggleFoldedMap }),
     { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
   ]
 }

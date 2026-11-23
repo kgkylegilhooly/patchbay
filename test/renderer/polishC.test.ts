@@ -5,7 +5,7 @@ import { boardColumnMenu } from '../../src/renderer/boardColumnMenu'
 import { outcomeSummary } from '../../src/renderer/tasks/outcomeSummary'
 import { evidenceTaskLabel, isOpaqueId } from '../../src/renderer/idWords'
 import { shelfRowMenu } from '../../src/renderer/shelfRowMenu'
-import { minimapItem } from '../../src/renderer/minimapItem'
+import { minimapItems } from '../../src/renderer/minimapItem'
 import { updateCheckRow } from '../../src/renderer/updateCheckRow'
 import { BUILT_IN_RECIPES } from '../../src/shared/recipeBuiltins'
 
@@ -105,23 +105,34 @@ describe('View > Minimap (audit #28)', () => {
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   const act = () => ({ togglePref: vi.fn<() => void>(), toggleFolded: vi.fn<() => void>() })
 
+  const ticked = (on: boolean, foldMap: boolean, mapOpen: boolean): boolean => minimapItems(on, { foldMap, mapOpen }, act()).some((i) => i.checked)
+
   test('ticked only while a map is drawn', () => {
-    expect(minimapItem(true, { foldMap: false, mapOpen: false }, act()).checked).toBe(true)
-    expect(minimapItem(true, { foldMap: true, mapOpen: false }, act()).checked).toBe(false)
-    expect(minimapItem(true, { foldMap: true, mapOpen: true }, act()).checked).toBe(true)
-    expect(minimapItem(false, { foldMap: true, mapOpen: false }, act()).checked).toBe(false)
+    expect(ticked(true, false, false)).toBe(true)
+    expect(ticked(true, true, false)).toBe(false)
+    expect(ticked(true, true, true)).toBe(true)
+    expect(ticked(false, true, false)).toBe(false)
   })
 
   test('folded into the dock, it shows and hides the map from there, as the dock button does', () => {
     const a = act()
-    const item = minimapItem(true, { foldMap: true, mapOpen: false }, a)
-    expect(item.label).toContain('in the dock')
-    item.run()
+    const [show, off] = minimapItems(true, { foldMap: true, mapOpen: false }, a)
+    expect(show.label).toContain('in the dock')
+    show.run()
     expect(a.toggleFolded).toHaveBeenCalledOnce()
     expect(a.togglePref).not.toHaveBeenCalled()
     const b = act()
-    minimapItem(true, { foldMap: false, mapOpen: false }, b).run()
+    minimapItems(true, { foldMap: false, mapOpen: false }, b)[0].run()
     expect(b.togglePref).toHaveBeenCalledOnce()
+  })
+
+  test('folded, it can still be turned off, by the row with the id the shortcut and palette use', () => {
+    const a = act()
+    const rows = minimapItems(true, { foldMap: true, mapOpen: true }, a)
+    expect(rows.map((r) => r.id)).toEqual(['show-folded-map', 'toggle-minimap'])
+    expect(rows[1]).toMatchObject({ label: 'Turn the minimap off' })
+    rows[1].run()
+    expect(a.togglePref).toHaveBeenCalledOnce()
   })
 })
 

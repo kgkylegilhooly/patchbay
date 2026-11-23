@@ -47,6 +47,18 @@ export function MenuPanel({
   const ownRef = useRef<HTMLDivElement | null>(null)
   /** Set by the arrow keys, so a long menu scrolls to the row they reach, but not to a row under the mouse. */
   const keyed = useRef(false)
+  /** Where the pointer was last seen over the panel. After the keyboard, a row only takes over once the pointer moves. */
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  // Rows that slide under a still pointer, as when a submenu opens in place, get a hover the browser makes up. It
+  // would take the active row from the keyboard, so it counts only if the pointer is somewhere new.
+  const hover = (e: React.MouseEvent, id: string): void => {
+    const p = { x: e.clientX, y: e.clientY }
+    const was = pointer.current
+    pointer.current = p
+    if (keyed.current && (!was || (was.x === p.x && was.y === p.y))) return
+    keyed.current = false
+    setActive(id)
+  }
   const setPanel = (el: HTMLDivElement | null): void => {
     ownRef.current = el
     if (typeof panelRef === 'function') panelRef(el)
@@ -124,9 +136,13 @@ export function MenuPanel({
       ref={setPanel}
       className="menu-panel"
       role="menu"
-      aria-label={label}
+      aria-label={sub ? sub.label : label}
+      data-submenu={sub ? sub.id : undefined}
       style={style}
       onMouseDown={(e) => e.preventDefault()}
+      onMouseMove={(e) => {
+        if (!keyed.current) pointer.current = { x: e.clientX, y: e.clientY }
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {entries.map((entry, i) =>
@@ -137,10 +153,7 @@ export function MenuPanel({
             key={entry.id}
             item={entry}
             active={active === entry.id}
-            onHover={() => {
-              keyed.current = false
-              setActive(entry.id)
-            }}
+            onHover={(e) => hover(e, entry.id)}
           />
         ) : (
           <button
@@ -157,10 +170,7 @@ export function MenuPanel({
               active === entry.id ? 'menu-item-active' : '',
               entry.danger ? 'menu-item-danger' : ''
             ].join(' ')}
-            onMouseEnter={() => {
-              keyed.current = false
-              setActive(entry.id)
-            }}
+            onMouseEnter={(e) => hover(e, entry.id)}
             onClick={() => choose(entry)}
           >
             <span className="menu-check" aria-hidden="true">
@@ -177,7 +187,7 @@ export function MenuPanel({
 }
 
 /** A − value + row in a menu, such as a window's text size. The value runs the item, when it can. */
-function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: () => void }): React.JSX.Element {
+function StepsRow({ item, active, onHover }: { item: MenuItem; active: boolean; onHover: (e: React.MouseEvent) => void }): React.JSX.Element {
   const steps = item.steps!
   const step = (s: (typeof steps)['down'], icon: 'minus' | 'plus'): React.JSX.Element => (
     <button type="button" role="menuitem" className="menu-step" data-tool={s.tool} aria-label={s.label} title={s.label} disabled={s.disabled} onClick={s.run}>
@@ -227,9 +237,18 @@ export function ContextMenu({
   const [position, setPosition] = useState(at)
 
   useLayoutEffect(() => {
-    const box = ref.current?.getBoundingClientRect()
-    const from = anchor === 'end' && box ? { x: at.x - box.width, y: at.y } : at
-    if (box) setPosition(clampToViewport(from, box, { width: window.innerWidth, height: window.innerHeight }))
+    const place = (): void => {
+      const box = ref.current?.getBoundingClientRect()
+      const from = anchor === 'end' && box ? { x: at.x - box.width, y: at.y } : at
+      if (box) setPosition(clampToViewport(from, box, { width: window.innerWidth, height: window.innerHeight }))
+    }
+    place()
+    // A submenu opens in the panel's place and can be wider or taller than the menu was: placed again, it stays on screen.
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(place)
+    watch.observe(el)
+    return () => watch.disconnect()
   }, [at, anchor])
 
   useEffect(() => {

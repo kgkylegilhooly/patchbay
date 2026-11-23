@@ -55,12 +55,10 @@ function Attempt({ a }: { a: BrowserAttempt }): React.JSX.Element {
         <br />
         {a.url}
       </p>
-      {task && (
-        <p className="evidence-id" title={`Attempt ${a.id}
-Task ${a.taskId}`}>
-          {task}
-        </p>
-      )}
+      <p className="evidence-id" title={`Attempt ${a.id}${a.taskId ? `
+Task ${a.taskId}` : ''}`}>
+        {task ?? 'Recorded check'}
+      </p>
       <p>
         Started by {a.startedBy ? `${a.startedBy.title}` : 'an agent'}
         {a.finishedBy && a.finishedBy.id !== a.startedBy?.id ? `, finished by ${a.finishedBy.title}` : ''}.

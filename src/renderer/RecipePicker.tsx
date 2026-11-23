@@ -151,14 +151,14 @@ export function RecipePicker({ projectId, onStart, onCancel }: { projectId: stri
         ))}
         {/* The recipes' folders, in the same one line the workflows below use for theirs. */}
         <p className="workflow-list-foot" data-recipe-files>
-          Files:{' '}
+          Recipe files:{' '}
           <button type="button" className="workflow-link" title="Open the folder of your own recipes" onClick={() => void recipes.openRecipesFolder(projectId, 'personal')}>
             personal
           </button>
           {listing?.repo && (
             <>
               {' · '}
-              <button type="button" className="workflow-link" title="Open this repository's .patchbayecipes folder" onClick={() => void recipes.openRecipesFolder(projectId, 'repository')}>
+              <button type="button" className="workflow-link" title="Open this repository's .patchbay\recipes folder" onClick={() => void recipes.openRecipesFolder(projectId, 'repository')}>
                 repository
               </button>
             </>

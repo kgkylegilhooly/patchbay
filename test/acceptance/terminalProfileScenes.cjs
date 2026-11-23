@@ -117,6 +117,104 @@ const scenes = {
     await require('./scenes.cjs').rightClickCanvas(page)
     await sleep(300)
   },
+  // The submenu by keyboard, checked step by step: → or Enter opens it, ← or Esc goes back to the row that opened it,
+  // Esc again closes the menu, Enter on a profile opens that terminal, and in the menu bar → opens the submenu rather
+  // than moving to the next menu. Throws at the first step that's wrong; ends with the submenu open, for the picture.
+  'terminal-menu-keys': async (page) => {
+    await seedProfiles(page)
+    const state = () => page.evaluate(() => {
+      const panel = document.querySelector('.menu-panel')
+      return panel ? { sub: panel.getAttribute('data-submenu'), label: panel.getAttribute('aria-label'), active: panel.querySelector('.menu-item-active')?.getAttribute('data-cmd') ?? null } : null
+    })
+    const key = async (k) => {
+      await page.keyboard.press(k)
+      await sleep(120)
+    }
+    const expect = async (what, ok) => {
+      const s = await state()
+      if (!ok(s)) throw new Error(`Menu keys: ${what}. Menu was ${JSON.stringify(s)}`)
+    }
+    const toRow = async (id) => {
+      for (let i = 0; i < 40 && (await state())?.active !== id; i++) await key('ArrowDown')
+      await expect(`↓ reaches ${id}`, (s) => s?.active === id)
+    }
+    const canvasMenu = async () => {
+      await require('./scenes.cjs').rightClickCanvas(page)
+      await sleep(300)
+      await toRow('new-terminal-with')
+    }
+
+    await canvasMenu()
+    await key('ArrowRight')
+    await expect('→ opens the submenu on its first profile', (s) => s?.sub === 'new-terminal-with' && s.label === 'New terminal with' && s.active === 'new-terminal-with:custom:vs')
+    await key('Escape')
+    await expect('Esc goes back, with the opening row active', (s) => s && !s.sub && s.active === 'new-terminal-with')
+    await key('Enter')
+    await expect('Enter opens the submenu too', (s) => s?.sub === 'new-terminal-with')
+    await key('ArrowLeft')
+    await expect('← goes back', (s) => s && !s.sub && s.active === 'new-terminal-with')
+    await key('Escape')
+    await expect('Esc again closes the menu', (s) => s === null)
+
+    const before = await page.evaluate(async () => (await window.patchbay.getDoc()).nodes.length)
+    await canvasMenu()
+    await key('ArrowRight')
+    await key('Enter')
+    await expect('Enter on a profile closes the menu', (s) => s === null)
+    const deadline = Date.now() + 5000
+    let made = null
+    while (!made && Date.now() < deadline) {
+      made = await page.evaluate(async (n) => {
+        const nodes = (await window.patchbay.getDoc()).nodes
+        return nodes.length > n ? nodes.find((x) => x.kind === 'terminal' && x.profile === 'custom:vs') ?? null : null
+      }, before)
+      if (!made) await sleep(200)
+    }
+    if (!made) throw new Error('Menu keys: Enter on "VS x64 prompt" opened no terminal of that profile')
+
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'File').click())
+    await sleep(300)
+    await toRow('new-terminal-with')
+    await key('ArrowRight')
+    await expect('in the menu bar, → opens the submenu, not the next menu', (s) => s?.sub === 'new-terminal-with')
+    await key('ArrowLeft')
+    await expect('← goes back to File, not the menu before it', (s) => s && !s.sub && s.label === 'File')
+    await key('ArrowRight')
+    console.log('terminal-menu-keys: all steps passed')
+  },
+  // A canvas menu opened at the right edge, then a submenu wider than it (a long profile name): it's placed again, on
+  // screen. Throws if any of it is off screen.
+  'terminal-menu-sub-edge': async (page) => {
+    await page.evaluate(async (profiles) => {
+      const b = window.patchbayTerminalProfiles
+      const long = { id: 'custom:long', name: 'Developer PowerShell for VS 2022 (x64, preview tools)', program: 'cmd.exe', args: ['/k'] }
+      const saved = await b.save([...profiles, long], 'custom:proj')
+      if (!saved.ok) throw new Error(saved.reason)
+    }, PROFILES)
+    await page.reload()
+    await page.waitForSelector('.react-flow__pane', { timeout: 15000 })
+    await sleep(800)
+    const spot = await page.evaluate(() => {
+      const stage = document.querySelector('.stage').getBoundingClientRect()
+      for (let x = stage.right - 4; x > stage.left; x -= 8) {
+        for (let y = stage.top + 60; y < stage.bottom - 60; y += 20) {
+          if (document.elementFromPoint(x, y)?.classList.contains('react-flow__pane')) return { x, y }
+        }
+      }
+      return null
+    })
+    if (!spot) throw new Error('No bare canvas near the right edge')
+    await page.mouse.click(spot.x, spot.y, { button: 'right' })
+    await sleep(300)
+    await page.click('.menu-panel [data-cmd="new-terminal-with"]')
+    await sleep(400)
+    const box = await page.evaluate(() => {
+      const r = document.querySelector('.menu-panel').getBoundingClientRect()
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: innerWidth, height: innerHeight }
+    })
+    if (box.left < 0 || box.right > box.width || box.top < 0 || box.bottom > box.height) throw new Error(`The submenu runs off screen: ${JSON.stringify(box)}`)
+    console.log(`terminal-menu-sub-edge: on screen ${JSON.stringify(box)}`)
+  },
   // The other profiles, opened from the canvas menu's one "New terminal with" row.
   'terminal-menu-sub': async (page) => {
     await seedProfiles(page)
