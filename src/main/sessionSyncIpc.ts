@@ -10,10 +10,9 @@ import type { BackgroundHost } from './sessions/backgroundHost'
 import type { NodeRunner } from './sessions/nodeRunner'
 import { CHECK_EVERY_MS, createSessionSync, pidAlive, type SessionSync, type SyncNodeView } from './sessions/sessionSync'
 import type { StatusTracker } from './sessions/statusTracker'
+import { ADOPT_SIZE, adoptSpot } from './sessions/adoptSpot'
+import { viewSize } from './viewSize'
 
-/** Where a session with no node is shown when adopted: near the top left of what's on screen. */
-const ADOPT_AT = { x: 120, y: 120 }
-const ADOPT_SIZE = { width: 560, height: 340 }
 
 function taskkillTree(pid: number): Promise<void> {
   // It fails if the process has already gone, which is what was wanted anyway.
@@ -135,13 +134,13 @@ export function setupSessionSync(deps: {
     appOnly(async (id: unknown) => {
       const sid = orphan(id)
       const doc = store.get()
-      const { x: vx, y: vy, zoom } = doc.viewport
+      // A free spot in view, as new nodes get: never on top of the sessions already there.
+      const at = adoptSpot(doc, viewSize())
       const node: TerminalNode = {
         id: sid,
         kind: 'terminal',
         title: 'Recovered session',
-        x: Math.round((ADOPT_AT.x - vx) / zoom),
-        y: Math.round((ADOPT_AT.y - vy) / zoom),
+        ...at,
         ...ADOPT_SIZE,
         parentId: null,
         ...(doc.activeProjectId ? { projectId: doc.activeProjectId } : {}),

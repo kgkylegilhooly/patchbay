@@ -79,10 +79,15 @@ function layOut(stage: HTMLElement, mapOn: boolean): void {
   const side = stage.querySelector(':scope > .sidebar')?.getBoundingClientRect()
   const panels = rightPanels(origin)
   const mapButton = dock.querySelector('.dock-map')?.getBoundingClientRect().width ?? 0
+  const safeLeft = side && side.width ? side.right - origin.left : 0
+  const safeRight = panels.length ? Math.min(...panels.map((p) => p.x)) : origin.width
+  // The free part of the bottom row, for other chrome that sits over it, as the workflow run chips do.
+  stage.style.setProperty('--safe-left', `${Math.round(safeLeft)}px`)
+  stage.style.setProperty('--safe-right', `${Math.round(safeRight)}px`)
   const { left, foldMap } = dockLayout({
     stageWidth: origin.width,
-    left: side && side.width ? side.right - origin.left : 0,
-    right: panels.length ? Math.min(...panels.map((p) => p.x)) : origin.width,
+    left: safeLeft,
+    right: safeRight,
     dockWidth: dock.getBoundingClientRect().width - mapButton,
     mapWidth: mapOn ? MAP_WIDTH : null
   })

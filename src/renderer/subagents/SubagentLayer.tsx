@@ -132,7 +132,8 @@ function SubagentTranscript(): React.JSX.Element | null {
   if (!viewing) return null
   return createPortal(
     <TranscriptViewer className="sa-viewer" title={viewing.title} label={`Transcript of subagent ${viewing.title}`} text={read.text} missing={read.missing} onClose={closeSubagentView} />,
-    document.body
+    // On the stage, as the other drawers are, so the safe area counts it and the dock stays in reach.
+    document.querySelector('.stage') ?? document.body
   )
 }
 

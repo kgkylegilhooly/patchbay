@@ -1,5 +1,5 @@
 import type { NodeProps } from '@xyflow/react'
-import { memo, useMemo, useState } from 'react'
+import { memo, useMemo, useRef, useState } from 'react'
 import type { GroupNode as GroupModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
@@ -9,7 +9,10 @@ import { StatusMark } from '../status/StatusMarks'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { useAgentStops } from '../agentStops'
-import { askConfirm } from '../shell/confirmStore'
+import { createPortal } from 'react-dom'
+import { Icon } from '../icons'
+import { ContextMenu } from '../Menu'
+import { useWorktreeErrors, worktreeMenu } from '../worktreeUi'
 
 export const GROUP_COLORS = ['#49c2c9', '#e2b04a', '#e0689b', '#7fa8ff', '#62dc8a']
 
@@ -77,18 +80,12 @@ function BindForm({ groupId, onDone }: { groupId: string; onDone: () => void }):
 }
 
 function Bound({ node }: { node: GroupModel }): React.JSX.Element {
-  const [error, setError] = useState<string | null>(null)
+  const error = useWorktreeErrors((s) => s[node.id])
   const worktree = node.worktree!
-
-  const remove = async (): Promise<void> => {
-    if (!(await askConfirm({ title: 'Remove this worktree?', message: "Deletes the worktree's folder, including git-ignored files. Sessions in it stop. The branch stays.", verb: 'Remove worktree', cancelLabel: 'Keep', attrs: { 'data-wt-confirm': node.id } }))) return
-    try {
-      const r = await bridge.removeWorktree(node.id)
-      setError(r.ok ? null : r.reason)
-    } catch (e) {
-      setError(message(e))
-    }
-  }
+  // Remove worktree… lives in this ⋯ menu (and the right-click menu), not as a red button on every bound header.
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
+  // A press on the button closes an open menu first; the click that follows mustn't open it again.
+  const closedAt = useRef(0)
 
   return (
     <div className="wt-bound nodrag">
@@ -98,9 +95,26 @@ function Bound({ node }: { node: GroupModel }): React.JSX.Element {
       <button className="btn" title="Keeps the folder on disk" onClick={() => void bridge.unbindWorktree(node.id)}>
         Unbind
       </button>
-      <button className="btn btn-risky wt-remove" onClick={() => void remove()}>
-        Remove worktree…
+      <button
+        type="button"
+        className="icon-btn tool-btn wt-more"
+        data-wt-more={node.id}
+        aria-haspopup="menu"
+        aria-expanded={!!menuAt}
+        aria-label={`More for worktree ${worktree.branch}`}
+        title="More: copy its path, remove it"
+        onClick={(e) => {
+          if (Date.now() - closedAt.current < 300) return
+          const r = e.currentTarget.getBoundingClientRect()
+          setMenuAt(menuAt ? null : { x: Math.round(r.right), y: Math.round(r.bottom) + 4 })
+        }}
+      >
+        <Icon name="more" size={15} />
       </button>
+      {menuAt && createPortal(<ContextMenu at={menuAt} anchor="end" entries={worktreeMenu(node.id, worktree)} label={`Worktree ${worktree.branch}`} onClose={() => {
+            closedAt.current = Date.now()
+            setMenuAt(null)
+          }} />, document.body)}
       {error && (
         <span className="wt-error" role="alert">
           {error}

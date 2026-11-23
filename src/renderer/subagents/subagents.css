@@ -159,8 +159,15 @@
   right: 16px;
   bottom: 16px;
   left: auto;
-  width: min(720px, calc(100vw - 32px));
-  z-index: 50;
+  width: min(720px, 55vw);
+  /* Above the sidebar and dock, below a modal's or the palette's dim layer (z 30), as the other drawers are. */
+  z-index: 20;
+}
+
+/* When the dock has no room beside it, the viewer stops above the dock's row instead of covering it. */
+.stage[data-dock-raised] > .viewer.sa-viewer {
+  bottom: var(--dock-room, 16px);
+  padding-bottom: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
