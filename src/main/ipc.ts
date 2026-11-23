@@ -5,7 +5,8 @@ import { isAbsolute, join, relative } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { readIfPresent, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
-import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
+import { readMessagesTailAndMore, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
+import { conversationAnswer, conversationLimit, type ConversationAnswer } from '../shared/conversation'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { ApprovalChoice, BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
 import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
@@ -96,8 +97,6 @@ export function broadcast(channel: string, ...args: unknown[]): void {
 const isSession = isSessionNode
 const TITLE_MESSAGES = 12
 const USAGE_PUSH_MS = 500
-/** How much of a conversation the chat view shows. Older messages are in the transcript, and the terminal. */
-const CONVERSATION_MESSAGES = 200
 
 /** Serves every `pb:` channel. See src/preload/index.ts for the conventions. */
 export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; terminalShownExited(id: string): boolean } {
@@ -539,14 +538,15 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     if (id) await runner.startNode(id)
   })
   // The chat view of an agent window. Read again as the conversation grows, so only the newest part is sent.
-  ipcMain.handle('pb:readConversation', async (_e, nodeId: string) => {
+  ipcMain.handle('pb:readConversation', async (_e, nodeId: string, limit?: number, since?: string): Promise<ConversationAnswer> => {
     const node = find(nodeId)
     if (node?.kind !== 'claude') return { ok: false, reason: 'Only an agent window has a conversation.' }
-    if (!node.transcriptPath) return { ok: true, messages: [] }
+    if (!node.transcriptPath) return { ok: true, messages: [], earlier: false, version: '' }
     try {
-      return { ok: true, messages: await readMessagesTail(node.transcriptPath, CONVERSATION_MESSAGES) }
+      const count = conversationLimit(limit)
+      return conversationAnswer(await readMessagesTailAndMore(node.transcriptPath, count), node.transcriptPath, count, since)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, messages: [] }
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, messages: [], earlier: false, version: '' }
       return { ok: false, reason: `The conversation couldn't be read: ${(e as Error).message}` }
     }
   })

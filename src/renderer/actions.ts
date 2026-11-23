@@ -10,6 +10,7 @@ import { openComparisons, openTryApproach } from './compareUi'
 import { openProjects } from './projectsUi'
 import { jumpToNext } from './needsYouUi'
 import { pickDocument } from './reader/readerUi'
+import { cycleRegion } from './a11y/regions'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -66,6 +67,9 @@ export const ACTIONS: Action[] = [
   { id: 'find', section: 'Window', label: 'Find in terminal', icon: 'find', fixedKey: 'Ctrl+F', keywords: ['search'], ready: (s) => s.canFind, run: (c) => c.find() },
   { id: 'refresh-window', section: 'Window', label: 'Refresh this window', icon: 'refresh', key: 'Ctrl+Shift+R', keywords: ['redraw', 'repaint', 'rebuild'], ready: hasWindow, run: (c) => c.refreshWindow() },
   { id: 'name-with-ai', section: 'Window', label: 'Name this window with AI', icon: 'sparkle', keywords: ['title', 'rename'], ready: (s) => s.canName, run: (c) => c.nameWithAi() },
+  { id: 'rename-window', section: 'Window', label: 'Rename this window', icon: 'edit', key: 'F2', canvasOnly: true, keywords: ['title', 'name'], ready: hasWindow, run: (c) => c.renameWindow() },
+  { id: 'restart-window', section: 'Window', label: 'Restart this window', icon: 'restart', keywords: ['start', 'again', 'rerun', 'resume'], ready: (s) => !!s.canRestart, run: (c) => c.restartWindow() },
+  { id: 'close-window', section: 'Window', label: 'Close this window', icon: 'close', keywords: ['delete', 'remove', 'end', 'quit'], ready: hasWindow, run: (c) => c.closeWindow() },
   { id: 'toggle-chat', section: 'Window', label: 'Show this window as a chat, or as its terminal', icon: 'note', keywords: ['chat', 'conversation', 'terminal', 'view'], ready: hasWindow, run: (c) => c.toggleChat() },
   { id: 'copy-folder-path', section: 'Window', label: "Copy this window's folder path", icon: 'copy', keywords: ['cwd', 'directory', 'path', 'folder'], ready: hasWindow, run: (c) => c.copyFolderPath() },
   { id: 'toggle-maximize', section: 'Window', label: 'Maximize or restore this window', icon: 'maximize', key: 'F11', keywords: ['fullscreen', 'expand'], ready: hasWindow, run: (c) => c.toggleMaximize() },
@@ -91,6 +95,8 @@ export const ACTIONS: Action[] = [
   { id: 'next-needs-you', section: 'View', label: 'Next needing you', icon: 'arrow-right', key: 'Ctrl+Shift+J', keywords: ['attention', 'waiting', 'needs you', 'unread', 'jump', 'peek', 'reply', 'inbox'], run: (c) => void jumpToNext(c) },
 
   { id: 'open-palette', section: 'App', label: 'Command palette', icon: 'palette', key: 'Ctrl+K', overTerminal: true, keywords: ['search', 'commands', 'actions'], run: (c) => c.openPalette() },
+  { id: 'next-region', section: 'App', label: 'Next part of the app (leaves a terminal)', icon: 'arrow-right', key: 'F6', keywords: ['leave', 'exit', 'escape', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(1) },
+  { id: 'prev-region', section: 'App', label: 'Previous part of the app', icon: 'arrow-left', key: 'Shift+F6', keywords: ['leave', 'exit', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(-1) },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
   { id: 'manage-projects', section: 'App', label: 'Projects…', icon: 'project', keywords: ['manage', 'archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },

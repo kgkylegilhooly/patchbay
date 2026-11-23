@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -231,6 +231,27 @@ test('remove succeeds when clean and keeps the branch and its commits', async ()
   expect(existsSync(wt.path)).toBe(false)
   expect(worktreeCount()).toBe(1)
   expect(git(repo, 'rev-parse', 'feature/keep')).toBe(tip)
+})
+
+// git deletes ignored files on removal, and on Windows it deletes what a junction points at rather than the junction:
+// a worktree with node_modules linked to the main checkout's emptied that one (2026-11-20). Seen with git 2.45.1.
+test.runIf(process.platform === 'win32')('remove takes linked folders out first, so what they point at is never deleted', async () => {
+  const shared = join(root, 'shared deps')
+  mkdirSync(join(shared, 'pkg'), { recursive: true })
+  writeFileSync(join(shared, 'pkg', 'index.js'), 'kept')
+  const wt = await createWorktree({ repo, branch: 'feature/linked' })
+  writeFileSync(join(wt.path, '.gitignore'), 'deps\nbuild/\n')
+  git(wt.path, 'add', '.gitignore')
+  git(wt.path, 'commit', '-q', '-m', 'ignore')
+  symlinkSync(shared, join(wt.path, 'deps'), 'junction')
+  mkdirSync(join(wt.path, 'build'))
+  symlinkSync(shared, join(wt.path, 'build', 'inner'), 'junction')
+  await expect(checkRemovable(wt)).resolves.toEqual({ ok: true })
+
+  await expect(removeWorktree(wt)).resolves.toEqual({ ok: true })
+
+  expect(existsSync(wt.path)).toBe(false)
+  expect(readFileSync(join(shared, 'pkg', 'index.js'), 'utf8')).toBe('kept')
 })
 
 test('remove refuses the main working tree', async () => {

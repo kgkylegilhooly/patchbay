@@ -68,15 +68,19 @@ import type { AgentStop } from '../shared/agentStop'
 import { EmptyCanvas } from './EmptyCanvas'
 import { currentWindow, useCommands, type NewForm } from './useCommands'
 import type { UsageMode } from './usageView'
+import { AppProblems } from './AppProblems'
 import './styles.css'
 import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
 import { useSettingsAsk } from './settingsAsk'
+import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
 
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 /** One array, so React Flow isn't handed a new one on every render. */
 const SNAP_GRID: [number, number] = [24, 24]
+/** React Flow is MIT-licensed and credited in Settings > About, so its label isn't a Tab stop on the canvas. */
+const PRO_OPTIONS = { hideAttribution: true }
 
 function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Record<string, RunResult>, errors: Record<string, NodeError> = {}): string {
   if (node.data.node.kind === 'group') return 'transparent'
@@ -241,6 +245,7 @@ function Canvas(): React.JSX.Element | null {
       ...undoState(),
       hasWindow: windowId !== null,
       canName: windowKind === 'terminal' || windowKind === 'claude',
+      canRestart: windowId !== null && (useStore.getState().statuses[windowId] === 'exited' || !!useStore.getState().errors[windowId]),
       canCloseProject: (current?.projects.filter(isProjectOpen).length ?? 0) > 1,
       closedProjects: current?.projects.filter((p) => !isProjectOpen(p) && p.archivedAt === undefined).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
       gitPanel: useStore.getState().gitOpen,
@@ -268,7 +273,7 @@ function Canvas(): React.JSX.Element | null {
       if (!key) return
       const overrides = prefsRef.current.keys
       const action = actionForKey(key, ACTIONS, overrides)
-      if (!action || !appTakesKey(key, focus, isOverTerminal(action, overrides))) return
+      if (!action || !appTakesKey(key, focus, isOverTerminal(action, overrides), action.canvasOnly)) return
       // The board covers the canvas, so a canvas key is left alone, for the board's own fields to use.
       if (s.boardOpen && !worksOverBoard(action)) return
       // With no terminal to paste into, Ctrl+V is left to the page, so a selected whiteboard can take a picture.
@@ -392,6 +397,7 @@ function Canvas(): React.JSX.Element | null {
   const onMapClick = useCallback((_e: unknown, at: { x: number; y: number }) => void flow.setCenter(at.x, at.y, { zoom: flow.getZoom(), duration: 200 }), [flow])
   // A canvas saved zoomed far out opens that way, with no move to report it.
   const ready = !!doc
+  const ariaLabels = useCanvasAriaLabels()
   useEffect(() => {
     if (ready) setCableMotion(stage.current, { moving: false, zoom: flow.getZoom() })
   }, [ready, activeProjectId, flow])
@@ -401,6 +407,7 @@ function Canvas(): React.JSX.Element | null {
   return (
     <div className="app">
       <TopBar commands={commands} state={menuState} />
+      <AppProblems />
       <main className="stage" ref={stage}>
         <ReactFlow<FlowNode, FlowEdge>
           nodes={nodes}
@@ -431,7 +438,8 @@ function Canvas(): React.JSX.Element | null {
           zoomOnScroll={prefs.wheel === 'zoom'}
           panOnScroll={prefs.wheel === 'pan'}
           snapGrid={SNAP_GRID}
-          attributionPosition="top-right"
+          proOptions={PRO_OPTIONS}
+          ariaLabelConfig={ariaLabels}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--hole)" />
           <FlowLayers sidebar={prefs.sidebar} />
@@ -532,6 +540,7 @@ function Canvas(): React.JSX.Element | null {
         <CanvasOverlays commands={commands} selected={selected} boardOpen={boardOpen} gitOpen={gitOpen} />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
+      <A11yLayer />
     </div>
   )
 }

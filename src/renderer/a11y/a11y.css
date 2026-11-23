@@ -1,0 +1,37 @@
+/* Keyboard and screen reader help: see docs/plans/r3-keyboard.md. */
+
+/* A window reached by Tab or F6 shows it, as every other control does. React Flow's own stylesheet turns this off. */
+.react-flow .react-flow__node:focus-visible,
+.react-flow .react-flow__node.selectable:focus-visible {
+  outline: 2px solid var(--cable-link);
+  outline-offset: 3px;
+  border-radius: var(--radius);
+}
+
+/* Read by screen readers, not drawn. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The empty canvas's one line about keys. */
+.stage-empty-keys {
+  margin-top: 4px;
+}
+
+.stage-empty-keys kbd {
+  font: inherit;
+  color: var(--ink);
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.04);
+}

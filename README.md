@@ -189,6 +189,10 @@ rather; the question goes away by itself if the window recovers. If the window c
 you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
 in the log above, which is the thing to share if Patchbay misbehaves.
 
+If the canvas can't be saved, as on a full disk, a banner under the top bar says why, and the canvas moves down for it.
+Patchbay keeps your changes and tries again every 5 seconds, and the banner goes when a save works. **Hide** folds it to
+one slim line until then. If the background host stops, a banner offers **Bring them back**.
+
 A browser node's page runs apart from the canvas. If the page gets stuck, only that node is affected: it says the page
 isn't responding, and **Reload** starts the page again. git and the other programs Patchbay runs start off the
 window's main process, so many agents starting or finishing at once don't hold up the window.
@@ -329,6 +333,8 @@ Each window's header has Find, Maximize, **⋯** and Close. **⋯**, or Shift+F1
 Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The header shows the folder only when
 it isn't the project's own, by its folder name. On narrow windows the folder goes first, then labels.
 
+The chat view shows the last 200 messages. **Show 200 earlier**, at the top, goes further back, up to 5,000.
+
 - **Zoomed out** below 60%, each header becomes a tile you can still read: the title, then the status and the one thing
   you'd zoom in for, such as the command an agent is asking to run or a nearly full context. Approve and Deny, and an
   error's Restart, stay under the tile. The tools come back when you point at the window. Below 35% the window's body
@@ -396,6 +402,13 @@ With a terminal in use, it gets ordinary keys, including Ctrl combinations. Patc
 Alt, function keys, `Ctrl+K`, `Ctrl+,`, and keys you bind yourself after a warning. `Ctrl+C`, `Ctrl+V` and `Ctrl+F` stay
 with the terminal and can't be rebound. So `Ctrl+Z` and `Ctrl+Y` undo only when a terminal doesn't have the keyboard. Esc on the canvas goes back from a
 header zoom (double-click a node's header bar).
+
+`F6` moves the keyboard to the next part of the app: menu bar, sessions sidebar, canvas, dock (`Shift+F6` goes back).
+In a terminal, which keeps Tab and Esc, the first `F6` steps out to its window, and Enter goes back in. A program that
+needs F6 itself (Midnight Commander, htop) gets it back if you rebind Next part of the app in Settings > Keyboard
+shortcuts; the palette's entry still works. `F2` renames
+the window in use from the canvas; the palette also has Rename, Restart and Close this window. A screen reader hears
+each window's name and status, and is told when an agent needs you, fails or stops at a limit.
 
 ## Search and handoffs
 
@@ -729,6 +742,9 @@ The design is in `docs/plans/compare.md`.
 Add one from the canvas menu, the File menu or the palette. It has back, forward, reload and an address bar, and reopens
 its page on the next launch.
 
+- **A page that doesn't load** says why in the node, such as "Nothing is answering at 127.0.0.1:5173 yet" or "Can't
+  find no-such-host.invalid", with Try again. An address on this computer is tried again every 2 seconds for a minute,
+  so a browser opened before its dev server is up shows the page once the server is.
 - **Only the web.** It opens `http`, `https` and `about:blank`. Files, `javascript:` and links that would start another
   program are refused, and the node says so. A pop-up opens in the same node. Downloads, and requests for the camera,
   microphone, location or notifications, are refused.

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -303,6 +303,25 @@ test('cleanup keeps uncommitted work unless that specific removal is confirmed',
   expect(w.stopped).toEqual([w.s.get().nodes.find((n) => n.kind === 'claude' && n.cwd === a.path)!.id])
   expect((w.s.get().nodes.find((n) => n.id === a.groupId) as GroupNode).worktree).toBeNull()
   expect(w.service.get(c.id)!.attempts[0].removed).toMatchObject({ branchDeleted: false })
+})
+
+// --force deletes through a junction on Windows (git 2.45.1), as a linked node_modules once showed.
+test.runIf(process.platform === 'win32')('a confirmed removal takes linked folders out first, so what they point at is kept', async () => {
+  const w = world()
+  const c = await started(w)
+  const [a] = c.attempts
+  const shared = join(root, 'shared deps')
+  mkdirSync(shared)
+  writeFileSync(join(shared, 'keep.txt'), 'kept')
+  symlinkSync(shared, join(a.path, 'deps'), 'junction')
+  writeFileSync(join(a.path, 'app.txt'), 'unsaved work\n')
+
+  const refused = await w.service.remove(c.id, 'a', { deleteBranch: false })
+  const removed = await w.service.remove(c.id, 'a', { deleteBranch: false, confirm: (refused as { needs: RemovalCheck }).needs })
+
+  expect(removed.ok).toBe(true)
+  expect(existsSync(a.path)).toBe(false)
+  expect(readFileSync(join(shared, 'keep.txt'), 'utf8')).toBe('kept')
 })
 
 test('a clean worktree is removed and its branch with unmerged commits kept unless deleting it is confirmed', async () => {
