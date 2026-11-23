@@ -8,7 +8,7 @@ import { Icon, type IconName } from '../icons'
 import { codeBlock, indent, link, prefixLines, toggleTask, wrap, type TextEdit } from '../noteEdit'
 import { relativeTime } from '../sidebarView'
 import { closeNodes, patchNode, useStore } from '../store'
-import { copiedCode, flashCopied, renderMarkdown } from '../stickyRender'
+import { copiedCode, flashCopied, noteMarkdown } from '../stickyRender'
 import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useLinkMenu } from '../useLinkMenu'
 import { useHeaderZoom } from '../useHeaderZoom'
@@ -186,7 +186,7 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
   const headerZoom = useHeaderZoom(node.id)
   const [editing, setEditing] = useState(false)
   const [picking, setPicking] = useState(false)
-  const html = useMemo(() => renderMarkdown(node.text, { tasks: true }), [node.text])
+  const html = useMemo(() => noteMarkdown(node.text), [node.text])
   const tile = useMemo(() => noteTile(node.title, node.text), [node.title, node.text])
   const color = noteColor(node.color)
   // An agent's changes show until the person keeps or undoes them. Once the note changes some other way, they're past undoing.
