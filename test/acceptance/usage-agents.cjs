@@ -8,7 +8,7 @@ const c = L.checker()
 
 async function main() {
   const profile = L.newProfile()
-  const app = await L.launch({ profile })
+  const app = await L.launch({ profile, realHome: true })
   const page = app.page
   try {
     const pill = await L.waitFor('the usage pill', () => page.$('.usage-pill'), 40000).catch(() => null)

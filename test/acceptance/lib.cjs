@@ -77,10 +77,55 @@ async function waitFor(what, fn, timeoutMs = 60000, everyMs = 250) {
   throw new Error(`Timed out waiting for ${what}. Last value: ${last instanceof Error ? last.message : JSON.stringify(last)}`)
 }
 
-/** Starts the app and connects. `exe` selects the packaged build; otherwise it runs the built dev output. */
-async function launch({ profile, exe, env: extraEnv }) {
-  const port = await freePort()
-  const env = { ...process.env, ANTHROPIC_MODEL: 'claude-haiku-5-5' }
+/** Made-up agent accounts and Codex limits, for the usage pill. See src/main/usage/agentUsageFixture.ts. */
+const MADE_UP_USAGE = {
+  claudeAccount: { email: 'you@example.invalid', plan: 'max' },
+  codex: {
+    account: { email: 'you@example.invalid', plan: 'plus' },
+    windows: [
+      { percent: 23, minutes: 300, resetsInMinutes: 134 },
+      { percent: 41, minutes: 10080, resetsInMinutes: 4 * 24 * 60 }
+    ]
+  }
+}
+
+/**
+ * A home folder of the run's own, inside its throwaway profile, so the app never reads the person's ~/.claude (status
+ * line, http hook policy, plans), ~/.codex, ~/.ssh or their programs' sign-ins, and the usage pill shows made-up numbers.
+ */
+function isolatedHome(profile) {
+  const home = path.join(profile, 'home')
+  fs.mkdirSync(path.join(home, '.claude'), { recursive: true })
+  fs.mkdirSync(path.join(home, '.codex'), { recursive: true })
+  // Git still needs a name for the commits some runs make.
+  const gitconfig = path.join(home, '.gitconfig')
+  if (!fs.existsSync(gitconfig)) fs.writeFileSync(gitconfig, '[user]\n\tname = Patchbay Test\n\temail = test@example.invalid\n')
+  // Git Bash's prompt named the person and their PC in every picture of a terminal. Git for Windows reads this file in
+  // place of its own prompt when it's there.
+  const prompt = path.join(home, '.config', 'git', 'git-prompt.sh')
+  fs.mkdirSync(path.dirname(prompt), { recursive: true })
+  if (!fs.existsSync(prompt)) fs.writeFileSync(prompt, "PS1='\\[\\033[32m\\]you@patchbay \\[\\033[33m\\]\\w\\[\\033[0m\\]\\n$ '\n")
+  const usage = path.join(profile, 'agent-usage.json')
+  if (!fs.existsSync(usage)) fs.writeFileSync(usage, JSON.stringify(MADE_UP_USAGE))
+  return {
+    USERPROFILE: home,
+    HOME: home,
+    CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
+    CODEX_HOME: path.join(home, '.codex'),
+    PATCHBAY_SSH_CONFIG: path.join(home, '.ssh', 'config'),
+    PATCHBAY_AGENT_USAGE: usage,
+    // A packaged build copies its host here: not into the person's own %LOCALAPPDATA%\Patchbay.
+    PATCHBAY_HOST_RUNTIME_DIR: path.join(profile, 'host-runtime')
+  }
+}
+
+/**
+ * The app's environment for a run. `realHome` is for the runs that use real agents and their sign-ins (the `*-real`
+ * ones, codex.cjs, usage-agents.cjs and those with a real Claude); every other run gets a home of its own. A script's own
+ * variables win.
+ */
+function appEnv({ profile, env: extraEnv, realHome = false, base = process.env }) {
+  const env = { ...base, ANTHROPIC_MODEL: 'claude-haiku-5-5' }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
   // These runs may start from inside another agent's session, which the app must not think it belongs to. Only what's
@@ -88,8 +133,20 @@ async function launch({ profile, exe, env: extraEnv }) {
   for (const key of Object.keys(env)) if (inheritNot(key)) delete env[key]
   // The window opens beside the screens without taking focus, so runs don't pop up over whatever else is open.
   // PB_SHOW=1 shows it as usual, to watch a run.
-  if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
+  if (!base.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
+  if (!realHome) {
+    // Windows spells some of these in other cases; one spelling each, so the app can't pick up the real one.
+    for (const key of Object.keys(env)) if (/^(USERPROFILE|HOME|CLAUDE_CONFIG_DIR|CODEX_HOME)$/i.test(key)) delete env[key]
+    Object.assign(env, isolatedHome(profile))
+  }
   Object.assign(env, extraEnv)
+  return env
+}
+
+/** Starts the app and connects. `exe` selects the packaged build; otherwise it runs the built dev output. */
+async function launch({ profile, exe, env: extraEnv, realHome }) {
+  const port = await freePort()
+  const env = appEnv({ profile, env: extraEnv, realHome })
   const file = exe ?? require('electron')
   const args = [
     `--remote-debugging-port=${port}`,
@@ -331,7 +388,7 @@ function cleanup(profile) {
 }
 
 module.exports = {
-  inheritNot,
+  inheritNot, appEnv, isolatedHome,
   root, workRoot, packagedExe, sleep, newProfile, workDir, waitFor, launch, doc, statuses, statusOf, seenStatuses,
   hostPid, alive, stopHostOf, snapshot, screen, fitView, approvals, openNode, terminal, claude, input, submit, nodeOf, transcriptText, settingsHash, shot, checker, cleanup
 }

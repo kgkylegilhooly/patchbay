@@ -51,7 +51,7 @@ const nodeSel = (id) => `.react-flow__node[data-id="${id}"]`
 /** Clicks into a terminal so it really has the keyboard. */
 async function focusTerminal(page, id) {
   await page.click(`${nodeSel(id)} .xterm-screen, .unit-maximized .xterm-screen`)
-  await lib.waitFor(`${id}'s terminal to have the keyboard`, () => page.evaluate(() => !!document.activeElement?.closest('.xterm')), 3000, 50)
+  await lib.waitFor(`${id}'s terminal to have the keyboard`, () => page.evaluate(() => !!document.activeElement?.closest('.xterm')), 10000, 50)
 }
 
 /** Types into the focused terminal with real keys, then Enter. */
@@ -67,12 +67,13 @@ async function shellPid(page, id, tag) {
 
 /**
  * Git Bash can drop a character sent just after its window was resized, as these checks often do, and the command then
- * fails. Asking again tells a dropped key from a shell that's really gone, which still fails after every try.
+ * fails. Asking again tells a dropped key from a shell that's really gone, which still fails after every try. Each try
+ * waits 6 s, as a shell on a busy machine can take seconds to answer.
  */
 async function askShell(page, id, command, answer, what) {
   for (let attempt = 0; attempt < 4; attempt++) {
     await lib.input(page, id, `${command}\r`)
-    const said = await lib.waitFor(`${id} to say ${what}`, async () => answer.exec(await lib.snapshot(page, id))?.[1], 2500, 100).catch(() => null)
+    const said = await lib.waitFor(`${id} to say ${what}`, async () => answer.exec(await lib.snapshot(page, id))?.[1], 6000, 100).catch(() => null)
     if (said) return said
   }
   throw new Error(`${id} never said ${what}`)

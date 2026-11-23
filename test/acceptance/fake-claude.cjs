@@ -115,7 +115,7 @@ const hook = (name, extra = {}) => {
   }
   return runCommand(entry.command, payload, entry.args).then((code) => {
     // Which way each hook ran and how long it took, for a check to read back.
-    if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ node: process.env.PATCHBAY_NODE_ID, name, form: entry.args ? 'exec' : 'shell', code, ms: Date.now() - started, timeout: entry.timeout })}\n`)
+    if (process.env.FAKE_HOOK_LOG) fs.appendFileSync(process.env.FAKE_HOOK_LOG, `${JSON.stringify({ node: process.env.PATCHBAY_NODE_ID, name, form: entry.args ? 'exec' : 'shell', code, ms: Date.now() - started, at: Date.now(), timeout: entry.timeout })}\n`)
     return code
   })
 }

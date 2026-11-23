@@ -99,14 +99,10 @@ async function main() {
     writeFileSync(join(profile, 'settings.json'), JSON.stringify(scene.settings))
     for (const [name, text] of Object.entries(scene.files ?? {})) writeFileSync(join(profile, name), text)
   }
-  const env = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    // This may run from inside another agent's session, which must not be mistaken for one of Patchbay's.
-    if (!require('./test/acceptance/lib.cjs').inheritNot(key) && !/^ELECTRON_RUN_AS_NODE$|^ELECTRON_RENDERER_URL$/i.test(key)) env[key] = value
-  }
-  // As in the acceptance runs, the window opens beside the screens without taking focus, so pictures don't pop up over
-  // whatever the person is doing. PB_SHOW=1 shows it as usual.
-  if (!process.env.PB_SHOW) env.PATCHBAY_QUIET_WINDOW = '1'
+  // As in the acceptance runs: nothing from another agent's session this may run inside, a home of the profile's own (so
+  // no picture reads the person's ~/.claude or ~/.codex, or shows their real accounts and Codex usage), and a window
+  // that opens beside the screens without taking focus (PB_SHOW=1 shows it as usual). See appEnv in lib.cjs.
+  const env = require('./test/acceptance/lib.cjs').appEnv({ profile })
 
   const child = spawn(
     electronPath,
@@ -132,6 +128,7 @@ async function main() {
     if (opts.size) await page.setViewport(opts.size)
     await new Promise((r) => setTimeout(r, opts.wait))
     if (scene) {
+      await scene.ready(page)
       await scene.act(page, { profile })
       await new Promise((r) => setTimeout(r, 400))
     }
@@ -149,8 +146,16 @@ async function main() {
     } catch {
       // It never started, or has already gone.
     }
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-    if (scene) rmSync(scene.cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    // On a busy machine Electron can still hold a file a moment after it was ended. The picture is taken by then, so a
+    // folder left behind is only said, not a failure.
+    for (const dir of [profile, scene?.cwd]) {
+      if (!dir) continue
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
+      } catch (e) {
+        console.error(`NOTE  left ${dir} in place: ${e.code ?? e.message}`)
+      }
+    }
   }
 }
 

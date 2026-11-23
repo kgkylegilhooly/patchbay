@@ -106,7 +106,7 @@ async function main() {
   ]
 
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
-  const appRun = await L.launch({ profile, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined })
+  const appRun = await L.launch({ profile, realHome: true, exe: process.argv.includes('--packaged') ? L.packagedExe : undefined })
   const { page } = appRun
   const dialogs = []
   page.on('dialog', (d) => {

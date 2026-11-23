@@ -133,7 +133,7 @@ async function main() {
   const profile = L.newProfile({ permissionMode: 'default', notifications: 'off', sound: 'off' })
   const wiring = seed(profile, work)
   const env = process.env.PB_MODEL ? { ANTHROPIC_MODEL: process.env.PB_MODEL } : undefined
-  const app = await L.launch({ profile, exe, env })
+  const app = await L.launch({ profile, realHome: true, exe, env })
   const { page } = app
   const answered = []
   let stop = false

@@ -67,7 +67,7 @@ async function withApp({ home, env, label }, body) {
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
   // Outside any git repository, because Codex trusts a whole repository at once.
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'patchbay-codex-work-'))
-  const app = await L.launch({ profile, env: { CODEX_HOME: home, ...env } })
+  const app = await L.launch({ profile, realHome: true, env: { CODEX_HOME: home, ...env } })
   const { page } = app
   const text = async (id) => (await L.screen(page, id)).join('\n')
   const tail = async (id, n = 14) => (await text(id)).split('\n').filter((l) => l.trim()).slice(-n).join('\n')

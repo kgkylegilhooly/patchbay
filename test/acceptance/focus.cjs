@@ -11,7 +11,7 @@ async function main() {
 
   // Done means 8: nothing from a dev server, and code from inside the package.
   const profile = L.newProfile({ permissionMode: 'default' })
-  let app = await L.launch({ profile, exe })
+  let app = await L.launch({ profile, realHome: true, exe })
   let { page } = app
   try {
     c.check('DM8: the packaged app loads from its own files', /^file:.*app\.asar/.test(page.url()), page.url())
@@ -51,7 +51,7 @@ async function main() {
     const half = JSON.stringify(fixture).slice(0, 200)
     fs.writeFileSync(path.join(profile, 'canvas.json'), half)
 
-    app = await L.launch({ profile, exe })
+    app = await L.launch({ profile, realHome: true, exe })
     page = app.page
     const doc = await L.doc(page)
     c.check('Review Focus 2: a half-written save loads the backup', doc.nodes.length === 4, doc.nodes.map((n) => n.id))

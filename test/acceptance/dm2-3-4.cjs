@@ -10,7 +10,7 @@ async function main() {
   const exe = process.argv.includes('--packaged') ? L.packagedExe : undefined
   const work = L.workDir('dm234')
   const profile = L.newProfile({ permissionMode: 'default' })
-  let app = await L.launch({ profile, exe })
+  let app = await L.launch({ profile, realHome: true, exe })
   try {
     let { page } = app
 
@@ -46,7 +46,7 @@ async function main() {
 
     // Done means 3
     c.check('DM3: quit exits 0 with nothing busy, so no prompt', (await app.quit()) === 0)
-    app = await L.launch({ profile, exe })
+    app = await L.launch({ profile, realHome: true, exe })
     page = app.page
     const reopened = await L.doc(page)
     const t1 = reopened.nodes.find((n) => n.id === 't1')
@@ -74,7 +74,7 @@ async function main() {
     await app.forceKill()
     const saved = JSON.parse(fs.readFileSync(path.join(profile, 'canvas.json'), 'utf8'))
     c.check('DM4: the save file on disk is valid after the kill', saved.version === 3 && saved.nodes.length === 2)
-    app = await L.launch({ profile, exe })
+    app = await L.launch({ profile, realHome: true, exe })
     page = app.page
     const afterKill = await L.doc(page)
     c.check('DM4: the last autosave loads', afterKill.nodes.find((n) => n.id === 't1').x === 44)

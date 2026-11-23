@@ -68,7 +68,7 @@ async function main() {
     version: 3, projects: [{ id: 'p1', name: 'Smoke', folder: work, viewport: { x: 0, y: 0, zoom: 0.6 } }], activeProjectId: 'p1',
     viewport: { x: 20, y: 20, zoom: 0.6 }, nodes: [], edges: [], closed: []
   }))
-  const app = await L.launch({ profile, env: { CODEX_HOME: home } })
+  const app = await L.launch({ profile, realHome: true, env: { CODEX_HOME: home } })
   const { page } = app
   const folders = [work]
   const answered = []

@@ -63,7 +63,7 @@ async function main() {
   const profile = lib.newProfile()
   const cwd = lib.workDir('launch')
   const exe = process.argv.includes('--packaged') ? lib.packagedExe : undefined
-  const app = await lib.launch({ profile, exe })
+  const app = await lib.launch({ profile, realHome: true, exe })
   const { page } = app
   const file = path.join(profile, 'settings.json')
 

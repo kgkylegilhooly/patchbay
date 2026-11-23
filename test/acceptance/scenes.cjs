@@ -734,6 +734,8 @@ function prepare(name, cwdRoot) {
     settings: { claudeCommand: `node "${fake}"`, notifications: 'off', sound: 'off' },
     // Other files for the profile, by name, as made-up readings.
     files: files[name]?.() ?? {},
+    // Waits for the seeded agents to show their statuses, which takes many seconds on a busy machine.
+    ready: (page) => require('./sceneReady.cjs').waitForAgents(page, doc),
     act: scenes[name]
   }
 }
