@@ -13,6 +13,7 @@ import { isBlankPage } from './browserEmpty'
 import './browserEmpty.css'
 import { BrowserFailurePanel } from './BrowserFailure'
 import { useHeaderZoom } from '../useHeaderZoom'
+import { afterNextPaint } from '../mountQueue'
 
 /** How long after an agent's last action the node keeps saying it's being driven. */
 const DRIVING_SHOWN_MS = 15_000
@@ -51,8 +52,13 @@ function PageView({ node }: { node: BrowserNodeModel }): React.JSX.Element {
     view.addEventListener('did-attach', () => {
       if (!attach()) view.addEventListener('dom-ready', () => void attach(), { once: true })
     })
-    host.current?.appendChild(view)
-    return () => view.remove()
+    // Once the frame that shows the node is drawn: a page is a new process to start, and a project switch's first
+    // frame shouldn't wait on it. It loads for far longer than that frame anyway. See docs/plans/r2-perf.md.
+    const cancel = afterNextPaint(() => host.current?.appendChild(view))
+    return () => {
+      cancel()
+      view.remove()
+    }
   }, [node.id])
   return <div ref={host} className="browser-host nodrag nopan nowheel" />
 }

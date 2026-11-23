@@ -592,4 +592,4 @@ if (require.main === module) main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
-module.exports = { cpuByRole, site, canvas, startFrames, stopFrames, metrics, metricDelta, summarizeProfile, pan, wheelZoom, dragNode, keyLatency, stat, LOAD }
+module.exports = { REACT_HOOK, cpuByRole, site, canvas, startFrames, stopFrames, metrics, metricDelta, summarizeProfile, pan, wheelZoom, dragNode, keyLatency, stat, LOAD }

@@ -57,3 +57,25 @@ export function flashCopied(target: EventTarget | null): void {
   copy.textContent = 'Copied'
   setTimeout(() => (copy.textContent = 'Copy'), 1200)
 }
+
+/**
+ * Notes' HTML by text, newest last. A project switch mounted every note again and parsed each one's Markdown anew.
+ * Keyed by the text alone because nothing else goes into a note's HTML today; if anything ever does (links resolved
+ * against its project's folder, a theme), it belongs in the key too.
+ */
+const noteHtml = new Map<string, string>()
+const NOTES_KEPT = 200
+
+/** renderMarkdown for a note (tasks on), from a cache of the last NOTES_KEPT texts, since the same text gives the same HTML. */
+export function noteMarkdown(text: string): string {
+  const known = noteHtml.get(text)
+  if (known !== undefined) {
+    noteHtml.delete(text)
+    noteHtml.set(text, known)
+    return known
+  }
+  const html = renderMarkdown(text, { tasks: true })
+  noteHtml.set(text, html)
+  if (noteHtml.size > NOTES_KEPT) noteHtml.delete(noteHtml.keys().next().value!)
+  return html
+}

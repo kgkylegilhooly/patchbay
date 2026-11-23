@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { createTerminalShelf } from '../../src/renderer/terminalShelf'
+import { createTerminalShelf, SETTLE_MS } from '../../src/renderer/terminalShelf'
 
 function fakeTimers() {
   const due: Array<{ cb: () => void; ms: number; live: boolean }> = []
@@ -17,6 +17,13 @@ function fakeTimers() {
     },
     fireAll: () => {
       for (const t of due.splice(0)) if (t.live) t.cb()
+    },
+    /** Only what's due straight away (the budget check), not the keep timers. */
+    settle: () => {
+      for (const t of due.filter((x) => x.ms === SETTLE_MS)) {
+        due.splice(due.indexOf(t), 1)
+        if (t.live) t.cb()
+      }
     }
   }
 }
@@ -99,19 +106,24 @@ const budget = (maxCount: number, maxBytes: number) => ({ maxCount, maxBytes, we
 
 test('past the count, the terminal kept longest ago goes first', () => {
   const dispose = vi.fn()
-  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(2, 1e12))
+  const t = fakeTimers()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, t.timers, budget(2, 1e12))
   for (const name of ['a', 'b', 'c']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  t.settle()
   expect(shelf.ids()).toEqual(['b', 'c'])
   expect(dispose.mock.calls.map((c) => c[0].name)).toEqual(['a'])
 })
 
 test('past the size, the oldest go until what is kept fits', () => {
   const dispose = vi.fn()
-  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(10, 100 * 1024 * 1024))
+  const t = fakeTimers()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, t.timers, budget(10, 100 * 1024 * 1024))
   shelf.keep('a', { value: { name: 'a', mb: 40 }, key: 'k', projectId: 'p1' }, 'p2')
   shelf.keep('b', { value: { name: 'b', mb: 40 }, key: 'k', projectId: 'p1' }, 'p2')
+  t.settle()
   expect(shelf.bytes()).toBe(80 * 1024 * 1024)
   shelf.keep('c', { value: { name: 'c', mb: 50 }, key: 'k', projectId: 'p1' }, 'p2')
+  t.settle()
   // 130 MB: a goes, leaving 90.
   expect(shelf.ids()).toEqual(['b', 'c'])
   expect(shelf.bytes()).toBe(90 * 1024 * 1024)
@@ -119,8 +131,47 @@ test('past the size, the oldest go until what is kept fits', () => {
 
 test('one terminal bigger than the whole budget is not kept at all', () => {
   const dispose = vi.fn()
-  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, budget(10, 100 * 1024 * 1024))
+  const t = fakeTimers()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, t.timers, budget(10, 100 * 1024 * 1024))
   shelf.keep('huge', { value: { name: 'huge', mb: 200 }, key: 'k', projectId: 'p1' }, 'p2')
+  t.settle()
   expect(shelf.ids()).toEqual([])
   expect(dispose).toHaveBeenCalledTimes(1)
+})
+
+test('a switch keeps the project left before it takes back the one shown: none taken back is let go for the budget', () => {
+  const dispose = vi.fn()
+  const t = fakeTimers()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, t.timers, budget(3, 1e12))
+  // p2's two were kept when p2 was left.
+  for (const name of ['x', 'y']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p2' }, 'p1')
+  t.settle()
+  // Back to p2: p1's two go on the shelf first (four, one over), then p2's are taken back, all in one commit.
+  for (const name of ['a', 'b']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.take('x', 'k')?.name).toBe('x')
+  expect(shelf.take('y', 'k')?.name).toBe('y')
+  t.settle()
+  expect(dispose).not.toHaveBeenCalled()
+  expect(shelf.ids()).toEqual(['a', 'b'])
+})
+
+test('the budget is checked once for a batch of keeps, after it', () => {
+  const dispose = vi.fn()
+  const t = fakeTimers()
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, t.timers, budget(2, 1e12))
+  for (const name of ['a', 'b', 'c', 'd']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(t.due.filter((x) => x.ms === SETTLE_MS)).toHaveLength(1)
+  expect(shelf.ids()).toHaveLength(4)
+  t.settle()
+  expect(shelf.ids()).toEqual(['c', 'd'])
+})
+
+test('the check waits for whatever the budget says has settled, as the app waits for frames after the timer', () => {
+  const dispose = vi.fn()
+  let due: (() => void) | null = null
+  const shelf = createTerminalShelf<{ name: string; mb: number }>(dispose, () => 1000, fakeTimers().timers, { ...budget(1, 1e12), settle: (check) => (due = check) })
+  for (const name of ['a', 'b']) shelf.keep(name, { value: { name, mb: 1 }, key: 'k', projectId: 'p1' }, 'p2')
+  expect(shelf.ids()).toEqual(['a', 'b'])
+  due!()
+  expect(shelf.ids()).toEqual(['b'])
 })

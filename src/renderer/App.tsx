@@ -72,6 +72,8 @@ import { AppProblems } from './AppProblems'
 import './styles.css'
 import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
+import { createStager } from './stagedFlow'
+import { afterNextPaint } from './mountQueue'
 import { useSettingsAsk } from './settingsAsk'
 import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
 
@@ -123,12 +125,19 @@ function Canvas(): React.JSX.Element | null {
   if (doc && !initialViewport.current) initialViewport.current = doc.viewport
 
   // Before the browser paints, so a change shows in the frame it arrived in rather than the one after.
+  // Another project's windows: those on screen now, the rest once that frame is drawn. See stagedFlow.ts.
+  const [stager] = useState(createStager)
+  const [restDue, setRestDue] = useState(0)
+  const restWait = useRef<(() => void) | null>(null)
   useLayoutEffect(() => {
     if (!doc) return
-    const mapped = toFlow(doc, statuses)
-    setNodes((prev) => mergeFlowNodes(prev, mapped.nodes))
-    setEdges((prev) => shareEdges(prev, mapped.edges))
-  }, [doc, statuses])
+    restWait.current?.()
+    restWait.current = null
+    const pick = stager.pick(doc.activeProjectId, toFlow(doc, statuses), doc.viewport, { width: window.innerWidth, height: window.innerHeight })
+    if (pick.later) restWait.current = afterNextPaint(() => setRestDue((n) => n + 1))
+    setNodes((prev) => mergeFlowNodes(prev, pick.nodes))
+    setEdges((prev) => shareEdges(prev, pick.edges))
+  }, [doc, statuses, restDue, stager])
 
   const selected = useSameList(useMemo(() => nodes.filter((n) => n.selected).map((n) => n.id), [nodes]))
   const selectedRef = useRef(selected)

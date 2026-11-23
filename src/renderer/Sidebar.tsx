@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
-import { isSessionNode, whereShown, type Project } from '../shared/model'
+import { isSessionNode, whereShown, type AgentStatus, type Project } from '../shared/model'
+import type { RunResult } from '../shared/contract'
 import { bridge } from './bridge'
 import { Icon, KindIcon } from './icons'
 import { ContextMenu } from './Menu'
@@ -23,6 +24,10 @@ import type { NodeError } from '../shared/contract'
 const NO_ERRORS: Record<string, NodeError> = {}
 
 const TICK_MS = 20_000
+const NO_STATUSES: Record<string, AgentStatus> = {}
+const NO_STOPS: Record<string, never> = {}
+const NO_ATTENTION: string[] = []
+const NO_RUNS: Record<string, RunResult> = {}
 
 /** Keeps relative times moving while they're on screen. */
 function useNow(): number {
@@ -44,7 +49,11 @@ function Badge({ project }: { project: Project | undefined }): React.JSX.Element
   )
 }
 
-function Row({ session, project, tab, now, onReveal }: { session: Session; project: Project | undefined; tab: 'project' | 'status'; now: number; onReveal: (id: string) => void }): React.JSX.Element {
+/**
+ * One session. Drawn again only when what it's given changes or what it reads from the store does: a status change
+ * anywhere drew every row again (the list is drawn again whenever the doc or, on the Status tab, any status changes).
+ */
+const Row = memo(function Row({ session, project, tab, now, onReveal }: { session: Session; project: Project | undefined; tab: 'project' | 'status'; now: number; onReveal: (id: string) => void }): React.JSX.Element {
   const status = useStore((s) => s.statuses[session.id] ?? (session.kind === 'claude' ? 'unknown' : null))
   const run = useStore((s) => s.runs[session.id])
   const unseen = useStore((s) => s.attention.includes(session.id)) && status !== 'needs-you'
@@ -105,7 +114,7 @@ function Row({ session, project, tab, now, onReveal }: { session: Session; proje
       {peekable && <PeekButton id={session.id} title={session.title} />}
     </li>
   )
-}
+})
 
 function SectionHead({ id, label, count, open, onToggle, help, badge, mark }: { id: string; label: string; count: number; open: boolean; onToggle: () => void; help?: string; badge?: Project; mark?: React.ReactNode }): React.JSX.Element {
   return (
@@ -125,12 +134,14 @@ function SectionHead({ id, label, count, open, onToggle, help, badge, mark }: { 
 
 function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands; prefs: Prefs; onPrefs: (patch: Partial<Prefs>) => void; onClose: () => void }): React.JSX.Element | null {
   const doc = useStore((s) => s.doc)
-  const statuses = useStore((s) => s.statuses)
-  const stops = useAgentStops((s) => s.stops)
-  const attention = useStore((s) => s.attention)
-  const runs = useStore((s) => s.runs)
+  // Only the Status tab sorts by these. The Project tab's rows read their own, so a status change leaves the list be.
+  const byStatusTab = prefs.sidebarTab === 'status'
+  const statuses = useStore((s) => (byStatusTab ? s.statuses : NO_STATUSES))
+  const stops = useAgentStops((s) => (byStatusTab ? s.stops : NO_STOPS))
+  const attention = useStore((s) => (byStatusTab ? s.attention : NO_ATTENTION))
+  const runs = useStore((s) => (byStatusTab ? s.runs : NO_RUNS))
   // Only the Status tab's sections read start errors (rows read their own), so the Project tab isn't drawn again for them.
-  const errors = useStore((s) => (prefs.sidebarTab === 'status' ? s.errors : NO_ERRORS))
+  const errors = useStore((s) => (byStatusTab ? s.errors : NO_ERRORS))
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()
@@ -142,7 +153,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const projects = new Map(doc.projects.map((p) => [p.id, p]))
   const isOpen = (id: string, standard = true): boolean => filtering || !(prefs.collapsed[id] ?? !standard)
   const toggle = (id: string, standard = true): void => onPrefs({ collapsed: { ...prefs.collapsed, [id]: isOpen(id, standard) } })
-  const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={now} onReveal={commands.revealNode} />
+  // Only the Status tab shows times, so only its rows move on with the clock.
+  const row = (s: Session): React.JSX.Element => <Row key={s.id} session={s} project={s.projectId ? projects.get(s.projectId) : undefined} tab={tab} now={tab === 'status' ? now : 0} onReveal={commands.revealNode} />
 
   const bySection = projectSections(doc, query)
   const byStatus = statusSections(doc, statuses, attention, query, stops, runs, errors)
