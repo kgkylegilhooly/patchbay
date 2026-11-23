@@ -24,6 +24,7 @@ import { findTerminalPathMatches } from '../terminalPaths'
 import { guardFirstKey, isFocusReport } from '../../shared/resizeGuard'
 import { installZoomCompensation, screenPoint } from '../xtermZoom'
 import { useParked } from '../terminalParking'
+import { canvasTier, onCanvasTier, paceFor } from '../terminalPace'
 
 const SEARCH_COLORS = {
   matchBackground: '#49c2c955',
@@ -286,8 +287,26 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
 
     // Each session is attached once: subscribe, then replay the snapshot through the gate.
     // A window that isn't being typed in draws its output a few times a second rather than on every scrap of it.
-    const pacer = createOutputPacer((data) => term.write(data), () => term.textarea === document.activeElement)
+    // How often depends on how much of it you can see: see terminalPace.ts. Maximized or in a pane, zoom doesn't count.
+    const inCanvas = !host.closest('.unit-maximized, .unit-in-pane')
+    let pointerIn = false
+    const pacer = createOutputPacer(
+      (data) => term.write(data),
+      () => term.textarea === document.activeElement,
+      () => paceFor({ focused: false, hovered: pointerIn, tier: inCanvas ? canvasTier() : 'near' })
+    )
     term.textarea?.addEventListener('focus', pacer.flush)
+    // Under the pointer it draws at the near pace, and what was held shows at once. A tier change draws what was held.
+    const onEnter = (): void => {
+      pointerIn = true
+      pacer.flush()
+    }
+    const onLeave = (): void => {
+      pointerIn = false
+    }
+    host.addEventListener('pointerenter', onEnter)
+    host.addEventListener('pointerleave', onLeave)
+    const offTier = onCanvasTier(pacer.flush)
     const gate = createAttachGate((data) => pacer.write(data))
     const unsubscribe = subscribeOutput(nodeId, gate.chunk)
     void bridge.attach(nodeId).then(gate.snapshot)
@@ -359,6 +378,9 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       copied.dispose()
       links.dispose()
       removeZoomFix()
+      offTier()
+      host.removeEventListener('pointerenter', onEnter)
+      host.removeEventListener('pointerleave', onLeave)
       if (term.textarea === document.activeElement) bridge.noteFocus(null)
       term.dispose()
       termRef.current = null

@@ -2,6 +2,7 @@ import { useStore as useFlowStore } from '@xyflow/react'
 import { useEffect, useRef } from 'react'
 import { openHeaderMenu, useHeaderMenu } from './nodes/headerMenu'
 import { headScale, nextTier, type ZoomTier } from './zoomTier'
+import { setCanvasTier } from './terminalPace'
 
 /**
  * What --head-scale is set on: the parts of a node zoom.css draws at their on-screen size, and the strips that move
@@ -24,6 +25,7 @@ export function ZoomTierWatcher(): null {
     if (!canvas) return
     tier.current = nextTier(tier.current, zoom)
     if (canvas.dataset.zoomTier !== tier.current) canvas.dataset.zoomTier = tier.current
+    setCanvasTier(tier.current)
     if (!rule.current) {
       rule.current = document.createElement('style')
       rule.current.dataset.headScale = ''
