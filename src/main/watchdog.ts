@@ -6,8 +6,11 @@ import type { App, BrowserWindow, Dialog, IpcMain, RenderProcessGoneDetails } fr
 
 /** Past this the log starts again, keeping the one before as patchbay.1.log. */
 const LOG_MAX_BYTES = 1024 * 1024
-/** The main process checks it isn't stuck this often, and notes any stall longer than STALL_MS. */
-const TICK_MS = 500
+/**
+ * The main process checks it isn't stuck this often, and notes any stall longer than STALL_MS. A stall is measured as
+ * how late a check comes, so checking once per STALL_MS still notes every one, with half the wake-ups.
+ */
+const TICK_MS = 1000
 export const STALL_MS = 1000
 /** How often memory goes in the log, so a slow leak over a long day shows. */
 const MEMORY_EVERY_MS = 30 * 60_000
@@ -143,7 +146,10 @@ export function watchWindow(
     const slept = now - lastTick > beat.everyMs * 3
     lastTick = now
     if (disposed || win.isDestroyed() || lastPong === null) return
-    if (slept) lastPong = now
+    // Hidden in the tray, nobody can see it hang, so it isn't pinged: the beat starts afresh once it shows again.
+    const hidden = typeof win.isVisible === 'function' && !win.isVisible()
+    if (slept || hidden) lastPong = now
+    if (hidden) return
     win.webContents.send('pb:ping', ++seq)
     if (hungSince === null && now - lastPong >= beat.hungAfterMs) hung('no answer to the heartbeat')
   }, beat.everyMs)

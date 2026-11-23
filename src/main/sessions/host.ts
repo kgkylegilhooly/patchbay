@@ -9,6 +9,12 @@ import { createSessionBuffer, type SessionBuffer } from './sessionBuffer'
 const DEFAULT_BUFFER_BYTES = 1024 * 1024
 const FLUSH_MS = 16
 const FLUSH_BYTES = 64 * 1024
+/**
+ * For a session no window shows. Its output still reaches the app in full, for everything that reads it there, but in
+ * far fewer pieces: ten busy agents in a project out of sight cost main 5% of a core in messages alone.
+ */
+const QUIET_FLUSH_MS = 250
+const QUIET_FLUSH_BYTES = 256 * 1024
 /** How long kill waits for the PTY to report its exit before treating the session as gone. */
 const KILL_WAIT_MS = 3000
 
@@ -85,6 +91,8 @@ export interface PtyHost extends SessionHost {
   /** Stops reading a session's output, so a program that's writing too fast has to wait. */
   pause(id: string): void
   resume(id: string): void
+  /** The sessions no window shows, whose output goes in bigger, rarer pieces. Replaces the last list. */
+  setQuiet?(ids: string[]): void
 }
 
 export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost {
@@ -96,6 +104,7 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
   const sizes = new Map<string, { cols: number; rows: number }>()
   const outputListeners: Array<(id: string, data: string, seq: number) => void> = []
   const exitListeners: Array<(id: string, code: number) => void> = []
+  let quiet = new Set<string>()
 
   const flush = (id: string, session: Session): void => {
     if (session.timer) {
@@ -113,12 +122,14 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
 
   const receive = (id: string, session: Session, data: string): void => {
     const size = Buffer.byteLength(data)
-    if (session.pendingBytes + size > FLUSH_BYTES) flush(id, session)
+    const hidden = quiet.has(id)
+    const most = hidden ? QUIET_FLUSH_BYTES : FLUSH_BYTES
+    if (session.pendingBytes + size > most) flush(id, session)
     session.buffer.append(data)
     session.pending.push(data)
     session.pendingBytes += size
-    if (session.pendingBytes >= FLUSH_BYTES) flush(id, session)
-    else if (!session.timer) session.timer = setTimeout(() => flush(id, session), FLUSH_MS)
+    if (session.pendingBytes >= most) flush(id, session)
+    else if (!session.timer) session.timer = setTimeout(() => flush(id, session), hidden ? QUIET_FLUSH_MS : FLUSH_MS)
   }
 
   const finish = (id: string, session: Session, code: number): void => {
@@ -241,6 +252,16 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
     resume(id: string): void {
       const session = sessions.get(id)
       if (session?.running) session.proc.resume()
+    },
+
+    setQuiet(ids: string[]): void {
+      const was = quiet
+      quiet = new Set(ids)
+      // Shown again: what was held for the longer wait goes now, so the view isn't a quarter second behind.
+      for (const id of was) {
+        const session = sessions.get(id)
+        if (!quiet.has(id) && session) flush(id, session)
+      }
     }
   }
 }

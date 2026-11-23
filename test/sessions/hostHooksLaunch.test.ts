@@ -198,6 +198,17 @@ test('chosen per session at launch: http when the host serves hooks and Claude h
   expect(noHost).not.toHaveBeenCalled()
 })
 
+test('a session started while the host is still coming up waits for its port, rather than taking command hooks for life', async () => {
+  let ready: (port: number) => void = () => {}
+  const port = new Promise<number>((r) => (ready = r))
+  const early = runnerWith({ hostHookPort: () => port, findHttpHooks: async () => true })
+  const starting = early.runner.startNode('n1')
+  setTimeout(() => ready(40002), 50)
+  await starting
+  expect(early.specs[0].hookPort).toBe(40002)
+  expect(entry(settingsOf(early.specs[0].args).hooks, 'Stop').url).toBe('http://127.0.0.1:40002/hook/Stop')
+})
+
 test("Claude's managed policy counts from the registry and from managed-settings.d too", async () => {
   const { forgetRegistryPolicy, loadRegistryPolicy, parseRegistrySettings } = await import('../../src/main/sessions/httpHookSafety')
   const reg = (json: string, type = 'REG_SZ') => `\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\ClaudeCode\r\n    Settings    ${type}    ${json}\r\n\r\n`
