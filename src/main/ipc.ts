@@ -7,7 +7,7 @@ import { readIfPresent, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessagesTail, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
-import type { BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
+import type { ApprovalChoice, BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
 import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
 import type { Settings } from '../shared/settings'
 import { createActivityLog } from './activity'
@@ -483,8 +483,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
 
   ipcMain.handle('pb:getApprovals', () => approvals.pending())
   // The only caller of approvals.answer. The control server has no route to it.
-  ipcMain.handle('pb:answerApproval', (_e, requestId: string, decision: 'allow' | 'deny') => {
-    approvals.answer(requestId, decision)
+  ipcMain.handle('pb:answerApproval', (_e, requestId: string, choice: ApprovalChoice) => {
+    approvals.answer(requestId, choice)
   })
 
   ipcMain.handle('pb:savePastedImage', (_e, bytes: Uint8Array, mime: string) => savePastedImage(dataDir, bytes, mime))
