@@ -55,3 +55,30 @@ test('a closed window writes nothing more', () => {
   pacer.write('b')
   expect(write).not.toHaveBeenCalled()
 })
+
+test('a pace that changes: a sooner one brings the waiting drawing forward, a later one leaves it', () => {
+  const out: string[] = []
+  let pace = 1000
+  const pacer = createOutputPacer((d) => out.push(d), () => false, () => pace)
+  pacer.write('a')
+  vi.advanceTimersByTime(50)
+  pace = 100
+  pacer.write('b')
+  vi.advanceTimersByTime(100)
+  expect(out).toEqual(['ab'])
+  pacer.write('c')
+  pace = 1000
+  pacer.write('d')
+  vi.advanceTimersByTime(100)
+  expect(out).toEqual(['ab', 'cd'])
+})
+
+test('a pace of 0 hands output on at once, after anything held', () => {
+  const out: string[] = []
+  let pace = 250
+  const pacer = createOutputPacer((d) => out.push(d), () => false, () => pace)
+  pacer.write('a')
+  pace = 0
+  pacer.write('b')
+  expect(out).toEqual(['a', 'b'])
+})

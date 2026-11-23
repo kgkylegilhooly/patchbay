@@ -22,7 +22,7 @@ import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refr
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
-import { focusedTerminal, focusedTerminalId, terminalActions } from './terminalRegistry'
+import { focusedTerminal, focusedTerminalId, focusTerminalWhenReady, terminalActions } from './terminalRegistry'
 import { copyFolderPath, toggleChatView } from './nodes/WindowTools'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -140,8 +140,14 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
     /** Brings a node into view and gives its terminal the keyboard. A node in another project has to be drawn first. */
     const center = (id: string): void => {
       const go = (): void => {
-        void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
-        terminalActions(id)?.focus()
+        // Its terminal may not be built yet in a project just drawn: it takes the keyboard once it is. A long flight
+        // passes through the overview, where the terminal is hidden and loses focus, so it's given again on arrival.
+        focusTerminalWhenReady(id)
+        void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 }).then(() => {
+          // Unless something else took the keyboard on the way.
+          const now = document.activeElement
+          if (!now || now === document.body) focusTerminalWhenReady(id)
+        })
       }
       if (flow.getNode(id)) go()
       else setTimeout(go, 300)

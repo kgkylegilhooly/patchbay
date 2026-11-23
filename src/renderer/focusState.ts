@@ -2,7 +2,7 @@ import { isSessionNode } from '../shared/model'
 import { addWindow, initialLayout, leaves, prune, type Pane } from './focusLayout'
 import { nearestInDirection, type Direction, type NavRect } from './nodeNav'
 import { useStore } from './store'
-import { terminalActions } from './terminalRegistry'
+import { focusTerminalWhenReady, terminalActions } from './terminalRegistry'
 
 const KEY = 'patchbay.focus'
 
@@ -69,7 +69,7 @@ export function showInFocus(nodeId: string): void {
 
 /** Gives a window the keyboard once its card has moved into its pane, which happens on the next frames. */
 export function focusSoon(nodeId: string): void {
-  requestAnimationFrame(() => requestAnimationFrame(() => terminalActions(nodeId)?.focus()))
+  requestAnimationFrame(() => requestAnimationFrame(() => focusTerminalWhenReady(nodeId)))
 }
 
 /**
