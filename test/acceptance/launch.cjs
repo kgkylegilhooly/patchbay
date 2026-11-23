@@ -33,7 +33,7 @@ async function fill(page, name, value) {
 }
 
 async function openPanel(page, section = 'claude') {
-  await clickText(page, '.bar button', 'Settings')
+  await clickText(page, '.bar button', 'File')
   await page.click('[data-cmd="open-settings"]')
   await page.waitForSelector('.settings')
   await page.click(`[data-section="${section}"]`)
@@ -69,9 +69,9 @@ async function main() {
 
   try {
     // The page itself: no menu route leads to a text editor any more.
-    await clickText(page, '.bar button', 'Settings')
+    await clickText(page, '.bar button', 'File')
     const menu = await page.$$eval('.menu-panel [data-cmd]', (items) => items.map((i) => i.dataset.cmd))
-    check('The Settings menu no longer opens the file', !menu.includes('edit-settings'), menu)
+    check('No menu item opens the settings file', !menu.includes('edit-settings'), menu)
     await page.keyboard.press('Escape')
     await page.keyboard.down('Control')
     await page.keyboard.press('Comma')

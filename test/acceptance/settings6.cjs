@@ -10,7 +10,7 @@ const before = process.argv[2] === 'before'
 const c = L.checker()
 
 async function openSection(page, section) {
-  await page.evaluate(() => [...document.querySelectorAll('.bar button')].find((b) => b.textContent.trim() === 'Settings').click())
+  await page.evaluate(() => [...document.querySelectorAll('.bar button')].find((b) => b.textContent.trim() === 'File').click())
   await page.click('[data-cmd="open-settings"]')
   await page.waitForSelector('.settings')
   await page.click(`[data-section="${section}"]`)
