@@ -14,7 +14,7 @@ export const CableEdge = memo(function CableEdge({ id, source, target, sourceX, 
   const kind = data?.kind
   const oneWay = !!kind && cableDirection(kind) === 'forward'
   const pulse = useStore((s) => s.pulses[id])
-  const underWay = useStore((s) => oneWay && cableUnderWay(s.statuses[source], s.statuses[target]))
+  const underWay = useStore((s) => oneWay && cableUnderWay({ status: s.statuses[source], running: s.runs[source]?.running }, { status: s.statuses[target], running: s.runs[target]?.running }))
   const dots = useRef<SVGPathElement>(null)
   useEffect(() => {
     if (underWay) alignCableDots(dots.current)

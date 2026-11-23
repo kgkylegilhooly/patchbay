@@ -24,6 +24,9 @@ import { ZoomTierWatcher } from './ZoomTierWatcher'
  * The canvas owns the nodes React Flow draws, so it renders again on every frame of a drag. Everything drawn over the
  * canvas sits behind these two memo boundaries instead, and none of it is given the nodes, so a drag renders none of it:
  * each part still renders on its own when what it reads from the stores changes.
+ *
+ * So a layer here must subscribe to everything it shows (a store, React Flow's store, an event). One that reads
+ * getState(), the window's size or the page during render is no longer refreshed by the canvas rendering around it.
  */
 export const CanvasOverlays = memo(function CanvasOverlays({ commands, selected, boardOpen, gitOpen }: { commands: Commands; selected: string[]; boardOpen: boolean; gitOpen: boolean }) {
   return (

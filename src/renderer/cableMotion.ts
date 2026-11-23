@@ -1,5 +1,6 @@
 import type { NodeMessage } from '../shared/contract'
 import type { Edge } from '../shared/model'
+import { alignCablesIn } from './cableActivity'
 
 /** Every kind of cable on the canvas. `trigger` is drawn from a trigger's target and is never saved as an edge. */
 export type CableKind = Edge['kind'] | 'trigger'
@@ -45,4 +46,6 @@ export function setCableMotion(stage: HTMLElement | null, state: { moving: boole
   if (!stage) return
   stage.toggleAttribute('data-canvas-moving', state.moving)
   stage.toggleAttribute('data-canvas-far', isFarZoom(state.zoom))
+  // A cable that became busy while they were paused would otherwise resume on its own beat.
+  if (!state.moving && !isFarZoom(state.zoom)) alignCablesIn(stage)
 }
