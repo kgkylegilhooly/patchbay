@@ -32,3 +32,30 @@ export function folderToKeep(doc: CanvasDoc, kind: string, fields: { cwd: string
   if (doc.nodes.some((n) => n.kind === 'group' && n.worktree?.path === fields.cwd)) return null
   return { projectId: project.id, folder: fields.cwd, name: project.name }
 }
+
+/**
+ * Asks while nothing is being asked: a second ask while the first is open gets `undefined` and opens nothing. For the
+ * folder picker, whose answer may start an agent: two pickers would start two.
+ */
+export function oneOpen<T>(ask: () => Promise<T>): () => Promise<T | undefined> {
+  let open = false
+  return async () => {
+    if (open) return undefined
+    open = true
+    try {
+      return await ask()
+    } finally {
+      open = false
+    }
+  }
+}
+
+/** Runs `fn` the first time only: a form starts one thing, however many times Ctrl+Enter or a picker answers. */
+export function once<A extends unknown[]>(fn: (...args: A) => void): (...args: A) => void {
+  let done = false
+  return (...args) => {
+    if (done) return
+    done = true
+    fn(...args)
+  }
+}

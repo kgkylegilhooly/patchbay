@@ -53,26 +53,36 @@ async function partA() {
     await lib.waitFor('the stopped agent', async () => (await lib.statusOf(page, 'stopped')) === 'unknown', 20000, 100).catch(() => null)
     for (const size of [{ width: 1280, height: 800 }, { width: 1024, height: 700 }]) {
       await page.setViewport(size)
-      await sleep(500)
-      const m = await page.evaluate(() => ({
-        docW: document.documentElement.scrollWidth,
-        docH: document.documentElement.scrollHeight,
-        w: innerWidth,
-        h: innerHeight,
-        dockRight: document.querySelector('.dock')?.getBoundingClientRect().right,
-        pillRight: document.querySelector('.usage-pill')?.getBoundingClientRect().right ?? null,
-        more: document.querySelector('[data-project-more]')?.textContent?.trim() ?? null
-      }))
+      const measure = () =>
+        page.evaluate(() => ({
+          docW: document.documentElement.scrollWidth,
+          docH: document.documentElement.scrollHeight,
+          w: innerWidth,
+          h: innerHeight,
+          dockRight: document.querySelector('.dock')?.getBoundingClientRect().right,
+          pillRight: document.querySelector('.usage-pill')?.getBoundingClientRect().right ?? null,
+          more: document.querySelector('[data-project-more]')?.textContent?.trim() ?? null
+        }))
+      // The dock and the tab count follow a resize a frame or two later: measured once two readings agree.
+      let last = null
+      const m = await lib.waitFor('the layout at the new size', async () => {
+        const now = await measure()
+        const same = last && JSON.stringify(last) === JSON.stringify(now) && now.w === size.width
+        last = now
+        return same && now
+      }, 5000, 100).catch(() => last)
       check(`A ${size.width}x${size.height}: the window doesn't scroll`, m.docW <= m.w && m.docH <= m.h, m)
       check(`A ${size.width}x${size.height}: the dock and the usage pill stay on screen`, m.dockRight <= m.w && (m.pillRight === null || m.pillRight <= m.w))
       check(`A ${size.width}x${size.height}: a "N more" button counts the hidden tabs`, /^▾ \d+ more$/.test(m.more ?? ''), m.more)
     }
     await page.click('[data-project-more]')
-    await sleep(200)
+    await page.waitForSelector('.menu-panel [role=menuitem]')
     const items = await page.evaluate(() => [...document.querySelectorAll('.menu-panel [role=menuitem]')].map((e) => e.textContent.trim()))
     check('A the "more" menu lists the hidden projects', items.includes('Legacy admin') && !items.includes('Patchbay'), items)
     await page.evaluate(() => [...document.querySelectorAll('.menu-panel [role=menuitem]')].find((e) => e.textContent.includes('Legacy admin')).click())
-    await sleep(400)
+    await lib.waitFor('Legacy admin on screen', () => page.evaluate(() => document.querySelector('.project-tab-active')?.textContent.trim() === 'Legacy admin'), 5000, 50)
+    // Scrolled in the frame after the switch.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
     const active = await page.evaluate(() => {
       const list = document.querySelector('.projects').getBoundingClientRect()
       const tab = document.querySelector('.project-tab-active').getBoundingClientRect()
@@ -94,15 +104,17 @@ async function partB() {
   const { page } = app
   let agentId
   try {
-    await sleep(800)
+    await page.waitForSelector('[data-empty="new-claude"]')
     await keys(page, 'KeyC', ['Control', 'Shift'])
     await page.waitForSelector('.pop-claude')
-    await sleep(200)
+    await lib.waitFor('the prompt focused', async () => (await focusIn(page)).attr === 'TEXTAREA', 3000, 25).catch(() => null)
     check('B the prompt has the keyboard, so a task typed first lands there', (await focusIn(page)).attr === 'TEXTAREA')
     check('B with no folder, Choose folder is the button that stands out', await page.evaluate(() => document.querySelector('[data-choose-folder]')?.classList.contains('btn-solid')))
     check('B the form says why Start is off, and what Ctrl+Enter does', /^Choose a folder first/.test((await text(page, '[data-blocked-why]')) ?? ''), await text(page, '[data-blocked-why]'))
     await page.keyboard.type('idle context=20')
-    // Ctrl+Enter with no folder asks for one (answered here by PATCHBAY_TEST_PICK_FOLDER), then starts there.
+    // Ctrl+Enter with no folder asks for one (answered here by PATCHBAY_TEST_PICK_FOLDER), then starts there. Pressed
+    // twice, as an impatient person might: one picker, one agent.
+    await keys(page, 'Enter', ['Control'])
     await keys(page, 'Enter', ['Control'])
     agentId = await lib.waitFor('the new agent', async () => (await lib.doc(page)).nodes.find((n) => n.kind === 'claude')?.id, 10000, 50)
     const d = await lib.doc(page)
@@ -114,20 +126,20 @@ async function partB() {
     check('B the new agent has the keyboard', !!f, await focusIn(page))
     await lib.waitFor('idle', async () => (await lib.statusOf(page, agentId)) === 'idle', 20000, 100)
     await page.keyboard.type('hello')
-    await sleep(600)
-    check('B typing straight after starting reaches the new agent', (await lib.screen(page, agentId)).join('\n').includes('hello'))
+    const echoed = await lib.waitFor('the echo', async () => (await lib.screen(page, agentId)).join('\n').includes('hello'), 8000, 100).catch(() => false)
+    check('B typing straight after starting reaches the new agent', echoed)
+    check('B Ctrl+Enter twice started one agent', (await lib.doc(page)).nodes.filter((n) => n.kind === 'claude').length === 1)
     // The next agent in this project needs no picker.
     await page.evaluate(() => document.activeElement?.blur())
     await keys(page, 'KeyC', ['Control', 'Shift'])
     await page.waitForSelector('.pop-claude')
-    await sleep(200)
     const next = await page.evaluate(() => ({ folder: document.querySelector('.pop-claude .folder')?.getAttribute('title'), disabled: document.querySelector('.pop-claude button[type=submit]')?.disabled, why: !!document.querySelector('[data-blocked-why]') }))
     check('B the next New Claude Code starts in that folder, ready to go', next.folder === cwd && next.disabled === false && !next.why, next)
     await keys(page, 'Escape')
     // New terminal from the dock gets the keyboard too.
     await page.evaluate(() => document.activeElement?.blur())
     await page.click('[data-cmd="add"]').catch(() => {})
-    await sleep(200)
+    await page.waitForSelector('.menu-panel [role=menuitem]', { timeout: 5000 }).catch(() => null)
     const added = await page.evaluate(() => {
       const item = [...document.querySelectorAll('.menu-panel [role=menuitem]')].find((e) => /^New terminal/.test(e.textContent.trim()))
       item?.click()
@@ -158,8 +170,8 @@ async function partB() {
     const rowBadge = (id) => again.page.evaluate((i) => { const b = document.querySelector(`.sidebar [data-session="${i}"] .st-label`); return b ? { text: b.textContent.trim(), reconnecting: b.hasAttribute('data-reconnecting') } : null }, id)
     const early = await lib.waitFor('a row badge', () => rowBadge(agentId), 5000, 50).catch(() => null)
     check('D just after launch, a reopened agent with no status yet says Reconnecting…', early?.text === 'Reconnecting…' && early.reconnecting, early)
-    await sleep(11_000)
-    const later = await rowBadge(agentId)
+    // Reconnecting lasts 10 s from the first canvas: waited for, not slept.
+    const later = await lib.waitFor('its own words', async () => { const b = await rowBadge(agentId); return b && b.text !== 'Reconnecting…' && b }, 15000, 250).catch(() => rowBadge(agentId))
     check('D after the moment passes, its own words stand', !!later && later.text !== 'Reconnecting…', later)
     await again.forceKill()
   } finally {
@@ -173,7 +185,7 @@ async function partC() {
   const app = await start({ claudeCommand: 'claude-not-installed-xyz' }, docOf([{ id: 'p1', name: 'Demo', folder: cwd, viewport: view }]))
   const { page } = app
   try {
-    await sleep(800)
+    await page.waitForSelector('[data-empty="new-claude"]')
     await keys(page, 'KeyC', ['Control', 'Shift'])
     await page.waitForSelector('.pop-claude')
     const warn = await lib.waitFor('the warning', () => text(page, '[data-program-missing]'), 8000, 100).catch(() => null)
@@ -186,8 +198,7 @@ async function partC() {
     const msg = await text(page, `.react-flow__node[data-id="${id}"] .strip-error .strip-text`)
     check('C the message names Claude Code', /The Claude Code command "claude-not-installed-xyz" was not found/.test(msg ?? ''), msg)
     await page.click('[data-sidebar-tab="status"]')
-    await sleep(300)
-    const needs = await page.evaluate((i) => !!document.querySelector(`.sidebar [data-status-section="needs-you"] [data-session="${i}"]`), id)
+    const needs = await lib.waitFor('Need attention', () => page.evaluate((i) => !!document.querySelector(`.sidebar [data-status-section="needs-you"] [data-session="${i}"]`), id), 5000, 50).catch(() => false)
     check('C it is under Need attention', needs)
     await page.click(`.react-flow__node[data-id="${id}"] [data-start-fix="agents"]`)
     const at = await lib.waitFor('Settings at Agents', () => page.evaluate(() => document.querySelector('.set-nav [data-section="claude"]')?.getAttribute('aria-current') === 'page'), 5000, 50).catch(() => false)

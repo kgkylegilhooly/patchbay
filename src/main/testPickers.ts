@@ -1,8 +1,9 @@
 /**
  * The OS file pickers (choose a folder, a program, a document, where to save) open in front of everything, and the
- * off-screen test and screenshot runs share a desktop with the person. So in those runs (PATCHBAY_QUIET_WINDOW=1, set
- * by test/acceptance/lib.cjs and screenshot.js) a picker never opens: the run's own answer is used, and a run that
- * gave none fails loudly instead of showing the dialog. Outside test mode these do nothing.
+ * off-screen test and screenshot runs share a desktop with the person. So in test mode (PATCHBAY_TEST_DIALOGS=1, which
+ * test/acceptance/lib.cjs and screenshot.js always set) a picker never opens: the run's own answer is used, and a run
+ * that gave none fails loudly instead of showing the dialog. Without that switch, as in the installed app, none of
+ * this applies and no variable below is read.
  *
  *   PATCHBAY_TEST_PICK_FOLDER   a folder picker's answer
  *   PATCHBAY_TEST_PICK_FILE     a file picker's answer (a program or a document)
@@ -17,8 +18,9 @@ const VARS: Record<PickerKind, string[]> = {
   save: ['PATCHBAY_TEST_SAVE_AS', 'PB_SCENE_SAVE_AS']
 }
 
+/** Only ever on by being asked for, so an installed build is never steered by its environment otherwise. */
 export function inTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.PATCHBAY_QUIET_WINDOW === '1'
+  return env.PATCHBAY_TEST_DIALOGS === '1'
 }
 
 /** Thrown when a test run reaches a picker it gave no answer for. */

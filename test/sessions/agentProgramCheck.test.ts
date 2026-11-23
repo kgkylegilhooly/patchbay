@@ -34,6 +34,11 @@ test('names the agent when its program is not on PATH', async () => {
 test('a command or terminal from Settings is looked up as a launch would, and named as from Settings', async () => {
   expect(await agentProgramProblem('codex', { codexCommand: 'codex-nope' }, look([], { codex: true }))).toBe("The Codex command set in Settings wasn't found.")
   expect(await agentProgramProblem('claude', { claudeTerminal: 'wt.exe', claudeCommand: 'claude' }, look(['claude']))).toBe("The terminal program set for Claude Code wasn't found.")
+  // With a terminal set, the command runs inside it and may be on that shell's PATH only, so only the terminal is asked.
+  const t = look(['bash.exe'])
+  expect(await agentProgramProblem('claude', { claudeTerminal: 'bash.exe', claudeCommand: '~/.local/bin/claude' }, t)).toBeNull()
+  expect(await agentProgramProblem('claude', { claudeTerminal: 'bash.exe' }, t)).toBeNull()
+  expect(t.asked).toEqual(['bash.exe', 'bash.exe'])
   // Codex has no terminal setting: Claude's isn't asked about for it.
   const l = look(['codex-x'])
   expect(await agentProgramProblem('codex', { claudeTerminal: 'wt.exe', codexCommand: 'codex-x' }, l)).toBeNull()

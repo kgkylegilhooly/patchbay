@@ -671,3 +671,13 @@ describe("Git Bash's limit on consoles", () => {
     expect(consolesFull(dump)).toBe(true)
   })
 })
+
+test('a failure outside the program lookup carries no Settings fix (docs/plans/r3-start.md)', async () => {
+  const { runner } = setup([claude()], {
+    hostHookPort: async () => {
+      throw new Error('port gone')
+    }
+  })
+  await runner.startNode('c')
+  expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: 'port gone' })
+})

@@ -467,15 +467,20 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     return { ok: true }
   })
   // Never opened by an off-screen test run: see testPickers.ts.
-  ipcMain.handle('pb:pickProgram', () =>
+  // Modal to the window that asked, so it can't be asked for twice while one is open.
+  const openDialog = (e: Electron.IpcMainInvokeEvent, options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+  }
+  ipcMain.handle('pb:pickProgram', (e) =>
     pickOrStub('file', async () => {
-      const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
+      const r = await openDialog(e, { properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
       return r.canceled ? null : r.filePaths[0]
     })
   )
-  ipcMain.handle('pb:pickFolder', () =>
+  ipcMain.handle('pb:pickFolder', (e) =>
     pickOrStub('folder', async () => {
-      const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+      const r = await openDialog(e, { properties: ['openDirectory'] })
       return r.canceled ? null : r.filePaths[0]
     })
   )

@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import type { GitService } from '../../core/git/service'
 import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
@@ -62,7 +62,10 @@ export function registerSearchIpc(s: {
       // Screenshot scenes answer the dialog with PB_SCENE_SAVE_AS (see test/acceptance/readerPictureScenes.cjs). Never
       // opened by an off-screen test run: see testPickers.ts.
       return pickOrStub('save', async () => {
-        const r = await dialog.showSaveDialog({ title: 'Save the handoff', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] })
+        const options: Electron.SaveDialogOptions = { title: 'Save the handoff', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] }
+        // Modal to the window, so a second ask can't open a second picker.
+        const win = BrowserWindow.getFocusedWindow()
+        const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
         return r.canceled || !r.filePath ? null : r.filePath
       })
     }

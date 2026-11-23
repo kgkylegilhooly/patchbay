@@ -4,7 +4,7 @@ import { shortPath } from './shortPath'
 import type { IconName } from './iconPaths'
 import { FormShell } from './shell/FormShell'
 import { ProfilePicker } from './TerminalProfilePicker'
-import { blockedReason } from './startHints'
+import { blockedReason, once, oneOpen } from './startHints'
 import { AgentProgramWarning } from './AgentProgramWarning'
 
 /** The same words as the menu items that open each form. */
@@ -35,6 +35,12 @@ export function NewSessionForm({
   /** The folder the person chose, so picking a profile with its own folder doesn't replace it. */
   const chose = useRef(false)
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  // One folder picker at a time, and one start per form: Ctrl+Enter pressed again, or a second picker's answer, does
+  // nothing more.
+  const [pickFolder] = useState(() => oneOpen(() => bridge.pickFolder()))
+  const latestOpen = useRef(onOpen)
+  latestOpen.current = onOpen
+  const [openOnce] = useState(() => once((fields: Parameters<typeof onOpen>[0]) => latestOpen.current(fields)))
   const team = kind === 'team'
   const claude = kind === 'claude' || kind === 'codex' || team
   const agentName = kind === 'codex' ? 'Codex' : 'Claude Code'
@@ -43,11 +49,11 @@ export function NewSessionForm({
   const title = run && editing ? 'Edit command' : NAMES[kind]
   /** Asks for a folder. With `start`, an agent starts there once one is chosen, so Ctrl+Enter with no folder still starts. */
   const chooseFolder = (start: boolean): void =>
-    void bridge.pickFolder().then((folder) => {
+    void pickFolder().then((folder) => {
       if (!folder) return
       chose.current = true
       setCwd(folder)
-      if (start && !blockedReason(kind, { cwd: folder, text })) onOpen({ cwd: folder, text: text.trim() || undefined, chose: true })
+      if (start && !blockedReason(kind, { cwd: folder, text })) openOnce({ cwd: folder, text: text.trim() || undefined, chose: true })
       else promptRef.current?.focus()
     })
 
@@ -63,7 +69,7 @@ export function NewSessionForm({
       blockedKeyHint={claude && !cwd ? 'Ctrl+Enter asks for a folder, then starts there' : undefined}
       hint={claude}
       submitLabel={team ? 'Start team lead' : claude ? `Start ${agentName}` : run ? (editing ? 'Save command' : 'Start run') : 'Start terminal'}
-      onSubmit={() => onOpen({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}), ...(chose.current ? { chose: true } : {}) })}
+      onSubmit={() => openOnce({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}), ...(chose.current ? { chose: true } : {}) })}
     >
       {team && <p className="pop-note">One lead Claude opens here. It splits the task into workstreams, starts a team for them, and brings the results together.</p>}
       {claude && <AgentProgramWarning agent={kind === 'codex' ? 'codex' : kind === 'claude' ? 'claude' : undefined} />}
@@ -79,7 +85,7 @@ export function NewSessionForm({
             // a task typed first mustn't press it (Space would) and open the folder picker mid-sentence.
             className={claude && !cwd ? 'btn btn-solid' : 'btn'}
             data-choose-folder
-            onClick={() => (claude ? chooseFolder(false) : void bridge.pickFolder().then((folder) => folder && ((chose.current = true), setCwd(folder))))}
+            onClick={() => (claude ? chooseFolder(false) : void pickFolder().then((folder) => folder && ((chose.current = true), setCwd(folder))))}
           >
             Choose folder
           </button>

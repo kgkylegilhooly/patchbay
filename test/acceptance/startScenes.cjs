@@ -6,7 +6,6 @@
 //   node screenshot.js <out.png> --scene start-new      an agent just started from the form: selected, with the keyboard
 const path = require('node:path')
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const view = { x: 0, y: 0, zoom: 0.8 }
 
 const NAMES = ['Billing API', 'Docs site', 'Customer portal redesign', 'Mobile app', 'Data pipeline', 'Infra', 'Search service', 'Design system', 'Onboarding emails', 'Analytics', 'Release tooling', 'Support bot', 'Payments', 'Legacy admin']
@@ -37,32 +36,41 @@ const press = async (page, key, mods = []) => {
   for (const m of [...mods].reverse()) await page.keyboard.up(m)
 }
 
+// Each step waits for what it needs on screen, never a fixed time, so a slow machine takes the same picture.
 const scenes = {
   'start-many': async (page) => {
-    await sleep(800)
+    await page.waitForSelector('[data-project-more]')
   },
   'start-first': async (page) => {
-    await page.evaluate(() => document.querySelector('[data-empty="new-claude"]')?.click())
-    await sleep(300)
-    // Typed straight away, it lands in the prompt. Never Ctrl+Enter or Space on a button here: with no folder that
-    // opens the OS folder picker, which would come up in front of the person.
+    await page.waitForSelector('[data-empty="new-claude"]')
+    await page.evaluate(() => document.querySelector('[data-empty="new-claude"]').click())
+    await page.waitForFunction(() => document.activeElement?.matches('.pop-claude textarea'))
+    // Typed straight away, it lands in the prompt. Test runs never open the OS folder picker (src/main/testPickers.ts),
+    // but this scene doesn't reach it anyway: no Ctrl+Enter, no Choose folder.
     await page.keyboard.type('Fix the flaky login test')
-    await sleep(200)
+    await page.waitForFunction(() => document.querySelector('.pop-claude textarea')?.value === 'Fix the flaky login test')
   },
   'start-failed': async (page) => {
-    await sleep(3000)
-    await page.click('[data-sidebar-tab="status"]').catch(() => {})
-    await sleep(300)
+    await page.waitForFunction(() => document.querySelector('.react-flow__node[data-id="unk"] [data-start-fix="folder"]'), { timeout: 20000 })
+    await page.click('[data-sidebar-tab="status"]')
+    await page.waitForSelector('.sidebar [data-status-section="needs-you"] [data-session="unk"]')
   },
   'start-new': async (page) => {
+    await page.waitForSelector('.react-flow')
     await press(page, 'KeyC', ['Control', 'Shift'])
-    await sleep(300)
+    await page.waitForFunction(() => document.activeElement?.matches('.pop-claude textarea'))
     await page.keyboard.type('idle context=20')
     await press(page, 'Enter', ['Control'])
-    await sleep(2500)
-    // Typed straight after starting: it should reach the new agent.
+    // The new agent has the keyboard and has finished its first turn.
+    await page.waitForFunction(() => document.activeElement?.classList.contains('xterm-helper-textarea') && /Idle/.test(document.activeElement.closest('.react-flow__node')?.querySelector('.unit-head .st-label')?.textContent ?? ''), { timeout: 20000 })
+    // Typed straight after starting: it reaches the new agent, and the picture shows it.
     await page.keyboard.type('hello')
-    await sleep(500)
+    await page.waitForFunction(async () => {
+      const id = document.activeElement?.closest('.react-flow__node')?.getAttribute('data-id')
+      return !!id && (await window.patchbay.attach(id)).data.includes('hello')
+    }, { timeout: 10000, polling: 100 })
+    // Drawn in the frame after it arrives.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
   }
 }
 

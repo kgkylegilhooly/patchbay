@@ -40,7 +40,8 @@ async function main() {
 
     // What a second launch does: the same route as clicking the tray icon.
     const second = exe ? [exe, [`--user-data-dir=${profile}`]] : [require('electron'), [`--user-data-dir=${profile}`, lib.root]]
-    const env = { ...process.env }
+    // OS file pickers never open in a run: see src/main/testPickers.ts.
+    const env = { ...process.env, PATCHBAY_TEST_DIALOGS: '1' }
     delete env.ELECTRON_RUN_AS_NODE
     delete env.ELECTRON_RENDERER_URL
     spawn(second[0], second[1], { cwd: lib.root, env, stdio: 'ignore' })

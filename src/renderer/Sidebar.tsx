@@ -18,6 +18,9 @@ import { contextLabel } from './usageView'
 import { useAgentOff } from './agentChoice'
 import { useAgentStop, useAgentStops } from './agentStops'
 import { emptyProjectHint } from './startHints'
+import type { NodeError } from '../shared/contract'
+
+const NO_ERRORS: Record<string, NodeError> = {}
 
 const TICK_MS = 20_000
 
@@ -126,7 +129,8 @@ function SidebarView({ commands, prefs, onPrefs, onClose }: { commands: Commands
   const stops = useAgentStops((s) => s.stops)
   const attention = useStore((s) => s.attention)
   const runs = useStore((s) => s.runs)
-  const errors = useStore((s) => s.errors)
+  // Only the Status tab's sections read start errors (rows read their own), so the Project tab isn't drawn again for them.
+  const errors = useStore((s) => (prefs.sidebarTab === 'status' ? s.errors : NO_ERRORS))
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ at: Point; project: Project } | null>(null)
   const now = useNow()

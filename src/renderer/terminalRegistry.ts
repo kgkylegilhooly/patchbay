@@ -46,6 +46,18 @@ export const PENDING_FOCUS_MS = 3000
 let pendingFocus: { id: string; until: number } | null = null
 let wanted: ((id: string) => void) | null = null
 let cancelHooked = false
+const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
+
+/**
+ * Whether a click or key means the person went elsewhere, so a waiting focus is dropped. Ctrl still held after
+ * Ctrl+Enter repeats its keydown: a held modifier, or any repeat, isn't a key meant elsewhere. Nor is Ctrl+Enter
+ * pressed again: it's the start key the new window came from.
+ */
+export function cancelsPendingFocus(e: { type: string; isTrusted: boolean; key?: string; repeat?: boolean; ctrlKey?: boolean }): boolean {
+  if (!e.isTrusted) return false
+  if (e.type !== 'keydown') return true
+  return !(e.repeat || (e.key !== undefined && MODIFIER_KEYS.has(e.key)) || (e.key === 'Enter' && e.ctrlKey))
+}
 
 /** Told when a focus waits on a terminal, so its build can go first. Set by the terminal builder. */
 export function onFocusWanted(cb: (id: string) => void): void {
@@ -65,7 +77,7 @@ export function focusTerminalWhenReady(id: string, now = Date.now()): void {
   if (!cancelHooked && typeof window !== 'undefined') {
     cancelHooked = true
     const cancel = (e: Event): void => {
-      if (e.isTrusted) pendingFocus = null
+      if (cancelsPendingFocus(e as Event & Partial<KeyboardEvent>)) pendingFocus = null
     }
     window.addEventListener('pointerdown', cancel, true)
     window.addEventListener('keydown', cancel, true)

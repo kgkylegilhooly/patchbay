@@ -2,7 +2,7 @@ import { existsSync, unwatchFile, watchFile, type Stats } from 'node:fs'
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { pickOrStub } from '../testPickers'
 import type { CanvasStore } from '../../shared/contract'
 import type { CanvasDoc, CanvasNode } from '../../shared/model'
@@ -72,11 +72,14 @@ export function registerDocsIpc(s: {
     async pick(at) {
       // Never opened by an off-screen test run: see testPickers.ts.
       const picked = await pickOrStub('file', async () => {
-        const r = await dialog.showOpenDialog({
+        const options: Electron.OpenDialogOptions = {
           title: 'Open a document in a reader',
           properties: ['openFile'],
           filters: [{ name: 'Markdown and text', extensions: DOC_EXTENSIONS.map((e) => e.slice(1)) }]
-        })
+        }
+        // Modal to the window, so a second ask can't open a second picker.
+        const win = BrowserWindow.getFocusedWindow()
+        const r = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
         return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
       })
       if (!picked) return { ok: false, cancelled: true, reason: 'Nothing was picked.' }

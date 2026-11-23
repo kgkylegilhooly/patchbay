@@ -1,13 +1,15 @@
 import { expect, test } from 'vitest'
 import { inTestMode, pickOrStub, UnstubbedPicker } from '../../src/main/testPickers'
 
-const quiet = { PATCHBAY_QUIET_WINDOW: '1' }
+const quiet = { PATCHBAY_TEST_DIALOGS: '1' }
 const never = async (): Promise<string | null> => {
   throw new Error('the real dialog was opened')
 }
 
 test('outside a test run the real dialog is shown', async () => {
   expect(inTestMode({})).toBe(false)
+  // A quiet window alone isn't test mode: only the explicit switch is.
+  expect(inTestMode({ PATCHBAY_QUIET_WINDOW: '1' })).toBe(false)
   expect(await pickOrStub('folder', async () => 'C:\picked', {})).toBe('C:\picked')
   // A stray answer in the person's own environment is ignored outside test runs.
   expect(await pickOrStub('folder', async () => 'C:\picked', { PATCHBAY_TEST_PICK_FOLDER: 'C:\stub' })).toBe('C:\picked')

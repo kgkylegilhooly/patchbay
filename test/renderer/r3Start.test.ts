@@ -200,3 +200,42 @@ describe('#16 just after launch, an agent with no status yet is reconnecting', (
     expect(agentLook('unknown').label).toBe('No status yet')
   })
 })
+
+describe('review fixes', () => {
+  test('L1: a held modifier or a repeat keydown does not take the keyboard from a new agent', async () => {
+    const { cancelsPendingFocus } = await import('../../src/renderer/terminalRegistry')
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'Control', repeat: true })).toBe(false)
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'Shift' })).toBe(false)
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'a', repeat: true })).toBe(false)
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'a' })).toBe(true)
+    expect(cancelsPendingFocus({ type: 'pointerdown', isTrusted: true })).toBe(true)
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: false, key: 'a' })).toBe(false)
+    // Ctrl+Enter pressed again is the start key, not a key meant elsewhere; plain Enter is.
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'Enter', ctrlKey: true })).toBe(false)
+    expect(cancelsPendingFocus({ type: 'keydown', isTrusted: true, key: 'Enter' })).toBe(true)
+  })
+
+  test('M2: one folder picker at a time, and one start per form', async () => {
+    const { oneOpen, once } = await import('../../src/renderer/startHints')
+    let asked = 0
+    let answer: (v: string) => void = () => {}
+    const pick = oneOpen(() => {
+      asked++
+      return new Promise<string>((r) => (answer = r))
+    })
+    const first = pick()
+    const second = await pick()
+    expect(second).toBeUndefined()
+    expect(asked).toBe(1)
+    answer('C:\repo')
+    expect(await first).toBe('C:\repo')
+    // Once it's closed, it can be asked again.
+    void pick()
+    expect(asked).toBe(2)
+    const started: string[] = []
+    const start = once((cwd: string) => started.push(cwd))
+    start('C:\a')
+    start('C:\b')
+    expect(started).toEqual(['C:\a'])
+  })
+})
