@@ -141,7 +141,11 @@ async function survives(c) {
   await section(c, 'Quit, force-kill, close and stop', [profile], async () => {
     const counter = writeCounter(work)
     let app = await launch({ profile, exe })
-    let info = await hostInfo(app.page)
+    // The window doesn't wait for a new host to start, so it may still be on its way.
+    let info = await waitFor('the host to start', async () => {
+      const i = await hostInfo(app.page)
+      return i.mode === 'starting' ? null : i
+    }, 30000).catch(() => hostInfo(app.page))
     c.check('the host is running after launch', info.mode === 'background' && alive(info.pid), info)
     c.check('the host is a separate process', info.pid !== app.child.pid)
     const host = info.pid
