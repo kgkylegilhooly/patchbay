@@ -60,8 +60,9 @@ import { focusedTerminal, terminalActions } from './terminalRegistry'
 import { TopBar } from './TopBar'
 import { ledTokens, runMapColor, statusMapColor } from './minimapColors'
 import { setupHoldOf } from './status/setupStatus'
+import { failedStart } from './status/startFailure'
 import { useBarInertUnderDialogs } from './shell/barInert'
-import type { RunResult } from '../shared/contract'
+import type { NodeError, RunResult } from '../shared/contract'
 import { useAgentStops } from './agentStops'
 import type { AgentStop } from '../shared/agentStop'
 import { EmptyCanvas } from './EmptyCanvas'
@@ -70,19 +71,20 @@ import type { UsageMode } from './usageView'
 import './styles.css'
 import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
+import { useSettingsAsk } from './settingsAsk'
 
 const nodeTypes = { terminal: TerminalNode, claude: ClaudeNode, run: RunNode, sticky: StickyNode, whiteboard: WhiteboardNode, group: GroupNode, browser: BrowserNode, trigger: TriggerNode, reader: ReaderNode, file: FileNode }
 const edgeTypes = { cable: CableEdge }
 /** One array, so React Flow isn't handed a new one on every render. */
 const SNAP_GRID: [number, number] = [24, 24]
 
-function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Record<string, RunResult>): string {
+function miniMapColor(node: FlowNode, stops: Record<string, AgentStop>, runs: Record<string, RunResult>, errors: Record<string, NodeError> = {}): string {
   if (node.data.node.kind === 'group') return 'transparent'
   if (node.data.node.kind === 'sticky') return '#a89a2b'
   if (node.data.node.kind === 'whiteboard') return '#d8d8d2'
   if (node.data.node.kind === 'trigger') return '#e7b53f'
   if (node.data.node.kind === 'run') return runMapColor(runs[node.id], ledTokens())
-  return statusMapColor(node.data.status, stops[node.id], ledTokens(), Date.now(), setupHoldOf(node.data.node))
+  return statusMapColor(node.data.status, stops[node.id], ledTokens(), Date.now(), setupHoldOf(node.data.node), failedStart(node.data.status, errors[node.id]))
 }
 
 function miniMapStroke(node: FlowNode): string {
@@ -106,7 +108,8 @@ function Canvas(): React.JSX.Element | null {
   const boardOpen = useStore((s) => s.boardOpen)
   const stops = useAgentStops((s) => s.stops)
   const runs = useStore((s) => s.runs)
-  const mapColor = useCallback((node: FlowNode) => miniMapColor(node, stops, runs), [stops, runs])
+  const errors = useStore((s) => s.errors)
+  const mapColor = useCallback((node: FlowNode) => miniMapColor(node, stops, runs, errors), [stops, runs, errors])
   const flow = useReactFlow<FlowNode, FlowEdge>()
   const [nodes, setNodes] = useState<FlowNode[]>([])
   const [edges, setEdges] = useState<FlowEdge[]>([])
@@ -192,6 +195,11 @@ function Canvas(): React.JSX.Element | null {
   const closeSidebar = useCallback(() => setPref('sidebar'), [setPref])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const openSettings = useCallback(() => setSettingsOpen(true), [])
+  // A node's "Open Settings › Agents": see settingsAsk.ts.
+  const settingsAsked = useSettingsAsk((s) => s.section)
+  useEffect(() => {
+    if (settingsAsked) setSettingsOpen(true)
+  }, [settingsAsked])
   const [projectFormOpen, setProjectFormOpen] = useState(false)
   const { commands, openFromForm, openLaunch, openSsh, saveTrigger, defaultFolder, terminalFolder } = useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref, toggleRecent, openSettings, openPalette: togglePalette, setProjectFormOpen })
 

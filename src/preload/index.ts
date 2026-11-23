@@ -108,6 +108,7 @@ const bridge: PatchbayBridge = {
   noteSlow: (ms, what) => ipcRenderer.send('pb:noteSlow', ms, what),
   getAppInfo: () => invoke('getAppInfo'),
   getSettings: () => invoke('getSettings'),
+  agentProgramProblem: (kind) => invoke('agentProgramProblem', kind),
   saveSettings: (settings) => invoke('saveSettings', settings),
   getApprovals: () => invoke('getApprovals'),
   onApprovals: (cb) => listen('onApprovals', cb),

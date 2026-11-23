@@ -42,6 +42,8 @@ import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 import { createOutputPacer } from './outputPacer'
 import { onScreenIds } from './onScreen'
 import { inSettingsQueue } from './settingsQueue'
+import { agentProgramProblem } from './sessions/agentProgramCheck'
+import { defaultAgentOf } from '../shared/agents'
 
 export interface IpcServices {
   dataDir: string
@@ -445,6 +447,10 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   })
   ipcMain.handle('pb:getAppInfo', () => ({ version: app.getVersion(), dataDir }))
   ipcMain.handle('pb:getSettings', async () => parseSettings(await readIfPresent(settingsFile)))
+  ipcMain.handle('pb:agentProgramProblem', async (_e, kind: unknown) => {
+    const settings = parseSettings(await readIfPresent(settingsFile))
+    return agentProgramProblem(kind === 'codex' || kind === 'claude' ? kind : defaultAgentOf(settings), settings)
+  })
   ipcMain.handle('pb:saveSettings', async (_e, next: Settings) => {
     // One read-merge-write at a time, so a save from another page can't undo this one. See settingsQueue.ts.
     const text = await inSettingsQueue(async () => {
@@ -465,6 +471,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('pb:pickFolder', async () => {
+    // Off-screen acceptance runs answer the folder picker with this, since the OS dialog would open in front of the person.
+    if (process.env.PATCHBAY_TEST_PICK_FOLDER) return process.env.PATCHBAY_TEST_PICK_FOLDER
     const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })

@@ -1,5 +1,6 @@
 import type { AgentStatus, CanvasNode } from '../../shared/model'
-import type { RunResult } from '../../shared/contract'
+import type { NodeError, RunResult } from '../../shared/contract'
+import { startFailureOf } from './startFailure'
 import type { Look } from './status'
 
 /**
@@ -33,7 +34,9 @@ export function setupLookFor(status: AgentStatus | null | undefined, hold: Setup
  * failing `npm test` is part of the edit-test loop, so once seen it's just a run that exited, not a call for help).
  * The Status tab lists these under Need attention. `unread`: whether the session is on the attention list.
  */
-export function sessionBlocked(node: CanvasNode, status: AgentStatus | null | undefined, run: RunResult | undefined, unread: boolean): boolean {
+export function sessionBlocked(node: CanvasNode, status: AgentStatus | null | undefined, run: RunResult | undefined, unread: boolean, error?: NodeError): boolean {
+  // An agent that couldn't start, until it's started again.
+  if (startFailureOf(node, status, error)) return true
   if (node.kind === 'run') return unread && !!run && !run.running && !run.stoppedByYou && run.exitCode !== null && run.exitCode !== 0
   return setupLookFor(status, setupHoldOf(node))?.tone === 'held'
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { archiveRefusal, removeRefusal } from '../core/canvas/projectOps'
 import { isProjectOpen, isSessionNode, type Project } from '../shared/model'
 import { ContextMenu } from './Menu'
@@ -9,6 +9,8 @@ import { projectSignal, SIGNAL_TONE } from './projectSignal'
 import { useAgentStops } from './agentStops'
 import { StatusMark } from './status/StatusMarks'
 import { useStore } from './store'
+import { hiddenTabs, moreLabel, scrollToShow } from './tabOverflow'
+import './startFlow.css'
 
 const SIGNAL_TEXT = {
   'needs-you': 'needs you',
@@ -32,7 +34,7 @@ interface TabProps {
 
 function Tab({ project, active, commands, dropBefore, dragging, onMenu, onDragStart, onDragEnd }: TabProps): React.JSX.Element {
   const stops = useAgentStops((s) => s.stops)
-  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops, s.runs) : null))
+  const signal = useStore((s) => (s.doc ? projectSignal(s.doc, s.statuses, project.id, s.attention, stops, s.runs, s.errors) : null))
   const [draft, setDraft] = useState<string | null>(null)
 
   if (draft !== null) {
@@ -115,6 +117,38 @@ export function ProjectTabs({ commands }: { commands: Commands }): React.JSX.Ele
     refocus.current = null
   })
 
+  // More tabs than fit: the strip scrolls, the tab on screen is kept in view, and the rest are in an "N more" menu.
+  const [hidden, setHidden] = useState<string[]>([])
+  const [moreAt, setMoreAt] = useState<Point | null>(null)
+  useLayoutEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const measure = (): void => {
+      const box = list.getBoundingClientRect()
+      const tabs = [...list.querySelectorAll<HTMLElement>('[data-project-id]')].map((el) => {
+        const r = el.getBoundingClientRect()
+        return { id: el.dataset.projectId!, left: r.left, right: r.right }
+      })
+      const next = hiddenTabs({ left: box.left, right: box.right }, tabs)
+      setHidden((prev) => (prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next))
+    }
+    measure()
+    list.addEventListener('scroll', measure, { passive: true })
+    const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    watch?.observe(list)
+    return () => {
+      list.removeEventListener('scroll', measure)
+      watch?.disconnect()
+    }
+  }, [projects])
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const tab = activeId ? list?.querySelector<HTMLElement>(`[data-project-id="${CSS.escape(activeId)}"]`) : null
+    if (!list || !tab) return
+    const left = tab.getBoundingClientRect().left - list.getBoundingClientRect().left + list.scrollLeft
+    list.scrollLeft = scrollToShow(list.scrollLeft, list.clientWidth, { left, right: left + tab.offsetWidth })
+  }, [activeId, projects])
+
   if (!projects) return null
 
   const inProject = (id: string) => useStore.getState().doc?.nodes.filter((n) => n.projectId === id) ?? []
@@ -157,6 +191,7 @@ export function ProjectTabs({ commands }: { commands: Commands }): React.JSX.Ele
   }
 
   return (
+    <>
     <div
       className="projects"
       role="tablist"
@@ -219,5 +254,32 @@ export function ProjectTabs({ commands }: { commands: Commands }): React.JSX.Ele
         />
       )}
     </div>
+    {hidden.length > 0 && (
+      <button
+        type="button"
+        className="project-more"
+        data-project-more
+        aria-haspopup="menu"
+        aria-expanded={!!moreAt}
+        title="Projects out of sight"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          setMoreAt(moreAt ? null : { x: Math.round(r.right), y: Math.round(r.bottom) + 4 })
+        }}
+      >
+        <span aria-hidden="true">▾</span> {moreLabel(hidden.length)}
+      </button>
+    )}
+    {moreAt && (
+      <ContextMenu
+        at={moreAt}
+        anchor="end"
+        label="More projects"
+        entries={open.filter((p) => hidden.includes(p.id)).map((p) => ({ id: `project-${p.id}`, label: p.name, run: () => commands.switchProject(p.id) }))}
+        onClose={() => setMoreAt(null)}
+      />
+    )}
+    </>
   )
 }
