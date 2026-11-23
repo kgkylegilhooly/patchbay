@@ -331,13 +331,15 @@ async function ticksScenario() {
     await page.evaluate(() => document.querySelector('[data-sidebar="pin"][aria-pressed="false"]')?.click())
     // a11 stays working and a0 too, so the chain's ends keep cables moving; a5 flips: two cables change each tick.
     const flip = async (seconds) => {
+      const before = (await L.seenStatuses(page, 'a5')).length
       const end = Date.now() + seconds * 1000
       let k = 0
       while (Date.now() < end) {
         await L.input(page, 'a5', k++ % 2 ? 'busy\r' : 'done\r')
         await L.sleep(500)
       }
-      return k
+      // Status changes the window was sent for a5 meanwhile: the ticks measured.
+      return (await L.seenStatuses(page, 'a5')).length - before
     }
     const measure = async (name, fn) => {
       await L.sleep(800)
@@ -386,7 +388,7 @@ async function ticksScenario() {
 /** Pans the view (zoom unchanged) by dragging the empty canvas, so it ends where `vp` says, and lets it settle. */
 async function moveViewTo(page, vp) {
   const now = await page.evaluate(() => {
-    const m = /translate(([-d.]+)px, ([-d.]+)px) scale(([d.]+))/.exec(document.querySelector('.react-flow__viewport').style.transform)
+    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(document.querySelector('.react-flow__viewport').style.transform)
     return { x: Number(m[1]), y: Number(m[2]) }
   })
   let left = { x: vp.x - now.x, y: vp.y - now.y }
