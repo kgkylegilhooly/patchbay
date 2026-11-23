@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { dialog, ipcMain, shell } from 'electron'
+import { pickOrStub } from '../testPickers'
 import type { CanvasStore } from '../../shared/contract'
 import type { CanvasDoc, CanvasNode } from '../../shared/model'
 import { DOC_EXTENSIONS, type DocsBridge } from '../../shared/reader'
@@ -69,13 +70,17 @@ export function registerDocsIpc(s: {
     read: (nodeId) => service.read(nodeId),
     open: (a) => service.open(a),
     async pick(at) {
-      const r = await dialog.showOpenDialog({
-        title: 'Open a document in a reader',
-        properties: ['openFile'],
-        filters: [{ name: 'Markdown and text', extensions: DOC_EXTENSIONS.map((e) => e.slice(1)) }]
+      // Never opened by an off-screen test run: see testPickers.ts.
+      const picked = await pickOrStub('file', async () => {
+        const r = await dialog.showOpenDialog({
+          title: 'Open a document in a reader',
+          properties: ['openFile'],
+          filters: [{ name: 'Markdown and text', extensions: DOC_EXTENSIONS.map((e) => e.slice(1)) }]
+        })
+        return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
       })
-      if (r.canceled || !r.filePaths[0]) return { ok: false, cancelled: true, reason: 'Nothing was picked.' }
-      return service.open({ path: r.filePaths[0], ...(at ? { at } : {}) })
+      if (!picked) return { ok: false, cancelled: true, reason: 'Nothing was picked.' }
+      return service.open({ path: picked, ...(at ? { at } : {}) })
     },
     openPlan: (agentId) => service.openPlan(agentId),
     comments: (nodeId) => service.comments(nodeId),

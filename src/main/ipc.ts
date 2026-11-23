@@ -44,6 +44,7 @@ import { onScreenIds } from './onScreen'
 import { inSettingsQueue } from './settingsQueue'
 import { agentProgramProblem } from './sessions/agentProgramCheck'
 import { defaultAgentOf } from '../shared/agents'
+import { pickOrStub } from './testPickers'
 
 export interface IpcServices {
   dataDir: string
@@ -466,16 +467,19 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     onSettingsSaved?.()
     return { ok: true }
   })
-  ipcMain.handle('pb:pickProgram', async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
-    return r.canceled ? null : r.filePaths[0]
-  })
-  ipcMain.handle('pb:pickFolder', async () => {
-    // Off-screen acceptance runs answer the folder picker with this, since the OS dialog would open in front of the person.
-    if (process.env.PATCHBAY_TEST_PICK_FOLDER) return process.env.PATCHBAY_TEST_PICK_FOLDER
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
-    return r.canceled ? null : r.filePaths[0]
-  })
+  // Never opened by an off-screen test run: see testPickers.ts.
+  ipcMain.handle('pb:pickProgram', () =>
+    pickOrStub('file', async () => {
+      const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Programs', extensions: ['exe', 'cmd', 'bat'] }, { name: 'All files', extensions: ['*'] }] })
+      return r.canceled ? null : r.filePaths[0]
+    })
+  )
+  ipcMain.handle('pb:pickFolder', () =>
+    pickOrStub('folder', async () => {
+      const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+      return r.canceled ? null : r.filePaths[0]
+    })
+  )
 
   // The only way to arm a trigger. The control server has no route to the trigger service.
   ipcMain.handle('pb:armTrigger', (_e, id: string, shownSpec: string) => triggers.arm(id, shownSpec))

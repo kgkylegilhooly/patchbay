@@ -137,7 +137,7 @@ const scenes = {
 }
 
 // "Save as file" in the handoff editor, then "Open in Reader". The save dialog is the system's, which a scene can't
-// answer, so the seed names the file through PB_SCENE_SAVE_AS (honoured only when not installed), without .md, as a
+// answer, so the seed names the file through PB_SCENE_SAVE_AS (honoured only in off-screen test runs, see src/main/testPickers.ts), without .md, as a
 // person might type it. Main still checks the path, adds .md and writes the file.
 const searchScenes = require('./searchScenes.cjs')
 
