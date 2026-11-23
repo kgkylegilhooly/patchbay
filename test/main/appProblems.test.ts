@@ -167,3 +167,38 @@ describe('docStore tells when a save went through', () => {
     }
   })
 })
+
+describe('review follow-ups', () => {
+  it('a host lost again while Bring them back runs keeps its own banner', async () => {
+    let now = 1
+    const state = createAppProblems({ retrySave: () => Promise.resolve(), push: () => {}, now: () => now })
+    state.hostLost()
+    let finish!: () => void
+    const first = state.bringBackHost(() => new Promise<void>((r) => (finish = r)))
+    now = 2
+    state.hostLost()
+    finish()
+    await first
+    expect(state.get().hostLost).toMatchObject({ at: 2, bringing: false })
+  })
+
+  it('a backup made read-only from outside no longer blocks saving', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patchbay problems '))
+    const backup = join(dir, 'canvas.json.bak')
+    try {
+      const store = createDocStore(dir)
+      const { doc } = store.load()
+      await store.save(doc)
+      await store.save(doc)
+      chmodSync(backup, 0o444)
+      const changed = { ...doc, projects: doc.projects.map((p) => ({ ...p, name: 'After a read-only backup' })) }
+      await store.save(changed)
+      expect(readFileSync(join(dir, 'canvas.json'), 'utf8')).toContain('After a read-only backup')
+    } finally {
+      try {
+        chmodSync(backup, 0o644)
+      } catch {}
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

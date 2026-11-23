@@ -25,15 +25,9 @@ export const RETRY_FOR_MS = 60_000
 /** Chromium's codes for a load that was replaced by another (-3), or that a guard refused, which already says why (-20). */
 export const NOT_A_FAILURE = new Set([-3, -20])
 
-const NOTHING_ANSWERING = new Set([
-  'ERR_CONNECTION_REFUSED',
-  'ERR_CONNECTION_RESET',
-  'ERR_CONNECTION_CLOSED',
-  'ERR_CONNECTION_FAILED',
-  'ERR_EMPTY_RESPONSE',
-  'ERR_ADDRESS_UNREACHABLE',
-  'ERR_SOCKET_NOT_CONNECTED'
-])
+const NOTHING_ANSWERING = new Set(['ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_FAILED', 'ERR_ADDRESS_UNREACHABLE', 'ERR_SOCKET_NOT_CONNECTED'])
+/** A server is there, and dropped the request: a route that crashed, say. Loading it again on its own wouldn't help. */
+const DROPPED = new Set(['ERR_CONNECTION_RESET', 'ERR_CONNECTION_CLOSED', 'ERR_EMPTY_RESPONSE'])
 const TOO_SLOW = new Set(['ERR_TIMED_OUT', 'ERR_CONNECTION_TIMED_OUT'])
 const NO_NAME = new Set(['ERR_NAME_NOT_RESOLVED', 'ERR_NAME_RESOLUTION_FAILED'])
 
@@ -73,6 +67,7 @@ export function describeFailure(description: string, url: string): { title: stri
       ? { title: `Nothing is answering at ${place} yet`, detail: "If a dev server is starting, the page opens when it's ready.", retryable: true }
       : { title: `Nothing is answering at ${place}`, detail: 'The server may be down, or the address may be wrong.', retryable: false }
   }
+  if (DROPPED.has(code)) return { title: `The server at ${place} closed the connection`, detail: "It's running, but didn't send the page. Its own output may say why.", retryable: false }
   if (TOO_SLOW.has(code)) return { title: `${place} took too long to answer`, detail: 'The server may be busy or down.', retryable: local }
   if (NO_NAME.has(code)) return { title: `Can't find ${place}`, detail: 'Check the address: no server goes by that name.', retryable: false }
   if (code === 'ERR_INTERNET_DISCONNECTED') return { title: "You're offline", detail: 'Connect to the internet, then try again.', retryable: false }

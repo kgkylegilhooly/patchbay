@@ -394,6 +394,7 @@ function Canvas(): React.JSX.Element | null {
   return (
     <div className="app">
       <TopBar commands={commands} state={menuState} />
+      <AppProblems />
       <main className="stage" ref={stage}>
         <ReactFlow<FlowNode, FlowEdge>
           nodes={nodes}
@@ -523,7 +524,6 @@ function Canvas(): React.JSX.Element | null {
         {paletteOpen && <CommandPalette commands={commands} state={menuState()} recent={prefs.recentActions} onRan={(id) => updatePrefs({ recentActions: noteRecent(prefsRef.current.recentActions, id) })} onClose={closePalette} />}
         {recentOpen && <RecentPanel onClose={() => setRecentOpen(false)} />}
         <CanvasOverlays commands={commands} selected={selected} boardOpen={boardOpen} gitOpen={gitOpen} />
-        <AppProblems />
       </main>
       {menu && <ContextMenu at={menu.at} entries={menu.entries} label={menu.label} onClose={closeMenu} />}
     </div>

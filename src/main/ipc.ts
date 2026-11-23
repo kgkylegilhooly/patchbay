@@ -6,7 +6,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { readIfPresent, writeAtomic } from '../core/persist/atomicFile'
 import type { ScrollbackStore } from '../core/persist/scrollbackStore'
 import { readMessagesTailAndMore, readTranscriptAsync, stripAnsi } from '../core/transcript/read'
-import { conversationLimit } from '../shared/conversation'
+import { conversationAnswer, conversationLimit, type ConversationAnswer } from '../shared/conversation'
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { ApprovalChoice, BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
 import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
@@ -526,14 +526,15 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     if (id) await runner.startNode(id)
   })
   // The chat view of an agent window. Read again as the conversation grows, so only the newest part is sent.
-  ipcMain.handle('pb:readConversation', async (_e, nodeId: string, limit?: number) => {
+  ipcMain.handle('pb:readConversation', async (_e, nodeId: string, limit?: number, since?: string): Promise<ConversationAnswer> => {
     const node = find(nodeId)
     if (node?.kind !== 'claude') return { ok: false, reason: 'Only an agent window has a conversation.' }
-    if (!node.transcriptPath) return { ok: true, messages: [], earlier: false }
+    if (!node.transcriptPath) return { ok: true, messages: [], earlier: false, version: '' }
     try {
-      return { ok: true, ...(await readMessagesTailAndMore(node.transcriptPath, conversationLimit(limit))) }
+      const count = conversationLimit(limit)
+      return conversationAnswer(await readMessagesTailAndMore(node.transcriptPath, count), node.transcriptPath, count, since)
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, messages: [], earlier: false }
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, messages: [], earlier: false, version: '' }
       return { ok: false, reason: `The conversation couldn't be read: ${(e as Error).message}` }
     }
   })

@@ -45,6 +45,15 @@ async function start(doc, settings = {}) {
 const project = (folder = '') => ({ id: 'p1', name: 'Demo', folder, viewport: { x: 340, y: 60, zoom: 1 } })
 const docOf = (nodes, folder) => ({ version: 2, projects: [project(folder)], activeProjectId: 'p1', viewport: { x: 340, y: 60, zoom: 1 }, edges: [], closed: [], nodes })
 const sel = (id) => `.react-flow__node[data-id="${id}"]`
+/** Whether the banner sits wholly above the canvas, so no window's header can be under it. */
+const clearOfCanvas = (page, selector) =>
+  page.evaluate((s) => {
+    const b = document.querySelector(s)?.getBoundingClientRect()
+    const pane = document.querySelector('.react-flow')?.getBoundingClientRect()
+    const head = document.querySelector('.react-flow__node .unit-head, .react-flow__node header')?.getBoundingClientRect()
+    if (!b || !pane) return null
+    return { ok: b.bottom <= pane.top + 0.5, bannerBottom: Math.round(b.bottom), canvasTop: Math.round(pane.top), headerTop: head ? Math.round(head.top) : null, height: Math.round(b.height) }
+  }, selector)
 const textOf = (page, selector) => page.evaluate((s) => document.querySelector(s)?.innerText ?? null, selector)
 
 async function browserFlow() {
@@ -109,15 +118,26 @@ async function chatFlow() {
   const node = { id: 'long', kind: 'claude', title: 'Long history', x: 0, y: 0, width: 640, height: 520, parentId: null, cwd, prompt: 'idle', sessionId: sid, transcriptPath: null, after: [], projectId: 'p1' }
   const app = await start(docOf([node], cwd))
   const { page } = app
+  let stopKeeper = () => {}
   try {
     // Started without "chat", the fake reports no transcript of its own, so the one patched in below stays.
     await waitFor('the agent to start', async () => (await lib.seenStatuses(page, 'long')).length > 0 || null, 20000)
     await sleep(800)
-    await page.evaluate((p) => window.patchbay.dispatch({ op: 'patchNode', id: 'long', patch: { transcriptPath: p } }), tpath)
+    // The fake's own start hook can land after this and clear the path (the audit's harness race), so it's kept set.
+    const keepPath = () => page.evaluate(async (p) => {
+      const n = (await window.patchbay.getDoc()).nodes.find((x) => x.id === 'long')
+      if (n && n.transcriptPath !== p) await window.patchbay.dispatch({ op: 'patchNode', id: 'long', patch: { transcriptPath: p } })
+    }, tpath).catch(() => {})
+    await keepPath()
+    const keeper = setInterval(keepPath, 250)
+    stopKeeper = () => clearInterval(keeper)
     await sleep(300)
     await require('./uilib.cjs').headerTool(page, 'long', 'chat')
     const count = () => page.evaluate((s) => document.querySelectorAll(`${s} .chat-msg`).length, sel('long'))
-    await waitFor('the chat', async () => (await count()) || null, 15000, 100)
+    await waitFor('the chat', async () => (await count()) || null, 15000, 100).catch(async (e) => {
+      console.log('chat shows:', await textOf(page, `${sel('long')} .chat`), 'transcriptPath:', (await lib.nodeOf(page, 'long'))?.transcriptPath)
+      throw e
+    })
     check('chat opens on the last 200 messages', (await count()) === 200, await count())
     const row = `${sel('long')} [data-chat-earlier]`
     await page.evaluate((s) => { const l = document.querySelector(s + ' .chat-list'); l.scrollTop = 0 }, sel('long'))
@@ -150,6 +170,7 @@ async function chatFlow() {
     check('and the first message is Step 0', /Step 0:/.test(first ?? ''), first)
     await shots(page, 'chat-start')
   } finally {
+    stopKeeper()
     await app.forceKill()
     lib.cleanup(app.profile)
     fs.rmSync(cwd, { recursive: true, force: true })
@@ -171,7 +192,15 @@ async function saveFlow() {
     check('the banner says it keeps trying', /trying again/i.test(said ?? ''), said)
     const ipcMoves = await page.evaluate(() => Promise.race([window.patchbay.getStatuses().then(() => true), new Promise((r) => setTimeout(() => r(false), 2000))]))
     check('the app still answers while saving fails', ipcMoves)
+    const clear = await clearOfCanvas(page, banner)
+    check('the banner sits above the canvas, over no window', !!clear?.ok, clear)
     await shots(page, 'save-failing')
+    await page.click(`${banner} [data-app-problem-action="hide"]`)
+    await sleep(200)
+    const slim = await clearOfCanvas(page, banner)
+    const slimText = await textOf(page, banner)
+    check('Hide folds it to one slim line that still says so', !!slim?.ok && slim.height <= 32 && /Not saving/.test(slimText ?? ''), { slim, slimText })
+    await shots(page, 'save-hidden')
     fs.chmodSync(file, 0o644)
     const cleared = await waitFor('the banner to clear', async () => ((await page.$(banner)) ? null : true), 15000, 200).catch(() => false)
     check('saving works again: the failure banner goes on its own', cleared)
@@ -200,7 +229,13 @@ async function hostFlow() {
     const banner = '[data-app-problem="host"]'
     const said = await waitFor('the host banner', () => textOf(page, banner), 20000, 200).catch(() => null)
     check('a lost host shows an in-app banner, not a dialog', /Background sessions stopped/.test(said ?? ''), said)
+    const clear = await clearOfCanvas(page, banner)
+    check('the host banner sits above the canvas, over no window', !!clear?.ok, clear)
     await shots(page, 'host-lost')
+    await page.click(`${banner} [data-app-problem-action="hide"]`)
+    await sleep(200)
+    check('Not now folds it to a slim line with Bring them back', /Background sessions stopped/.test((await textOf(page, banner)) ?? '') && !!(await page.$(`${banner}[data-folded] [data-app-problem-action="bring-back"]`)))
+    await shots(page, 'host-hidden')
     await page.click(`${banner} [data-app-problem-action="bring-back"]`)
     const back = await waitFor('a new host', () => {
       const now = lib.hostPid(app.profile)

@@ -188,9 +188,9 @@ rather; the question goes away by itself if the window recovers. If the window c
 you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
 in the log above, which is the thing to share if Patchbay misbehaves.
 
-If the canvas can't be saved, as on a full disk, a banner at the top says why. Patchbay keeps your changes and tries
-again every 5 seconds, and the banner goes when a save works. If the background host stops, a banner offers **Bring
-them back**.
+If the canvas can't be saved, as on a full disk, a banner under the top bar says why, and the canvas moves down for it.
+Patchbay keeps your changes and tries again every 5 seconds, and the banner goes when a save works. **Hide** folds it to
+one slim line until then. If the background host stops, a banner offers **Bring them back**.
 
 A browser node's page runs apart from the canvas. If the page gets stuck, only that node is affected: it says the page
 isn't responding, and **Reload** starts the page again. git and the other programs Patchbay runs start off the

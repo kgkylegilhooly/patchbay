@@ -1,9 +1,9 @@
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { readMessagesTailAndMore } from '../../src/core/transcript/read'
-import { CONVERSATION_MAX, CONVERSATION_PAGE, conversationLimit, earlierRow } from '../../src/shared/conversation'
+import { CONVERSATION_MAX, CONVERSATION_PAGE, conversationAnswer, conversationLimit, conversationVersion, earlierRow } from '../../src/shared/conversation'
 
 let dir: string
 let n = 0
@@ -88,5 +88,31 @@ describe('conversation limits', () => {
     expect(earlierRow(600, false)).toEqual({ text: 'This is the start of the conversation.', more: false })
     expect(earlierRow(12, false)).toBeNull()
     expect(earlierRow(CONVERSATION_MAX, true)?.more).toBe(false)
+  })
+})
+
+describe('review follow-ups', () => {
+  test('a short read after the file grows keeps what a long one kept', async () => {
+    const file = transcript(600)
+    await readMessagesTailAndMore(file, 400)
+    appendFileSync(file, line(600) + '\n')
+    await readMessagesTailAndMore(file, 8)
+    // Rewritten in place, same size: a read served from what was kept doesn't see it, one from the file would.
+    const text = readFileSync(file, 'utf8')
+    writeFileSync(file, text.replace('ask 300', 'ASK 300'))
+    const again = await readMessagesTailAndMore(file, 400)
+    expect(again.messages.some((m) => m.text === 'ask 300')).toBe(true)
+  })
+
+  test('the same version is answered with unchanged, and anything else in full', async () => {
+    const file = transcript(300)
+    const first = conversationAnswer(await readMessagesTailAndMore(file, 200), file, 200, undefined)
+    expect(first).toMatchObject({ ok: true, earlier: true })
+    const version = 'version' in first ? first.version : ''
+    expect(conversationAnswer(await readMessagesTailAndMore(file, 200), file, 200, version)).toEqual({ ok: true, unchanged: true })
+    expect(conversationAnswer(await readMessagesTailAndMore(file, 400), file, 400, version)).toMatchObject({ messages: expect.any(Array) })
+    appendFileSync(file, line(300) + '\n')
+    expect(conversationAnswer(await readMessagesTailAndMore(file, 200), file, 200, version)).toMatchObject({ messages: expect.any(Array) })
+    expect(conversationVersion('a', 200, 10)).not.toBe(conversationVersion('b', 200, 10))
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { describeFailure, isLoopback, RETRY_EVERY_MS, RETRY_FOR_MS, type BrowserFailure } from '../../src/shared/browserFailure'
-import { createLoadRetry } from '../../src/main/browser/loadRetry'
+import { createLoadRetry, RELOAD_START_MS } from '../../src/main/browser/loadRetry'
 
 describe('describeFailure', () => {
   it('says nothing is answering yet at a dev server, and that it is worth trying again', () => {
@@ -158,5 +158,37 @@ describe('createLoadRetry', () => {
     h.advance(RETRY_EVERY_MS)
     expect(h.reloads()).toBe(0)
     expect(h.loads.current('page')).toBeNull()
+  })
+})
+
+describe('review follow-ups', () => {
+  it('a server that dropped the request is said so, and not reloaded on its own', () => {
+    expect(describeFailure('ERR_CONNECTION_RESET', 'http://127.0.0.1:5173/')).toMatchObject({ title: 'The server at 127.0.0.1:5173 closed the connection', retryable: false })
+    expect(describeFailure('ERR_EMPTY_RESPONSE', 'http://localhost:3000/').retryable).toBe(false)
+    const h = harness()
+    h.failLoad('http://127.0.0.1:5173/', 'ERR_CONNECTION_RESET')
+    h.advance(RETRY_EVERY_MS * 3)
+    expect(h.reloads()).toBe(0)
+  })
+
+  it('stops saying it is trying when a reload starts no load', () => {
+    const h = harness()
+    h.failLoad()
+    h.advance(RETRY_EVERY_MS)
+    expect(h.reloads()).toBe(1)
+    expect(h.loads.current('page')?.retryAt).not.toBeNull()
+    h.advance(RELOAD_START_MS)
+    expect(h.loads.current('page')).toMatchObject({ retryAt: null })
+    expect(h.shown.at(-1)?.retryAt).toBeNull()
+  })
+
+  it('a reload that starts keeps the retries going', () => {
+    const h = harness()
+    h.failLoad()
+    h.advance(RETRY_EVERY_MS)
+    h.failLoad()
+    h.advance(RELOAD_START_MS - 1)
+    expect(h.loads.current('page')?.retryAt).not.toBeNull()
+    expect(h.reloads()).toBeGreaterThanOrEqual(2)
   })
 })

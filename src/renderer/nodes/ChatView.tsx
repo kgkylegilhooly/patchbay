@@ -39,13 +39,18 @@ export function ChatView({ node }: { node: ClaudeNode }): React.JSX.Element {
   // Where the person was reading when earlier messages were asked for, so they arrive above it without a jump.
   const anchor = useRef<{ height: number; top: number; count: number } | null>(null)
 
+  // The version of what's shown: main answers "unchanged" rather than sending the same messages again.
+  const version = useRef<string | undefined>(undefined)
+
   useEffect(() => {
     let live = true
     const read = (): void => {
-      void bridge.readConversation(node.id, limit).then((r) => {
+      void bridge.readConversation(node.id, limit, version.current).then((r) => {
         if (!live) return
         if (!r.ok) return setProblem(r.reason)
         setProblem(null)
+        if ('unchanged' in r) return
+        version.current = r.version
         setEarlier(r.earlier)
         setMessages((old) => (old && old.length === r.messages.length && old.at(-1)?.text === r.messages.at(-1)?.text ? old : r.messages))
       })

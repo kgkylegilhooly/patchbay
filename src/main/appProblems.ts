@@ -65,11 +65,13 @@ export function createAppProblems(deps: {
       const lost = problems.hostLost
       if (lost?.bringing) return
       set({ hostLost: lost ? { ...lost, bringing: true, error: null } : null })
+      // Lost again while this ran: that's a new banner, and this one's outcome mustn't clear or replace it.
+      const same = (): boolean => problems.hostLost?.at === lost?.at
       try {
         await bring()
-        set({ hostLost: null })
+        if (same()) set({ hostLost: null })
       } catch (e) {
-        set({ hostLost: { at: lost?.at ?? now(), bringing: false, error: shortError(e) } })
+        if (same()) set({ hostLost: { at: lost?.at ?? now(), bringing: false, error: shortError(e) } })
       }
     },
     dismissHostLost() {

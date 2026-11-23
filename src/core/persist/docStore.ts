@@ -348,6 +348,12 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     return target
   }
 
+  /**
+   * The backup is this store's own file. Made read-only from outside (a sync tool, a restored copy), it can't be
+   * replaced on Windows, and every save failed. Missing is fine: then there's nothing to replace.
+   */
+  const backupWritable = (): Promise<void> => chmod(backup, 0o666).catch(() => {})
+
   /** Copies a known-good primary to the backup by the file system alone, synced before it takes the backup's place. */
   async function copyToBackup(): Promise<void> {
     const temp = `${backup}.tmp`
@@ -362,6 +368,7 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     } finally {
       await handle.close()
     }
+    await backupWritable()
     await renameWithRetry(temp, backup)
   }
 
@@ -383,7 +390,10 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       throw e
     }
     // A bad primary must never replace a good backup.
-    if (parseDoc(previous)) await writeAtomic(backup, previous)
+    if (parseDoc(previous)) {
+      await backupWritable()
+      await writeAtomic(backup, previous)
+    }
     else quarantine(primary)
   }
 

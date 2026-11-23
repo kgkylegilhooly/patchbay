@@ -19,6 +19,9 @@ export interface LoadRetry<K> {
   forget(page: K): void
 }
 
+/** A reload that hasn't started a load by now never will, as with a page that came from a form: Chromium won't send it again. */
+export const RELOAD_START_MS = 5_000
+
 export function createLoadRetry<K>(deps: {
   reload(page: K): void
   show(page: K, failure: BrowserFailure | null): void
@@ -29,7 +32,8 @@ export function createLoadRetry<K>(deps: {
   const now = deps.now ?? Date.now
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
   const clearTimer = deps.clearTimer ?? ((t) => clearTimeout(t as NodeJS.Timeout))
-  const pages = new Map<K, { failing: boolean; failure: BrowserFailure | null; streak: { url: string; since: number } | null; timer: unknown }>()
+  type Page = { failing: boolean; failure: BrowserFailure | null; streak: { url: string; since: number } | null; timer: unknown }
+  const pages = new Map<K, Page>()
   const of = (page: K) => {
     let p = pages.get(page)
     if (!p) pages.set(page, (p = { failing: false, failure: null, streak: null, timer: null }))
@@ -39,9 +43,19 @@ export function createLoadRetry<K>(deps: {
     if (p.timer !== null) clearTimer(p.timer)
     p.timer = null
   }
+  /** After a reload that started nothing, it isn't trying any more, so it stops saying so. */
+  const noLoadCame = (page: K, p: Page): void => {
+    p.timer = null
+    if (!p.failure || p.failure.retryAt === null) return
+    p.failure = { ...p.failure, retryAt: null }
+    deps.show(page, p.failure)
+  }
   return {
     started(page) {
-      of(page).failing = false
+      const p = of(page)
+      p.failing = false
+      // A reload that did start: its own result decides what comes next.
+      stopTimer(p)
     },
     failed(page, code, description, url) {
       if (NOT_A_FAILURE.has(code)) return
@@ -55,7 +69,7 @@ export function createLoadRetry<K>(deps: {
       stopTimer(p)
       if (retryAt !== null) {
         p.timer = setTimer(() => {
-          p.timer = null
+          p.timer = setTimer(() => noLoadCame(page, p), RELOAD_START_MS)
           deps.reload(page)
         }, RETRY_EVERY_MS)
       }

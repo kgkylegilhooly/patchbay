@@ -18,3 +18,25 @@ export function earlierRow(shown: number, earlier: boolean): { text: string; mor
   if (shown >= CONVERSATION_MAX) return { text: `Earlier messages are in the transcript. This shows the last ${CONVERSATION_MAX.toLocaleString('en-US')}.`, more: false }
   return { text: `Earlier messages · showing the last ${shown.toLocaleString('en-US')}`, more: true }
 }
+
+export type ConversationMessage = { role: 'user' | 'assistant'; text: string }
+/**
+ * The chat view's answer. A window that already has the version main would send gets `unchanged` instead: a chat paged
+ * back to thousands of messages was sent them all again every 2 seconds, changed or not.
+ */
+export type ConversationAnswer =
+  | { ok: true; messages: ConversationMessage[]; earlier: boolean; version: string }
+  | { ok: true; unchanged: true }
+  | { ok: false; reason: string }
+
+/** Names what was read: the same file, as far in, for the same number of messages, is the same answer. */
+export function conversationVersion(path: string, limit: number, read: number): string {
+  return `${limit}:${read}:${path}`
+}
+
+/** The answer to send, given what was read and the version the window already has. */
+export function conversationAnswer(read: { messages: ConversationMessage[]; earlier: boolean; read: number }, path: string, limit: number, since: unknown): ConversationAnswer {
+  const version = conversationVersion(path, limit, read.read)
+  if (since === version) return { ok: true, unchanged: true }
+  return { ok: true, messages: read.messages, earlier: read.earlier, version }
+}
