@@ -2,6 +2,7 @@ import { readFileSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { nextStatus } from '../../core/status/machine'
 import type { AgentStatus } from '../../shared/model'
+import { sessionFromHook, type KnownSession } from './sessionFromHook'
 
 /**
  * While the app is closed, resources/hook.cjs appends each event it can't deliver to a journal, one per node. On
@@ -33,8 +34,11 @@ export interface MissedSummary {
 
 const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
-/** Pure. Every event sets the status outright or leaves it alone, so starting from `unknown` can't invent one. */
-export function foldMissedHooks(events: MissedHook[]): MissedSummary {
+/**
+ * Pure. Every event sets the status outright or leaves it alone, so starting from `unknown` can't invent one. `known` is
+ * the session the window has on record: with its SessionStart lost, the other events can still say (sessionFromHook.ts).
+ */
+export function foldMissedHooks(events: MissedHook[], known?: KnownSession): MissedSummary {
   const summary: MissedSummary = { status: 'unknown', turns: 0, promptSubmitted: false }
   for (const event of events) {
     const name = text(event.hook_event_name)
@@ -57,6 +61,14 @@ export function foldMissedHooks(events: MissedHook[]): MissedSummary {
         summary.sessionId = sessionId
         summary.transcriptPath = text(event.transcript_path)
       }
+    }
+    const current: KnownSession = summary.sessionId
+      ? { sessionId: summary.sessionId, transcriptPath: summary.transcriptPath ?? null, agent: known?.agent }
+      : { sessionId: known?.sessionId ?? null, transcriptPath: known?.transcriptPath ?? null, agent: known?.agent }
+    const learned = sessionFromHook(current, event as Record<string, unknown>)
+    if (learned) {
+      summary.sessionId = learned.sessionId
+      summary.transcriptPath = learned.transcriptPath ?? undefined
     }
   }
   return summary
