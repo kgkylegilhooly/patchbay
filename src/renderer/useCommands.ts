@@ -24,6 +24,7 @@ import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
 import { focusedTerminal, focusedTerminalId, focusTerminalWhenReady, terminalActions } from './terminalRegistry'
 import { copyFolderPath, toggleChatView } from './nodes/WindowTools'
+import { closeWindowAsking } from './a11y/windowActions'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -243,6 +244,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       closeNode: (id) => closeNodes([id]),
       renameNode: (id) => useStore.setState({ renaming: id }),
       restartNode: (id) => void restartNode(id),
+      renameWindow: (nodeId) => onWindow(nodeId, (id) => useStore.setState({ renaming: id })),
+      restartWindow: (nodeId) => onWindow(nodeId, (id) => void restartNode(id)),
+      closeWindow: (nodeId) => onWindow(nodeId, closeWindowAsking),
       toggleRecent,
       quit: () => void bridge.quitApp(),
       stopAllAndQuit: () => void bridge.stopAllAndQuit(),

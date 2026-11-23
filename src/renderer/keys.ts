@@ -51,10 +51,11 @@ export type KeyFocus = 'terminal' | 'text' | 'canvas'
 /**
  * Whether a bound key goes to the app, given where the keyboard is. On the canvas it always does. In a terminal or a
  * text field the key goes where it was headed, unless it's an app key or `overTerminal` was chosen on purpose.
- * Ctrl+Shift+arrows select by word in a text field, so they stay there.
+ * Ctrl+Shift+arrows select by word in a text field, so they stay there. A `canvasOnly` key never leaves them.
  */
-export function appTakesKey(key: string, focus: KeyFocus, overTerminal: boolean): boolean {
+export function appTakesKey(key: string, focus: KeyFocus, overTerminal: boolean, canvasOnly = false): boolean {
   if (focus === 'canvas' || overTerminal) return true
+  if (canvasOnly) return false
   if (focus === 'text' && /\+(Left|Right|Up|Down)$/.test(key)) return false
   return isAppKey(key)
 }
@@ -131,6 +132,8 @@ export interface Bindable {
   fixedKey?: string
   /** The default key is taken from a focused terminal on purpose, though programs use it too. */
   overTerminal?: boolean
+  /** The default key acts only with the canvas focused, as F2 to rename: in a terminal or a field it's left to them. */
+  canvasOnly?: boolean
 }
 
 /** What's been changed from the defaults. Null means bound to nothing. */

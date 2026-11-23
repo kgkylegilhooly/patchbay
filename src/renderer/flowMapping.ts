@@ -1,6 +1,7 @@
 import { MarkerType, type Edge as RFEdge, type Node as RFNode } from '@xyflow/react'
 import { inActiveProject, isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 import { cableDirection, type CableKind } from './cableMotion'
+import { nodeAriaLabel } from './a11y/nodeLabel'
 
 export type FlowData = { node: CanvasNode; status: AgentStatus | null }
 export type FlowNode = RFNode<FlowData>
@@ -28,7 +29,9 @@ function toFlowNode(node: CanvasNode, statuses: Record<string, AgentStatus>): Fl
     position: { x: node.x, y: node.y },
     width: node.width,
     height: node.height,
-    data: { node, status }
+    data: { node, status },
+    // A screen reader's one name for the window: "Fix the login, Claude Code, Needs you".
+    ariaLabel: nodeAriaLabel(node, status)
   }
   if (node.parentId) flow.parentId = node.parentId
   if (isSessionNode(node) || node.kind === 'browser' || node.kind === 'whiteboard' || node.kind === 'reader') flow.dragHandle = '.pb-drag'
