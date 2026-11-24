@@ -36,6 +36,7 @@ import { noGroup } from './gone'
 import type { PromptWitness } from './promptWitness'
 import { createWaitLog, nextChange } from './waitNext'
 import { rpcSignal } from './rpcSignal'
+import { findTeamRules, withTeamRules, type TeamRules } from './teamRules'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -122,7 +123,8 @@ function folder(path: string): string {
   return path
 }
 
-function promptFrom(args: Args): string | undefined {
+/** The brief to launch with: the Team rules note goes first when there is one, unless `noRules` is set. */
+function promptFrom(args: Args, rules: TeamRules | null = null): { prompt?: string; rules?: string } {
   const prompt = optional(args, 'prompt')
   const file = optional(args, 'promptFile')
   if (prompt !== undefined && file !== undefined) refuse('Give only one of --prompt and --prompt-file.')
@@ -137,7 +139,16 @@ function promptFrom(args: Args): string | undefined {
   if (text !== undefined && text.length > MAX_PROMPT_CHARS) {
     refuse(`The prompt is too long to launch with (limit ${MAX_PROMPT_CHARS} characters). Put it in a file and have a short prompt point there.`)
   }
-  return text
+  if (args.noRules !== undefined && typeof args.noRules !== 'boolean') refuse('--no-rules takes no value ("noRules": true for a team member).')
+  if (text === undefined || !rules || args.noRules === true) return text === undefined ? {} : { prompt: text }
+  const full = withTeamRules(text, rules)
+  if (full.length > MAX_PROMPT_CHARS) {
+    refuse(
+      `The prompt is too long to launch with the Team rules note (${rules.id}) put before it: ${full.length} characters, and the limit is ${MAX_PROMPT_CHARS}. ` +
+        'Shorten the brief or the note, or leave the rules out with --no-rules ("noRules": true for a team member).'
+    )
+  }
+  return { prompt: full, rules: rules.id }
 }
 
 
@@ -168,6 +179,8 @@ interface MemberPlan {
   id: string
   agent: AgentKind
   prompt?: string
+  /** The Team rules note put before the prompt, when one was. */
+  rules?: string
   cwd: string
   after: string[]
 }
@@ -587,7 +600,7 @@ export function createVerbs({
   const openAgent = async (caller: CanvasNode, args: Args): Promise<unknown> => {
     const group = groupFor(caller, args)
     const cwd = cwdFor(args, caller, group)
-    const prompt = promptFrom(args)
+    const { prompt, rules } = promptFrom(args, findTeamRules(store.get().nodes, caller))
     const after = list(args, 'after')
     const agent = allowAgent(agentArg(args, defaultAgent()))
     after.forEach((id) => upstreamClaude(caller, id))
@@ -609,7 +622,7 @@ export function createVerbs({
     for (const up of after) add(edge(up, node.id, 'after'))
     if (after.length) gate.arm(node.id, after)
     else await runner.startNode(node.id)
-    return { id: node.id }
+    return rules ? { id: node.id, rules } : { id: node.id }
   }
 
   const openTerminal = async (caller: CanvasNode, args: Args): Promise<unknown> => {
@@ -688,6 +701,7 @@ export function createVerbs({
       if (ids.has(name)) refuse(`Two team members are named "${name}".`)
       ids.set(name, randomUUID())
     }
+    const rules = findTeamRules(store.get().nodes, caller)
     const plans = raw.map((m: Args): MemberPlan => {
       const name = m.name as string
       const after = list(m, 'after').map((ref) => {
@@ -697,7 +711,7 @@ export function createVerbs({
         upstreamClaude(caller, ref)
         return ref
       })
-      return { name, id: ids.get(name)!, agent: allowAgent(agentArg(m, defaultAgent()), `Team member "${name}": `), prompt: promptFrom(m), cwd: cwdFor(m, caller, null), after }
+      return { name, id: ids.get(name)!, agent: allowAgent(agentArg(m, defaultAgent()), `Team member "${name}": `), ...promptFrom(m, rules), cwd: cwdFor(m, caller, null), after }
     })
     refuseCycles(plans)
     return plans
@@ -754,7 +768,8 @@ export function createVerbs({
       if (m.after.length) gate.arm(m.id, m.after)
       else await runner.startNode(m.id)
     }
-    return { group: group.id, members: Object.fromEntries(plans.map((m) => [m.name, m.id])) }
+    const rules = plans.find((m) => m.rules)?.rules
+    return { group: group.id, members: Object.fromEntries(plans.map((m) => [m.name, m.id])), ...(rules ? { rules } : {}) }
   }
 
   const sticky = (caller: CanvasNode, args: Args): unknown => {
