@@ -241,3 +241,65 @@ describe('what counts as edited', () => {
     expect(chipLabel(1, 0, 2).title).toMatch(/^This session edited 1 file\. 2 more changed during its turns by a command/)
   })
 })
+
+describe('what changed while a session was away (F13)', { timeout: 60_000 }, () => {
+  test('the end of a turn is kept, even in a checkout another window shares', async () => {
+    const root = repo()
+    const w = world(root, { sharing: ['Agent b'] })
+    w.set('idle')
+    await w.turn(() => writeFileSync(join(root, 'a.ts'), 'one\ntwo\n'))
+    const mark = (await w.service.files('a'))?.turns.at(-1)
+    expect(mark?.endCheck?.problem).toMatch(/Agent b also works in this checkout/)
+    expect(mark?.endTree).toMatch(/^[0-9a-f]{40,64}$/)
+    expect(mark?.endHead).toMatch(/^[0-9a-f]{40,64}$/)
+    w.service.close()
+  })
+
+  test('after a restart, it lists the files and commits since the last turn ended, and nothing when nothing changed', async () => {
+    const root = repo()
+    const w = world(root)
+    w.set('idle')
+    await w.turn(() => writeFileSync(join(root, 'a.ts'), 'one\ntwo\n'))
+    await w.restart()
+    expect(await w.service.awayChanges('a')).toBeNull()
+
+    // Someone else, while it was away: an uncommitted change, a new file, and a commit.
+    writeFileSync(join(root, 'lock.json'), '{"x":1}\n')
+    writeFileSync(join(root, 'notes.md'), 'new\n')
+    sh(root, 'add', 'a.ts')
+    sh(root, 'commit', '-q', '-m', 'Keep the second line')
+    const away = await w.service.awayChanges('a')
+    expect(away).toMatchObject({ files: ['lock.json', 'notes.md'], moreFiles: 0, moreCommits: 0, shared: [] })
+    expect(away?.commits).toEqual([expect.stringMatching(/^[0-9a-f]{7,} Keep the second line$/)])
+    w.service.close()
+  })
+
+  test('a session with no kept end, as one recorded before this, gets nothing', async () => {
+    const root = repo()
+    const w = world(root)
+    expect(await w.service.awayChanges('a')).toBeNull()
+    w.service.close()
+  })
+})
+
+describe('the message Tell it sends', () => {
+  test('lists commits and files, caps both with a count, and says when another window shared the checkout', async () => {
+    const { awayMessage } = await import('../../src/shared/filesTouched')
+    const text = awayMessage({ files: ['a.ts', 'b.ts'], moreFiles: 5, commits: ['abc1234 Fix it'], moreCommits: 2, since: 0, shared: ['Agent b'] }, () => '10:00')
+    expect(text).toBe(
+      [
+        'While you were away (since your last turn ended, 10:00), your checkout changed:',
+        'New commits (3):',
+        '- abc1234 Fix it',
+        '- and 2 more',
+        'Files that differ (7):',
+        '- a.ts',
+        '- b.ts',
+        '- and 5 more',
+        'Agent b also worked in this checkout, so some of these may be theirs.',
+        'Check these before you rely on what you knew of these files.'
+      ].join('\n')
+    )
+    expect(awayMessage({ files: ['a.ts'], moreFiles: 0, commits: [], moreCommits: 0, since: 0, shared: [] }, () => 'x')).not.toMatch(/commits|also worked/)
+  })
+})
