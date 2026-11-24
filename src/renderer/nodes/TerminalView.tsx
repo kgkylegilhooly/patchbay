@@ -165,6 +165,7 @@ export function TerminalView({ nodeId }: { nodeId: string }): React.JSX.Element 
       wiring.push(
         registerTerminal(nodeId, {
           hasSelection: () => term.hasSelection(),
+          selection: () => term.getSelection(),
           copy: () => {
             if (!term.hasSelection()) return
             void navigator.clipboard.writeText(term.getSelection())

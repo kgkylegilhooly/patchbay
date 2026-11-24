@@ -30,6 +30,7 @@ import { whenNodeDrawn } from './newNodeFocus'
 import { closeWindowAsking } from './a11y/windowActions'
 import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 import { savedViews } from './savedViews'
+import { pinnedNoteText, worthPinning } from './pinOutput'
 import { say } from './reader/readerUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -243,6 +244,19 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       newSticky: (at) => {
         const node = newSticky(place(at), crypto.randomUUID())
         undoable('add note', [{ op: 'addNode', node }])
+        reveal(node)
+      },
+      pinSelection: (nodeId) => {
+        const source = doc().nodes.find((n) => n.id === nodeId)
+        const selection = terminalActions(nodeId)?.selection()
+        if (!source || !worthPinning(selection)) return
+        // Beside the window it came from, cabled to it, in one undoable step.
+        const at = { beside: source, group: null, doc: doc(), view: visible() }
+        const node = { ...newSticky(at, crypto.randomUUID()), title: 'Pinned output', text: pinnedNoteText(source.title, selection, new Date()) }
+        undoable('pin output', [
+          { op: 'addNode', node },
+          { op: 'addEdge', edge: { id: crypto.randomUUID(), from: nodeId, to: node.id, kind: 'link' } }
+        ])
         reveal(node)
       },
       // Not undoable: redoing it would bring the board back empty, losing what was drawn since. Deleting it is undoable.

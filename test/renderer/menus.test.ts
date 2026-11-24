@@ -318,3 +318,12 @@ describe('sessionTree', () => {
     expect(byFolder.total).toBe(2)
   })
 })
+
+// F6: an error, a URL or a summary in a terminal is kept on the canvas instead of scrolling away (src/renderer/pinOutput.ts).
+test('a session window offers Pin selection to a note right after Copy, only with something selected', () => {
+  const ids = (canCopy: boolean) => items(nodeMenu(commands, terminal, null, { at: { x: 0, y: 0 }, canCopy, canRestart: false }))
+  const withSelection = ids(true)
+  const copyAt = withSelection.findIndex((i) => i.id === 'copy')
+  expect(withSelection[copyAt + 1]).toMatchObject({ id: 'pin-selection', label: 'Pin selection to a note', disabled: false })
+  expect(ids(false).find((i) => i.id === 'pin-selection')?.disabled).toBe(true)
+})
