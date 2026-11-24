@@ -74,6 +74,8 @@ export const PATHS = {
   image: 'M4 5h16v14H4zM4 16l4.5-4.5 4 4 2.5-2.5L20 18M15.5 8.5h.01',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
   archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',
+  keyboard: 'M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10',
+  info: 'M12 3.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17zM12 11v5M12 8h.01',
   more: 'M5.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zM11.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zM17.1 12a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z'
 } as const
 

@@ -1,18 +1,18 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { MenuPanel } from './Menu'
-import { editMenu, fileMenu, settingsMenu, viewMenu, type Commands, type MenuEntry, type MenuState } from './menus'
+import { editMenu, fileMenu, helpMenu, viewMenu, type Commands, type MenuEntry, type MenuState } from './menus'
 import { ProjectTabs } from './ProjectTabs'
 import { UsagePill } from './UsagePill'
 import { FilesButton } from './FileShelf'
 
-const NAMES = ['File', 'Edit', 'View', 'Settings'] as const
+const NAMES = ['File', 'Edit', 'View', 'Help'] as const
 type Name = (typeof NAMES)[number]
 
 const BUILD: Record<Name, (c: Commands, s: MenuState) => MenuEntry[]> = {
   File: fileMenu,
   Edit: editMenu,
   View: viewMenu,
-  Settings: settingsMenu
+  Help: helpMenu
 }
 
 /** The app's title bar: the window's own buttons are drawn over its right end. */
