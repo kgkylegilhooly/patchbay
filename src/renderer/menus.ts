@@ -96,6 +96,8 @@ export interface Commands {
   runTriggerNow(id: string): void
   editRunCommand(id: string): void
   newSticky(at?: Point): void
+  /** A note beside a terminal holding its selected output, cabled to it. See pinOutput.ts. */
+  pinSelection(nodeId: string): void
   newWhiteboard(at?: Point): void
   group(at?: Point): void
   closeSelected(): void
@@ -406,6 +408,7 @@ export function nodeMenu(
   const busy = status === 'working' ? 'Still working. Close anyway?' : status === 'needs-you' ? 'Waiting on you. Close anyway?' : undefined
   return [
     { id: 'copy', label: 'Copy', icon: 'copy', disabled: !ctx.canCopy, run: () => c.copy(node.id) },
+    { id: 'pin-selection', label: 'Pin selection to a note', icon: 'pin', disabled: !ctx.canCopy, run: () => c.pinSelection(node.id) },
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
     'separator',

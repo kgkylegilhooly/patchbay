@@ -1,6 +1,8 @@
 /** What menus can ask of a mounted terminal, which owns its xterm instance. */
 export interface TerminalActions {
   hasSelection(): boolean
+  /** The selected text, or '' when there's none. */
+  selection(): string
   copy(): void
   paste(): void
   find(): void

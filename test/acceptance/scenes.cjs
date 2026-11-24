@@ -305,6 +305,28 @@ const scenes = {
     await page.click('.react-flow__node[data-id="away"] [data-cmd="away-tell"]').catch(() => {})
     await sleep(2500)
   },
+  // Output selected in the Dev shell, then its window menu: Pin selection to a note sits under Copy.
+  'pin-menu': async (page) => {
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Dev shell'))?.click())
+    await sleep(800)
+    const box = await page.$eval('.react-flow__node[data-id="term"] .xterm-screen', (el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
+    })
+    await page.mouse.move(box.x + 4, box.y + 6)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width - 8, box.y + 24, { steps: 8 })
+    await page.mouse.up()
+    await sleep(200)
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12, { button: 'right' })
+    await sleep(300)
+  },
+  // The same, then the item: a note beside the terminal, cabled to it, holding what was selected.
+  'pin-output': async (page) => {
+    await scenes['pin-menu'](page)
+    await page.click('.menu-panel [data-cmd="pin-selection"]').catch(() => {})
+    await sleep(800)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

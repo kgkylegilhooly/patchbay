@@ -561,6 +561,10 @@ far out, and stop for anyone who has asked Windows for less motion. View > Link 
 
 Add one from the canvas menu or with Ctrl+Shift+N. A note is markdown, shown formatted.
 
+To keep an error, a URL or a summary from scrolling away, select it in a terminal or agent window, right-click, and
+choose **Pin selection to a note**. The note appears beside the window, cabled to it, saying where and when the text
+came from, with the text in a code block. Ctrl+Z takes it back.
+
 - **Writing.** Double-click a note, or press its pencil, to edit. The toolbar has bold, italic, a heading, lists, a
   checklist, a quote, a link and inline code, and **Code block**, which asks for a language: JSON, JavaScript,
   TypeScript, Python, Shell, PowerShell, HTML, CSS, SQL, YAML, Diff or plain text. Ctrl+B, Ctrl+I, Ctrl+E and Tab work as

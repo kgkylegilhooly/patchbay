@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { cancelPendingFocus, focusTerminalWhenReady, onFocusWanted, PENDING_FOCUS_MS, registerTerminal } from '../../src/renderer/terminalRegistry'
 
-const actions = () => ({ hasSelection: () => false, copy: vi.fn(), paste: vi.fn(), find: vi.fn(), focus: vi.fn() })
+const actions = () => ({ hasSelection: () => false, selection: () => '', copy: vi.fn(), paste: vi.fn(), find: vi.fn(), focus: vi.fn() })
 afterEach(() => cancelPendingFocus())
 
 test('a terminal already built takes the keyboard at once', () => {
