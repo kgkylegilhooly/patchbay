@@ -1,5 +1,5 @@
 import type { NodeProps } from '@xyflow/react'
-import { memo, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { StickyNode as StickyModel } from '../../shared/model'
 import { bridge } from '../bridge'
 import type { FlowNode } from '../flowMapping'
@@ -13,6 +13,7 @@ import { EditableTitle, Jacks, Resizer } from './NodeChrome'
 import { useLinkMenu } from '../useLinkMenu'
 import { useHeaderZoom } from '../useHeaderZoom'
 import { noteTile } from '../farTiles'
+import { linkedAgents, sendSummary, sendTitle, type SendResult } from '../noteSend'
 
 /** The first is the default, the tape yellow notes have always been. */
 export const NOTE_COLORS = ['#d9c64a', '#e8806f', '#6fc08a', '#6fa8f0', '#b08cf0', '#9a9aa2']
@@ -205,6 +206,30 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
   }
 
   const links = useLinkMenu(node.id)
+  // The agents a cable joins it to, as one string, so the note redraws only when they change.
+  const agentKey = useStore((s) => (s.doc ? linkedAgents(s.doc, node.id).map((a) => `${a.id}\t${a.title}`).join('\n') : ''))
+  const agents = useMemo(() => (agentKey ? agentKey.split('\n').map((l) => ({ id: l.split('\t')[0], title: l.split('\t')[1] })) : []), [agentKey])
+  const [sent, setSent] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  useEffect(() => {
+    if (!sent) return
+    const t = setTimeout(() => setSent(null), 6000)
+    return () => clearTimeout(t)
+  }, [sent])
+  const send = async (): Promise<void> => {
+    if (sending || !node.text.trim()) return
+    setSending(true)
+    const results: Array<{ title: string; result: SendResult }> = []
+    try {
+      for (const a of agents) {
+        const result = await bridge.sendToAgent(a.id, node.text.trim()).catch((e: unknown): SendResult => ({ ok: false, reason: e instanceof Error ? e.message : String(e) }))
+        results.push({ title: a.title, result })
+      }
+    } finally {
+      setSending(false)
+      setSent(sendSummary(results))
+    }
+  }
   const onBodyClick = (e: React.MouseEvent<HTMLDivElement>): void => {
     const target = e.target as HTMLElement
     const code = copiedCode(target)
@@ -239,6 +264,11 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
           <ColorPicker node={node} color={color} onDone={() => setPicking(false)} />
         ) : (
           <span className="note-head-tools">
+            {agents.length > 0 && !editing && node.text.trim() && (
+              <button type="button" className="icon-btn nodrag" aria-label={sendTitle(agents)} title={sendTitle(agents)} disabled={sending} data-note-send onClick={() => void send()}>
+                <Icon name="arrow-right" size={15} />
+              </button>
+            )}
             <button type="button" className="icon-btn nodrag" aria-label="Note color" title="Color" onClick={() => setPicking(true)}>
               <Icon name="drop" size={15} />
             </button>
@@ -275,6 +305,14 @@ export const StickyNode = memo(function StickyNode({ data, selected }: NodeProps
         <button type="button" className="note-body note-empty nodrag" onClick={() => setEditing(true)}>
           Write a note
         </button>
+      )}
+      {sent && !editing && (
+        <footer className="note-edited note-sent nodrag" role="status">
+          <span className="note-edited-text">{sent}</span>
+          <button type="button" className="icon-btn" aria-label="Dismiss" title="Dismiss" onClick={() => setSent(null)}>
+            <Icon name="close" size={15} />
+          </button>
+        </footer>
       )}
       {agentEdits && !editing && (
         <footer className="note-edited nodrag" role="status">
