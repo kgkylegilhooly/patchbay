@@ -10,7 +10,7 @@ import {
   fileMenu,
   nodeMenu,
   projectMenu,
-  settingsMenu,
+  helpMenu,
   viewMenu,
   type Commands,
   type MenuEntry,
@@ -18,6 +18,7 @@ import {
   type MenuState
 } from '../../src/renderer/menus'
 import { sessionTree } from '../../src/renderer/sessionTree'
+import { takeSettingsSection } from '../../src/renderer/settingsAsk'
 import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
 import { canonicalSpec } from '../../src/core/trigger/arming'
 import { triggerNode } from '../trigger/fixtures'
@@ -34,8 +35,8 @@ const items = (menu: MenuEntry[]): MenuItem[] => menu.filter((e): e is MenuItem 
 const find = (menu: MenuEntry[], id: string): MenuItem | undefined => items(menu).find((i) => i.id === id)
 
 describe('menu bar', () => {
-  test('File, Edit, View and Settings each have working items', () => {
-    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), settingsMenu(commands, state)]) {
+  test('File, Edit, View and Help each have working items', () => {
+    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), helpMenu(commands)]) {
       expect(items(menu).length).toBeGreaterThan(0)
       for (const item of items(menu)) expect(typeof item.run).toBe('function')
     }
@@ -71,10 +72,24 @@ describe('menu bar', () => {
     expect(find(ready, 'find')?.disabled).toBe(false)
   })
 
-  test('View and Settings toggles show their state', () => {
+  test('View toggles show their state', () => {
     expect(find(viewMenu(commands, state), 'toggle-sidebar')?.checked).toBe(true)
     expect(find(viewMenu(commands, state), 'toggle-legend')?.checked).toBe(false)
-    expect(find(settingsMenu(commands, { ...state, snap: true }), 'toggle-snap')?.checked).toBe(true)
+    expect(find(viewMenu(commands, { ...state, snap: true }), 'toggle-snap')?.checked).toBe(true)
+  })
+
+  // A top-level Settings menu held only Settings… and Snap to grid, and there was no menu way to the shortcuts, the log
+  // or About (docs/ux-review-settings.md, S22).
+  test('Help opens Settings at the shortcuts or About, and Settings… itself is under File', () => {
+    const openSettings = vi.fn()
+    const c = { ...({} as Commands), openSettings }
+    find(helpMenu(c), 'help-shortcuts')!.run()
+    expect(takeSettingsSection()).toBe('keys')
+    find(helpMenu(c), 'help-about')!.run()
+    expect(takeSettingsSection()).toBe('about')
+    expect(openSettings).toHaveBeenCalledTimes(2)
+    expect(items(helpMenu(c)).map((i) => i.id)).toEqual(['help-shortcuts', 'help-log', 'help-about'])
+    expect(find(fileMenu(commands, state), 'open-settings')).toBeTruthy()
   })
 })
 
@@ -128,7 +143,7 @@ describe('icons and shared ids', () => {
   })
 
   test('every option in the menu bar menus has an icon', () => {
-    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), settingsMenu(commands, state)]) {
+    for (const menu of [fileMenu(commands, state), editMenu(commands, state), viewMenu(commands, state), helpMenu(commands)]) {
       for (const item of items(menu)) expect(item.icon, item.id).toBeTruthy()
     }
   })

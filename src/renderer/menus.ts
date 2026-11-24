@@ -14,6 +14,7 @@ import { openDocumentEntry, openPlanEntry, readerMenu } from './reader/readerUi'
 import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
 import { namedQuestion } from './shell/confirmStore'
 import { askRemoveWorktree } from './worktreeUi'
+import { openSettingsAt, type SettingsSection } from './settingsAsk'
 
 export interface Point {
   x: number
@@ -242,6 +243,8 @@ export function fileMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent },
     ...closed.slice(0, 5).map((p): MenuItem => ({ id: `reopen-project-${p.id}`, label: `Reopen project: ${p.name}`, icon: 'folder-open', run: () => c.reopenProject(p.id) })),
     'separator',
+    { id: 'open-settings', label: 'Settings…', icon: 'settings', run: c.openSettings },
+    'separator',
     { id: 'close-selected', label: 'Close selected', icon: 'close', disabled: s.selectedCount === 0, run: c.closeSelected },
     { id: 'quit', label: 'Quit (sessions keep running)', icon: 'quit', run: c.quit },
     { id: 'stop-all-quit', label: 'Stop all sessions and quit', icon: 'quit', run: c.stopAllAndQuit }
@@ -278,15 +281,22 @@ export function viewMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', run: () => toggleReviewInbox() },
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
     ...minimapItems(s.minimap, useChromeLayout.getState(), { togglePref: () => c.togglePref('minimap'), toggleFolded: toggleFoldedMap }),
-    { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') }
+    { id: 'toggle-legend', label: 'Link legend', icon: 'link', checked: s.legend, run: () => c.togglePref('legend') },
+    { id: 'toggle-snap', label: 'Snap to grid', icon: 'grid', checked: s.snap, run: () => c.togglePref('snap') }
   ]
 }
 
-export function settingsMenu(c: Commands, s: MenuState): MenuEntry[] {
+/** Where to find out how Patchbay works and what it did. Settings itself is under File. */
+export function helpMenu(c: Commands): MenuEntry[] {
+  const at = (section: SettingsSection) => () => {
+    openSettingsAt(section)
+    c.openSettings()
+  }
   return [
-    { id: 'open-settings', label: 'Settings…', icon: 'settings', run: c.openSettings },
+    { id: 'help-shortcuts', label: 'Keyboard shortcuts…', icon: 'keyboard', run: at('keys') },
+    { id: 'help-log', label: 'Open log', icon: 'file', run: () => void window.patchbay.openLog() },
     'separator',
-    { id: 'toggle-snap', label: 'Snap to grid', icon: 'grid', checked: s.snap, run: () => c.togglePref('snap') }
+    { id: 'help-about', label: 'About Patchbay', icon: 'info', run: at('about') }
   ]
 }
 

@@ -272,6 +272,11 @@ const scenes = {
     await rightClickCanvas(page)
     await sleep(200)
   },
+  // The last menu in the bar, open: Help.
+  'menubar-last': async (page) => {
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].at(-1).click())
+    await sleep(200)
+  },
   'approval-line': (page) => seedApproval(page),
   approval: async (page) => {
     await seedApproval(page)
