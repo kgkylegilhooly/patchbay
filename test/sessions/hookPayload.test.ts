@@ -44,7 +44,10 @@ test('the host journals each event exactly as hook.cjs does', () => {
 })
 
 test('picks only what Patchbay uses, and keeps a permission request its tool unless the input is huge', () => {
-  expect(pickHookFields(EVENTS[0][1], 'UserPromptSubmit')).toEqual({ hook_event_name: 'UserPromptSubmit', session_id: 's', transcript_path: 't', cwd: 'c' })
+  // The prompt goes to the app, so a send can be confirmed by it, but never into the journal on disk.
+  expect(pickHookFields(EVENTS[0][1], 'UserPromptSubmit')).toEqual({ hook_event_name: 'UserPromptSubmit', session_id: 's', transcript_path: 't', cwd: 'c', prompt: 'secret words' })
+  expect(journalLine(pickHookFields(EVENTS[0][1], 'UserPromptSubmit'), 1)).not.toContain('secret words')
+  expect(pickHookFields({ hook_event_name: 'UserPromptSubmit', prompt: 'x'.repeat(65 * 1024) }, 'UserPromptSubmit')).toEqual({ hook_event_name: 'UserPromptSubmit' })
   expect(pickHookFields({}, 'Stop')).toEqual({ hook_event_name: 'Stop' })
   expect(pickHookFields(EVENTS[5][1], 'PermissionRequest')).toEqual({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' }, permission_suggestions: [SUGGESTION] })
   const huge = pickHookFields({ hook_event_name: 'PermissionRequest', tool_name: 'Write', tool_input: { content: 'x'.repeat(300 * 1024) } }, 'PermissionRequest')

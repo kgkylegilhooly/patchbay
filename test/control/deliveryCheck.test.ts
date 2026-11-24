@@ -88,3 +88,19 @@ test("Codex's rollout counts too, and a line still being written is read once it
   setTimeout(() => appendFileSync(file, line.slice(50)), 40)
   expect(await result).toEqual({ result: 'confirmed' })
 })
+
+test('a prompt the hook reports damaged is garbled, not left unchecked (review L1)', async () => {
+  const heard = () => [long.slice(300)]
+  expect(await confirmDelivery({ path: () => null, from: null, sent: long, timing, heard })).toEqual({ result: 'garbled', received: long.slice(300) })
+})
+
+test('a transcript replaced mid-check counts only what is added to it, not the history it carries (review L3)', async () => {
+  writeFileSync(file, '')
+  const forked = join(dir, 'forked.jsonl')
+  // The same words were sent before, so the copied history holds them already.
+  writeFileSync(forked, claudeUser(long))
+  let path = file
+  const result = confirmDelivery({ path: () => path, from: transcriptEnd(file), sent: long, timing })
+  setTimeout(() => (path = forked), 20)
+  expect(await result).toEqual({ result: 'unconfirmed', reason: 'timeout' })
+})

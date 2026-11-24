@@ -5,6 +5,7 @@ import { lastLines } from '../../core/transcript/read'
 import type { CanvasStore } from '../../shared/contract'
 import { isSessionNode, type CanvasDoc, type CanvasNode, type Edge } from '../../shared/model'
 import { archivedRefusal } from '../control/archived'
+import { noGroup } from '../control/gone'
 import { RpcRefusal } from '../control/server'
 import type { Verbs } from '../control/verbs'
 import type { CommentStore } from './commentStore'
@@ -93,7 +94,8 @@ export function withDocVerbs(verbs: Verbs, { store, docs, comments }: { store: C
     const groupId = optional(args, 'group')
     if (groupId !== undefined) {
       const g = named(caller, groupId)
-      if (g?.kind !== 'group' || g.projectId !== caller.projectId) refuse(`Node "${groupId}" is not a group.`)
+      if (!g || g.projectId !== caller.projectId) refuse(noGroup(groupId))
+      if (g.kind !== 'group') refuse(`Node "${groupId}" is not a group.`)
     }
     const r = await docs.openFile(path, { from: caller, title: optional(args, 'title'), openedBy: callerId, within: agentFolders(store.get(), caller, docs.home) })
     if (!r.ok) refuse(r.reason)

@@ -7,6 +7,7 @@ import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
 import { createAppStore, type AppStore } from './appStore'
 import { asleepText, createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
+import { noteWork, stallText, workLog } from './workLog'
 import { startProgramsOffThread } from './proc/setup'
 import { processGoneText } from './stuckParts'
 import { createSendGuard, isGitBashFile } from './sessions/sendGuard'
@@ -21,6 +22,11 @@ import { loadOrCreateSecret, RpcRefusal, startControlServer, type ControlServer 
 import { hookFromAnotherNode, refusalLog } from './control/hookIdentity'
 import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
+import { createPromptWitness } from './control/promptWitness'
+import { withTeamVerb } from './control/teamVerb'
+import { rpcSignal } from './control/rpcSignal'
+import { systemGit } from '../core/git/service'
+import { gitEnvFrom } from '../core/git/args'
 import { reportViewSize } from './viewSize'
 import { registerViewIpc } from './viewIpc'
 import { createWorktree } from '../core/worktree/service'
@@ -87,7 +93,7 @@ import { readClaudeAccount, readCodexUsage } from './usage/agentAccounts'
 import { createCodexGate } from './usage/codexGate'
 import { applyAgentUsageFixture } from './usage/agentUsageFixture'
 import { sendToAgent } from './agentMessages'
-import { setEnvNotPassed } from './sessions/env'
+import { cleanEnv, setEnvNotPassed } from './sessions/env'
 import { agentsNow, readAgentsFrom } from './agentsAllowed'
 import { continueAtReset, createAgentStops, stopFile } from './sessions/agentStops'
 import { registerAgentStopIpc } from './agentStopsIpc'
@@ -256,7 +262,7 @@ async function boot(): Promise<void> {
   // A sleep isn't a stall: the log once said "blocked for 39254.9 s" for a night with the lid shut.
   let suspended = false
   powerMonitor.on('suspend', () => (suspended = true))
-  watchEventLoop((ms) => log?.write(`The main process was blocked for ${(ms / 1000).toFixed(1)} s.`), undefined, undefined, {
+  watchEventLoop((ms, since) => log?.write(stallText(ms, workLog.during(since, Date.now()))), undefined, undefined, {
     onAsleep: (ms) => log?.write(asleepText(ms)),
     slept: () => {
       const was = suspended
@@ -481,7 +487,9 @@ async function boot(): Promise<void> {
     return tasks.accept(projectId, taskId, submissionId)
   })
   const whiteboards = createWhiteboardExporter({ dir: join(dataDir, 'whiteboards'), render: renderWhiteboard })
-  const verbs = createVerbs({ tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), stops, log: (line) => log?.write(line), onFilePinned: (projectId, path, by) => fileShelf.note(projectId, { path, source: 'agent', at: Date.now(), nodeTitle: by }) })
+  // What agents' UserPromptSubmit hooks say they submitted, so a send to one with no transcript yet can be confirmed.
+  const prompts = createPromptWitness()
+  const verbs = createVerbs({ prompts, tasks, browser, store, runner, tracker, host, gate, queue: sendQueue, github, whiteboards, onMessage: (from, to, text) => broadcast('pb:onMessage', messages.add(from, to, text)), onNoteEdit: (edit) => (agentEdits.note(edit), broadcast('pb:onNoteEdit', edit)), onBoardEdit: (edit) => (agentEdits.board(edit), broadcast('pb:onBoardEdit', edit)), defaultAgent: () => agentsNow().default, agents: agentsNow, terminalProfiles: () => terminalProfiles(currentSettings()), stops, log: (line) => log?.write(line), onFilePinned: (projectId, path, by) => fileShelf.note(projectId, { path, source: 'agent', at: Date.now(), nodeTitle: by }) })
   // Recipes: saved setups of nodes, and the gate that holds their agents until setup succeeds. See src/main/recipes.
   const setupGate = createSetupGate({ store, tracker, runner, gate })
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
@@ -491,7 +499,7 @@ async function boot(): Promise<void> {
   const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
   // Workflows: saved processes whose steps run in order, each finishing on evidence. See src/main/workflows.
   const workflows = setupWorkflows({ store, runner, tracker, stops, isRunning: (id) => host.isRunning(id), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, tasks, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), docs: docs.service, broadcast, log: (line) => log?.write(line) })
-  const allVerbs = workflows.wrap(withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments }))
+  const allVerbs = withTeamVerb(workflows.wrap(withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments })), { store, tracker, stops, messages: () => messages.all(), git: systemGit(gitEnvFrom(cleanEnv(process.env, {}))) })
   const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
     const stop = tracker.get(id) === 'unknown' ? stops.get(id) : undefined
     return (stop && heldReason(stop, Date.now())) ?? undefined
@@ -538,6 +546,7 @@ async function boot(): Promise<void> {
         throw new RpcRefusal("This hook came from another node's session.")
       }
       signals?.heardHook(id)
+      prompts.heard(id, payload)
       // A Codex turn that failed ends on Stop; it's taken as the StopFailure Claude would have sent.
       const { payload: heard, limits, ignore } = await codexStops.translate(id, payload)
       if (ignore) return {}
@@ -554,7 +563,7 @@ async function boot(): Promise<void> {
     secret,
     endpointFile,
     onHook,
-    onRpc: (caller, verb, args) => allVerbs(caller, verb, args),
+    onRpc: (caller, verb, args, signal) => rpcSignal.run(signal, () => allVerbs(caller, verb, args)),
     onUsage: (id, report) => usage.report(id, report)
   })
 
@@ -573,7 +582,7 @@ async function boot(): Promise<void> {
     // Nobody's looking, so it isn't worth running netstat every few seconds.
     visible: () => !!mainWindow?.isVisible()
   })
-  setInterval(() => void portWatcher.tick(), PORT_CHECK_MS).unref()
+  setInterval(() => (noteWork('port check'), void portWatcher.tick()), PORT_CHECK_MS).unref()
   let getAttention: () => string[] = () => []
   const testNotification = () => showToast({ title: 'Patchbay', body: 'Notifications are working.', click: focusWindow })
   // The server is up, so from here on hooks are delivered. What came before is in the journals.
@@ -715,7 +724,7 @@ async function boot(): Promise<void> {
     }
   }
   void refreshAgents()
-  const agentTimer = setInterval(() => void refreshAgents(), AGENT_USAGE_EVERY_MS)
+  const agentTimer = setInterval(() => (noteWork('agent usage refresh'), void refreshAgents()), AGENT_USAGE_EVERY_MS)
   agentTimer.unref()
 
   const shutdown = async (intent: QuitIntent): Promise<void> => {
@@ -811,7 +820,7 @@ async function boot(): Promise<void> {
     if (currentSettings().updateCheck !== 'off' && currentSettings().updateFeed?.trim()) void updates.check()
   }
   setTimeout(autoCheck, UPDATE_FIRST_CHECK_MS).unref()
-  setInterval(autoCheck, UPDATE_CHECK_EVERY_MS).unref()
+  setInterval(() => (noteWork('update check'), autoCheck()), UPDATE_CHECK_EVERY_MS).unref()
 
   const holdUntilSaved = (e: ElectronEvent): void => {
     if (phase === 'done') return
@@ -892,7 +901,7 @@ async function boot(): Promise<void> {
     )
   }
   refreshTray()
-  setInterval(refreshTray, TRAY_REFRESH_MS).unref()
+  setInterval(() => (noteWork('tray refresh'), refreshTray()), TRAY_REFRESH_MS).unref()
   // So the badge goes up with the chime, not at the next refresh.
   tracker.onChange(refreshTray)
   host.onExit(() => refreshTray())

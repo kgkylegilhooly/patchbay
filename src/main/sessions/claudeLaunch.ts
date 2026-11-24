@@ -462,7 +462,7 @@ function writeSettings(node: ClaudeNode, ctx: ClaudeLaunchContext, own: UserStat
 }
 
 /** The `patchbay` verbs that only look: nothing they do changes the canvas, sends anything or runs anything. */
-export const LOOKING_VERBS = ['whoami', 'list', 'read', 'wait', 'whiteboard', 'issues', 'prs', 'guide', 'files']
+export const LOOKING_VERBS = ['whoami', 'list', 'read', 'wait', 'whiteboard', 'issues', 'prs', 'guide', 'files', 'team']
 
 /** A Windows path as Claude Code matches it in a rule: C:\Users\me becomes //c/Users/me. */
 export function rulePath(path: string): string {

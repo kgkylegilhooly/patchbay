@@ -32,6 +32,10 @@ import { AGENT_KINDS, agentOffReason, type AgentChoice } from '../../shared/agen
 import type { AgentStops } from '../sessions/agentStops'
 import { restartVerb, stoppedEntry } from './stopVerbs'
 import { profileArg, type ProfileList, type TerminalProfile } from '../../shared/terminalProfiles'
+import { noGroup } from './gone'
+import type { PromptWitness } from './promptWitness'
+import { createWaitLog, nextChange } from './waitNext'
+import { rpcSignal } from './rpcSignal'
 
 /** A prompt travels on the command line, which Windows caps at 32767 characters including the rest. */
 const MAX_PROMPT_CHARS = 28000
@@ -215,8 +219,11 @@ export function createVerbs({
   deliveryTiming = DEFAULT_DELIVERY_TIMING,
   stops,
   log,
-  onFilePinned
+  onFilePinned,
+  prompts
 }: {
+  /** The prompts agents submitted, from their hooks, so a send to an agent with no transcript yet can still be confirmed. */
+  prompts?: PromptWitness
   /** An agent put a file on the canvas, for the Files shelf. */
   onFilePinned?: (projectId: string, path: string, by: string) => void
   /** Agents stopped on StopFailure, such as at a usage limit: see sessions/agentStops.ts. */
@@ -286,10 +293,14 @@ export function createVerbs({
     return node
   }
 
+  /** Groups close removed with their last member, so a later --group naming one can say what happened to it. */
+  const removedGroups = new Map<string, { title: string; lastMember: string }>()
+
   const groupFor = (caller: CanvasNode, args: Args): GroupNode | null => {
     const id = optional(args, 'group')
     if (id === undefined) return null
-    const node = ownProject(caller, id)
+    const node = find(id)
+    if (!node || node.projectId !== caller.projectId) refuse(noGroup(id, removedGroups.get(id)))
     if (node.kind !== 'group') refuse(`Node "${id}" is not a group.`)
     return node
   }
@@ -345,6 +356,9 @@ export function createVerbs({
   // send
 
   const sendQueue = queue ?? createSendQueue({ host, tracker, exists: (id) => !!find(id), timing })
+  /** For wait --next: every status change, numbered, and each caller's place in them. */
+  const waitEvents = createWaitLog()
+  tracker.onChange((id, status) => waitEvents.emit({ type: 'status', id, status }))
 
   /** Why a node stopped on StopFailure, such as at a usage limit, while its status is still the `unknown` that left. */
   const stopEntry = (id: string): { stopped?: ReturnType<typeof stoppedEntry> } => {
@@ -381,6 +395,8 @@ export function createVerbs({
         refuse(`Terminal "${id}" has ended, so nothing would read this. Ask the person to restart it, or open a new one with patchbay open-terminal --command.`)
       sendQueue.type(id, raw)
       onMessage?.(caller, id, plainText(raw))
+      // A lead may be a terminal running a script, waiting on its team with wait --next.
+      waitEvents.emit({ type: 'message', from: caller, to: id })
       return { delivered: true }
     }
     if (node.kind !== 'claude') refuse(`Can't send to node "${id}": it isn't a terminal or an agent node.`)
@@ -397,6 +413,7 @@ export function createVerbs({
     }
     const queued = sendQueue.add(id, { text, from: caller, said: body, onTyped }) === 'queued'
     waited = queued
+    waitEvents.emit({ type: 'message', from: caller, to: id })
     onMessage?.(caller, id, body)
     const { stopped } = stopEntry(id)
     if (queued) return { delivered: false, queued: true, ...(stopped ? { held: stopped.text } : {}) }
@@ -405,11 +422,16 @@ export function createVerbs({
 
   /** Whether what was typed into an agent shows up whole in its transcript. Anything less goes in the log. */
   const checkDelivery = (id: string, text: string): Promise<DeliveryReport> => {
-    const target = find(id)
-    const path = target?.kind === 'claude' ? target.transcriptPath : null
+    // Looked up again as it's checked: an agent that has only just started learns its transcript from a later hook.
+    const path = (): string | null => {
+      const target = find(id)
+      return target?.kind === 'claude' ? target.transcriptPath : null
+    }
     // Taken now, before Enter, which is when the agent writes the message down.
-    const from = transcriptEnd(path)
-    return confirmDelivery({ path, from, sent: text, timing: deliveryTiming }).then((outcome) => {
+    const from = transcriptEnd(path())
+    const mark = prompts?.mark(id) ?? 0
+    const heard = prompts && (() => prompts.since(id, mark))
+    return confirmDelivery({ path, from, sent: text, timing: deliveryTiming, heard }).then((outcome) => {
       const report = reportDelivery(outcome, id, deliveryTiming)
       if (report.problem) log?.(`send to ${id}: ${outcome.result}. ${report.problem}`)
       return report
@@ -438,6 +460,9 @@ export function createVerbs({
     }
     const timeout = args.timeout ?? WAIT_DEFAULT_S
     if (!Number.isInteger(timeout) || (timeout as number) < 1 || (timeout as number) > WAIT_MAX_S) refuse(`--timeout must be a whole number of seconds from 1 to ${WAIT_MAX_S}.`)
+    if (args.next === true && args.any === true) refuse('Pass --any or --next, not both. --next already returns at the first of them.')
+    const signal = rpcSignal.getStore()
+    if (args.next === true) return waitNext(caller, ids, timeout as number, signal)
     const any = args.any === true
     const started = Date.now()
     const moved = new Set<string>()
@@ -457,22 +482,17 @@ export function createVerbs({
     }
     return new Promise((resolve) => {
       const check = (): boolean => {
+        // The caller hung up: what it would have been handed stays queued, so it still arrives.
+        if (signal?.aborted) {
+          resolve({ done: false, aborted: true })
+          return true
+        }
         const now = Date.now()
         const done = ids.filter((id) => finished(id, now))
         const over = any ? done.length > 0 : done.length === ids.length
         const timedOut = now - started >= (timeout as number) * 1000
         if (!over && !timedOut) return false
-        // What they sent the caller meanwhile is waiting for it to go idle. Handed over here, it doesn't arrive again
-        // as a fresh prompt after the caller has already moved on.
-        const handed = sendQueue.take(caller, (item) => !!item.from && ids.includes(item.from))
-        resolve({
-          done: over,
-          ...(over ? {} : { timedOut: true }),
-          nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
-          ...stoppedOf(ids),
-          ...(handed.length ? { messages: handed.map((m) => ({ from: m.from, text: m.said ?? m.text })) } : {}),
-          waitedSeconds: Math.round((now - started) / 100) / 10
-        })
+        resolve(waitReply(caller, ids, over, started, now))
         return true
       }
       if (check()) return
@@ -481,6 +501,44 @@ export function createVerbs({
       }, waitTiming.pollMs)
       timer.unref?.()
     })
+  }
+
+  /** The reply both kinds of wait give, once they're over. */
+  const waitReply = (caller: string, ids: string[], over: boolean, started: number, now: number): Record<string, unknown> => {
+    // What they sent the caller meanwhile is waiting for it to go idle. Handed over here, it doesn't arrive again
+    // as a fresh prompt after the caller has already moved on.
+    const handed = sendQueue.take(caller, (item) => !!item.from && ids.includes(item.from))
+    return {
+      done: over,
+      ...(over ? {} : { timedOut: true }),
+      nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
+      ...stoppedOf(ids),
+      ...(handed.length ? { messages: handed.map((m) => ({ from: m.from, text: m.said ?? m.text })) } : {}),
+      waitedSeconds: Math.round((now - started) / 100) / 10
+    }
+  }
+
+  /**
+   * wait --next: until the first of these agents does something after the call, so one sitting idle (waiting for
+   * review, say) doesn't end it at once. See waitNext.ts.
+   */
+  const waitNext = async (caller: string, ids: string[], timeout: number, signal?: AbortSignal): Promise<unknown> => {
+    const started = Date.now()
+    const fromThem = (item: { from?: string }): boolean => !!item.from && ids.includes(item.from)
+    const change = await nextChange({
+      caller,
+      ids,
+      timeoutMs: timeout * 1000,
+      pollMs: waitTiming.pollMs,
+      log: waitEvents,
+      pending: () => sendQueue.pending(caller, fromThem)[0]?.from,
+      exists: (id) => !!find(id),
+      stopped: (id) => tracker.get(id) === 'unknown' && !!stops?.get(id),
+      signal
+    })
+    // Nobody is there to read it: its reports stay queued for the caller, and arrive as a prompt.
+    if (signal?.aborted) return { done: false, aborted: true }
+    return { ...waitReply(caller, ids, !!change, started, Date.now()), ...(change ? { next: change } : {}) }
   }
 
   // read
@@ -721,6 +779,7 @@ export function createVerbs({
     const text = optional(args, 'text')
     const append = optional(args, 'append')
     if ((text === undefined) === (append === undefined)) refuse('Pass one of --text or --append.')
+    if (append !== undefined && !append.trim()) refuse('--append has nothing to add.')
     const node = reachable(caller, id, 'change')
     if (node.kind !== 'sticky') refuse(`Node "${id}" is a ${node.kind}, not a note.`)
     if (text !== undefined && node.openedBy !== caller) refuse(`You can only add to note "${id}", because you didn't open it. Use --append.`)
@@ -861,6 +920,7 @@ export function createVerbs({
     const ids = list(args, 'ids')
     for (const id of ids) ownProject(caller, id)
     const group = optional(args, 'group')
+    if (group !== undefined && (!find(group) || find(group)!.projectId !== caller.projectId)) refuse(noGroup(group, removedGroups.get(group)))
     if (group !== undefined && ownProject(caller, group).kind !== 'group') refuse(`Node "${group}" isn't a group.`)
     const doc = store.get()
     const projectId = projectOf(doc, caller)
@@ -878,6 +938,7 @@ export function createVerbs({
       refuse(`Unknown layout "${layout}". Use grid, row, column or tidy.`)
     }
     const ids = list(args, 'ids')
+    if (!ids.length) refuse(`--layout ${layout} needs --ids naming the nodes to arrange. To tidy a group or your whole project, use --layout tidy.`)
     for (const id of ids) ownProject(caller, id)
     const gap = args.gap
     if (gap !== undefined && (typeof gap !== 'number' || !Number.isFinite(gap) || gap < 0)) refuse('--gap must be 0 or more.')
@@ -906,8 +967,9 @@ export function createVerbs({
         refuse(`Can't link node "${id}": you can only link yourself and nodes you opened.`)
       }
     }
-    add(edge(from, to, 'link'))
-    return { from, to }
+    const already = linked(from, to)
+    if (!already) add(edge(from, to, 'link'))
+    return { from, to, ...(already ? { already: true } : {}) }
   }
 
   const close = async (caller: string, args: Args): Promise<unknown> => {
@@ -916,6 +978,8 @@ export function createVerbs({
     if (node.openedBy !== caller) refuse(`Can't close node "${id}": you didn't open it.`)
     if (node.kind === 'browser' && node.held) refuse(`The person has taken control of browser node "${id}", so it can't be closed.`)
     sendQueue.forget(id)
+    waitEvents.forget(id)
+    prompts?.forget(id)
     if (isSessionNode(node)) {
       await runner.stopNode(id)
       host.forget?.(id)
@@ -926,6 +990,7 @@ export function createVerbs({
     const group = node.parentId ? find(node.parentId) : undefined
     if (group?.kind === 'group' && group.openedBy === caller && !store.get().nodes.some((n) => n.parentId === group.id)) {
       store.dispatch({ op: 'removeNodes', ids: [group.id], at: Date.now() })
+      removedGroups.set(group.id, { title: group.title, lastMember: node.title })
       return { closed: id, removedGroup: group.id }
     }
     return { closed: id }

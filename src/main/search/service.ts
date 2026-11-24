@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { noteWork } from '../workLog'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { Worker } from 'node:worker_threads'
@@ -143,7 +144,7 @@ export function createSearchService(d: SearchServiceDeps): Omit<SearchBridge, 's
         seen = doc
         syncSoon()
       })
-      everyTimer = setInterval(() => void d.backend({ type: 'sync', input: input() }).catch(() => {}), SYNC_EVERY_MS)
+      everyTimer = setInterval(() => (noteWork('search sync'), void d.backend({ type: 'sync', input: input() }).catch(() => {})), SYNC_EVERY_MS)
       everyTimer.unref?.()
       syncSoon()
     },

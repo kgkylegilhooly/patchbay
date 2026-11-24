@@ -240,3 +240,16 @@ test('a sleep reads in units that suit it, and says it is not a stall', () => {
   expect(asleepText(2647_600)).toMatch(/^Nothing ran for 44 min:/)
   expect(asleepText(39254_900)).toMatch(/^Nothing ran for 10\.9 h:/)
 })
+
+test('a stall says when the check before it ran, so the work started in between can be named', () => {
+  vi.useFakeTimers()
+  let now = 10_000
+  const seen: Array<[number, number]> = []
+  const stop = watchEventLoop((ms, since) => seen.push([ms, since]), 500, () => now)
+  now += 500
+  vi.advanceTimersByTime(500)
+  now += 2500
+  vi.advanceTimersByTime(500)
+  stop()
+  expect(seen).toEqual([[2000, 10_500]])
+})

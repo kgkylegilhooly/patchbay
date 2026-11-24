@@ -631,7 +631,8 @@ terminals go first, so typing stays quick however many agents are busy; with CPU
   reach, and `patchbay whoami` tells it again. Codex is pointed at `whoami` instead.
 - **Teams.** **New team…** in the canvas menu, or `patchbay spawn-team`, starts a lead that splits the task, writes each member a
   brief, waits for them with `patchbay wait`, checks their work and closes them. A team's group header shows a light per
-  agent and how many are working, idle or need you, with the team's latest message.
+  agent and how many are working, idle or need you, with the team's latest message. `patchbay team` gives the lead one line
+  per member (status, last report, branch and commits ahead of main), and `patchbay wait --next` waits for the next report.
 - **Messages.** `patchbay send` between agents starts with a line naming the sender, so an agent can tell a lead from a
   peer, and from you. A pulse runs down the cable as a message goes, and clicking a cable lists the latest messages
   along it, kept across restarts.

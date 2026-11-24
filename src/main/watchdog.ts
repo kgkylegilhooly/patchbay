@@ -65,10 +65,11 @@ export function createLog(dir: string, now: () => Date = () => new Date()): Log 
 
 /**
  * Notes each time the main process was stuck for longer than STALL_MS. Everything in Patchbay goes through it, so a
- * stall there is a stall everywhere. `onStall` is told how long it lasted.
+ * stall there is a stall everywhere. `onStall` is told how long it lasted, and when the check before it ran, so the work
+ * started in between can be named (see workLog.ts).
  */
 export function watchEventLoop(
-  onStall: (ms: number) => void,
+  onStall: (ms: number, since: number) => void,
   tickMs = TICK_MS,
   now: () => number = () => Date.now(),
   sleep: {
@@ -82,12 +83,13 @@ export function watchEventLoop(
   const timer = setInterval(() => {
     const at = now()
     const late = at - last - tickMs
+    const since = last
     last = at
     // Asked every time, so a suspend heard during an ordinary tick doesn't carry over to a later stall.
     const slept = sleep.slept?.() ?? false
     if (late < STALL_MS) return
     if (slept || late >= ASLEEP_MS) sleep.onAsleep?.(late)
-    else onStall(late)
+    else onStall(late, since)
   }, tickMs)
   timer.unref?.()
   return () => clearInterval(timer)

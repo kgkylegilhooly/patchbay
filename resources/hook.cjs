@@ -26,6 +26,8 @@ const SUBAGENT_FIELDS = ['agent_id', 'agent_type', 'agent_transcript_path', 'tur
 /** A turn that ended on an API error says why, such as a usage limit and when it resets. Capped, as it's only for a label. */
 const STOP_FAILURE_FIELDS = ['error', 'error_details', 'last_assistant_message']
 const MAX_STOP_TEXT_CHARS = 1000
+/** What was submitted, so a message `patchbay send` typed can be confirmed. Never journalled. Longer is left out. */
+const MAX_PROMPT_CHARS = 64 * 1024
 
 function done() {
   process.exit(0)
@@ -37,7 +39,7 @@ let undelivered = null
 function journal(fields) {
   const { PATCHBAY_ENDPOINT_FILE: file, PATCHBAY_NODE_ID: nodeId } = process.env
   // Tool input is only for the approval buttons, which this request no longer has.
-  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, ...kept } = fields
+  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, prompt: _prompt, ...kept } = fields
   const dir = path.join(path.dirname(file), 'missed')
   const target = path.join(dir, `${encodeURIComponent(nodeId)}.jsonl`)
   fs.mkdirSync(dir, { recursive: true })
@@ -87,6 +89,7 @@ function pick(raw) {
   if (out.hook_event_name === 'StopFailure') {
     for (const key of STOP_FAILURE_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, MAX_STOP_TEXT_CHARS)
   }
+  if (out.hook_event_name === 'UserPromptSubmit' && typeof event.prompt === 'string' && event.prompt.length <= MAX_PROMPT_CHARS) out.prompt = event.prompt
   if (out.hook_event_name === 'SubagentStart' || out.hook_event_name === 'SubagentStop') {
     for (const key of SUBAGENT_FIELDS) if (typeof event[key] === 'string') out[key] = event[key].slice(0, 1000)
   }
