@@ -98,9 +98,10 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
   let syncedAt: number | null = null
   let syncing = false
   const lower = new WeakMap<SearchEntry, string>()
+  /** Lowercased, with each run of whitespace one space, as a quoted phrase is, so a line break between its words still matches. */
   const lowered = (e: SearchEntry): string => {
     let l = lower.get(e)
-    if (l === undefined) lower.set(e, (l = e.text.toLowerCase()))
+    if (l === undefined) lower.set(e, (l = flat(e.text.toLowerCase())))
     return l
   }
 
@@ -220,11 +221,11 @@ export function createSearchIndex(saved?: unknown): SearchIndex {
           }
         }
         // A conversation found by its title, when no one message has every word.
-        if (!best && inRange(doc.at) && terms.every((t) => doc.title.toLowerCase().includes(t))) best = { text: doc.title, at: doc.at }
+        if (!best && inRange(doc.at) && terms.every((t) => flat(doc.title.toLowerCase()).includes(t))) best = { text: doc.title, at: doc.at }
         if (!best) continue
         // A note's snippet without its markdown marks, unless a mark was the very thing searched for.
         const plain = doc.kind === 'note' ? plainLines(best.text) : best.text
-        const { snippet, marks } = snippetOf(terms.some((t) => plain.toLowerCase().includes(t)) ? plain : best.text, terms)
+        const { snippet, marks } = snippetOf(terms.some((t) => flat(plain.toLowerCase()).includes(t)) ? plain : best.text, terms)
         const name = doc.projectId ? projects[doc.projectId] : undefined
         hits.push({
           key: doc.key,
