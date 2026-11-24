@@ -1,11 +1,23 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { execFileSync } from 'node:child_process'
+import { readBuildInfo } from './src/main/diagnostics/buildInfo'
+
+/** The commit and time of this build, for Settings > About and Copy diagnostics. See src/main/diagnostics/buildInfo.ts. */
+export const BUILD_INFO = readBuildInfo((args) => {
+  try {
+    return execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+  } catch {
+    return null
+  }
+})
 
 // node-pty is a native module: it stays external so it loads from node_modules
 // (or app.asar.unpacked once packaged) rather than being bundled.
 export default defineConfig({
   main: {
+    define: { __PB_BUILD__: JSON.stringify(BUILD_INFO) },
     build: {
       rollupOptions: {
         // original-fs is Electron's own fs without its app.asar handling, so it's there at run time, not to bundle.

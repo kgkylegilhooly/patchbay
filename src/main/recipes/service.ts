@@ -113,6 +113,10 @@ export function createRecipeService(d: RecipeServiceDeps) {
     const entry = found.entry
     const recipe = entry.recipe!
     // Start runs what the preview showed, or nothing: a file changed since, as by an agent in that checkout, is refused.
+    // A repository's own recipe is written by whoever wrote the repository, so it must come with the hash it was shown with.
+    if (entry.source === 'repository' && req.hash === undefined) {
+      return { ok: false, reason: `The recipe "${recipe.name}" comes from the repository${entry.file ? ` (${entry.file})` : ''}. Look at it before starting it.` }
+    }
     if (req.hash !== undefined && req.hash !== entry.hash) {
       return { ok: false, reason: `The recipe "${recipe.name}" has changed since it was shown${entry.file ? ` (${entry.file})` : ''}. Look at it again before starting it.` }
     }

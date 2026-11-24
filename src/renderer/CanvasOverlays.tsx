@@ -12,6 +12,7 @@ import { ResourceNotice } from './resources/ResourceNotice'
 import { ReviewInboxLayer } from './ReviewInbox'
 import { SearchLayer } from './SearchLayer'
 import { ConfirmHost } from './shell/Confirm'
+import { DiagnosticsToast } from './diagnostics/AboutDiagnostics'
 import { SubagentLayer } from './subagents/SubagentLayer'
 import { TerminalParkingWatcher } from './TerminalParkingWatcher'
 import { TidyLayer } from './TidyLayer'
@@ -47,6 +48,7 @@ export const CanvasOverlays = memo(function CanvasOverlays({ commands, selected,
       {gitOpen && <GitPanel selected={selected} />}
       <ReviewInboxLayer />
       <FileShelfLayer />
+      <DiagnosticsToast />
       <ConfirmHost />
     </>
   )

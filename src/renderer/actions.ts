@@ -11,6 +11,8 @@ import { openProjects } from './projectsUi'
 import { jumpToNext } from './needsYouUi'
 import { pickDocument } from './reader/readerUi'
 import { cycleRegion } from './a11y/regions'
+import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
+import { VIEW_SLOTS } from './savedViews'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -87,6 +89,9 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-git', section: 'View', label: 'Git panel', icon: 'branch', key: 'Ctrl+Shift+H', keywords: ['commit', 'stage', 'branch', 'push', 'pull', 'history', 'diff'], run: (c) => c.toggleGit() },
   { id: 'toggle-minimap', section: 'View', label: 'Minimap', icon: 'map', keywords: ['overview'], run: (c) => c.togglePref('minimap') },
   { id: 'toggle-legend', section: 'View', label: 'Link legend', icon: 'link', keywords: ['key', 'cables'], run: (c) => c.togglePref('legend') },
+  // Saved views, per project (see savedViews.ts). Shift picks the digit by its key, so these work on any layout.
+  ...VIEW_SLOTS.map((n): Action => ({ id: `view-go-${n}`, section: 'View', label: `Go to saved view ${n}`, icon: 'fit', key: `Alt+${n}`, keywords: ['bookmark', 'jump', 'place'], run: (c) => c.goToView(n) })),
+  ...VIEW_SLOTS.map((n): Action => ({ id: `view-save-${n}`, section: 'View', label: `Save this view as ${n}`, icon: 'pin', key: `Alt+Shift+${n}`, keywords: ['bookmark', 'remember', 'place'], run: (c) => c.saveView(n) })),
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
@@ -98,6 +103,8 @@ export const ACTIONS: Action[] = [
   { id: 'next-region', section: 'App', label: 'Next part of the app (leaves a terminal)', icon: 'arrow-right', key: 'F6', keywords: ['leave', 'exit', 'escape', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(1) },
   { id: 'prev-region', section: 'App', label: 'Previous part of the app', icon: 'arrow-left', key: 'Shift+F6', keywords: ['leave', 'exit', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(-1) },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
+  { id: 'copy-diagnostics', section: 'App', label: 'Copy diagnostics', icon: 'copy', keywords: ['bug', 'report', 'version', 'support', 'debug', 'hooks', 'log'], run: () => copyDiagnostics() },
+  { id: 'open-log-folder', section: 'App', label: 'Open log folder', icon: 'folder', keywords: ['logs', 'bug', 'report', 'debug', 'crash'], run: () => openLogFolder() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
   { id: 'manage-projects', section: 'App', label: 'Projects…', icon: 'project', keywords: ['manage', 'archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
   { id: 'move-project-left', section: 'App', label: "Move this project's tab left", icon: 'arrow-left', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(-1) },

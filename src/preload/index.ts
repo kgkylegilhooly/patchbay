@@ -16,6 +16,7 @@ import { exposeSubagents } from './subagents'
 import { exposeDocs } from './docs'
 import { exposeWorkflows } from './workflows'
 import { exposeResources } from './resources'
+import { exposeDiagnostics } from './diagnostics'
 import { exposeSessionSync } from './sessionSync'
 import { exposeAppProblems } from './appProblems'
 import { reportOutputTaken } from './outputAck'
@@ -162,6 +163,7 @@ exposeSubagents()
 exposeDocs()
 exposeWorkflows()
 exposeResources()
+exposeDiagnostics()
 exposeSessionSync()
 exposeAppProblems()
 reportOutputTaken()

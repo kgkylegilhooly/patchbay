@@ -15,6 +15,7 @@ import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
 import { namedQuestion } from './shell/confirmStore'
 import { askRemoveWorktree } from './worktreeUi'
 import { openSettingsAt, type SettingsSection } from './settingsAsk'
+import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
 
 export interface Point {
   x: number
@@ -128,6 +129,9 @@ export interface Commands {
   zoomOut(): void
   zoomReset(): void
   fitView(): void
+  /** Keeps the view on screen in slot `n` (1 to 9) for this project, or goes back to the one kept there. See savedViews.ts. */
+  saveView(n: number): void
+  goToView(n: number): void
   tidy(ids?: string[]): void
   togglePref(key: 'sidebar' | 'minimap' | 'legend' | 'snap'): void
   openSettings(): void
@@ -295,6 +299,8 @@ export function helpMenu(c: Commands): MenuEntry[] {
   return [
     { id: 'help-shortcuts', label: 'Keyboard shortcuts…', icon: 'keyboard', run: at('keys') },
     { id: 'help-log', label: 'Open log', icon: 'file', run: () => void window.patchbay.openLog() },
+    { id: 'open-log-folder', label: 'Open log folder', icon: 'folder', run: () => openLogFolder() },
+    { id: 'copy-diagnostics', label: 'Copy diagnostics', icon: 'copy', run: () => copyDiagnostics() },
     'separator',
     { id: 'help-about', label: 'About Patchbay', icon: 'info', run: at('about') }
   ]

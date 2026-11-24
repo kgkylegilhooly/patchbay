@@ -36,7 +36,7 @@ export interface ClaudeSettingsPlaces {
   registry?: RegistryPolicy[]
 }
 
-const MANAGED_FILE = 'C:\\Program Files\\ClaudeCode\\managed-settings.json'
+export const MANAGED_FILE = 'C:\\Program Files\\ClaudeCode\\managed-settings.json'
 
 function readSettings(file: string): Record<string, unknown> | null {
   try {
@@ -136,6 +136,9 @@ export function loadRegistryPolicy(query: RegQuery = regQuery): Promise<void> {
   if (Date.now() - registryReadAt >= REGISTRY_REFRESH_MS) void read()
   return Promise.resolve()
 }
+
+/** The registry policy as last read by loadRegistryPolicy. */
+export const registryPolicyNow = (): RegistryPolicy[] => registryPolicies
 
 /** For tests. */
 export function forgetRegistryPolicy(): void {

@@ -189,6 +189,11 @@ rather; the question goes away by itself if the window recovers. If the window c
 you only if that happens three times within two minutes. Each of these, and any freeze of two seconds or more, is noted
 in the log above, which is the thing to share if Patchbay misbehaves.
 
+**Copy diagnostics** (Help, the palette, or Settings > About) puts a plain-text block on the clipboard for a bug
+report: the version and the commit it was built from, the agent programs and their versions, how each running Claude
+session's hooks are set up and their time limit, session counts, memory, and the last 40 lines of the log. Your user
+name is hidden, and no prompts, conversation text or tokens go in. Help > Open log folder opens the folder the log is in.
+
 If the canvas can't be saved, as on a full disk, a banner under the top bar says why, and the canvas moves down for it.
 Patchbay keeps your changes and tries again every 5 seconds, and the banner goes when a save works. **Hide** folds it to
 one slim line until then. If the background host stops, a banner offers **Bring them back**.
@@ -409,6 +414,9 @@ needs F6 itself (Midnight Commander, htop) gets it back if you rebind Next part 
 shortcuts; the palette's entry still works. `F2` renames
 the window in use from the canvas; the palette also has Rename, Restart and Close this window. A screen reader hears
 each window's name and status, and is told when an agent needs you, fails or stops at a limit.
+
+`Alt+Shift+1` to `Alt+Shift+9` keep the view on screen in that slot, for the project you're in, and `Alt+1` to `Alt+9`
+go back to it. Saved views stay with this PC, not in the canvas file.
 
 ## Search and handoffs
 
