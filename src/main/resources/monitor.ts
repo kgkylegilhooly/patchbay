@@ -40,10 +40,14 @@ export interface ResourceMonitorDeps {
   onWarning?(warning: ResourceWarning): void
   /** Memory has just run short. */
   onLow?(kind: PressureKind): void
+  /** Every check, with what's short then, if anything: held agent starts go ahead on one. */
+  onCheck?(kind: PressureKind | null): void
 }
 
 export interface ResourceMonitor {
   reading(): ResourceReading
+  /** The PC's memory now, read fresh: cheap, it starts no program. */
+  systemMemory(): SystemMemory | null
   /** Takes the cheap readings and, when they're due and wanted, sessions' processes. */
   tick(opts?: { processes?: boolean }): Promise<ResourceReading>
   watch(on: boolean): void
@@ -169,11 +173,13 @@ export function createResourceMonitor(d: ResourceMonitorDeps): ResourceMonitor {
       d.onWarning?.(buildWarning(kind, next.system, next.agents, next.sessions))
     }
     if (watchers > 0) d.onReading?.(next)
+    d.onCheck?.(kind)
     return next
   }
 
   return {
     reading: () => reading ?? build(),
+    systemMemory: () => d.systemMemory(),
     tick,
     watch(on) {
       watchers = Math.max(0, watchers + (on ? 1 : -1))

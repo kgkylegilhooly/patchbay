@@ -5,6 +5,8 @@ import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode 
 import type { Settings } from '../../shared/settings'
 import { agentChoice, agentOffReason } from '../../shared/agents'
 import { agentLimitReason, parseAgentLimit } from '../../core/resources/agentLimit'
+import { memoryHoldReason } from '../../core/resources/pressure'
+import type { SystemMemory } from '../../shared/resources'
 import { tokenFor } from '../control/server'
 import type { Approvals } from './approvals'
 import {
@@ -79,6 +81,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   hostHookPort?: () => number | null | Promise<number | null>
   /** Whether a Claude launch's hooks can be http hooks. Defaults to httpHooksPossible. */
   findHttpHooks?: (launch: HookLaunch) => Promise<boolean>
+  /** The PC's memory now. A new agent waits while Windows is nearly out of it to give programs. Defaults to never. */
+  systemMemory?: () => SystemMemory | null
 }
 
 export interface NodeRunner {
@@ -101,7 +105,12 @@ export interface NodeRunner {
    * instead. With `shownExited`, the person was looking at it as ended: one running by now, as after a revive that
    * landed just before the click, is shown, never ended.
    */
-  restartOrJoin(id: string, opts?: { shownExited?: boolean }): Promise<'joined' | void>
+  restartOrJoin(id: string, opts?: { shownExited?: boolean; pastMemory?: boolean }): Promise<'joined' | void>
+  /**
+   * Starts the agent that has waited longest for memory, once memory is no longer short. One a call, so they don't all
+   * start at once and run it short again. Call it as memory is checked.
+   */
+  startHeld(): Promise<void>
   /** Ends the session's whole process tree, then starts it again. An agent resumes its conversation. */
   endAndRestart(id: string): Promise<void>
   /** Ends a session on purpose, as when its node closes. */
@@ -174,6 +183,8 @@ export function createNodeRunner({
   const runs = new Map<string, ClaudeRun>()
   const started = new Set<string>()
   const errors = new Map<string, NodeError>()
+  /** Agents waiting for memory to start, longest-waiting first. */
+  const held = new Set<string>()
   const errorListeners: Array<(id: string, error: NodeError | null) => void> = []
   const runResults = new Map<string, RunResult>()
   const runListeners: Array<(id: string, run: RunResult) => void> = []
@@ -402,7 +413,15 @@ export function createNodeRunner({
   const overAgentLimit = (id: string): string | null =>
     agentLimitReason(parseAgentLimit(ctx.settings?.().agentLimit), store.get().nodes.filter((n) => n.kind === 'claude' && n.id !== id && (started.has(n.id) || host.isRunning(n.id))).length)
 
-  const launch = async (id: string, opts: { initialScrollback?: string; restored?: boolean } = {}): Promise<'joined' | void> => {
+  /** One the host runs already, out of this app's sight, is joined rather than refused, as a refusal would leave it unreachable. */
+  const joinedUnseen = async (id: string): Promise<boolean> => {
+    if (!(ctx.refreshHost && (await ctx.refreshHost().catch(() => null)) && host.isRunning(id))) return false
+    if (!started.has(id)) api.reattachNode(id)
+    return true
+  }
+
+  const launch = async (id: string, opts: { initialScrollback?: string; restored?: boolean; pastMemory?: boolean } = {}): Promise<'joined' | void> => {
+    held.delete(id)
     const node = nodeById(id)
     if (!node || (node.kind !== 'claude' && node.kind !== 'terminal' && node.kind !== 'run')) return
     if (host.isRunning(id)) return
@@ -417,14 +436,18 @@ export function createNodeRunner({
     // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
     const limited = node.kind === 'claude' && !opts.restored ? overAgentLimit(id) : null
     if (limited) {
-      // The host may run it already, out of this app's sight. That's joining it, not starting another, so the limit
-      // doesn't apply: asked before refusing, as a refusal would leave it unreachable.
-      if (ctx.refreshHost && (await ctx.refreshHost().catch(() => null)) && host.isRunning(id)) {
-        if (!started.has(id)) api.reattachNode(id)
-        return 'joined'
-      }
+      // The host may run it already. That's joining it, not starting another, so the limit doesn't apply.
+      if (await joinedUnseen(id)) return 'joined'
       tracker.apply(id, { type: 'process-exit' })
       return setError(id, { code: 'spawn-failed', message: limited, fix: 'sessions' })
+    }
+    // Windows nearly out of memory to give programs: a new agent waits, and startHeld starts it once there's room.
+    const hold = node.kind === 'claude' && !opts.restored && !opts.pastMemory ? memoryHoldReason(ctx.systemMemory?.() ?? null) : null
+    if (hold) {
+      if (await joinedUnseen(id)) return 'joined'
+      held.add(id)
+      tracker.apply(id, { type: 'process-exit' })
+      return setError(id, { code: 'spawn-failed', message: hold, fix: 'memory' })
     }
     try {
       // Claimed before the wait, so stopAll can't miss a session that's on its way up.
@@ -493,7 +516,8 @@ export function createNodeRunner({
       await stopTree(id)
       if (node.kind !== 'run') stoppingRuns.delete(id)
       if (host.isRunning(id)) return setError(id, { code: 'spawn-failed', message: "The session didn't end, so it wasn't started again." })
-      await api.restartOrJoin(id)
+      // It was running, so it doesn't wait for memory: it would be left stopped.
+      await api.restartOrJoin(id, { pastMemory: true })
     },
 
     adoptNode(id) {
@@ -546,18 +570,31 @@ export function createNodeRunner({
       if (off) return host.isRunning(id) ? undefined : setError(id, { code: 'spawn-failed', message: off, fix: 'agents' })
       const run = runs.get(id)
       if (run) run.stopping = true
+      // One that was running doesn't wait for memory after it's ended: it would be left stopped.
+      const pastMemory = opts.pastMemory === true || host.isRunning(id)
       if (host.isRunning(id)) await host.kill(id)
       if (node.kind === 'claude') {
         const current = nodeById(id) as ClaudeNode | undefined
         // A transcript still on disk may be worth another try, and nothing is lost by keeping it.
         const gone = !current?.transcriptPath || !existsSync(current.transcriptPath)
         if (errors.get(id)?.code === 'resume-failed' && gone) forgetSession(id)
-        return launch(id)
+        return launch(id, { pastMemory })
       }
       return launch(id, { initialScrollback: host.snapshot(id).data })
     },
 
     stopTree,
+
+    async startHeld() {
+      if (memoryHoldReason(ctx.systemMemory?.() ?? null)) return
+      for (const id of held) {
+        held.delete(id)
+        // Closed, started some other way, or no longer waiting (as after Restart): nothing to start.
+        if (nodeById(id)?.kind !== 'claude' || host.isRunning(id) || errors.get(id)?.fix !== 'memory') continue
+        await launch(id)
+        return
+      }
+    },
 
     runs: () => Object.fromEntries(runResults),
 

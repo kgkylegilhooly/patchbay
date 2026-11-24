@@ -293,9 +293,10 @@ export function closeNodes(ids: string[]): void {
   if (sessions.length) dispatch({ op: 'removeNodes', ids: sessions, at: Date.now() })
 }
 
-export async function restartNode(id: string): Promise<void> {
+/** `pastMemory`: Start now on an agent waiting for memory, which starts it anyway. */
+export async function restartNode(id: string, opts: { pastMemory?: boolean } = {}): Promise<void> {
   // What it showed is sent along: a revive that lands just before the click mustn't turn Restart into ending it.
-  const result = await bridge.restartNode(id, { shownExited: useStore.getState().statuses[id] === 'exited' })
+  const result = await bridge.restartNode(id, { shownExited: useStore.getState().statuses[id] === 'exited', ...(opts.pastMemory ? { pastMemory: true } : {}) })
   // Still running unseen, so shown again: its own notice says so. See sessionSyncUi.tsx.
   if (!noteJoined(id, result)) noteRunProblem(id, result)
   useStore.setState((s) => ({ epochs: { ...s.epochs, [id]: (s.epochs[id] ?? 0) + 1 } }))

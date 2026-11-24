@@ -995,6 +995,11 @@ select {
   background: rgb(255 69 58 / 0.14);
 }
 
+.strip-wait {
+  color: #ffd9a8;
+  background: rgb(255 159 10 / 0.12);
+}
+
 /* Terminal */
 
 .term {

@@ -23,7 +23,8 @@ const readings = () =>
 
 const files = {
   resources: () => ({ 'fake-resources.json': readings() }),
-  'resources-warning': () => ({ 'fake-resources.json': readings() })
+  'resources-warning': () => ({ 'fake-resources.json': readings() }),
+  'memory-hold': () => ({ 'fake-resources.json': readings() })
 }
 
 const scenes = {
@@ -47,6 +48,20 @@ const scenes = {
   'resources-warning': async (page) => {
     await page.waitForSelector('[data-resource-warning]', { timeout: 20000 })
     await sleep(400)
+  },
+  // A new agent started while commit is short: it waits for memory, with Start now (the shot before: it just starts).
+  'memory-hold': async (page) => {
+    await page.waitForSelector('[data-resource-warning]', { timeout: 20000 }).catch(() => {})
+    await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      const near = doc.nodes.find((o) => o.id === 'term')
+      const node = { id: 'held', kind: 'claude', title: 'New reviewer', x: near.x, y: near.y + near.height + 40, width: 520, height: 340, parentId: null, cwd: near.cwd, prompt: 'Review the parser', sessionId: null, transcriptPath: null, after: [], projectId: near.projectId }
+      await window.patchbay.dispatch({ op: 'addNode', node })
+      await window.patchbay.startNode('held')
+    })
+    await page.waitForSelector('.react-flow__node[data-id="held"] [data-start-fix="memory"]', { timeout: 8000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('New reviewer'))?.click())
+    await sleep(900)
   }
 }
 

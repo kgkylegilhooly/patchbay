@@ -7,7 +7,7 @@ import { parseAgentLimit } from '../../core/resources/agentLimit'
 import { PROCESS_QUERY } from '../../core/resources/processes'
 import type { CanvasStore } from '../../shared/contract'
 import type { AgentStatus } from '../../shared/model'
-import type { SystemMemory } from '../../shared/resources'
+import type { PressureKind, SystemMemory } from '../../shared/resources'
 import type { Settings } from '../../shared/settings'
 import { createResourceMonitor, PROCESS_TIMEOUT_MS, systemMemoryFrom, type ResourceMonitor, type SessionInfo } from './monitor'
 
@@ -74,6 +74,8 @@ export function setupResources(d: {
   settings(): Settings
   broadcast(channel: string, ...args: unknown[]): void
   isAppUi(e: IpcMainInvokeEvent): boolean
+  /** Every check of memory, with what's short then. */
+  onCheck?(kind: PressureKind | null): void
 }): ResourceMonitor {
   const sessions = (): SessionInfo[] => {
     const nodes = d.store.get().nodes
@@ -113,7 +115,8 @@ export function setupResources(d: {
     cores,
     onReading: (r) => d.broadcast('pb:resources:reading', r),
     onWarning: (w) => d.broadcast('pb:resources:warning', w),
-    onLow: () => d.broadcast('pb:resources:low')
+    onLow: () => d.broadcast('pb:resources:low'),
+    onCheck: d.onCheck
   })
 
   const watching = new Set<number>()

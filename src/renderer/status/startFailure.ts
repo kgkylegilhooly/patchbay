@@ -22,6 +22,9 @@ export function failedStart(status: AgentStatus | null | undefined, error: NodeE
 
 /** The look of an agent that couldn't start, with what went wrong for the tooltip. */
 export function startFailureLook(error: NodeError): Look {
+  // Not a failure: it starts by itself once Windows has memory to give it.
+  if (error.fix === 'memory') return { tone: 'waits', label: 'Waiting for memory', detail: `Waiting for memory
+${error.message}` }
   return { tone: 'held', label: "Couldn't start", detail: `Couldn't start\n${error.message}` }
 }
 
@@ -29,8 +32,9 @@ export function startFailureLook(error: NodeError): Look {
 export const FIX_LABELS: Record<StartFix, string> = {
   agents: 'Open Settings › Agents',
   sessions: 'Open Settings › Background sessions',
-  folder: 'Choose folder…'
+  folder: 'Choose folder…',
+  memory: 'Start now'
 }
 
 /** The Settings section each settings fix opens. */
-export const FIX_SECTIONS: Record<Exclude<StartFix, 'folder'>, 'claude' | 'sessions'> = { agents: 'claude', sessions: 'sessions' }
+export const FIX_SECTIONS: Record<Exclude<StartFix, 'folder' | 'memory'>, 'claude' | 'sessions'> = { agents: 'claude', sessions: 'sessions' }

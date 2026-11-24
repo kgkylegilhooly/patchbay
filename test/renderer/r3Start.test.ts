@@ -239,3 +239,12 @@ describe('review fixes', () => {
     expect(started).toEqual(['C:\a'])
   })
 })
+
+describe('an agent waiting for memory', () => {
+  test('looks like it is waiting, not failed, and offers Start now', () => {
+    const error = { code: 'spawn-failed' as const, message: 'Waiting for memory: Windows has 1.0 GB of 40.0 GB left.', fix: 'memory' as const }
+    expect(startFailureLook(error)).toEqual({ tone: 'waits', label: 'Waiting for memory', detail: `Waiting for memory\n${error.message}` })
+    expect(FIX_LABELS.memory).toBe('Start now')
+    expect(failedStart('exited', error)).toBe(error)
+  })
+})

@@ -139,6 +139,10 @@
   background-image: linear-gradient(rgb(255 69 58 / 0.14), rgb(255 69 58 / 0.14));
 }
 
+[data-zoom-tier='far'] .unit:has(> .unit-head-session) > .strip-wait {
+  background-image: linear-gradient(rgb(255 159 10 / 0.12), rgb(255 159 10 / 0.12));
+}
+
 :is([data-zoom-tier='far'], [data-zoom-tier='overview']) :is(.unit > .unit-head, .wb > .wb-head, .rack-head) .title {
   max-width: none;
   font-size: var(--far-title);
