@@ -147,6 +147,19 @@ describe('wait --next', () => {
     expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 1 })).toMatchObject({ done: false, timedOut: true })
   })
 
+  test('a wider wait after a narrower one never hands a turn back out (re-check M)', async () => {
+    const { verbs, status } = setup(team())
+    status('a', 'UserPromptSubmit')
+    status('b', 'UserPromptSubmit')
+    const narrow = verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 5 })
+    status('b', 'Stop') // b first, while only a is waited on
+    status('a', 'Stop')
+    expect(await narrow).toMatchObject({ next: { node: 'a' } })
+    expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 2 })).toMatchObject({ next: { node: 'b' } })
+    // a's turn was already returned, so nothing is left.
+    expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 1 })).toMatchObject({ done: false, timedOut: true })
+  })
+
   test('two turns that end together come back one call each, in order', async () => {
     const { verbs, status } = setup(team())
     status('a', 'UserPromptSubmit')

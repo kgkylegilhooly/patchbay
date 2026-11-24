@@ -334,7 +334,7 @@ patchbay wait --nodes <id>,<id>,<id> --next --timeout 100
   `done`.
 - With `--next`, it returns the next thing you haven't been told: a report one of them sent you that's still waiting,
   or a turn that finished, a stop at its limit, or a close since your last `wait --next` (since your first one, for a
-  node you haven't waited on). Each is returned once. `next` in the reply says which node and why. Use it to wait
+  node you haven't waited on). Each is returned once; a member's report is usually followed by its turn ending, which the call after returns. `next` in the reply says which node and why. Use it to wait
   for the next report from a team where some members are idle, waiting for you: nothing that happens between two
   calls is missed.
 - An agent stopped at its usage limit or on an API error counts as finished for now. The reply's `stopped` says why

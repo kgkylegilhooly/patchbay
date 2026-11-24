@@ -50,7 +50,8 @@ export function createWaitLog(keep = KEPT_EVENTS) {
       let place = places.get(caller)
       if (!place) places.set(caller, (place = { start: seq, at: new Map() }))
       const p = place
-      return { of: (id) => p.at.get(id) ?? p.start, set: (ids, to) => ids.forEach((id) => p.at.set(id, to)) }
+      // A place only moves on: a narrower wait may already have taken an agent past `to`.
+      return { of: (id) => p.at.get(id) ?? p.start, set: (ids, to) => ids.forEach((id) => p.at.set(id, Math.max(p.at.get(id) ?? p.start, to))) }
     },
     /** The first change past `after(id)` among these agents that counts, or none. */
     first(ids: Set<string>, after: (id: string) => number, counts: (e: Logged) => boolean): Logged | undefined {
