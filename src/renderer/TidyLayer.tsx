@@ -115,6 +115,7 @@ export function TidyLayer({ sidebar }: { sidebar: boolean }): React.JSX.Element 
   }, [preview])
 
   if (!preview || !doc || !plan) return null
+  const scopes = scopeChoices(doc, plan.scope, preview.selection)
 
   const apply = (): void => {
     if (plan.moves.length) undoable('tidy', [tidyOp(plan)])
@@ -152,19 +153,22 @@ export function TidyLayer({ sidebar }: { sidebar: boolean }): React.JSX.Element 
       </ViewportPortal>
       <Panel position="top-center" className="tidy-bar" aria-label="Tidy preview" style={barPlace}>
         <strong className="tidy-bar-title">{what}</strong>
-        <div className="tidy-scopes" role="group" aria-label="What to tidy">
-          {scopeChoices(doc, plan.scope, preview.selection).map((c) => (
-            <button
-              key={c.label}
-              type="button"
-              className={`btn tidy-scope${sameScope(c.scope, plan.scope) ? ' tidy-scope-on' : ''}`}
-              aria-pressed={sameScope(c.scope, plan.scope)}
-              onClick={() => changeTidy({ scope: c.scope })}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
+        {/* A single choice would be a button that does nothing, so the scopes show only when there's a choice to make. */}
+        {scopes.length > 1 && (
+          <div className="tidy-scopes" role="group" aria-label="What to tidy">
+            {scopes.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                className={`btn tidy-scope${sameScope(c.scope, plan.scope) ? ' tidy-scope-on' : ''}`}
+                aria-pressed={sameScope(c.scope, plan.scope)}
+                onClick={() => changeTidy({ scope: c.scope })}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="tidy-status">
           <input type="checkbox" checked={preview.byStatus} onChange={(e) => changeTidy({ byStatus: e.target.checked })} />
           Needs you first

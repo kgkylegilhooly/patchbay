@@ -8,7 +8,7 @@ import { setCanvasTier } from './terminalPace'
  * What --head-scale is set on: the parts of a node zoom.css draws at their on-screen size, and the strips that move
  * down under a tile. Set there rather than on the whole canvas, so a zoom step restyles those and not every terminal.
  */
-const SCALED = '.react-flow :is(.unit > :not(.unit-body), .wb > .wb-head, .rack-head, .note > :is(.note-head, .note-far))'
+const SCALED = '.react-flow :is(.unit > :not(.unit-body), .wb > .wb-head, .rack-head, .note > :is(.note-head, .note-far), .tidy-ghost)'
 
 /**
  * Puts the zoom tier on the canvas as `data-zoom-tier`, and the header scale as `--head-scale`, for zoom.css to draw
