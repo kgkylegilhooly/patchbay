@@ -134,6 +134,11 @@ test('read prints the text as it is; other verbs print JSON', async () => {
   expect(JSON.parse((await cli(['open-terminal'])).stdout)).toEqual({ id: 'abc' })
 })
 
+test('open-agent --no-rules reaches Patchbay as noRules, so the Team rules note is left out', async () => {
+  await cli(['open-agent', '--prompt', 'go', '--no-rules'])
+  expect(calls[0].args).toEqual({ prompt: 'go', noRules: true })
+})
+
 test('--after and --ids take commas or repeats', async () => {
   await cli(['open-agent', '--after', 'a,b', '--after', 'c'])
   expect(calls[0].args.after).toEqual(['a', 'b', 'c'])

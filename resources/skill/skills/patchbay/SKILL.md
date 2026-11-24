@@ -179,6 +179,12 @@ EOF
 A file you write with your file-writing tool works too: `--members-file team.json`, or a `promptFile` per member.
 Through the MCP tool, which can't pipe anything, use a file.
 
+**Team rules.** When the project has a note titled "Team rules", made by the person (or by you), `spawn-team` and
+`open-agent` put its text before every brief, so rules every member must follow (no pushing, no installs, who
+commits) live in one place the person can edit on the canvas. The output names the note as `"rules": "<note id>"`.
+Don't repeat those rules in your briefs. To leave them out for one agent, pass `--no-rules` to `open-agent`, or
+`"noRules": true` on a team member. A note another agent made is never used.
+
 ## Lead a team
 
 The person can start you as a team lead with one task. Your job is then to plan, delegate and reconcile:

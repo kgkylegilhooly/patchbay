@@ -24,7 +24,8 @@ const VERBS = {
     group: 'text',
     title: 'text',
     after: 'list',
-    agent: 'text'
+    agent: 'text',
+    'no-rules': 'flag'
   },
   'spawn-team': { label: 'text', color: 'text', members: 'text', 'members-file': 'path' },
   group: { ids: 'list', label: 'text', color: 'text' },
@@ -82,9 +83,10 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   whoami        who you are on the canvas: your node, who opened you, your links and team
   list
   open-terminal [--cwd DIR] [--group ID] [--title T] [--command CMD] [--profile NAME|ID]
-  open-agent    [--prompt TEXT | --prompt-file FILE|-] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex]
+  open-agent    [--prompt TEXT | --prompt-file FILE|-] [--cwd DIR] [--group ID] [--title T] [--after ID,ID] [--agent claude|codex] [--no-rules]
   spawn-team    --label L (--members JSON | --members-file FILE|-) [--color C]
-                  members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"]}]
+                  members: [{"name":"a","agent":"codex","prompt":"...","promptFile":"...","cwd":"...","after":["b"],"noRules":true}]
+                  a "Team rules" note in the project goes before every brief; --no-rules / "noRules" leaves it out
   group         --ids ID,ID --label L [--color C]
   arrange       --ids ID,ID --layout grid|row|column [--gap N]
   arrange       --layout tidy [--ids ID,ID | --group ID] [--status]   keeps related nodes together, needs-you first with --status
