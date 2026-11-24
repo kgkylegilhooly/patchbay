@@ -86,7 +86,7 @@ export function claudeRunsHttpHooks(launch: HookLaunch, ask: Ask = output): Prom
 }
 
 /** The version of the `claude` program Patchbay found itself, or null for a custom one or anything unclear. */
-function claudeVersion(launch: HookLaunch, ask: Ask): Promise<[number, number, number] | null> {
+export function claudeVersion(launch: HookLaunch, ask: Ask = output): Promise<[number, number, number] | null> {
   if (launch.claudeTerminal?.trim() || launch.claudeCommand?.trim() || !launch.claude) return Promise.resolve(null)
   const program = { file: launch.claude.file, args: programArgs(launch.claude, ['--version']) }
   const key = [program.file, ...program.args].join('\0')

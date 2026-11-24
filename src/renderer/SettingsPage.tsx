@@ -17,6 +17,7 @@ import { confirmThen } from './shell/confirmStore'
 import { updateCheckRow } from './updateCheckRow'
 import './agents.css'
 import { takeSettingsSection, useSettingsAsk } from './settingsAsk'
+import { AboutBuildRows, ReportRows } from './diagnostics/AboutDiagnostics'
 
 /** Suggestions only. Any installed font can be typed. */
 const MONO_FONTS = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'IBM Plex Mono', 'Hack', 'Iosevka', 'Courier New']
@@ -487,9 +488,7 @@ export function SettingsPage({
 
         {section === 'about' && (
           <div className="set-group">
-            <Row title="Version">
-              <span className="set-value">Patchbay {info?.version}</span>
-            </Row>
+            <AboutBuildRows />
             <Row wide title="Your data" help="Your canvas, settings and saved terminal output.">
               <div className="set-input-row">
                 <code className="set-summary">{info?.dataDir}</code>
@@ -498,11 +497,7 @@ export function SettingsPage({
                 </button>
               </div>
             </Row>
-            <Row title="Log" help="When the window stopped responding or crashed, and how it recovered. Useful to share if Patchbay misbehaves.">
-              <button type="button" className="btn" data-cmd="open-log" onClick={() => void bridge.openLog()}>
-                Open log
-              </button>
-            </Row>
+            <ReportRows />
             <Row title="Built with" help="The canvas is drawn with React Flow (xyflow), under the MIT licence.">
               <span className="set-value">React Flow</span>
             </Row>

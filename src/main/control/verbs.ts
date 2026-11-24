@@ -433,7 +433,8 @@ export function createVerbs({
     const heard = prompts && (() => prompts.since(id, mark))
     return confirmDelivery({ path, from, sent: text, timing: deliveryTiming, heard }).then((outcome) => {
       const report = reportDelivery(outcome, id, deliveryTiming)
-      if (report.problem) log?.(`send to ${id}: ${outcome.result}. ${report.problem}`)
+      // A garbled problem quotes what the transcript kept, which is for the sender only: the log goes into bug reports.
+      if (report.problem) log?.(`send to ${id}: ${outcome.result}. ${report.garbled ? 'The transcript showed a damaged copy of the message.' : report.problem}`)
       return report
     })
   }
