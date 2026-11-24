@@ -6,7 +6,10 @@ export interface StatusTracker {
   get(id: string): AgentStatus
   all(): Record<string, AgentStatus>
   apply(id: string, ev: StatusEvent): void
-  /** Sets what's known about a session this launch didn't see happen. Nobody is notified about the past. */
+  /**
+   * Sets what's known about a session this launch didn't see happen. No desktop notification is shown for it, but
+   * `onChange` listeners are told, with `caughtUp` set, since it may be an event they missed.
+   */
   seed(id: string, status: AgentStatus, turns?: number): void
   turnsCompleted(id: string): number
   /**
@@ -14,8 +17,11 @@ export interface StatusTracker {
    * have been that way for longer.
    */
   since(id: string): StatusSince | undefined
-  onChange(cb: (id: string, status: AgentStatus) => void): void
+  onChange(cb: StatusListener): void
 }
+
+/** `caughtUp` is true for a status seeded after the fact, not seen as it happened. */
+export type StatusListener = (id: string, status: AgentStatus, info?: { caughtUp: boolean }) => void
 
 export interface StatusSince {
   at: number
@@ -35,7 +41,7 @@ export function createStatusTracker({
   const statuses = new Map<string, AgentStatus>()
   const changedAt = new Map<string, StatusSince>()
   const turns = new Map<string, number>()
-  const listeners: Array<(id: string, status: AgentStatus) => void> = []
+  const listeners: StatusListener[] = []
 
   return {
     get: (id) => statuses.get(id) ?? 'unknown',
@@ -50,7 +56,7 @@ export function createStatusTracker({
       statuses.set(id, status)
       if (status !== cur) changedAt.set(id, { at: now(), exact: false })
       if (turnsDone) turns.set(id, (turns.get(id) ?? 0) + turnsDone)
-      if (status !== cur || turnsDone) for (const cb of listeners) cb(id, status)
+      if (status !== cur || turnsDone) for (const cb of listeners) cb(id, status, { caughtUp: true })
     },
     apply(id, ev) {
       const cur = statuses.get(id)
@@ -60,7 +66,7 @@ export function createStatusTracker({
       changedAt.set(id, { at: now(), exact: true })
       const finishedTurn = next === 'idle' && cur !== undefined && IN_TURN.has(cur)
       if (finishedTurn) turns.set(id, (turns.get(id) ?? 0) + 1)
-      for (const cb of listeners) cb(id, next)
+      for (const cb of listeners) cb(id, next, { caughtUp: false })
       if (next === 'needs-you' || finishedTurn) notify(id, next)
     }
   }

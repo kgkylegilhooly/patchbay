@@ -84,6 +84,20 @@ describe('agent events', () => {
     expect(s.trig().armedSpec).not.toBeNull()
   })
 
+  test('a status caught up after a missed hook still fires, and its run says it was heard late', () => {
+    const s = setup(AGENT_TURN, { prompt: '{{event}}.' })
+    s.idle('a')
+    s.idle('c')
+    s.service.start()
+    s.arm()
+    s.tracker.apply('a', { type: 'hook', name: 'UserPromptSubmit' })
+    // Session sync re-reads the transcript and seeds what it missed: the turn had ended.
+    s.tracker.seed('a', 'idle')
+    const late = '"Builder" finished a turn (heard late: its status was caught up after a missed update)'
+    expect(s.trig().runs[0]).toMatchObject({ outcome: 'delivered', event: late })
+    expect(s.typed()).toEqual([`c:${paste(`${late}.`)}`])
+  })
+
   test('needs-you and exit fire only the trigger waiting for them', () => {
     const s = setup({ type: 'agent', nodeId: 'a', on: 'needs-you' })
     s.idle('a')
