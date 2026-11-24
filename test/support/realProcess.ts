@@ -13,6 +13,18 @@ export function usesRealProcesses(): void {
   vi.setConfig({ testTimeout: REAL_PROCESS_TIMEOUT_MS, hookTimeout: REAL_PROCESS_TIMEOUT_MS })
 }
 
+/**
+ * Tests that write and read many real files, one after another (a hundred transcripts, say). Half a second on an idle
+ * machine; past vitest's 5 s in a full run on a loaded one, where every new file waits for disk and the virus scanner
+ * behind thirty other workers. These get 30 s, which still fails a read that hangs.
+ */
+export const REAL_FILES_TIMEOUT_MS = 30_000
+
+/** Gives every test and hook in the calling file the real-files timeout. Call once, at the top of the file. */
+export function usesRealFiles(): void {
+  vi.setConfig({ testTimeout: REAL_FILES_TIMEOUT_MS, hookTimeout: REAL_FILES_TIMEOUT_MS })
+}
+
 /** The least time a test's git runs get. Patchbay's own limits (5 to 20 s) are for a hung git, not a busy machine. */
 export const PATIENT_GIT_MS = 45_000
 
