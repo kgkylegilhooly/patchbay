@@ -40,7 +40,8 @@ const VERBS = {
   read: { node: 'text', tail: 'int' },
   files: { node: 'text', turn: 'flag' },
   send: { node: 'text', text: 'text' },
-  wait: { nodes: 'list', node: 'text', timeout: 'int', any: 'flag' },
+  wait: { nodes: 'list', node: 'text', timeout: 'int', any: 'flag', next: 'flag' },
+  team: { group: 'text' },
   close: { node: 'text' },
   restart: { node: 'text' },
   issues: { state: 'text', limit: 'int', number: 'int' },
@@ -98,7 +99,9 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   read          --node ID [--tail N]
   files         [--node ID] [--turn]   files an agent edited (itself by default), newest first; --turn: the latest turn only
   send          --node ID --text TEXT
-  wait          --nodes ID,ID [--timeout SECONDS] [--any]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
+  wait          --nodes ID,ID [--timeout SECONDS] [--any | --next]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
+                  --next: until the first of them finishes a turn, stops or sends you a message after this call
+  team          [--group ID]   one line per agent you opened (or in that group): status, last report to you, branch and commits ahead of main
   close         --node ID
   restart       --node ID        brings back an agent you opened that has exited, resuming its conversation
   issues        [--state open|closed|all] [--limit N] [--number N]   (read-only)
@@ -374,7 +377,7 @@ function finish(verb, status, text) {
   }
   if (status !== 200) fail(reply.error || `Patchbay answered HTTP ${status}.`)
   const { result } = reply
-  if ((verb === 'read' || verb === 'whoami') && typeof result?.text === 'string') process.stdout.write(result.text)
+  if ((verb === 'read' || verb === 'whoami' || verb === 'team') && typeof result?.text === 'string') process.stdout.write(result.text)
   else process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
 }
 

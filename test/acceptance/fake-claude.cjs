@@ -301,7 +301,8 @@ async function main() {
         else if (said === 'done') void hook('Stop')
         else {
           process.stdout.write(`\r\nGOT: ${said}\r\n`)
-          void hook('UserPromptSubmit').then(() => setTimeout(() => void hook('Stop'), 500))
+          // With the text, as Claude Code's hook carries it, which confirms a send before any transcript is known.
+          void hook('UserPromptSubmit', { prompt: said.replace(/\x1b\[20[01]~/g, '') }).then(() => setTimeout(() => void hook('Stop'), 500))
         }
       }
     })

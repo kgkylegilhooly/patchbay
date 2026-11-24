@@ -371,3 +371,30 @@ test('the skill is a plugin whose description and body cover every verb', () => 
     expect(skill).toContain(`patchbay ${verb}`)
   }
 })
+
+test('wait --next and team go through; team prints its overview as text', async () => {
+  respond = (verb) => (verb === 'team' ? { members: [], text: 'Agents you opened (1):\n- a [1] idle\n' } : { done: true })
+  expect((await cli(['wait', '--nodes', 'a,b', '--next', '--timeout', '30'])).code).toBe(0)
+  expect(calls[0].args).toEqual({ nodes: ['a', 'b'], next: true, timeout: 30 })
+  const team = await cli(['team', '--group', 'g'])
+  expect(team).toMatchObject({ code: 0, stdout: 'Agents you opened (1):\n- a [1] idle\n' })
+  expect(calls[1]).toMatchObject({ verb: 'team', args: { group: 'g' } })
+  expect((await cli(['wait', '--help'])).stdout).toContain('--next: until the first of them')
+})
+
+test('open-agent into a group that is gone fails on stderr with exit 1, and creates nothing', async () => {
+  const store = memoryStore([claudeNode('node-1', { cwd: dir })])
+  const tracker = createStatusTracker({ notify: () => {} })
+  const runner = fakeRunner()
+  const verbs = createVerbs({ store, runner, tracker, host: fakeHost(), gate: createAfterGate({ store, tracker, runner }) })
+  await server.close()
+  server = await startControlServer({ secret: SECRET, endpointFile, onHook: () => ({}), onRpc: verbs })
+  const made = JSON.parse((await cli(['spawn-team', '--label', 'Pair', '--members', '[{"name":"only"}]'])).stdout)
+  expect((await cli(['close', '--node', made.members.only])).code).toBe(0)
+  const before = store.get().nodes.length
+  const r = await cli(['open-agent', '--group', made.group, '--prompt', 'review'])
+  expect(r.code).toBe(1)
+  expect(r.stdout).toBe('')
+  expect(r.stderr).toContain(`Group "${made.group}" is gone: it was removed when its last member, "only", closed. Nothing was created.`)
+  expect(store.get().nodes.length).toBe(before)
+})

@@ -187,12 +187,16 @@ The person can start you as a team lead with one task. Your job is then to plan,
    small, do it yourself and say so.
 2. Start them with `spawn-team`. Use `after` for anything that needs another member's first turn finished, and keep
    members running at the same time out of the same files. `open-agent` adds one later.
-3. Wait for them with `patchbay wait --nodes <id>,<id>`, not by checking `patchbay list` over and over.
+3. Wait for them with `patchbay wait --nodes <id>,<id>`, not by checking `patchbay list` over and over. Once some
+   members sit idle waiting for you, use `wait --next` (below) for the next report. `patchbay team` gives one line per
+   member: status, its last report to you, and its branch with commits ahead of main.
    - `needs-you` means the person has to answer that member. Tell them which node.
    - `unknown` doesn't mean finished, and neither `after` nor `wait` proves the work is right.
    - A member in the reply's `stopped` hit its usage limit or an error. Its `text` says what happens next.
 4. Read each result with `patchbay read --node <id>`, check it against its brief, and resolve conflicts between
    members. Use `patchbay send` to ask for fixes, one message at a time.
+   - A refused verb prints why on stderr and exits 1. Don't filter its output (`| grep id`), or a refusal looks like
+     nothing happened.
 5. Finish the team (below), then end with a short summary: what was done, what was checked, and what's still open.
 
 ### A brief that stands on its own
@@ -262,7 +266,8 @@ another member, commit it on its branch as work in progress, so nothing is lost.
 ### Finish the team
 
 When the work is checked, close the members you opened with `patchbay close --node <id>`, so the canvas doesn't
-fill with finished agents. Closing the last member of a team you spawned removes its empty group too. Leave one open if the person may want to look at its conversation, and say which. A
+fill with finished agents. Closing the last member of a team you spawned removes its empty group too, so its id stops
+working: `--group` with it is refused. Use `group` or `spawn-team` for a new one. Leave one open if the person may want to look at its conversation, and say which. A
 note or whiteboard you made can stay, since the person may want it.
 
 ## See which files an agent edited
@@ -306,7 +311,8 @@ at that agent's prompt, so it never lands in the middle of what they're writing.
 
 After typing a message, Patchbay checks the agent's transcript for it. `"confirmed": true` means it arrived whole.
 `"garbled": true` means only part of it arrived: send it again. A `problem` without `garbled` means it couldn't be
-checked, so read the node before sending it again. A message that had to wait is checked when it goes out, and you
+checked, so read the node before sending it again. An agent that has only just started has no transcript yet, so
+the prompt it reports submitting is checked instead. A message that had to wait is checked when it goes out, and you
 hear about a problem as a notice from Patchbay.
 
 A terminal gets the text and Enter right away, because it has no status to wait for. What you send is typed at its
@@ -320,10 +326,15 @@ terminal gets only your text.
 ```sh
 patchbay wait --nodes <id>,<id>
 patchbay wait --nodes <id>,<id> --any --timeout 100
+patchbay wait --nodes <id>,<id>,<id> --next --timeout 100
 ```
 
 - It returns once every agent named has finished its turn: `idle`, `needs-you` or `exited`. With `--any`, it
-  returns when the first one does. The reply gives each one's `status`, and `done`.
+  returns when the first one does, which is at once if one is already idle. The reply gives each one's `status`, and
+  `done`.
+- With `--next`, only what happens after you call counts: it returns when the first of them finishes a turn, stops at
+  its limit, sends you a message or is closed. `next` in the reply says which node and why. Use it to wait for the
+  next report from a team where some members are idle, waiting for you.
 - An agent stopped at its usage limit or on an API error counts as finished for now. The reply's `stopped` says why
   and, for a limit, until when.
 - It waits up to `--timeout` seconds (90 by default, at most 600) and then returns with `"timedOut": true`. Run
@@ -336,7 +347,7 @@ patchbay wait --nodes <id>,<id> --any --timeout 100
   again as a new prompt later. Read it there.
 - `needs-you` means the person has to answer that agent, such as a permission prompt or a question about
   trusting its folder. Tell them which node, then wait again. With `--any`, a node already at `needs-you` makes
-  every wait return at once, so leave it out of `--nodes` until the person has answered it.
+  every wait return at once; `--next` doesn't.
 - For a long wait in Claude Code, you can also end your turn: a member's report arrives as your next prompt.
 - Finished isn't the same as right. Read the result before you build on it.
 
