@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AboutInfo, AgentProgramInfo } from '../../shared/diagnostics'
-import { bridge } from '../bridge'
 import { Icon } from '../icons'
-import { agentLine, buildLine, copiedText, diagnosticsBridge, useDiagnosticsNote } from './diagnosticsUi'
+import { agentLine, buildLine, copiedText, copyButtonState, diagnosticsBridge, useDiagnosticsNote } from './diagnosticsUi'
 import './diagnostics.css'
 
 /** Settings' own row layout, as SettingsPage's Row draws it. */
@@ -72,9 +71,10 @@ export function AboutBuildRows(): React.JSX.Element {
 export function ReportRows(): React.JSX.Element {
   const [copied, setCopied] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const button = copyButtonState(busy)
   const copy = (): void => {
     const b = diagnosticsBridge()
-    if (!b) return
+    if (!b || busy) return
     setBusy(true)
     setCopied(null)
     void b
@@ -86,10 +86,10 @@ export function ReportRows(): React.JSX.Element {
     <>
       <Row title="Log" help="When the window stopped responding or crashed, and how it recovered. Useful to share if Patchbay misbehaves.">
         <div className="diag-buttons">
-          <button type="button" className="btn" data-cmd="open-log" onClick={() => void bridge.openLog()}>
+          <button type="button" className="btn" data-cmd="open-log" onClick={() => void window.patchbay.openLog()}>
             Open log
           </button>
-          <button type="button" className="btn" data-cmd="open-log-folder" onClick={() => void diagnosticsBridge()?.openLogFolder()}>
+          <button type="button" className="btn" data-cmd="open-log-folder" aria-label="Open log folder" onClick={() => void diagnosticsBridge()?.openLogFolder()}>
             Open folder
           </button>
         </div>
@@ -108,8 +108,8 @@ export function ReportRows(): React.JSX.Element {
           </>
         }
       >
-        <button type="button" className="btn btn-solid" data-cmd="copy-diagnostics" disabled={busy} onClick={copy}>
-          {busy ? 'Copying…' : 'Copy diagnostics'}
+        <button type="button" className="btn btn-solid" data-cmd="copy-diagnostics" aria-disabled={button['aria-disabled']} onClick={copy}>
+          {button.label}
         </button>
       </Row>
     </>

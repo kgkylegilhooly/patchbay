@@ -41,3 +41,11 @@ export function copyDiagnostics(): void {
 export function openLogFolder(): void {
   void diagnosticsBridge()?.openLogFolder()
 }
+
+/**
+ * Copy diagnostics while it works: never `disabled`, since Chromium takes focus off a button as it becomes disabled and a
+ * keyboard user would lose their place. aria-disabled says it's busy, and a press then does nothing.
+ */
+export function copyButtonState(busy: boolean): { 'aria-disabled': boolean; label: string } {
+  return { 'aria-disabled': busy, label: busy ? 'Copying…' : 'Copy diagnostics' }
+}

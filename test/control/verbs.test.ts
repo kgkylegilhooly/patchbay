@@ -685,6 +685,9 @@ describe('send checks the transcript', () => {
     const result = await verbs('me', 'send', { node: 'c', text: long })
     expect(result).toMatchObject({ delivered: false, confirmed: false, garbled: true, problem: expect.stringContaining('damaged copy') })
     expect(logged).toEqual([expect.stringMatching(/^send to c: garbled\./)])
+    // The sender is told what arrived; the log, which goes into bug reports, keeps none of the message.
+    expect(result).toMatchObject({ problem: expect.stringContaining('review the parser') })
+    expect(logged[0]).not.toMatch(/review|parser/)
   })
 
   test('unconfirmed when nothing shows up in time', async () => {

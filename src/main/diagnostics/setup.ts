@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises'
-import { homedir, release, version as osVersion } from 'node:os'
+import { homedir, release, userInfo, version as osVersion } from 'node:os'
 import { join } from 'node:path'
 import { app, clipboard, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { diagnosticsText, logTail, type MemoryReading } from '../../core/diagnostics/report'
@@ -9,6 +9,15 @@ import type { Settings } from '../../shared/settings'
 import { inTestMode } from '../testPickers'
 import { buildInfo } from './buildInfo'
 import { agentPrograms, logFolder, outsideHooks, readLogEnd, sessionLines } from './collect'
+
+/** The account's name, for redacting a home folder that doesn't end in it. */
+function accountName(): string | null {
+  try {
+    return userInfo().username || null
+  } catch {
+    return null
+  }
+}
 
 export function aboutInfo(): AboutInfo {
   return {
@@ -61,7 +70,8 @@ export function setupDiagnostics(d: {
       memory: d.memory(),
       outsideHooks: outside,
       log: logTail(log, 40),
-      home
+      home,
+      user: accountName()
     })
   }
 

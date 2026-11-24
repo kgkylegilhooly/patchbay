@@ -156,3 +156,49 @@ describe('diagnosticsText', () => {
     expect(text).toContain('Memory: not read')
   })
 })
+
+describe('review round: nothing said to an agent, and no secret shape, gets through', () => {
+  it('H1: a garbled-send line keeps no transcript text, from an old log too', () => {
+    const line =
+      '2026-11-24T10:00:00.000Z send to 1d015715-b71f-441e-bdfc-3333e6b4be2a: garbled. Node "1d015715-b71f-441e-bdfc-3333e6b4be2a" got a damaged copy of the message. Its transcript shows only: "please rotate the "prod" keys and tell nobody". Send it again.'
+    const tail = logTail(line)
+    expect(tail).toHaveLength(1)
+    expect(tail[0]).toContain('Its transcript shows only: <hidden>')
+    expect(tail[0]).not.toMatch(/rotate|prod|nobody/)
+    expect(diagnosticsText(input({ log: tail }))).not.toMatch(/rotate|prod|nobody/)
+  })
+
+  it('M1: JSON keys, flags, URL credentials, Basic auth and known key prefixes', () => {
+    expect(redact('{"token":"abc123"} {"PATCHBAY_TOKEN": "abc123"} {"apiKey": "k1"}', null)).toBe('{"token":<hidden>} {"PATCHBAY_TOKEN": <hidden>} {"apiKey": <hidden>}')
+    expect(redact('claude --api-key sk-zzz --token SECRET -p hi', null)).toBe('claude --api-key <hidden> --token <hidden> -p hi')
+    expect(redact('git failed: https://kyle:SECRETPASS@github.com/a/b.git', null)).toBe('git failed: https://<hidden>@github.com/a/b.git')
+    expect(redact('authorization: Basic Zm9vOmJhcg==', null)).toBe('authorization: Basic <hidden>')
+    expect(redact('keys sk-ant-api03-AbC_d-1 ghp_abcdef123 github_pat_11AB xoxb-1-2 sk-abcdefghijklmnopqrstuvwx', null)).toBe('keys <hidden> <hidden> <hidden> <hidden> <hidden>')
+  })
+
+  it('M1: a custom command from Settings goes in redacted', () => {
+    const text = diagnosticsText(input({ agents: [{ kind: 'claude', name: 'Claude Code', program: 'mywrap --token X1 claude', version: 'not asked (custom command)' }], launch: { claudeCommand: 'claude --api-key sk-ant-api03-Q' } }))
+    expect(text).not.toMatch(/X1|sk-ant/)
+  })
+
+  it('L1: a home outside \\Users is hidden too, and the account name given', () => {
+    expect(redact(String.raw`D:\Profiles\kyle\x and \\server\profiles$\kyle\y`, String.raw`D:\Profiles\kyle`)).toBe(String.raw`D:\Profiles\<you>\x and \\server\profiles$\<you>\y`)
+    expect(redact('signed in as jdoe', null, 'jdoe')).toBe('signed in as <you>')
+  })
+
+  it('L2: JSON-escaped and URL-encoded paths', () => {
+    expect(redact(String.raw`{"cwd":"C:\\Users\\kg\\x"}`, null)).toBe(String.raw`{"cwd":"C:\\Users\\<you>\\x"}`)
+    expect(redact('file:///C%3A%5CUsers%5CKGKyl%5Cx', null)).toBe('file:///C%3A%5CUsers%5C<you>%5Cx')
+  })
+
+  it("L3: stops at the end of a path in a list, and a name that's also a word is still hidden on purpose", () => {
+    expect(redact(String.raw`path=C:\Users\other;D:\bin,next`, String.raw`C:\Users\me`)).toBe(String.raw`path=C:\Users\<you>;D:\bin,next`)
+    expect(redact('Session host: background', String.raw`C:\Users\host`)).toBe('Session <you>: background')
+  })
+
+  it('L5: node ids in the log are cut to their first 8 characters', () => {
+    const text = diagnosticsText(input({ log: ['2026-11-24T10:00:00.000Z Session sync (boot): 1d015715-b71f-441e-bdfc-3333e6b4be2a was shown as ended'] }))
+    expect(text).toContain('Session sync (boot): 1d015715… was shown')
+    expect(text).not.toContain('3333e6b4be2a')
+  })
+})

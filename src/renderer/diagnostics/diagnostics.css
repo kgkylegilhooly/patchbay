@@ -58,3 +58,10 @@
 .diag-copied-bad {
   color: #ff6b61;
 }
+
+/* Busy, but still focusable: see copyButtonState. */
+.btn[data-cmd='copy-diagnostics'][aria-disabled='true'] {
+  color: var(--ink-dim);
+  opacity: 0.6;
+  cursor: default;
+}

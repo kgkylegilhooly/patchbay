@@ -65,41 +65,68 @@ export function userNameOf(home: string): string | null {
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+/** A path separator as it can appear: either slash, doubled as in JSON, or URL-encoded. */
+const SEP = String.raw`(?:[\\/]+|%5C|%2F)`
+/** Where a user name in a path ends: a separator, a list separator or anything a name can't hold. */
+const NAME = String.raw`[^\\/\s"'<>|:*?;,%]+`
+
+/** Keys and tokens whose shape gives them away wherever they are. */
+const KNOWN_KEYS = /\b(?:sk-ant-[\w-]+|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_\w+|github_pat_\w+|xox[abpr]-[\w-]+)/g
+const SECRET_WORD = String.raw`(?:token|secret|password|passwd|api[_-]?key)`
+
 /**
- * Hides who the person is, and anything secret that slipped into a line. The home folder, in either slash and any case,
- * and any other `\Users\<name>`, become `\Users\<you>`, and the user name standing alone too (a log line can name it
- * outside a path). A bearer token, or a value given for something called a token, secret, key or password, becomes
- * `<hidden>`.
+ * Hides who the person is, and anything secret that slipped into a line.
+ * - The home folder, whatever its shape (`C:\Users\name`, `D:\Profiles\name`), in either slash and any case, has its
+ *   last part become `<you>`; so does any other `\Users\<name>`, also JSON-escaped or URL-encoded; and the home's last
+ *   part and the account name (`user`) standing alone, when 3 letters or more, so "me" doesn't eat ordinary words.
+ * - Bearer and Basic credentials, a value given for anything named token, secret, password or api key (`x=…`, `x: …`,
+ *   `"x": "…"`, `--x …`), credentials in a URL, and keys whose prefix gives them away, become `<hidden>`.
  */
-export function redact(text: string, home: string | null): string {
+export function redact(text: string, home: string | null, user?: string | null): string {
   let out = text
-  const name = home ? userNameOf(home) : null
-  if (home && name) {
+  const trimmed = home?.replace(/[\\/]+$/, '') ?? ''
+  const last = trimmed.split(/[\\/]/).pop() ?? ''
+  if (trimmed && last && trimmed !== last) {
     // The whole home first, so a name with a space in it goes in one piece.
-    const parent = home.replace(/[\\/]+$/, '').slice(0, -name.length)
-    for (const sep of ['\\', '/']) {
-      const form = parent.replace(/[\\/]/g, sep)
-      out = out.replace(new RegExp(`${escapeRe(form)}${escapeRe(name)}(?=$|[\\\\/\\s"'])`, 'gim'), (m) => `${m.slice(0, m.length - name.length)}<you>`)
+    const parent = trimmed.slice(0, -last.length)
+    for (const sep of ['\\', '/', '\\\\']) {
+      const form = parent.replace(/[\\/]+/g, sep)
+      out = out.replace(new RegExp(`${escapeRe(form)}${escapeRe(last)}(?=$|[\\\\/\\s"';,])`, 'gim'), (m) => `${m.slice(0, m.length - last.length)}<you>`)
     }
   }
-  out = out.replace(/([\\/]Users[\\/])(?!<you>)[^\\/\s"'<>|:*?]+/gi, '$1<you>')
-  // A short name like "me" or "dev" would match ordinary words, so only a name of 3 or more letters alone is hidden.
-  if (name && name.length >= 3) out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRe(name)}(?![A-Za-z0-9_])`, 'gi'), '<you>')
+  out = out.replace(new RegExp(`(${SEP}Users${SEP})(?!<you>)${NAME}`, 'gi'), '$1<you>')
+  for (const name of new Set([last, user ?? ''])) {
+    if (name.length >= 3) out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRe(name)}(?![A-Za-z0-9_])`, 'gi'), '<you>')
+  }
   return out
+    .replace(KNOWN_KEYS, '<hidden>')
+    .replace(/(\/\/)[^/\s:@]+:[^@\s/]+@/g, '$1<hidden>@')
     .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 <hidden>')
-    .replace(/\b([A-Za-z_]*(?:token|secret|password|api[_-]?key)[A-Za-z_]*)(\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi, '$1$2<hidden>')
+    .replace(/\b(Basic)\s+[A-Za-z0-9+/]{6,}={0,2}/g, '$1 <hidden>')
+    .replace(new RegExp(String.raw`(^|\s)(--?(?:[A-Za-z0-9]+[-_])*${SECRET_WORD}\b)(\s+)("[^"]*"|'[^']*'|[^\s"']+)`, 'gim'), '$1$2$3<hidden>')
+    .replace(new RegExp(String.raw`\b([A-Za-z0-9_-]*${SECRET_WORD}[A-Za-z0-9_-]*)(["']?\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;}"']+)`, 'gi'), '$1$2<hidden>')
+    .replace(/("[A-Za-z0-9_-]*key"\s*:\s*)"[^"]*"/gi, '$1<hidden>')
 }
 
 /** Memory readings fill the log every half hour and say nothing about a fault, so they're left out. */
 const MEMORY_LINE = /^\S+\s+Memory:/
+/**
+ * What a transcript held, as a garbled send quoted it (`Its transcript shows only: "…"`): from the quote on, the line
+ * goes. The app no longer writes it (verbs.ts), but logs from older builds have it.
+ */
+const TRANSCRIPT_QUOTE = /(\btranscript\b[^"\n]*?)".*$/i
 
-/** The last `count` lines of the log that aren't memory readings, oldest first. */
+/** The last `count` lines of the log that aren't memory readings, oldest first, with any transcript text taken out. */
 export function logTail(text: string, count = 40): string[] {
   return text
     .split(/\r?\n/)
     .filter((l) => l.trim() && !MEMORY_LINE.test(l))
     .slice(-count)
+    .map((l) => l.replace(TRANSCRIPT_QUOTE, '$1<hidden>'))
 }
+
+/** Node and session ids, cut to their first 8 characters: enough to tell them apart in one report. */
+const UUID = /\b([0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 
 export interface SessionLine {
   id: string
@@ -171,6 +198,8 @@ export interface DiagnosticsInput {
   outsideHooks: string[]
   log: string[]
   home: string
+  /** The account's name, for a home folder that doesn't end in it. */
+  user?: string | null
 }
 
 function buildText(b: AboutInfo['build']): string {
@@ -211,5 +240,5 @@ export function diagnosticsText(d: DiagnosticsInput): string {
   lines.push('', ...(d.memory ? memoryLines(d.memory) : ['Memory: not read']))
   lines.push('', `Claude settings outside Patchbay naming its hooks: ${d.outsideHooks.length ? d.outsideHooks.join(', ') : 'none'}`)
   lines.push('', `Log, last ${d.log.length} lines (memory readings left out):`, ...d.log)
-  return redact(lines.join('\n'), d.home)
+  return redact(lines.join('\n').replace(UUID, '$1…'), d.home, d.user)
 }

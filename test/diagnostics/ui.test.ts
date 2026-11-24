@@ -30,3 +30,22 @@ describe('where Copy diagnostics is', () => {
     expect(actionById('open-log-folder')?.label).toBe('Open log folder')
   })
 })
+
+describe('About rows, for the keyboard and screen readers', () => {
+  it('M2: Copy diagnostics is never disabled while busy, so it keeps focus; it says busy with aria-disabled', async () => {
+    const { copyButtonState } = await import('../../src/renderer/diagnostics/diagnosticsUi')
+    expect(copyButtonState(true)).toEqual({ 'aria-disabled': true, label: 'Copying…' })
+    expect(copyButtonState(false)).toEqual({ 'aria-disabled': false, label: 'Copy diagnostics' })
+  })
+
+  it("L6: the log's Open folder button has a name of its own", async () => {
+    const { createElement } = await import('react')
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    // A .tsx component, which the node typecheck of tests doesn't compile, so it's loaded by a path it doesn't follow, as in shell.test.ts.
+    const path: string = '../../src/renderer/diagnostics/AboutDiagnostics'
+    const { ReportRows } = await import(/* @vite-ignore */ path)
+    const html = renderToStaticMarkup(createElement(ReportRows))
+    expect(html).toContain('aria-label="Open log folder"')
+    expect(html).not.toMatch(/data-cmd="copy-diagnostics"[^>]*disabled=""/)
+  })
+})

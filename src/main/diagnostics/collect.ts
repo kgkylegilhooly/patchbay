@@ -1,4 +1,4 @@
-import { readFile, open } from 'node:fs/promises'
+import { open, readdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { runProgram } from '../../core/git/run'
 import { type SessionLine, sessionHooks } from '../../core/diagnostics/report'
@@ -10,7 +10,7 @@ import { agentProgramProblem } from '../sessions/agentProgramCheck'
 import { resolveClaudeAsync, type ClaudeProgram, programArgs } from '../sessions/claudeLaunch'
 import { resolveCodexAsync } from '../sessions/codexLaunch'
 import { claudeVersion } from '../sessions/hookRunner'
-import { MANAGED_FILE } from '../sessions/httpHookSafety'
+import { loadRegistryPolicy, MANAGED_FILE, registryPolicyNow, type RegistryPolicy } from '../sessions/httpHookSafety'
 import { settingsFileFor } from '../sessions/sessionSettingsFiles'
 
 /** The path a program was found at: a batch file runs through cmd.exe, with its path, escaped, after /c. */
@@ -100,18 +100,34 @@ export async function sessionLines(d: {
   return [...lines.filter((l): l is SessionLine => l !== null), ...unseen]
 }
 
-/** Signs in a Claude settings file that it runs Patchbay's hooks or status line: they belong only in a session's own. */
-const PATCHBAY_HOOK = /hook\.cjs|statusline\.cjs|127\.0\.0\.1:\d+\/hook\/|PATCHBAY_/i
+/**
+ * Signs in a Claude settings file that it runs Patchbay's hooks or status line: they belong only in a session's own. A
+ * hook of the person's own that merely reads PATCHBAY_NODE_ID isn't one.
+ */
+const PATCHBAY_HOOK = /hook\.cjs|statusline\.cjs|\/hook\//i
+
+const namesPatchbayHooks = (settings: unknown): boolean => {
+  const s = settings as { hooks?: unknown; statusLine?: unknown } | null
+  return !!s && PATCHBAY_HOOK.test(JSON.stringify([s.hooks ?? null, s.statusLine ?? null]))
+}
 
 /**
- * Claude settings that any Claude would read, outside Patchbay too, which mention Patchbay's hooks. Patchbay never writes
- * them there (each session gets its own file through --settings), so one found means it was copied in by hand, and a
- * Claude in any terminal would run Patchbay's hooks. Only `hooks` and `statusLine` are looked at.
+ * Claude settings that any Claude would read, outside Patchbay too, which name Patchbay's hooks: the places
+ * httpHookSafety.ts reads (managed settings, their drop-ins and the registry policy, the person's own, and each folder's).
+ * Patchbay never writes them there (each session gets its own file through --settings), so one found means it was
+ * copied in by hand, and a Claude in any terminal would run Patchbay's hooks. Only `hooks` and `statusLine` are looked at.
  */
-export async function outsideHooks(places: { home: string; configDir?: string; folders: string[]; managedFile?: string }): Promise<string[]> {
+export async function outsideHooks(places: { home: string; configDir?: string; folders: string[]; managedFile?: string; registry?: RegistryPolicy[] }): Promise<string[]> {
   const userDir = places.configDir || join(places.home, '.claude')
+  const managed = places.managedFile ?? MANAGED_FILE
+  const dropIns = join(dirname(managed), 'managed-settings.d')
+  const dropInFiles = (await readdir(dropIns).catch(() => [] as string[]))
+    .filter((n) => n.endsWith('.json'))
+    .sort()
+    .map((n) => join(dropIns, n))
   const files = [
-    places.managedFile ?? MANAGED_FILE,
+    managed,
+    ...dropInFiles,
     join(userDir, 'settings.json'),
     join(userDir, 'settings.local.json'),
     ...[...new Set(places.folders.filter(Boolean))].flatMap((f) => [join(f, '.claude', 'settings.json'), join(f, '.claude', 'settings.local.json')])
@@ -119,14 +135,14 @@ export async function outsideHooks(places: { home: string; configDir?: string; f
   const found = await Promise.all(
     files.map(async (file) => {
       try {
-        const parsed = JSON.parse(await readFile(file, 'utf8')) as { hooks?: unknown; statusLine?: unknown }
-        return PATCHBAY_HOOK.test(JSON.stringify([parsed?.hooks ?? null, parsed?.statusLine ?? null])) ? file : null
+        return namesPatchbayHooks(JSON.parse(await readFile(file, 'utf8'))) ? file : null
       } catch {
         return null
       }
     })
   )
-  return found.filter((f): f is string => f !== null)
+  const registry = places.registry ?? (await loadRegistryPolicy().then(registryPolicyNow, () => []))
+  return [...found.filter((f): f is string => f !== null), ...registry.filter((p) => namesPatchbayHooks(p.settings)).map((p) => p.key)]
 }
 
 export const logFolder = (logFile: string): string => dirname(logFile)

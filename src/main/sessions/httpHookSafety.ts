@@ -137,6 +137,9 @@ export function loadRegistryPolicy(query: RegQuery = regQuery): Promise<void> {
   return Promise.resolve()
 }
 
+/** The registry policy as last read by loadRegistryPolicy. */
+export const registryPolicyNow = (): RegistryPolicy[] => registryPolicies
+
 /** For tests. */
 export function forgetRegistryPolicy(): void {
   registryPolicies = []

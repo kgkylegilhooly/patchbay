@@ -68,15 +68,27 @@ describe('outsideHooks', () => {
     // Patchbay's name elsewhere in a file, as a permission rule, isn't a hook.
     writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(patchbay list)'] }, hooks: {} }))
     writeFileSync(join(project, '.claude', 'settings.local.json'), '{ broken')
-    const found = await outsideHooks({ home, folders: [project, ''], managedFile: join(home, 'none.json') })
+    const found = await outsideHooks({ home, folders: [project, ''], managedFile: join(home, 'none.json'), registry: [] })
     expect(found).toEqual([join(home, '.claude', 'settings.json')])
+  })
+
+  it("reads managed drop-ins and the registry policy, and doesn't count a hook that only reads PATCHBAY_NODE_ID", async () => {
+    const home = temp()
+    const managedDir = temp()
+    mkdirSync(join(managedDir, 'managed-settings.d'))
+    writeFileSync(join(managedDir, 'managed-settings.d', '10-team.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'http', url: 'http://127.0.0.1:4100/hook/Stop' }] }] } }))
+    mkdirSync(join(home, '.claude'))
+    writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo $PATCHBAY_NODE_ID >> ~/log' }] }] } }))
+    const registry = [{ key: 'HKCU\\SOFTWARE\\Policies\\ClaudeCode', settings: { statusLine: { type: 'command', command: 'node x/statusline.cjs' } } }]
+    const found = await outsideHooks({ home, folders: [], managedFile: join(managedDir, 'managed-settings.json'), registry })
+    expect(found).toEqual([join(managedDir, 'managed-settings.d', '10-team.json'), 'HKCU\\SOFTWARE\\Policies\\ClaudeCode'])
   })
 
   it('reads CLAUDE_CONFIG_DIR in place of ~/.claude, and finds none in a clean setup', async () => {
     const home = temp()
     const config = temp()
     writeFileSync(join(config, 'settings.local.json'), JSON.stringify({ statusLine: { type: 'command', command: 'node C:/x/statusline.cjs' } }))
-    expect(await outsideHooks({ home, configDir: config, folders: [], managedFile: join(home, 'none.json') })).toEqual([join(config, 'settings.local.json')])
-    expect(await outsideHooks({ home, folders: [], managedFile: join(home, 'none.json') })).toEqual([])
+    expect(await outsideHooks({ home, configDir: config, folders: [], managedFile: join(home, 'none.json'), registry: [] })).toEqual([join(config, 'settings.local.json')])
+    expect(await outsideHooks({ home, folders: [], managedFile: join(home, 'none.json'), registry: [] })).toEqual([])
   })
 })
