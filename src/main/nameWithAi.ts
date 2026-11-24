@@ -1,5 +1,6 @@
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { basename } from 'node:path'
+import { killTree } from '../core/proc/killTree'
 
 /** What goes to the model at most, from the end of the output, where the current work is. */
 const SOURCE_LIMIT = 6000
@@ -83,10 +84,6 @@ export interface Program {
   args: string[]
 }
 
-/** Ends a process and everything it started. It fails only if it has already gone. */
-function killTree(pid: number | undefined): void {
-  if (pid !== undefined) execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => {})
-}
 
 /** Runs a program to the end, feeding it stdin, with limits on how long it runs and how much it prints. */
 export function runToEnd(program: Program, stdin: string, opts: { cwd: string; env: Record<string, string>; timeoutMs?: number; limit?: number }): Promise<PrintResult> {
@@ -106,7 +103,7 @@ export function runToEnd(program: Program, stdin: string, opts: { cwd: string; e
     })
     const timer = setTimeout(() => {
       timedOut = true
-      killTree(child.pid)
+      killTree(child)
     }, opts.timeoutMs ?? TIMEOUT_MS)
     const finish = (result: Pick<PrintResult, 'code' | 'error'>): void => {
       clearTimeout(timer)
@@ -116,7 +113,7 @@ export function runToEnd(program: Program, stdin: string, opts: { cwd: string; e
       stdout += d
       if (stdout.length <= limit) return
       stdout = stdout.slice(0, limit)
-      if (!tooLong) killTree(child.pid)
+      if (!tooLong) killTree(child)
       tooLong = true
     })
     child.stderr.setEncoding('utf8').on('data', (d: string) => {

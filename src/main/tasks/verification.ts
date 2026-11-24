@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { TaskRevision, TaskVerification } from '../../shared/task'
 import { cleanEnv } from '../sessions/env'
+import { killTree as killChildTree } from '../../core/proc/killTree'
 
 const runFile = promisify(execFile)
 export const unknownRevision = (reason?: string): TaskRevision => ({ revision: null, uncommitted: null, fingerprint: null, ...(reason ? { reason } : {}) })
@@ -73,10 +74,8 @@ export async function readRevision(cwd: string): Promise<TaskRevision> {
 /** Verification commands running now, so they can be ended when the app quits. */
 const running = new Set<ChildProcess>()
 
-const killTree = (child: ChildProcess): void => {
-  if (process.platform === 'win32' && child.pid) execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, () => {})
-  else child.kill('SIGKILL')
-}
+/** The command and everything it started, only while it's known to be running (see core/proc/killTree.ts). */
+const killTree = (child: ChildProcess): void => void killChildTree(child)
 
 /** Ends every verification command still running, and everything it started. */
 export function stopVerifications(): number {
