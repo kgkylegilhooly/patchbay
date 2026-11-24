@@ -85,3 +85,6 @@ export function confirmWords(label: string): { title: string; verb: string } {
   const verb = label.replace(/(…|\.\.\.)\s*$/, '').trim()
   return { title: `${verb}?`, verb }
 }
+
+/** The hidden line a small form is described by (written by A11yLayer, so it follows rebinding): its keys. */
+export const FORM_HELP_ID = 'pb-form-keys'

@@ -2,7 +2,7 @@ import { createElement, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../icons'
 import type { IconName } from '../iconPaths'
-import { keyTarget, panelKeyAction, panelStack, trapsTab, windowEscCloses, type PanelKind } from './panelKeys'
+import { FORM_HELP_ID, keyTarget, panelKeyAction, panelStack, trapsTab, windowEscCloses, type PanelKind } from './panelKeys'
 
 export type { PanelKind }
 
@@ -164,7 +164,9 @@ export function Panel({
       },
       className: `shell shell-${kind} ${className}`.trim(),
       role: 'dialog',
+      // A small form is a non-modal dialog: the canvas behind it stays live, so it isn't aria-modal (see a11y/regions.ts).
       'aria-modal': modalish ? true : undefined,
+      'aria-describedby': kind === 'form' ? FORM_HELP_ID : undefined,
       'aria-label': label ?? (typeof title === 'string' ? title : undefined),
       'aria-busy': busy || undefined,
       tabIndex: -1,

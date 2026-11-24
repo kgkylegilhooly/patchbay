@@ -4,6 +4,7 @@ import { actionForKey, appTakesKey, isOverTerminal } from '../../src/renderer/ke
 import type { Commands, MenuState } from '../../src/renderer/menus'
 import { kindName, nodeAriaLabel } from '../../src/renderer/a11y/nodeLabel'
 import { nextStop, REGION_ORDER } from '../../src/renderer/a11y/regions'
+import { helpWords } from '../../src/renderer/a11y/keyHints'
 import { alertOf, AnnounceQueue, GAP_MS, joinAlerts, newAlerts, REPEAT_MS, type Alert } from '../../src/renderer/a11y/announce'
 import { keyOf, withKey } from '../../src/renderer/a11y/keyHints'
 import { closeQuestion } from '../../src/renderer/a11y/nodeLabel'
@@ -61,7 +62,8 @@ describe('#6 a window has one name for a screen reader', () => {
 })
 
 describe('#6 F6 moves between the parts of the app', () => {
-  const all = [...REGION_ORDER]
+  // No small form open: the four parts of the app.
+  const all = REGION_ORDER.filter((r) => r !== 'form')
 
   test('round the regions in order, and back with Shift+F6', () => {
     expect(nextStop({ region: 'menubar', inWindow: false }, all, 1)).toBe('sidebar')
@@ -84,6 +86,22 @@ describe('#6 F6 moves between the parts of the app', () => {
     expect(nextStop({ region: null, inWindow: false }, all, 1)).toBe('menubar')
     expect(nextStop({ region: null, inWindow: false }, all, -1)).toBe('dock')
     expect(nextStop({ region: null, inWindow: false }, [], 1)).toBeNull()
+  })
+
+  test('an open small form is one more stop, after the dock, both ways (a non-modal dialog)', () => {
+    const withForm = [...REGION_ORDER]
+    expect(nextStop({ region: 'dock', inWindow: false }, withForm, 1)).toBe('form')
+    expect(nextStop({ region: 'form', inWindow: false }, withForm, 1)).toBe('menubar')
+    expect(nextStop({ region: 'form', inWindow: false }, withForm, -1)).toBe('dock')
+    expect(nextStop({ region: 'menubar', inWindow: false }, withForm, -1)).toBe('form')
+    // Out of a terminal behind the form, the first press still goes to that window's frame.
+    expect(nextStop({ region: 'canvas', inWindow: true }, withForm, 1)).toBe('frame')
+  })
+
+  test('a form says how to submit, close and leave it, following a rebound F6', () => {
+    expect(helpWords('F6', 'Ctrl+K').form).toBe('Ctrl+Enter submits. Esc closes. F6 moves between this form and the rest of the app.')
+    expect(helpWords('Alt+F6', null).form).toContain('Alt+F6 moves between this form')
+    expect(helpWords(null, null).form).toBe('Ctrl+Enter submits. Esc closes.')
   })
 
   test('F6 is taken from a focused terminal, which has no other way out', () => {

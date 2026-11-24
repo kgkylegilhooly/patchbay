@@ -5,9 +5,10 @@ import { setupHolds } from '../status/setupStatus'
 import { useStore } from '../store'
 import type { CanvasNode } from '../../shared/model'
 import { alertOf, AnnounceQueue, newAlerts, type Alert } from './announce'
-import { keyOf } from './keyHints'
+import { helpWords, keyOf } from './keyHints'
 import { useKeyOverrides } from './useKeyOverrides'
 import { enterFrame, noteFocusIn } from './regions'
+import { FORM_HELP_ID } from '../shell/panelKeys'
 import './a11y.css'
 
 const TERMINAL_HELP_ID = 'pb-terminal-keys'
@@ -45,16 +46,6 @@ function nodeWords(nodes: readonly CanvasNode[] | undefined): string {
   if (!nodes) return ''
   const holds = setupHolds(nodes)
   return nodes.map((n) => `${n.id}\t${n.title}\t${holds.get(n.id) ?? ''}`).join('\n')
-}
-
-/** What a terminal tells a screen reader about getting out of it, and the words for a window on the canvas. */
-function helpWords(f6: string | null, palette: string | null): { terminal: string; node: string } {
-  const out = f6 ? `${f6} leaves this window.` : ''
-  const find = palette ? `${palette} finds any action.` : ''
-  return {
-    terminal: [out, find].filter(Boolean).join(' '),
-    node: ['Enter types in this window.', f6 ? `${f6} moves to the next part of the app.` : '', find].filter(Boolean).join(' ')
-  }
 }
 
 /** React Flow's description of a window, which a screen reader reads after its name: how to get in and out by keys. */
@@ -172,6 +163,9 @@ export function A11yLayer(): React.JSX.Element {
       <div ref={region} className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-announcer />
       <p id={TERMINAL_HELP_ID} className="sr-only">
         {words.terminal}
+      </p>
+      <p id={FORM_HELP_ID} className="sr-only">
+        {words.form}
       </p>
     </>
   )
