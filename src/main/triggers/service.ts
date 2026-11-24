@@ -280,7 +280,7 @@ export function createTriggerService({
     return null
   }
 
-  const onStatus = (id: string, status: AgentStatus): void => {
+  const onStatus = (id: string, status: AgentStatus, caughtUp = false): void => {
     const prev = seen.get(id)
     seen.set(id, status)
     if (!running) return
@@ -292,7 +292,7 @@ export function createTriggerService({
         const own = ownTurns.get(node.id)
         // Only once that turn has begun: the idle a waiting prompt is delivered on ends someone else's turn.
         if (own?.targetId === id && own.started && own.endedAt === null) skip(node.id, 'event', OWN_TURN, { type: 'agent', nodeTitle: titleOf(id), on: kind })
-        else onEvent(node, { type: 'agent', nodeTitle: titleOf(id), on: kind }, now())
+        else onEvent(node, { type: 'agent', nodeTitle: titleOf(id), on: kind, ...(caughtUp ? { late: true } : {}) }, now())
       }
     }
     // After the events above, so the end of a trigger's own turn is still known as its own.
@@ -420,7 +420,7 @@ export function createTriggerService({
     syncWatchers()
     plan()
   })
-  tracker.onChange((targetId, status) => {
+  tracker.onChange((targetId, status, info) => {
     if (status === 'exited') {
       for (const [id, p] of pending) {
         if (p.targetId !== targetId) continue
@@ -428,7 +428,7 @@ export function createTriggerService({
         if (pending.get(id) === p) settled(id, p.runId, { outcome: 'missed', detail: 'Its target ended before it was idle.' })
       }
     }
-    onStatus(targetId, status)
+    onStatus(targetId, status, info?.caughtUp)
   })
   host.onOutput?.((id) => {
     if (!ownTurns.size) return

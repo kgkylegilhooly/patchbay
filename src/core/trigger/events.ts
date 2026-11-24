@@ -70,7 +70,7 @@ export function expandPrompt(prompt: string, vars: Record<string, string>): stri
 
 /** What happened, as the trigger service reports it. */
 export type TriggerEvent =
-  | { type: 'agent'; nodeTitle: string; on: 'turn' | 'needs-you' | 'exit' }
+  | { type: 'agent'; nodeTitle: string; on: 'turn' | 'needs-you' | 'exit'; late?: boolean }
   | { type: 'run'; nodeTitle: string; exitCode: number }
   | { type: 'files'; folder: string; files: string[]; total: number }
 
@@ -80,7 +80,7 @@ const AGENT_EVENT: Record<'turn' | 'needs-you' | 'exit', string> = { turn: 'fini
 export function describeEventHappened(e: TriggerEvent): string {
   switch (e.type) {
     case 'agent':
-      return `"${e.nodeTitle}" ${AGENT_EVENT[e.on]}`
+      return `"${e.nodeTitle}" ${AGENT_EVENT[e.on]}${e.late ? ' (heard late: its status was caught up after a missed update)' : ''}`
     case 'run':
       return `"${e.nodeTitle}" ${e.exitCode === 0 ? 'finished' : 'failed'} with exit code ${e.exitCode}`
     case 'files':
