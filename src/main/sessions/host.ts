@@ -5,6 +5,7 @@ import * as pty from 'node-pty'
 import type { SessionHost, SessionSpec } from '../../shared/contract'
 import type { HostedSession } from './hostProtocol'
 import { createSessionBuffer, type SessionBuffer } from './sessionBuffer'
+import { endPty } from './ptyKill'
 
 const DEFAULT_BUFFER_BYTES = 1024 * 1024
 const FLUSH_MS = 16
@@ -201,13 +202,15 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
       if (!session?.running) return Promise.resolve()
       return new Promise((resolve) => {
         session.exitWaiters.push(resolve)
-        const giveUp = setTimeout(() => finish(id, session, -1), KILL_WAIT_MS)
-        session.exitWaiters.push(() => clearTimeout(giveUp))
-        try {
-          session.proc.kill()
-        } catch {
-          finish(id, session, -1)
-        }
+        // Its console's processes are listed first, so nothing but them is killed: see ptyKill.ts.
+        endPty(session.proc, () => session.running).then(
+          (told) => {
+            if (!told) return
+            const giveUp = setTimeout(() => finish(id, session, -1), KILL_WAIT_MS)
+            session.exitWaiters.push(() => clearTimeout(giveUp))
+          },
+          () => finish(id, session, -1)
+        )
       })
     },
 
