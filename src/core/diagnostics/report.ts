@@ -71,8 +71,12 @@ const SEP = String.raw`(?:[\\/]+|%5C|%2F)`
 const NAME = String.raw`[^\\/\s"'<>|:*?;,%]+`
 
 /** Keys and tokens whose shape gives them away wherever they are. */
-const KNOWN_KEYS = /\b(?:sk-ant-[\w-]+|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_\w+|github_pat_\w+|xox[abpr]-[\w-]+)/g
+const KNOWN_KEYS = /\b(?:sk-ant-[\w-]+|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_\w+|github_pat_\w+|xox[abpr]-[\w-]+|(?:AKIA|ASIA)[0-9A-Z]{16})/g
 const SECRET_WORD = String.raw`(?:token|secret|password|passwd|api[_-]?key)`
+/** A flag whose next word is a secret: --token, --api-key, --pass, --pwd and the like. `-p` is added where it's used. */
+const SECRET_FLAG = String.raw`(?:token|secret|password|passwd|pass|pwd|api[_-]?key)`
+/** A double-quoted value, escaped quotes inside it included. */
+const QUOTED = String.raw`"(?:[^"\\]|\\.)*"`
 
 /**
  * Hides who the person is, and anything secret that slipped into a line.
@@ -98,14 +102,24 @@ export function redact(text: string, home: string | null, user?: string | null):
   for (const name of new Set([last, user ?? ''])) {
     if (name.length >= 3) out = out.replace(new RegExp(`(?<![A-Za-z0-9_])${escapeRe(name)}(?![A-Za-z0-9_])`, 'gi'), '<you>')
   }
-  return out
-    .replace(KNOWN_KEYS, '<hidden>')
-    .replace(/(\/\/)[^/\s:@]+:[^@\s/]+@/g, '$1<hidden>@')
-    .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 <hidden>')
-    .replace(/\b(Basic)\s+[A-Za-z0-9+/]{6,}={0,2}/g, '$1 <hidden>')
-    .replace(new RegExp(String.raw`(^|\s)(--?(?:[A-Za-z0-9]+[-_])*${SECRET_WORD}\b)(\s+)("[^"]*"|'[^']*'|[^\s"']+)`, 'gim'), '$1$2$3<hidden>')
-    .replace(new RegExp(String.raw`\b([A-Za-z0-9_-]*${SECRET_WORD}[A-Za-z0-9_-]*)(["']?\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s,;}"']+)`, 'gi'), '$1$2<hidden>')
-    .replace(/("[A-Za-z0-9_-]*key"\s*:\s*)"[^"]*"/gi, '$1<hidden>')
+  return (
+    out
+      .replace(KNOWN_KEYS, '<hidden>')
+      // Up to the last @ before the host, so an @ inside the password doesn't leave its tail.
+      .replace(/(\/\/)[^/\s:@]+:[^\s/]*@/g, '$1<hidden>@')
+      // A header's whole value, whatever its scheme ("token x", "Negotiate x") or how many cookies it holds.
+      .replace(new RegExp(String.raw`\b((?:proxy-)?authorization|(?:set-)?cookie)(["']?\s*[:=]\s*)(${QUOTED}|[^\r\n,}]+)`, 'gi'), '$1$2<hidden>')
+      .replace(/\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 <hidden>')
+      .replace(/\b(Basic)\s+[A-Za-z0-9+/]{6,}={0,2}/g, '$1 <hidden>')
+      .replace(new RegExp(String.raw`(^|\s)((?:--?(?:[A-Za-z0-9]+[-_])*${SECRET_FLAG})|-p)\b(\s+)(${QUOTED}|'[^']*'|[^\s"']+)`, 'gim'), '$1$2$3<hidden>')
+      // An environment variable's name, then a space: GITHUB_TOKEN abc.
+      .replace(/\b([A-Z][A-Z0-9]*_[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|KEY))\b(\s+)(?![=:<])([^\s"',;]+)/g, '$1$2<hidden>')
+      .replace(new RegExp(String.raw`\b([A-Za-z0-9_-]*${SECRET_WORD}[A-Za-z0-9_-]*)(["']?\s*[=:]\s*)(${QUOTED}|'[^']*'|[^\s,;}"']+)`, 'gi'), (m, key: string, sep: string, value: string) =>
+        // A count of tokens, as max_tokens=4096, isn't a secret.
+        /tokens$/i.test(key) && /^\d+$/.test(value) ? m : `${key}${sep}<hidden>`
+      )
+      .replace(new RegExp(String.raw`("[A-Za-z0-9_-]*key"\s*:\s*)${QUOTED}`, 'gi'), '$1<hidden>')
+  )
 }
 
 /** Memory readings fill the log every half hour and say nothing about a fault, so they're left out. */

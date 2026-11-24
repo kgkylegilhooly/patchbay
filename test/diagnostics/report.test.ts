@@ -19,7 +19,8 @@ describe('redact', () => {
   })
 
   it('hides tokens and secrets', () => {
-    expect(redact('authorization: Bearer abc.def-123', null)).toBe('authorization: Bearer <hidden>')
+    expect(redact('authorization: Bearer abc.def-123', null)).toBe('authorization: <hidden>')
+    expect(redact('sent with Bearer abc.def-123', null)).toBe('sent with Bearer <hidden>')
     expect(redact('PATCHBAY_TOKEN=deadbeef api_key: "x y" password=hunter2', null)).toBe('PATCHBAY_TOKEN=<hidden> api_key: <hidden> password=<hidden>')
   })
 })
@@ -170,9 +171,10 @@ describe('review round: nothing said to an agent, and no secret shape, gets thro
 
   it('M1: JSON keys, flags, URL credentials, Basic auth and known key prefixes', () => {
     expect(redact('{"token":"abc123"} {"PATCHBAY_TOKEN": "abc123"} {"apiKey": "k1"}', null)).toBe('{"token":<hidden>} {"PATCHBAY_TOKEN": <hidden>} {"apiKey": <hidden>}')
-    expect(redact('claude --api-key sk-zzz --token SECRET -p hi', null)).toBe('claude --api-key <hidden> --token <hidden> -p hi')
+    expect(redact('claude --api-key sk-zzz --token SECRET --model opus', null)).toBe('claude --api-key <hidden> --token <hidden> --model opus')
     expect(redact('git failed: https://kyle:SECRETPASS@github.com/a/b.git', null)).toBe('git failed: https://<hidden>@github.com/a/b.git')
-    expect(redact('authorization: Basic Zm9vOmJhcg==', null)).toBe('authorization: Basic <hidden>')
+    expect(redact('authorization: Basic Zm9vOmJhcg==', null)).toBe('authorization: <hidden>')
+    expect(redact('sent with Basic Zm9vOmJhcg==', null)).toBe('sent with Basic <hidden>')
     expect(redact('keys sk-ant-api03-AbC_d-1 ghp_abcdef123 github_pat_11AB xoxb-1-2 sk-abcdefghijklmnopqrstuvwx', null)).toBe('keys <hidden> <hidden> <hidden> <hidden> <hidden>')
   })
 
@@ -200,5 +202,45 @@ describe('review round: nothing said to an agent, and no secret shape, gets thro
     const text = diagnosticsText(input({ log: ['2026-11-24T10:00:00.000Z Session sync (boot): 1d015715-b71f-441e-bdfc-3333e6b4be2a was shown as ended'] }))
     expect(text).toContain('Session sync (boot): 1d015715… was shown')
     expect(text).not.toContain('3333e6b4be2a')
+  })
+})
+
+describe('fringe secret shapes (re-check)', () => {
+  it('an Authorization header, whatever its scheme', () => {
+    expect(redact('Authorization: token abc123', null)).toBe('Authorization: <hidden>')
+    expect(redact('{"authorization": "Bearer x.y"}', null)).toBe('{"authorization": <hidden>}')
+    expect(redact('proxy-authorization=Negotiate YIIabc, next', null)).toBe('proxy-authorization=<hidden>, next')
+  })
+
+  it('an env-style NAME_TOKEN with a space before its value', () => {
+    expect(redact('set GITHUB_TOKEN ghx123 and AWS_SECRET_ACCESS_KEY wJalr', null)).toBe('set GITHUB_TOKEN <hidden> and AWS_SECRET_ACCESS_KEY <hidden>')
+  })
+
+  it('password flags, -p included', () => {
+    expect(redact('mysql --pass hunter2 -u root', null)).toBe('mysql --pass <hidden> -u root')
+    expect(redact('tool --password=x1 --pwd y2 -p z3', null)).toBe('tool --password=<hidden> --pwd <hidden> -p <hidden>')
+  })
+
+  it('AWS access keys', () => {
+    expect(redact('key AKIAIOSFODNN7EXAMPLE and ASIAABCDEFGHIJKLMNOP', null)).toBe('key <hidden> and <hidden>')
+  })
+
+  it('cookies', () => {
+    expect(redact('Cookie: session=abc; theme=dark', null)).toBe('Cookie: <hidden>')
+    expect(redact('Set-Cookie: sid=1; HttpOnly', null)).toBe('Set-Cookie: <hidden>')
+  })
+
+  it('an @ inside a URL password', () => {
+    expect(redact('https://kyle:p@ss@word@github.com/a/b', null)).toBe('https://<hidden>@github.com/a/b')
+  })
+
+  it('an escaped quote inside a JSON secret', () => {
+    expect(redact(String.raw`{"token": "a\"b c", "x": 1}`, null)).toBe('{"token": <hidden>, "x": 1}')
+    expect(redact(String.raw`{"apiKey":"q\"r s"}`, null)).toBe('{"apiKey":<hidden>}')
+  })
+
+  it("leaves a count of tokens alone, which isn't a secret", () => {
+    expect(redact('max_tokens=4096 input_tokens: 12', null)).toBe('max_tokens=4096 input_tokens: 12')
+    expect(redact('tokens=abc', null)).toBe('tokens=<hidden>')
   })
 })
