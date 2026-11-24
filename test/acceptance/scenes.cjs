@@ -673,7 +673,8 @@ const scenes = {
   ...require('./filesScenes.cjs').scenes,
   ...require('./stopScenes.cjs').scenes,
   ...require('./readerScenes.cjs').scenes,
-  ...require('./readerPictureScenes.cjs').scenes
+  ...require('./readerPictureScenes.cjs').scenes,
+  ...require('./noteSendScenes.cjs').scenes
 }
 
 const TICKS = '```'
@@ -768,6 +769,7 @@ const seeds = {
     doc.projects[0].viewport = doc.viewport
   },
   ...require('./searchScenes.cjs').seeds,
+  ...require('./noteSendScenes.cjs').seeds,
   ...require('./compareScenes.cjs').seeds,
   ...require('./subagentScenes.cjs').seeds,
   ...require('./needsYouScenes.cjs').seeds,
