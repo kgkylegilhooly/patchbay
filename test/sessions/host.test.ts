@@ -210,3 +210,33 @@ test.skipIf(testRunsBelowNormal)('any other session keeps normal priority', () =
   h.start(spec({ file: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }))
   expect(getPriority(h.pid('n') as number)).toBe(constants.priority.PRIORITY_NORMAL)
 })
+
+// node-pty 1.1 used to kill the shell's PID 5 s after it closed the console whenever its console-list helper came too
+// late (the shell already gone: "AttachConsole failed"). By then Windows may have given that PID to any other process.
+// Every kill must reach only processes listed while they were alive: none goes to the shell's PID once its exit has
+// been seen, which is when the PID is free to be reused. See src/main/sessions/ptyKill.ts.
+test.skipIf(process.platform !== 'win32')('ending a session never kills its PID after the shell has gone, when Windows may have reused it', async () => {
+  const kills: Array<{ pid: number; at: number }> = []
+  const realKill = process.kill.bind(process)
+  const spy = vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: string | number) => {
+    kills.push({ pid, at: Date.now() })
+    return realKill(pid, signal)
+  }) as typeof process.kill)
+  try {
+    for (let round = 0; round < 3; round++) {
+      const h = host()
+      let exitedAt = 0
+      h.onExit(() => (exitedAt ||= Date.now()))
+      h.start(spec(printing(`alive-${round}`)))
+      await vi.waitFor(() => expect(h.snapshot('n').data).toContain(`alive-${round}`), { timeout: 30_000 })
+      const shell = h.pid('n')!
+      await h.kill('n')
+      await vi.waitFor(() => expect(exitedAt).toBeGreaterThan(0), { timeout: 30_000 })
+      // Past node-pty's 5 s fallback.
+      await new Promise((r) => setTimeout(r, 6000))
+      expect(kills.filter((k) => k.pid === shell && k.at >= exitedAt)).toEqual([])
+    }
+  } finally {
+    spy.mockRestore()
+  }
+}, 120_000)

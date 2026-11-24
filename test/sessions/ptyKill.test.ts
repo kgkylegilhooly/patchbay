@@ -41,7 +41,7 @@ test('the console is listed before it is closed, and node-pty kills exactly that
   expect(p.killedAfterClose).toEqual([7001, 7002, 7003])
 })
 
-test("a list that fails kills nothing more than the close does: never the shell's PID on its own", async () => {
+test("the shell gone before it was listed: its freed PID, maybe another process's by now, is never killed (node-pty would kill it 5 s later)", async () => {
   onWindows()
   const p = conpty()
   expect(await endPty(p.proc, () => true, async () => [])).toBe(true)
