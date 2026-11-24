@@ -34,6 +34,17 @@ describe('M1: parameters in commands a shell runs', () => {
     expect(plan.setup[0].argv).toEqual(['node', 'x.js', 'a & b'])
   })
 
+  // Found in the 2026-11-24 audit (docs/improvement-log.md, R1 and R2).
+  test('a # is refused, since bash and PowerShell read the rest of the command as a comment', () => {
+    expect(planRecipe(recipe, params({ task: 'fix #12' }), ids()).problems).toEqual([expect.stringMatching(/^"Echo" puts the task .*"#"/)])
+  })
+
+  test('a value ending in a backslash is refused, since Git Bash reads it as escaping what follows', () => {
+    expect(planRecipe(recipe, params({ task: 'clean C:\\tmp\\' }), ids()).problems).toEqual([expect.stringMatching(/^"Echo" puts the task .*ends with a backslash/)])
+    // A backslash inside a value is an ordinary path.
+    expect(planRecipe(recipe, params({ task: 'clean C:\\tmp' }), ids()).problems).toEqual([])
+  })
+
   test('run commands are checked too, and plain values pass', () => {
     expect(planRecipe(recipe, params({ branch: 'x;rm' }), ids()).problems).toEqual([expect.stringMatching(/"Build" puts the branch/)])
     expect(planRecipe(recipe, params(), ids()).problems).toEqual([])
@@ -100,6 +111,20 @@ describe('H1: Start runs what the preview showed', () => {
     // The unchanged recipe, with the hash it was shown with, starts.
     const again = (await w.service.list('p1')).entries.find((e) => e.name === 'Mine')!
     expect(await w.service.start({ projectId: 'p1', ref: again.ref, hash: again.hash, params: params({ worktree: true }) })).toMatchObject({ ok: true })
+  })
+
+  // The picker always sends the hash it showed; a start without one can't have been shown the repository's file (R3).
+  test("a repository's recipe needs the hash it was shown with, and starts with it", async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'pb-recipe-repo-'))
+    mkdirSync(join(repo, '.patchbay', 'recipes'), { recursive: true })
+    writeFileSync(join(repo, '.patchbay', 'recipes', 'team.json'), JSON.stringify({ schema: 1, name: 'Team', nodes: [{ key: 'a', kind: 'agent', layout: at }] }))
+    const w = recipeWorld([], repo)
+    const shown = (await w.service.list('p1')).entries.find((e) => e.name === 'Team')!
+    expect(shown.source).toBe('repository')
+    const r = await w.service.start({ projectId: 'p1', ref: shown.ref, params: params({ cwd: repo, repo }) })
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/look at it before starting/i) })
+    expect(w.store.get().nodes).toEqual([])
+    expect(await w.service.start({ projectId: 'p1', ref: shown.ref, hash: shown.hash, params: params({ cwd: repo, repo }) })).toMatchObject({ ok: true })
   })
 
   test('a problem in the plan is refused before the worktree is made', async () => {
