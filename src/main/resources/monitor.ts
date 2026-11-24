@@ -1,4 +1,5 @@
 import { buildWarning, noteCleared, pressureNow, shouldWarn, type WarnedAt } from '../../core/resources/pressure'
+import { noteWork } from '../workLog'
 import { cpuPercent, parseProcessRows, treeUse } from '../../core/resources/processes'
 import type { PressureKind, ResourceReading, ResourceWarning, SessionKind, SessionUse, SystemMemory } from '../../shared/resources'
 
@@ -181,7 +182,7 @@ export function createResourceMonitor(d: ResourceMonitorDeps): ResourceMonitor {
     start() {
       // A first look soon after launch, so memory already short is said without waiting for the first interval.
       const first = setTimeout(() => void tick().catch(() => {}), FIRST_TICK_MS)
-      const timer = setInterval(() => void tick().catch(() => {}), TICK_MS)
+      const timer = setInterval(() => (noteWork('resource sampling'), void tick().catch(() => {})), TICK_MS)
       first.unref?.()
       timer.unref?.()
       return () => {
