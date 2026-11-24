@@ -159,6 +159,7 @@ Everything is in `%APPDATA%\Patchbay`:
 | Path | What it is |
 |---|---|
 | `canvas.json`, `canvas.json.bak` | The canvas and its backup. A damaged file is kept as `canvas.corrupt-*.json` |
+| `canvas-history\` | A copy of the canvas a day for the last 7 days, for File > Restore canvas from, which restarts Patchbay with the copy and keeps the canvas it replaced here as `canvas-before-restore-*.json` |
 | `scrollback\` | Each terminal's saved output |
 | `pastes\` | Images pasted into terminals |
 | `file-shelf.json` | Each project's Files shelf: the paths of files shared in it, the newest 2,000. Paths only, never copies |

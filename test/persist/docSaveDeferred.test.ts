@@ -193,7 +193,7 @@ test('the canvas is never changed in place, which the save cache relies on', asy
   }
   const sticky = { kind: 'sticky', id: 's', title: 'S', x: 0, y: 0, width: 100, height: 100, parentId: null, projectId: 'p', text: 'hi' } as CanvasNode
   const loaded = deepFreeze(doc('frozen', { nodes: [...doc('frozen').nodes, sticky] }))
-  const docs = { load: () => ({ doc: loaded, recoveredFrom: 'primary' as const }), save: async () => {}, saveDebounced: (d: CanvasDoc) => void deepFreeze(d), flush: async () => {}, flushSync: () => {} }
+  const docs = { load: () => ({ doc: loaded, recoveredFrom: 'primary' as const }), save: async () => {}, saveDebounced: (d: CanvasDoc) => void deepFreeze(d), flush: async () => {}, flushSync: () => {}, seal: () => {} }
   const store = createAppStore(docs)
   // Strict mode: any write into a frozen doc throws here.
   store.dispatch({ op: 'setViewport', viewport: { x: 1, y: 2, zoom: 1 } })

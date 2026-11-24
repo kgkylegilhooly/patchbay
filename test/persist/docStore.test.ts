@@ -383,3 +383,17 @@ test('a rename failure other than EPERM or EBUSY is not retried', async () => {
 
   expect(fsSpy.events.filter((e) => e.startsWith('rename'))).toHaveLength(1)
 })
+
+// Canvas history restores by putting a copy on disk and restarting, so nothing may save over it before the restart.
+test('a sealed store writes nothing more: no save, no debounced save, no flush, not even the sync one', async () => {
+  const store = createDocStore(dir)
+  await store.save(docTitled('before'))
+  store.saveDebounced(docTitled('pending'))
+  store.seal()
+  await store.save(docTitled('after save'))
+  store.saveDebounced(docTitled('after debounced'))
+  await store.flush()
+  store.flushSync()
+  await new Promise((r) => setTimeout(r, 1200))
+  expect(titleOnDisk(join(dir, 'canvas.json'))).toBe('before')
+})

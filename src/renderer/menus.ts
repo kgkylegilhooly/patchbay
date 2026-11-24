@@ -15,6 +15,7 @@ import { fileNodeMenu, toggleFileShelf } from './fileShelfUi'
 import { namedQuestion } from './shell/confirmStore'
 import { askRemoveWorktree } from './worktreeUi'
 import { openSettingsAt, type SettingsSection } from './settingsAsk'
+import { restoreCanvasSubmenu } from './canvasHistoryUi'
 import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
 
 export interface Point {
@@ -249,6 +250,7 @@ export function fileMenu(c: Commands, s: MenuState): MenuEntry[] {
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group() },
     'separator',
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent },
+    ...restoreCanvasSubmenu(),
     ...closed.slice(0, 5).map((p): MenuItem => ({ id: `reopen-project-${p.id}`, label: `Reopen project: ${p.name}`, icon: 'folder-open', run: () => c.reopenProject(p.id) })),
     'separator',
     { id: 'open-settings', label: 'Settings…', icon: 'settings', run: c.openSettings },

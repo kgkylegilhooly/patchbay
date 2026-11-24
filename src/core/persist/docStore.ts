@@ -40,6 +40,8 @@ export interface DocStore {
    * whole or not at all, and a known-good primary still becomes the backup first.
    */
   flushSync(): void
+  /** Stops every later save, for good: a canvas restored from history is about to be read at the next start. */
+  seal(): void
 }
 
 export interface DocStoreOptions {
@@ -299,7 +301,8 @@ function withTasksChecked(p: CanvasDoc['projects'][number]): CanvasDoc['projects
   return { ...p, tasks: recoverTasks(clean.records) }
 }
 
-function parseDoc(text: string): CanvasDoc | null {
+/** A save file's text as a canvas, or null when it isn't one this version can use. Also judges canvas history copies. */
+export function parseDoc(text: string): CanvasDoc | null {
   try {
     return migrate(JSON.parse(text))
   } catch {
@@ -424,7 +427,11 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     if (order < flushedSyncAt && flushedSyncDoc) await persist(docJson(flushedSyncDoc), flushedSyncAt)
   }
 
+  /** Set by seal(): nothing is written after it. */
+  let sealed = false
+
   function enqueue(doc: CanvasDoc): Promise<void> {
+    if (sealed) return Promise.resolve()
     const order = ++asked
     const run = queue.then(async () => {
       if (order < flushedSyncAt) return
@@ -471,6 +478,7 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     // The timer isn't reset by later calls, so nonstop changes such as a long drag can't starve autosave.
     // Only the doc is held until then: turning a big canvas into text took 60 ms, with every change.
     saveDebounced(doc) {
+      if (sealed) return
       pending = doc
       if (timer) return
       timer = setTimeout(() => {
@@ -486,7 +494,14 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       if (pending !== null) await enqueue(pending)
     },
 
+    seal() {
+      sealed = true
+      clearTimer()
+      pending = null
+    },
+
     flushSync() {
+      if (sealed) return
       clearTimer()
       if (pending === null) return
       const doc = pending
