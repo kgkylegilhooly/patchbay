@@ -294,6 +294,16 @@ describe('starting rules', () => {
     expect(await w.service.start({ projectId: 'p1', ref: 'Repo flow', inputs: { brief: 'x' }, by: { agent: 'agent1' } })).toMatchObject({ ok: false, reason: expect.stringContaining('only the person can start it') })
   })
 
+  test("a repository's workflow starts only with the hash it was shown with, even for the person", async () => {
+    const w = world()
+    const repo = w.store.get().projects[0].folder
+    mkdirSync(join(repo, '.patchbay', 'workflows'), { recursive: true })
+    writeFileSync(join(repo, '.patchbay', 'workflows', 'r.json'), JSON.stringify({ ...featureWorkflow(), name: 'Repo flow' }))
+    expect(await w.service.start({ projectId: 'p1', ref: 'Repo flow', inputs: { brief: 'x' }, by: { person: true } })).toMatchObject({ ok: false, reason: expect.stringContaining('comes from the repository') })
+    const hash = (await w.service.list('p1')).entries.find((e) => e.name === 'Repo flow')!.hash
+    expect(await w.service.start({ projectId: 'p1', ref: 'Repo flow', hash, inputs: { brief: 'x' }, by: { person: true } })).toMatchObject({ ok: true })
+  })
+
   test('a stale hash, bad inputs and an archived project are refused before anything is made', async () => {
     const w = world()
     expect(await w.service.start({ projectId: 'p1', ref: 'Feature', hash: 'old', inputs: { brief: 'x' }, by: { person: true } })).toMatchObject({ ok: false, reason: expect.stringContaining('has changed since it was shown') })

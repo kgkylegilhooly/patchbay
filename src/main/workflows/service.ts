@@ -338,6 +338,11 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
         return { ok: false, reason: `The person hasn't started "${entry.name}" as it is now${entry.file ? ` (${entry.file})` : ''}, so an agent can't. Ask them to start it once from New from recipe; after that you can start this exact version.` }
       }
     }
+    // A repository's own workflow is written by whoever wrote the repository, so it must come with the hash it was
+    // shown with, as recipes do. The window always sends it; this makes it a rule of the service itself.
+    if (entry.source === 'repository' && req.hash === undefined) {
+      return { ok: false, reason: `The workflow "${entry.name}" comes from the repository${entry.file ? ` (${entry.file})` : ''}. Look at it before starting it.` }
+    }
     const wf = entry.workflow
     const problems = startProblems(wf, req.inputs, repo)
     if (problems.length) return { ok: false, reason: problems[0], problems }
