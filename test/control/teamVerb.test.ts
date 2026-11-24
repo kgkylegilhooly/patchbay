@@ -84,7 +84,7 @@ test('--group lists that group, by id or title; a gone group is refused', async 
   const r = (await verbs('lead', 'team', { group: 'Polish round 4' })) as { text: string; members: Array<{ id: string }> }
   expect(r.members.map((m) => m.id)).toEqual(['a', 'b'])
   expect(r.text).toMatch(/^Agents in "Polish round 4" \(2\):/)
-  const e = await verbs('lead', 'team', { group: 'old-group' }).catch((x) => x)
+  const e = (await verbs('lead', 'team', { group: 'old-group' }).catch((x: unknown) => x)) as Error
   expect(e).toBeInstanceOf(RpcRefusal)
   expect(e.message).toMatch(/Group "old-group" is gone/)
   await expect(verbs('lead', 'team', { group: 't' })).rejects.toThrow(/not a group/)

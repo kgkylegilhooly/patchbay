@@ -15,6 +15,8 @@ const SUBAGENT_FIELDS = ['agent_id', 'agent_type', 'agent_transcript_path', 'tur
 /** A turn that ended on an API error says why, such as a usage limit and when it resets. Capped, as it's only for a label. */
 const STOP_FAILURE_FIELDS = ['error', 'error_details', 'last_assistant_message']
 const MAX_STOP_TEXT_CHARS = 1000
+/** What was submitted, so a message `patchbay send` typed can be confirmed. Never journalled. Longer is left out. */
+const MAX_PROMPT_CHARS = 64 * 1024
 
 export const DENIED =
   "The person declined this tool call at Patchbay's permission prompt. It's their answer to this call, not a Patchbay rule against the feature it uses."
@@ -29,6 +31,7 @@ export function pickHookFields(event: Record<string, unknown>, name: string): Re
   if (out.hook_event_name === 'StopFailure') {
     for (const key of STOP_FAILURE_FIELDS) if (typeof event[key] === 'string') out[key] = (event[key] as string).slice(0, MAX_STOP_TEXT_CHARS)
   }
+  if (out.hook_event_name === 'UserPromptSubmit' && typeof event.prompt === 'string' && event.prompt.length <= MAX_PROMPT_CHARS) out.prompt = event.prompt
   if (out.hook_event_name === 'SubagentStart' || out.hook_event_name === 'SubagentStop') {
     for (const key of SUBAGENT_FIELDS) if (typeof event[key] === 'string') out[key] = (event[key] as string).slice(0, 1000)
   }
@@ -45,7 +48,7 @@ export function pickHookFields(event: Record<string, unknown>, name: string): Re
 
 /** A journal line, as hook.cjs writes one. Tool input is only for the approval buttons, which a journalled request no longer has. */
 export function journalLine(fields: Record<string, unknown>, at: number): string {
-  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, ...kept } = fields
+  const { tool_name: _name, tool_input: _input, permission_suggestions: _rules, prompt: _prompt, ...kept } = fields
   return `${JSON.stringify({ ...kept, at })}\n`
 }
 
