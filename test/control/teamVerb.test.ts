@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -122,5 +122,10 @@ test('reads a real checkout: its branch, a linked worktree, and commits ahead of
   const git = patientGit(systemGit(gitEnvFrom(cleanEnv(process.env, {}))))
   expect(await readCheckout(git, repo)).toEqual({ branch: 'main', ahead: 0, base: 'main', worktree: false })
   expect(await readCheckout(git, tree)).toEqual({ branch: 'feat/x', ahead: 1, base: 'main', worktree: true })
+  // A folder inside a checkout is that checkout: git names its common dir relative to the folder (review M2).
+  mkdirSync(join(repo, 'src', 'main'), { recursive: true })
+  mkdirSync(join(tree, 'src', 'main'), { recursive: true })
+  expect(await readCheckout(git, join(repo, 'src', 'main'))).toMatchObject({ branch: 'main', worktree: false })
+  expect(await readCheckout(git, join(tree, 'src', 'main'))).toMatchObject({ branch: 'feat/x', worktree: true })
   expect(await readCheckout(git, dir)).toBeUndefined()
 })

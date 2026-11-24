@@ -1,9 +1,10 @@
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { createAfterGate } from '../../src/main/control/after'
 import { createPromptWitness } from '../../src/main/control/promptWitness'
+import { rpcSignal } from '../../src/main/control/rpcSignal'
 import { RpcRefusal } from '../../src/main/control/server'
 import { createVerbs } from '../../src/main/control/verbs'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
@@ -36,6 +37,8 @@ function setup(extra: CanvasNode[] = []) {
     waitTiming: { pollMs: 5, graceMs: 60 },
     deliveryTiming: { confirmMs: 400, pollMs: 10 }
   })
+  // Linked to whoever opened them, as open-agent links them, so members can report back.
+  for (const n of extra) if (n.openedBy) store.dispatch({ op: 'addEdge', edge: { id: `link-${n.id}`, from: n.openedBy, to: n.id, kind: 'link' } })
   const status = (id: string, hook: string) => tracker.apply(id, { type: 'hook', name: hook })
   return { store, tracker, runner, host, prompts, stopped, verbs, status }
 }
@@ -112,6 +115,114 @@ describe('wait --next', () => {
     const { verbs, status } = setup(team())
     status('a', 'Stop')
     expect(await verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 1 })).toMatchObject({ done: false, timedOut: true, nodes: { a: 'idle' } })
+  })
+
+  test('a report queued for the lead before the call returns at once (review H1)', async () => {
+    const { verbs, status, host } = setup(team())
+    host.running.add('me')
+    status('me', 'UserPromptSubmit') // busy reading the last result, so the report waits in its queue
+    status('a', 'UserPromptSubmit')
+    await verbs('a', 'send', { node: 'me', text: 'report from a' })
+    status('a', 'Stop')
+    status('b', 'Stop')
+    const started = Date.now()
+    const r = await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 2 })
+    expect(r).toMatchObject({ done: true, next: { node: 'a', why: 'message' }, messages: [{ from: 'a', text: 'report from a' }] })
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  test('a turn that ends between two calls is returned by the next one, and only once (review M1)', async () => {
+    const { verbs, status } = setup(team())
+    status('a', 'UserPromptSubmit')
+    status('b', 'UserPromptSubmit')
+    const first = verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 5 })
+    status('a', 'Stop')
+    expect(await first).toMatchObject({ next: { node: 'a', why: 'finished' } })
+    // The lead is busy with a's result; b finishes meanwhile, without a message.
+    status('b', 'Stop')
+    const started = Date.now()
+    expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 5 })).toMatchObject({ done: true, next: { node: 'b', why: 'finished' } })
+    expect(Date.now() - started).toBeLessThan(1000)
+    // Nothing new since: the same turn isn't handed out twice.
+    expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 1 })).toMatchObject({ done: false, timedOut: true })
+  })
+
+  test('two turns that end together come back one call each, in order', async () => {
+    const { verbs, status } = setup(team())
+    status('a', 'UserPromptSubmit')
+    status('b', 'UserPromptSubmit')
+    status('b', 'Stop')
+    status('a', 'Stop')
+    // Both ended after the members started, but before the lead's first --next: that first call counts from itself.
+    const waiting = verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 5 })
+    status('b', 'UserPromptSubmit')
+    status('a', 'UserPromptSubmit')
+    status('b', 'Stop')
+    status('a', 'Stop')
+    expect(await waiting).toMatchObject({ next: { node: 'b' } })
+    expect(await verbs('me', 'wait', { nodes: ['a', 'b'], next: true, timeout: 5 })).toMatchObject({ next: { node: 'a' } })
+  })
+
+  test('another caller keeps its own place', async () => {
+    const { verbs, status, store } = setup([...team(), claudeNode('other')])
+    store.dispatch({ op: 'addEdge', edge: { id: 'oa', from: 'other', to: 'a', kind: 'link' } })
+    status('a', 'UserPromptSubmit')
+    const mine = verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 5 })
+    const theirs = verbs('other', 'wait', { nodes: ['a'], next: true, timeout: 5 })
+    status('a', 'Stop')
+    expect(await mine).toMatchObject({ next: { node: 'a' } })
+    expect(await theirs).toMatchObject({ next: { node: 'a' } })
+  })
+
+  test('--any and --next together are refused', async () => {
+    const { verbs } = setup(team())
+    expect(await refusal(verbs('me', 'wait', { nodes: ['a'], next: true, any: true }))).toMatch(/--any or --next/)
+  })
+
+  test('a terminal lead is woken by a message too (review L6)', async () => {
+    const { verbs, status, host } = setup([terminalNode('lead'), claudeNode('w', { openedBy: 'lead' })])
+    host.running.add('lead')
+    status('w', 'Stop')
+    const waiting = verbs('lead', 'wait', { nodes: ['w'], next: true, timeout: 5 })
+    await new Promise((r) => setTimeout(r, 20))
+    status('w', 'UserPromptSubmit')
+    await verbs('w', 'send', { node: 'lead', text: 'echo done' }).catch(() => {})
+    expect(await waiting).toMatchObject({ done: true, next: { node: 'w', why: 'message' } })
+  })
+
+  test('a wait whose caller went away leaves its reports queued, so they still arrive (review M3)', async () => {
+    const { verbs, status, host } = setup(team())
+    host.running.add('me')
+    status('me', 'UserPromptSubmit')
+    status('a', 'UserPromptSubmit')
+    const gone = new AbortController()
+    const waiting = rpcSignal.run(gone.signal, () => verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 5 }))
+    gone.abort() // the person stopped the tool call
+    expect(await waiting).toEqual({ done: false, aborted: true })
+    await verbs('a', 'send', { node: 'me', text: 'report nobody read' })
+    status('a', 'Stop')
+    // The next call gets the report, and then the finished turn: the dropped call moved nothing on.
+    expect(await verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 2 })).toMatchObject({ next: { why: 'message' }, messages: [{ text: 'report nobody read' }] })
+    expect(await verbs('me', 'wait', { nodes: ['a'], next: true, timeout: 2 })).toMatchObject({ next: { why: 'finished' } })
+    // A report left queued when no wait is there arrives as a prompt.
+    await verbs('a', 'send', { node: 'me', text: 'report nobody read' })
+    status('me', 'Stop')
+    await vi.waitFor(() => expect(host.writes.some(([id, d]) => id === 'me' && d.includes('report nobody read'))).toBe(true))
+  })
+
+  test('a plain wait whose caller went away leaves them too', async () => {
+    const { verbs, status, host } = setup(team())
+    host.running.add('me')
+    status('me', 'UserPromptSubmit')
+    status('a', 'UserPromptSubmit')
+    const gone = new AbortController()
+    const waiting = rpcSignal.run(gone.signal, () => verbs('me', 'wait', { nodes: ['a'], timeout: 5 }))
+    await verbs('a', 'send', { node: 'me', text: 'also unread' })
+    gone.abort()
+    status('a', 'Stop')
+    await waiting.catch(() => {})
+    status('me', 'Stop')
+    await vi.waitFor(() => expect(host.writes.some(([id, d]) => id === 'me' && d.includes('also unread'))).toBe(true))
   })
 })
 

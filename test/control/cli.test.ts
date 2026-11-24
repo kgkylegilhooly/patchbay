@@ -379,7 +379,7 @@ test('wait --next and team go through; team prints its overview as text', async 
   const team = await cli(['team', '--group', 'g'])
   expect(team).toMatchObject({ code: 0, stdout: 'Agents you opened (1):\n- a [1] idle\n' })
   expect(calls[1]).toMatchObject({ verb: 'team', args: { group: 'g' } })
-  expect((await cli(['wait', '--help'])).stdout).toContain('--next: until the first of them')
+  expect((await cli(['wait', '--help'])).stdout).toContain('--next: the next report or finished turn')
 })
 
 test('open-agent into a group that is gone fails on stderr with exit 1, and creates nothing', async () => {

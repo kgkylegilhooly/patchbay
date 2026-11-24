@@ -42,6 +42,8 @@ export interface SendQueue {
   forget(id: string): void
   /** A message is waiting for the node, or was typed so recently its status can't show it yet. */
   busy(id: string): boolean
+  /** The messages waiting for a node that match, left where they are. */
+  pending(id: string, match: (item: SendItem) => boolean): SendItem[]
   /** Takes waiting messages for a node out of its queue, to be handed over some other way. They count as delivered. */
   take(id: string, match: (item: SendItem) => boolean): SendItem[]
 }
@@ -175,6 +177,7 @@ export function createSendQueue({
     busy(id) {
       return settling.has(id) || (queues.get(id)?.length ?? 0) > 0
     },
+    pending: (id, match) => (queues.get(id) ?? []).filter(match),
     take(id, match) {
       const queue = queues.get(id) ?? []
       const taken = queue.filter(match)

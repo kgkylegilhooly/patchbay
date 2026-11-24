@@ -10,10 +10,14 @@ export interface PromptWitness {
   mark(id: string): number
   /** The prompts heard from this node since the mark. */
   since(id: string, mark: number): string[]
+  /** A node closed: what it submitted goes. */
+  forget(id: string): void
 }
 
 /** A few are plenty: a check waits seconds, and an agent submits one prompt per turn. */
-const KEPT = 8
+const KEPT = 4
+/** Nodes kept, the least recently heard going first, so nodes the person removed don't pile up in memory. */
+const NODES = 64
 
 export function createPromptWitness(): PromptWitness {
   const seen = new Map<string, { count: number; texts: string[] }>()
@@ -24,8 +28,11 @@ export function createPromptWitness(): PromptWitness {
       entry.count += 1
       entry.texts.push(payload.prompt)
       if (entry.texts.length > KEPT) entry.texts.shift()
+      seen.delete(id)
       seen.set(id, entry)
+      if (seen.size > NODES) seen.delete(seen.keys().next().value!)
     },
+    forget: (id) => void seen.delete(id),
     mark: (id) => seen.get(id)?.count ?? 0,
     since(id, mark) {
       const entry = seen.get(id)

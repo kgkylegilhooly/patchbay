@@ -120,14 +120,18 @@ export async function confirmDelivery({
   let everPath = !!read
   for (;;) {
     const path = pathNow()
-    // A transcript learned (or replaced) since is read from its start, since the message may already be in it.
+    // A transcript learned since is read from its start, since the message may already be in it. One that replaced
+    // another (a resume or a fork) carries old messages, so only what's added from now counts.
     if (path !== read) {
+      offset = read ? (transcriptEnd(path) ?? 0) : 0
       read = path
-      offset = 0
     }
     everPath ||= !!path
-    const said = heard?.() ?? []
-    if (said.some((text) => compareDelivered(sent, text) === 'match')) return { result: 'confirmed' }
+    for (const text of heard?.() ?? []) {
+      const seen = compareDelivered(sent, text)
+      if (seen === 'match') return { result: 'confirmed' }
+      if (seen === 'partial') return { result: 'garbled', received: text }
+    }
     const { messages, end } = path ? await userMessagesSince(path, offset) : { messages: [], end: offset }
     offset = end
     for (const text of messages) {

@@ -100,7 +100,7 @@ const USAGE = `Usage: patchbay <verb> [--flag value]
   files         [--node ID] [--turn]   files an agent edited (itself by default), newest first; --turn: the latest turn only
   send          --node ID --text TEXT
   wait          --nodes ID,ID [--timeout SECONDS] [--any | --next]   until those agents finish their turns (default 90 s, up to 600; keep it under 120 in Claude Code)
-                  --next: until the first of them finishes a turn, stops or sends you a message after this call
+                  --next: the next report or finished turn from any of them you haven't been told of, since your last --next
   team          [--group ID]   one line per agent you opened (or in that group): status, last report to you, branch and commits ahead of main
   close         --node ID
   restart       --node ID        brings back an agent you opened that has exited, resuming its conversation

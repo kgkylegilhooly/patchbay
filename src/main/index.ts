@@ -23,6 +23,7 @@ import { createSendQueue } from './control/sendQueue'
 import { createVerbs } from './control/verbs'
 import { createPromptWitness } from './control/promptWitness'
 import { withTeamVerb } from './control/teamVerb'
+import { rpcSignal } from './control/rpcSignal'
 import { systemGit } from '../core/git/service'
 import { gitEnvFrom } from '../core/git/args'
 import { reportViewSize } from './viewSize'
@@ -563,7 +564,7 @@ async function boot(): Promise<void> {
     secret,
     endpointFile,
     onHook,
-    onRpc: (caller, verb, args) => allVerbs(caller, verb, args),
+    onRpc: (caller, verb, args, signal) => rpcSignal.run(signal, () => allVerbs(caller, verb, args)),
     onUsage: (id, report) => usage.report(id, report)
   })
 

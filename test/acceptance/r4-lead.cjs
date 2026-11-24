@@ -90,6 +90,16 @@ async function main() {
     c.check('wait --next returns when that member finishes the turn it started', woke.json.result?.done === true && woke.json.result?.next?.node === 'b' && woke.json.result?.next?.why === 'finished', woke.json)
     c.check('...and not before', nextAt - t1 >= 4000, nextAt - t1)
 
+    // The lead is busy with b's result while a takes and finishes a turn: the next --next returns it at once.
+    await rpc(profile, 'lead', 'send', { node: 'a', text: 'Please add the empty-file case.' })
+    await L.waitFor('a to finish that turn', async () => (await L.statusOf(page, 'a')) === 'idle' && (await L.snapshot(page, 'a')).includes('GOT:'), 15000).catch(() => {})
+    await L.sleep(1500)
+    const t2 = Date.now()
+    const between = await rpc(profile, 'lead', 'wait', { nodes: ['a', 'b'], next: true, timeout: 20 })
+    c.check('A turn that ended between two --next calls is the next one\'s answer, at once', between.json.result?.next?.node === 'a' && between.json.result?.next?.why === 'finished' && Date.now() - t2 < 2000, { ms: Date.now() - t2, r: between.json })
+    const again = await rpc(profile, 'lead', 'wait', { nodes: ['a', 'b'], next: true, timeout: 3 })
+    c.check('...and is not handed out again', again.json.result?.timedOut === true, again.json)
+
     const team = await cli(profile, ['team'])
     c.check('team prints one line per member it opened', team.code === 0 && /Agents you opened \(2\):/.test(team.stdout) && /- Alpha \[a\] idle/.test(team.stdout) && /- Beta \[b\] idle/.test(team.stdout), team)
 

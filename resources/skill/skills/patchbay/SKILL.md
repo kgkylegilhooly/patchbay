@@ -332,9 +332,11 @@ patchbay wait --nodes <id>,<id>,<id> --next --timeout 100
 - It returns once every agent named has finished its turn: `idle`, `needs-you` or `exited`. With `--any`, it
   returns when the first one does, which is at once if one is already idle. The reply gives each one's `status`, and
   `done`.
-- With `--next`, only what happens after you call counts: it returns when the first of them finishes a turn, stops at
-  its limit, sends you a message or is closed. `next` in the reply says which node and why. Use it to wait for the
-  next report from a team where some members are idle, waiting for you.
+- With `--next`, it returns the next thing you haven't been told: a report one of them sent you that's still waiting,
+  or a turn that finished, a stop at its limit, or a close since your last `wait --next` (since your first one, for a
+  node you haven't waited on). Each is returned once. `next` in the reply says which node and why. Use it to wait
+  for the next report from a team where some members are idle, waiting for you: nothing that happens between two
+  calls is missed.
 - An agent stopped at its usage limit or on an API error counts as finished for now. The reply's `stopped` says why
   and, for a limit, until when.
 - It waits up to `--timeout` seconds (90 by default, at most 600) and then returns with `"timedOut": true`. Run

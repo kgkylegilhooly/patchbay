@@ -1,4 +1,4 @@
-import { basename } from 'node:path'
+import { basename, resolve } from 'node:path'
 import type { Git } from '../../core/git/service'
 import type { CanvasStore, NodeMessage } from '../../shared/contract'
 import type { AgentStop } from '../../shared/agentStop'
@@ -50,7 +50,10 @@ export async function readCheckout(git: Git, cwd: string): Promise<Checkout | un
   const where = await git(cwd, ['rev-parse', '--git-dir', '--git-common-dir', '--abbrev-ref', 'HEAD'], limit)
   if (where.code !== 0) return undefined
   const [gitDir, commonDir, head] = where.stdout.trim().split(/\r?\n/)
-  const same = (a = '', b = '') => a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  // From a subfolder git prints the git dir absolute but the common dir relative to it (../../.git), so both are
+  // resolved against the folder first.
+  const full = (dir: string): string => resolve(cwd, dir).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  const same = (a = '', b = '') => full(a) === full(b)
   const checkout: Checkout = { branch: head && head !== 'HEAD' ? head : null, ahead: null, base: null, worktree: !!gitDir && !!commonDir && !same(gitDir, commonDir) }
   for (const base of ['main', 'master']) {
     const r = await git(cwd, ['rev-list', '--count', `${base}..HEAD`], limit)
