@@ -350,8 +350,11 @@ const SHELL_SYNTAX = /["'`$%^&|<>;(){}*?!~\\\r\n]/
 
 /** What someone expecting a shell would type: quoting, chaining, redirection and substitution. */
 const SHELL_ONLY = /["'`$&|<>;()\r\n]/
-/** Characters some shell acts on, which a parameter must not bring into a command a shell runs. */
-const SHELL_ACTS_ON = /["'`$&|<>;()%^!\r\n]/
+/**
+ * Characters some shell acts on, which a parameter must not bring into a command a shell runs. # starts a comment in
+ * bash and PowerShell, so "fix #12" would quietly cut the command short.
+ */
+const SHELL_ACTS_ON = /["'`$&|<>;()%^!#\r\n]/
 
 /**
  * A command as an argument list, when splitting it on spaces means exactly what a shell would. Null otherwise.
@@ -440,8 +443,10 @@ export function planRecipe(recipe: Recipe, params: RecipeParams, newId: () => st
     for (const m of template.matchAll(/\{\{\s*(task|branch|repo|cwd)\s*\}\}/g)) {
       const name = m[1] as keyof typeof values
       const bad = values[name].match(SHELL_ACTS_ON)?.[0]
-      const why = `"${title}" puts the ${name} into a command your shell runs, and the ${name} has a character the shell would act on (${JSON.stringify(bad)}). Change the ${name}, or the recipe.`
-      if (bad && !problems.includes(why)) problems.push(why)
+      // Inside double quotes in Git Bash, a final backslash escapes the closing quote and leaves the prompt waiting.
+      const what = bad ? `has a character the shell would act on (${JSON.stringify(bad)})` : values[name].endsWith('\\') ? 'ends with a backslash, which Git Bash reads as escaping what follows' : null
+      const why = `"${title}" puts the ${name} into a command your shell runs, and the ${name} ${what}. Change the ${name}, or the recipe.`
+      if (what && !problems.includes(why)) problems.push(why)
     }
     return fill(template)
   }
