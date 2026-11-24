@@ -327,6 +327,34 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="pin-selection"]').catch(() => {})
     await sleep(800)
   },
+  // An agent that has replied, and its window menu: Copy last reply sits under Find.
+  'reply-menu': async (page, { profile }) => {
+    const dir = require('node:path').join(profile, 'reply-work')
+    require('node:fs').mkdirSync(dir, { recursive: true })
+    const node = { ...box, id: 'replier', kind: 'claude', title: 'Release notes', x: 930, y: 640, width: 620, prompt: 'edits=notes.md', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: dir }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    // Its turn starts, then ends with its reply written.
+    const shows = (word) => page.waitForFunction((w) => document.querySelector('.react-flow__node[data-id="replier"]')?.textContent?.includes(w), { timeout: 30000 }, word).catch(() => {})
+    await shows('Working')
+    await shows('Idle')
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Release notes'))?.click())
+    await sleep(800)
+    const box2 = await page.$eval('.react-flow__node[data-id="replier"] .xterm-screen', (el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
+    })
+    await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height - 12, { button: 'right' })
+    await sleep(300)
+  },
+  // The same, then the item: the reply is on the clipboard, and the notice says so.
+  'reply-copied': async (page, ctx) => {
+    await scenes['reply-menu'](page, ctx)
+    await page.click('.menu-panel [data-cmd="copy-last-reply"]').catch(() => {})
+    await sleep(600)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)
