@@ -20,8 +20,11 @@ export interface StatusTracker {
   onChange(cb: StatusListener): void
 }
 
-/** `caughtUp` is true for a status seeded after the fact, not seen as it happened. */
-export type StatusListener = (id: string, status: AgentStatus, info?: { caughtUp: boolean }) => void
+/**
+ * `caughtUp` is true for a status seeded after the fact, not seen as it happened. `notStarted` is set on an `exited`
+ * that no run is behind: a start that was refused, held, or didn't launch.
+ */
+export type StatusListener = (id: string, status: AgentStatus, info?: { caughtUp: boolean; notStarted?: boolean }) => void
 
 export interface StatusSince {
   at: number
@@ -66,7 +69,8 @@ export function createStatusTracker({
       changedAt.set(id, { at: now(), exact: true })
       const finishedTurn = next === 'idle' && cur !== undefined && IN_TURN.has(cur)
       if (finishedTurn) turns.set(id, (turns.get(id) ?? 0) + 1)
-      for (const cb of listeners) cb(id, next, { caughtUp: false })
+      const info = ev.type === 'not-started' ? { caughtUp: false, notStarted: true } : { caughtUp: false }
+      for (const cb of listeners) cb(id, next, info)
       if (next === 'needs-you' || finishedTurn) notify(id, next)
     }
   }

@@ -51,7 +51,7 @@ function runnerWith(nodes: CanvasNode[], settings: () => Settings, refreshHost?:
       ...(refreshHost ? { refreshHost: () => refreshHost(host) } : {})
     }
   })
-  return { runner, host, specs }
+  return { runner, host, specs, tracker }
 }
 
 const started = (specs: SessionSpec[]): string[] => specs.map((s) => s.nodeId)
@@ -76,6 +76,16 @@ test('past the soft limit a new agent does not start and says why; running ones 
   await runner.startNode('c')
   expect(started(specs)).toEqual(['a', 'b', 'c'])
   expect(runner.errors().c).toBeUndefined()
+})
+
+test("a start refused at the limit is marked as one that never ran, so it isn't taken for an exit", async () => {
+  const nodes = ['a', 'b'].map((id) => claudeNode(id, { cwd: dir }))
+  const { runner, tracker } = runnerWith(nodes, () => ({ agentLimit: '1' }))
+  const told: Array<[string, string, boolean | undefined]> = []
+  tracker.onChange((id, status, info) => told.push([id, status, info?.notStarted]))
+  await runner.startNode('a')
+  await runner.startNode('b')
+  expect(told.filter(([id]) => id === 'b')).toEqual([['b', 'exited', true]])
 })
 
 test('a restart of a running agent at the limit goes ahead, and so does one restored after the app restarts', async () => {
