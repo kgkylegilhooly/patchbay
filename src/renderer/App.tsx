@@ -125,7 +125,7 @@ function Canvas(): React.JSX.Element | null {
   if (doc && !initialViewport.current) initialViewport.current = doc.viewport
 
   // Before the browser paints, so a change shows in the frame it arrived in rather than the one after.
-  // Another project's windows: those on screen now, the rest once that frame is drawn. See stagedFlow.ts.
+  // Another project's windows: those on screen now, the rest a few a frame. See stagedFlow.ts.
   const [stager] = useState(createStager)
   const [restDue, setRestDue] = useState(0)
   const restWait = useRef<(() => void) | null>(null)
@@ -134,7 +134,11 @@ function Canvas(): React.JSX.Element | null {
     restWait.current?.()
     restWait.current = null
     const pick = stager.pick(doc.activeProjectId, toFlow(doc, statuses), doc.viewport, { width: window.innerWidth, height: window.innerHeight })
-    if (pick.later) restWait.current = afterNextPaint(() => setRestDue((n) => n + 1))
+    if (pick.later)
+      restWait.current = afterNextPaint(() => {
+        stager.advance()
+        setRestDue((n) => n + 1)
+      })
     setNodes((prev) => mergeFlowNodes(prev, pick.nodes))
     setEdges((prev) => shareEdges(prev, pick.edges))
   }, [doc, statuses, restDue, stager])
