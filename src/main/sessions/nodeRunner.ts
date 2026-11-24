@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../shared/contract'
@@ -20,7 +19,6 @@ import { buildCodexLaunch, codexKnowsNoDaemon, isLookingCall, resolveCodex } fro
 import { isAlreadyRunning, SessionStartError } from './host'
 import { hookNodeFor, httpHooksPossible, type HookLaunch } from './hookRunner'
 import { foldMissedHooks, type MissedHook } from './missedHooks'
-import { readConsoleMembers } from '../ports/ports'
 import { pickDefaultShell } from './shell'
 import { createStartupTyper, missingProfileNotice, STARTUP_WAITING, startupSkipped, terminalStartFor } from './terminalStart'
 import type { TerminalProfile } from '../../shared/terminalProfiles'
@@ -36,8 +34,6 @@ import { fixOf, withFix } from './startFix'
 
 /** A resume that dies this fast, with no SessionStart, never reached its conversation. */
 const RESUME_FAILURE_WINDOW_MS = 5000
-/** How long a killed tree gets to report its exit before the host is told to end the session itself. */
-const TREE_EXIT_WAIT_MS = 1000
 /** SessionStart fires a moment before Claude's prompt can take input. */
 const TYPE_PROMPT_DELAY_MS = 800
 /** Claude reads one chunk as a paste, so Enter has to come separately. */
@@ -60,10 +56,6 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   locateCodex?: () => ClaudeProgram
   /** Read at every launch, so a saved change applies to the next session without restarting the app. */
   settings?: () => Settings
-  /** Ends a process and everything it started. Defaults to taskkill. */
-  killTree?: (pid: number) => Promise<void>
-  /** Every process on a session's console. Defaults to node-pty's helper. */
-  consoleMembers?: (pid: number) => Promise<number[]>
   /** Finds the ssh program for SSH terminals. Defaults to findSsh. */
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
@@ -87,13 +79,6 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   hostHookPort?: () => number | null | Promise<number | null>
   /** Whether a Claude launch's hooks can be http hooks. Defaults to httpHooksPossible. */
   findHttpHooks?: (launch: HookLaunch) => Promise<boolean>
-}
-
-function taskkill(pid: number): Promise<void> {
-  return new Promise((resolve) => {
-    // It fails if the process has already gone, which is what was wanted anyway.
-    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve())
-  })
 }
 
 export interface NodeRunner {
@@ -194,8 +179,6 @@ export function createNodeRunner({
   const runListeners: Array<(id: string, run: RunResult) => void> = []
   /** Run nodes being ended on purpose, so their exit doesn't read as a failure. */
   const stoppingRuns = new Set<string>()
-  const killTree = ctx.killTree ?? taskkill
-  const consoleMembers = ctx.consoleMembers ?? readConsoleMembers
 
   const setRun = (id: string, run: RunResult): void => {
     runResults.set(id, run)
@@ -402,22 +385,12 @@ export function createNodeRunner({
   }
 
   const stopTree = async (id: string): Promise<void> => {
-    const pid = host.pid(id)
-    if (pid === null) return
+    if (host.pid(id) === null) return
     stoppingRuns.add(id)
-    // Git Bash breaks the parent chain, so taskkill /T alone can miss a real server, as with npm run dev. Everything
-    // on the console has to be found first, because killing the shell can leave the rest running.
-    const members = await consoleMembers(pid).catch((): number[] => [])
-    // All in one round, the shell with the rest: killing the others first made Git Bash end by itself, so a taskkill for
-    // its PID, started a moment later, found the PID free and the next run's shell holding it. Each taskkill still opens
-    // its PID a process start after the list (docs/plans/r4-leftovers.md, review M1). The shell is left out if the host
-    // no longer reports it as this session's: it ended while the console was listed, and its PID may be reused.
-    const targets = new Set([pid, ...members])
-    if (!(host.isRunning(id) && host.pid(id) === pid)) targets.delete(pid)
-    await Promise.all([...targets].map((member) => killTree(member)))
-    const deadline = Date.now() + TREE_EXIT_WAIT_MS
-    while (host.isRunning(id) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25))
-    await host.kill(id)
+    // The session host ends the shell, everything on its console (Git Bash breaks the parent chain, so a server started
+    // by npm run dev may be found only there) and everything they started, each through a handle it has proven is one of
+    // ours, never by a bare PID: see docs/plans/r5-jobkill.md.
+    await host.kill(id, { tree: true })
   }
 
   const isRun = (id: string): boolean => nodeById(id)?.kind === 'run'

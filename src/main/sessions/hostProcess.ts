@@ -6,6 +6,7 @@ import { limitsFrom, startPolicy, stepPolicy } from './hostPolicy'
 import { startHostHooks, type HostHooks } from './hostHooks'
 import { HOST_PROTOCOL, pipeNameFor } from './hostProtocol'
 import { startHostServer, type HostServer } from './hostServer'
+import { HELPER_PROBLEM_LOG, onHelperProblem } from '../../core/proc/safeKill'
 
 /** While no app is connected, the host keeps saved scrollback current itself, so a reboot loses little. */
 const SAVE_EVERY_MS = 5000
@@ -68,6 +69,9 @@ async function main(): Promise<void> {
     log(`Could not serve hooks: ${String(e)}`)
     return null
   })
+
+  // Once, the first time it happens: diagnostics reads it from here. See docs/plans/r5-jobkill.md.
+  onHelperProblem((why) => log(`${HELPER_PROBLEM_LOG} ${why}`))
 
   const saveDirty = async (): Promise<void> => {
     // Writing into a deleted profile would bring its folders back.

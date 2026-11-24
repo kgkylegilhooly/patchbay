@@ -82,7 +82,8 @@ export interface SessionHost {
   start(spec: SessionSpec): void | Promise<void>
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
-  kill(id: string): Promise<void>
+  /** `tree`: also everything its processes started (Stop on a run). See docs/plans/r5-jobkill.md. */
+  kill(id: string, opts?: { tree?: boolean }): Promise<void>
   /** The session's root process while it's running. */
   pid(id: string): number | null
   isRunning(id: string): boolean

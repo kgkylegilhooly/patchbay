@@ -211,6 +211,11 @@ export interface DiagnosticsInput {
   /** Claude settings files outside Patchbay that name Patchbay's hook script or host. See outsideHooks in collect.ts. */
   outsideHooks: string[]
   log: string[]
+  /**
+   * Where ending processes the safe way failed (docs/plans/r5-jobkill.md), as "app: why" or "session host: why". Empty or
+   * missing: no failure seen.
+   */
+  processEnds?: string[]
   home: string
   /** The account's name, for a home folder that doesn't end in it. */
   user?: string | null
@@ -245,6 +250,7 @@ export function diagnosticsText(d: DiagnosticsInput): string {
     `Session host: ${h.mode}${h.pid ? `, pid ${h.pid}` : ''}${h.version ? `, version ${h.version}` : ''}, protocol ${h.protocol ?? '?'} (app expects ${h.expectedProtocol}), ${h.running} running${h.startedAt ? `, started ${new Date(h.startedAt).toISOString()}` : ''}`
   )
   if (h.problem) lines.push(`Host problem: ${h.problem}`)
+  lines.push(d.processEnds?.length ? `Process ends: by PID as before, the safe helper couldn't run (${d.processEnds.join('; ')})` : 'Process ends: through the safe helper (no failure seen)')
   lines.push(`Sessions: ${statusCounts(d.sessions)}`)
   const claudes = d.sessions.filter((s) => s.kind === 'agent')
   if (claudes.length) {

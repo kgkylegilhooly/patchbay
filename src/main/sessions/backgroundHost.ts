@@ -582,12 +582,12 @@ export function createBackgroundHost(opts: BackgroundHostOptions): BackgroundHos
       }
     },
 
-    async kill(id) {
-      if (local?.isRunning(id)) return local.kill(id)
+    async kill(id, opts) {
+      if (local?.isRunning(id)) return local.kill(id, opts)
       const mirror = mirrors.get(id)
       if (!mirror?.running) return
       try {
-        await connection?.request('kill', { id })
+        await connection?.request('kill', opts?.tree ? { id, tree: true } : { id })
       } catch {
         // If the host has gone, so has the session, and losing the connection reports that.
       }

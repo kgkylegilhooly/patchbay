@@ -92,22 +92,19 @@ describe('Restart on a node whose session the host still runs', () => {
   })
 
   test('End and restart ends the whole tree, then resumes the conversation', async () => {
-    const killed: number[] = []
-    const ctx = {
-      killTree: async (pid: number) => {
-        killed.push(pid)
-        fake().finish('c', 1)
-      },
-      consoleMembers: async () => []
+    const made = await scene()
+    // The host is asked, through the pipe, to end the session's whole tree (docs/plans/r5-jobkill.md).
+    const trees: string[] = []
+    const kill = made.fake.host.kill.bind(made.fake.host)
+    made.fake.host.kill = (id, opts) => {
+      if (opts?.tree) trees.push(id)
+      return kill(id, opts)
     }
-    let made: Awaited<ReturnType<typeof scene>> | null = null
-    const fake = () => made!.fake
-    made = await scene(ctx)
     const { runner, app, tracker } = made
     await runner.restartOrJoin('c')
 
     await runner.endAndRestart('c')
-    expect(killed).toEqual([4242])
+    expect(trees).toEqual(['c'])
     expect(runner.errors().c).toBeUndefined()
     expect(made.fake.specs).toHaveLength(2)
     expect(made.fake.specs[1].args).toContain('--resume')

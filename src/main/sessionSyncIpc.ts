@@ -1,6 +1,5 @@
 import { homedir } from 'node:os'
 import { ipcMain, powerMonitor, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
-import { runProgram } from '../core/git/run'
 import { tailLines } from '../core/transcript/peek'
 import type { CanvasStore } from '../shared/contract'
 import { isSessionNode, type TerminalNode } from '../shared/model'
@@ -8,16 +7,10 @@ import type { SyncReport } from '../shared/sessionSync'
 import { broadcast } from './ipc'
 import type { BackgroundHost } from './sessions/backgroundHost'
 import type { NodeRunner } from './sessions/nodeRunner'
-import { CHECK_EVERY_MS, createSessionSync, pidAlive, type SessionSync, type SyncNodeView } from './sessions/sessionSync'
+import { CHECK_EVERY_MS, createSessionSync, type SessionSync, type SyncNodeView } from './sessions/sessionSync'
 import type { StatusTracker } from './sessions/statusTracker'
 import { ADOPT_SIZE, adoptSpot } from './sessions/adoptSpot'
 import { viewSize } from './viewSize'
-
-
-function taskkillTree(pid: number): Promise<void> {
-  // It fails if the process has already gone, which is what was wanted anyway.
-  return runProgram('taskkill', ['/pid', String(pid), '/T', '/F'], { env: process.env as Record<string, string>, timeoutMs: 15_000, maxBytes: 64 * 1024 }).then(() => undefined)
-}
 
 /**
  * Wires the session check into the app: on a timer, on reconnecting, on waking and when the window gets focus, plus
@@ -124,10 +117,8 @@ export function setupSessionSync(deps: {
     'pb:sync:endOrphan',
     appOnly(async (id: unknown) => {
       const sid = orphan(id)
-      const pid = host.pid(sid)
-      // Its tree, only while the host still says that pid is this session's and it's there: never a reused pid.
-      if (pid !== null && host.isRunning(sid) && host.pid(sid) === pid && pidAlive(pid)) await taskkillTree(pid)
-      await host.kill(sid)
+      // Its whole tree, by the session host, through handles it proves are ours: never a reused PID (docs/plans/r5-jobkill.md).
+      await host.kill(sid, { tree: true })
       host.forget(sid)
       await sync.check('ended a session with no node', true)
     })
