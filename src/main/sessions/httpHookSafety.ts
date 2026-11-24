@@ -36,7 +36,7 @@ export interface ClaudeSettingsPlaces {
   registry?: RegistryPolicy[]
 }
 
-const MANAGED_FILE = 'C:\\Program Files\\ClaudeCode\\managed-settings.json'
+export const MANAGED_FILE = 'C:\\Program Files\\ClaudeCode\\managed-settings.json'
 
 function readSettings(file: string): Record<string, unknown> | null {
   try {

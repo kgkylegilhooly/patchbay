@@ -11,6 +11,7 @@ import { openProjects } from './projectsUi'
 import { jumpToNext } from './needsYouUi'
 import { pickDocument } from './reader/readerUi'
 import { cycleRegion } from './a11y/regions'
+import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -98,6 +99,8 @@ export const ACTIONS: Action[] = [
   { id: 'next-region', section: 'App', label: 'Next part of the app (leaves a terminal)', icon: 'arrow-right', key: 'F6', keywords: ['leave', 'exit', 'escape', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(1) },
   { id: 'prev-region', section: 'App', label: 'Previous part of the app', icon: 'arrow-left', key: 'Shift+F6', keywords: ['leave', 'exit', 'terminal', 'focus', 'menu', 'sidebar', 'dock', 'region', 'pane'], run: () => void cycleRegion(-1) },
   { id: 'open-settings', section: 'App', label: 'Settings…', icon: 'settings', key: 'Ctrl+,', overTerminal: true, keywords: ['preferences', 'options', 'shortcuts'], run: (c) => c.openSettings() },
+  { id: 'copy-diagnostics', section: 'App', label: 'Copy diagnostics', icon: 'copy', keywords: ['bug', 'report', 'version', 'support', 'debug', 'hooks', 'log'], run: () => copyDiagnostics() },
+  { id: 'open-log-folder', section: 'App', label: 'Open log folder', icon: 'folder', keywords: ['logs', 'bug', 'report', 'debug', 'crash'], run: () => openLogFolder() },
   { id: 'close-project', section: 'App', label: 'Close this project', icon: 'folder-closed', keywords: ['hide', 'tab'], ready: (s) => s.canCloseProject, run: (c) => c.closeProject() },
   { id: 'manage-projects', section: 'App', label: 'Projects…', icon: 'project', keywords: ['manage', 'archive', 'unarchive', 'storage', 'disk', 'tabs', 'rename', 'delete', 'reopen'], run: () => openProjects() },
   { id: 'move-project-left', section: 'App', label: "Move this project's tab left", icon: 'arrow-left', keywords: ['reorder', 'tab', 'order'], run: (c) => c.moveProjectTab(-1) },

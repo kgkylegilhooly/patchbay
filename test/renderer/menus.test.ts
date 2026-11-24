@@ -88,7 +88,7 @@ describe('menu bar', () => {
     find(helpMenu(c), 'help-about')!.run()
     expect(takeSettingsSection()).toBe('about')
     expect(openSettings).toHaveBeenCalledTimes(2)
-    expect(items(helpMenu(c)).map((i) => i.id)).toEqual(['help-shortcuts', 'help-log', 'help-about'])
+    expect(items(helpMenu(c)).map((i) => i.id)).toEqual(['help-shortcuts', 'help-log', 'open-log-folder', 'copy-diagnostics', 'help-about'])
     expect(find(fileMenu(commands, state), 'open-settings')).toBeTruthy()
   })
 })

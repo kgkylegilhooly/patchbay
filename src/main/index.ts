@@ -33,6 +33,7 @@ import { createWorktree } from '../core/worktree/service'
 import { registerRecipeIpc } from './recipes/ipc'
 import { registerNeedsYouIpc } from './needsYou/ipc'
 import { setupResources } from './resources/setup'
+import { setupDiagnostics } from './diagnostics/setup'
 import { createRecipeService } from './recipes/service'
 import { createSetupGate } from './recipes/setupGate'
 import { withRecipeVerbs } from './recipes/verbs'
@@ -663,7 +664,9 @@ async function boot(): Promise<void> {
   registerRecipeIpc({ service: recipes, setupGate })
   registerNeedsYouIpc({ store, tracker, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   // Memory and CPU: the resource view in Settings, and a warning when the PC runs short. See src/main/resources.
-  setupResources({ dataDir, store, host, hosted: () => host.sessions(), hostPid: () => host.info().pid ?? null, tracker, settings: currentSettings, broadcast, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
+  const resources = setupResources({ dataDir, store, host, hosted: () => host.sessions(), hostPid: () => host.info().pid ?? null, tracker, settings: currentSettings, broadcast, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
+  // Settings > About's versions, Copy diagnostics and Open log folder. See src/main/diagnostics.
+  setupDiagnostics({ dataDir, store, host, status: (id) => tracker.get(id), sessionDir, settings: currentSettings, memory: () => resources.reading(), logFile: log?.file ?? null, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })
   registerTerminalProfileIpc({ settingsFile, log: (line) => log?.write(line) })
   // Two attempts at one brief, each in its own worktree from one recorded commit. See src/main/compare.

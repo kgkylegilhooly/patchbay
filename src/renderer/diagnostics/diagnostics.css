@@ -1,0 +1,60 @@
+/* Settings › About: agents and Copy diagnostics. See AboutDiagnostics.tsx. */
+
+.diag-agents {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diag-agents li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.diag-agent-name {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.diag-agent-wait {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.diag-agent-path {
+  display: block;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  background: var(--well);
+  border-radius: 6px;
+}
+
+.diag-agent-problem {
+  font-size: 12px;
+  color: #ff6b61;
+}
+
+.diag-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.diag-copied {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+}
+
+.diag-copied-bad {
+  color: #ff6b61;
+}
