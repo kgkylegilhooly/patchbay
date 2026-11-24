@@ -15,6 +15,7 @@ import { joinBoardEdit, joinNoteEdit, type AgentBoardEdits, type AgentNoteEdits 
 import { PULSE_MS, pulseCable } from './cableMotion'
 import { shareDoc } from './docShare'
 import { noteJoined } from './sessionSync'
+import { closeGuarded } from './closeGuard'
 
 /** As many as main keeps. */
 const MESSAGES_KEPT = 300
@@ -274,8 +275,16 @@ export function undoState(): { canUndo: boolean; canRedo: boolean; undoLabel?: s
   }
 }
 
-/** Closing a session can't be undone, because that would mean starting a process. Deleting a note, board or group can. */
+/**
+ * Closes, asking first when an agent among them left edits it made uncommitted (see closeGuard.ts). Every Close in the
+ * app comes here: the header's ✕, the window menu, the keyboard, the palette and Close selected.
+ */
 export function closeNodes(ids: string[]): void {
+  void closeGuarded(ids, useStore.getState().doc?.nodes ?? [], closeNodesNow, typeof window === 'undefined' ? undefined : window.patchbayFiles)
+}
+
+/** Closing a session can't be undone, because that would mean starting a process. Deleting a note, board or group can. */
+export function closeNodesNow(ids: string[]): void {
   const nodes = useStore.getState().doc?.nodes ?? []
   const closing = new Set(ids)
   // A trigger isn't layout: undoing its deletion would bring back something that sends prompts.

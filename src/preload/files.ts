@@ -6,6 +6,7 @@ const filesBridge: FilesBridge = {
   get: (nodeId) => ipcRenderer.invoke('pb:files:get', nodeId),
   diff: (nodeId, path, scope) => ipcRenderer.invoke('pb:files:diff', nodeId, path, scope),
   summary: () => ipcRenderer.invoke('pb:files:summary'),
+  uncommitted: (nodeId) => ipcRenderer.invoke('pb:files:uncommitted', nodeId),
   onSummary(cb) {
     const listener = (_e: IpcRendererEvent, summary: FilesSummary): void => cb(summary)
     ipcRenderer.on('pb:files:summary', listener)

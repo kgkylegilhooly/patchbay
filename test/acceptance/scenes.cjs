@@ -355,6 +355,31 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="copy-last-reply"]').catch(() => {})
     await sleep(600)
   },
+  // An agent edits a file in a repository and doesn't commit it, then its ✕ is pressed: Close asks first.
+  'close-guard': async (page, { profile }) => {
+    const { execFileSync } = require('node:child_process')
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const repo = path.join(profile, 'guard-repo')
+    const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { windowsHide: true })
+    fs.mkdirSync(repo, { recursive: true })
+    fs.writeFileSync(path.join(repo, 'README.md'), 'first\n')
+    git('init', '-q', '-b', 'main')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'First')
+    const node = { ...box, id: 'guarded', kind: 'claude', title: 'Release notes', x: 930, y: 640, width: 620, prompt: 'edits=notes.md', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: repo }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    const shows = (word) => page.waitForFunction((w) => document.querySelector('.react-flow__node[data-id="guarded"]')?.textContent?.includes(w), { timeout: 30000 }, word).catch(() => {})
+    await shows('Working')
+    await shows('Idle')
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Release notes'))?.click())
+    await sleep(800)
+    await page.click('.react-flow__node[data-id="guarded"] [data-tool="close"]').catch(() => {})
+    await sleep(800)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

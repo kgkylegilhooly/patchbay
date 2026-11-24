@@ -126,6 +126,8 @@ export interface FilesBridge {
   get(nodeId: string): Promise<SessionFiles | null>
   diff(nodeId: string, path: string, scope: DiffScope): Promise<FileDiff>
   summary(): Promise<FilesSummary>
+  /** The files this session edited that are uncommitted now: what closing it would leave behind. */
+  uncommitted(nodeId: string): Promise<string[]>
   /** Called with the whole summary each time it changes. Returns a function that stops it. */
   onSummary(cb: (summary: FilesSummary) => void): () => void
 }

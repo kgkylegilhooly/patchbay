@@ -69,6 +69,7 @@ export function setupFilesTouched(d: {
     service.diff(text(nodeId), text(path), scope === 'session' ? 'session' : 'turn').catch((e: unknown) => ({ ok: false as const, reason: e instanceof Error ? e.message : String(e) }))
   )
   ipcMain.handle('pb:files:summary', () => service.summary())
+  ipcMain.handle('pb:files:uncommitted', (_e, nodeId: unknown) => service.uncommitted(text(nodeId)))
   app.on('will-quit', () => {
     service.close()
     void service.flush()

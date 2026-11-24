@@ -341,6 +341,9 @@ it isn't the project's own, by its folder name. On narrow windows the folder goe
 Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
 conversation, ready to paste into an email or an issue.
 
+Closing an agent that edited files it hasn't committed asks first, naming them: "Release notes left 1 file it edited
+uncommitted: notes.md." Only its own edits count, not other work in the same checkout. **Keep** is the default.
+
 The chat view shows the last 200 messages. **Show 200 earlier**, at the top, goes further back, up to 5,000.
 
 - **Zoomed out** below 60%, each header becomes a tile you can still read: the title, then the status and the one thing
