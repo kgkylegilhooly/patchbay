@@ -129,6 +129,9 @@ export interface Commands {
   zoomOut(): void
   zoomReset(): void
   fitView(): void
+  /** Keeps the view on screen in slot `n` (1 to 9) for this project, or goes back to the one kept there. See savedViews.ts. */
+  saveView(n: number): void
+  goToView(n: number): void
   tidy(ids?: string[]): void
   togglePref(key: 'sidebar' | 'minimap' | 'legend' | 'snap'): void
   openSettings(): void
