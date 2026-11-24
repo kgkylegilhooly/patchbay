@@ -1,6 +1,6 @@
 import { open, readdir, stat } from 'node:fs/promises'
 import { noteWork } from '../workLog'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
 import { diffFile, EMPTY_TREE, insideRoot, objectEnv, pruneObjects, type RunGit, type Snapshot, type SnapshotStore } from './snapshot'
 import {
@@ -66,6 +66,8 @@ export interface FilesTouchedService {
   diff(nodeId: string, path: string, scope: DiffScope): Promise<FileDiff>
   /** What changed in the checkout since the session's last turn ended, or null when nothing did or it can't be told. */
   awayChanges(nodeId: string): Promise<AwayChanges | null>
+  /** The files this session edited that are uncommitted now, from the repository's root. Empty when none, or it can't tell. */
+  uncommitted(nodeId: string): Promise<string[]>
   summary(): FilesSummary
   /** Reads a node's transcript now. `turnOver` hands back edits whose result never came, as unconfirmed. */
   scan(nodeId: string, turnOver?: boolean): Promise<void>
@@ -527,6 +529,18 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
           : 'against an empty repository'
       const out = await diffFile(d.git, snap.root, from, snap.tree, rel, d.store ? objectEnv(d.store, snap.objects) : {})
       return out.ok ? { ...out, base: label } : out
+    },
+    async uncommitted(nodeId) {
+      const rec = records.get(nodeId)
+      if (!rec?.files.length) return []
+      const top = await d.git(rec.cwd, ['rev-parse', '--show-toplevel'], {})
+      if (top.code !== 0) return []
+      const root = resolve(top.stdout.trim())
+      // The whole checkout's status, matched to the files it touched: other agents' work there isn't its to warn about.
+      const status = await d.git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames'], { maxBytes: 4 * 1024 * 1024 })
+      if (status.code !== 0) return []
+      const dirty = new Set(status.stdout.split('\0').filter((e) => e.length > 3).map((e) => pathKey(join(root, e.slice(3)))))
+      return rec.files.filter((f) => dirty.has(pathKey(f.path))).map((f) => insideRoot(root, f.path) ?? f.path)
     },
     async awayChanges(nodeId) {
       const rec = records.get(nodeId)

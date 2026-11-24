@@ -303,3 +303,25 @@ describe('the message Tell it sends', () => {
     expect(awayMessage({ files: ['a.ts'], moreFiles: 0, commits: [], moreCommits: 0, since: 0, shared: [] }, () => 'x')).not.toMatch(/commits|also worked/)
   })
 })
+
+describe('what an agent leaves uncommitted, for the close guard (F20)', { timeout: 60_000 }, () => {
+  test("lists only the files it edited that are uncommitted now, not other work in the checkout", async () => {
+    const root = repo()
+    const w = world(root)
+    w.set('idle')
+    await w.turn(() => {
+      writeFileSync(join(root, 'a.ts'), 'one\ntwo\n')
+      w.edit(join(root, 'a.ts'))
+      writeFileSync(join(root, 'new.ts'), 'made\n')
+      w.edit(join(root, 'new.ts'))
+    })
+    // Someone else's change in the same checkout isn't this agent's to warn about.
+    writeFileSync(join(root, 'lock.json'), '{"y":1}\n')
+    expect((await w.service.uncommitted('a')).sort()).toEqual(['a.ts', 'new.ts'])
+    sh(root, 'add', 'a.ts')
+    sh(root, 'commit', '-q', '-m', 'Keep a')
+    expect(await w.service.uncommitted('a')).toEqual(['new.ts'])
+    expect(await w.service.uncommitted('nobody')).toEqual([])
+    w.service.close()
+  })
+})
