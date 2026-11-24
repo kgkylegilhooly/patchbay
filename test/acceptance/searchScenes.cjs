@@ -70,6 +70,13 @@ const scenes = {
     await page.waitForSelector('.source-focus', { timeout: 15000 })
     await sleep(400)
   },
+  // A conversation hit under the pointer shows Continue with another agent in place of its date (ux-review P23).
+  'search-hover': async (page) => {
+    await openSearch(page, 'unicode')
+    await page.waitForFunction(() => document.querySelectorAll('.search-hit').length >= 3, { timeout: 15000 })
+    await page.hover('.search-hit:nth-child(2) .search-hit-main')
+    await sleep(400)
+  },
   handoff: async (page) => {
     await openSearch(page, 'surrogate')
     await page.click('.search-continue')
@@ -93,4 +100,4 @@ const scenes = {
   }
 }
 
-module.exports = { scenes, seeds: { search: seedSearch, 'search-source': seedSearch, handoff: seedSearch, 'handoff-start': seedSearch } }
+module.exports = { scenes, seeds: { search: seedSearch, 'search-source': seedSearch, 'search-hover': seedSearch, handoff: seedSearch, 'handoff-start': seedSearch } }

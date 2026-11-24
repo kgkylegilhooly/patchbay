@@ -83,6 +83,7 @@
 }
 
 .search-hit {
+  position: relative;
   padding: 10px 14px 12px;
   border-bottom: 1px solid rgb(255 255 255 / 0.08);
 }
@@ -167,8 +168,30 @@
   border-radius: var(--r-sm);
 }
 
+/*
+ * One on every hit repeated down the list and pushed results apart (ux-review P23). It shows on the hit under the
+ * pointer or holding focus, in the title row in place of the date, so the list never changes height. It stays in the
+ * tab order: tabbing onto it is what shows it.
+ */
 .search-continue {
-  margin-top: 8px;
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.search-hit:is(:hover, :focus-within) .search-continue {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.search-hit:has(.search-continue):is(:hover, :focus-within) .search-hit-when {
+  visibility: hidden;
+}
+
+.search-hit:has(.search-continue):is(:hover, :focus-within) .search-hit-title {
+  padding-right: 13.5em;
 }
 
 .search-foot {
