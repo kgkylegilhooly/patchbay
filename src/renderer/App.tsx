@@ -131,11 +131,14 @@ function Canvas(): React.JSX.Element | null {
   const restWait = useRef<(() => void) | null>(null)
   useLayoutEffect(() => {
     if (!doc) return
-    restWait.current?.()
-    restWait.current = null
     const pick = stager.pick(doc.activeProjectId, toFlow(doc, statuses), doc.viewport, { width: window.innerWidth, height: window.innerHeight })
-    if (pick.later)
+    // One wait at a time: a change meanwhile (a busy team's statuses) keeps the batches' pace instead of putting it off.
+    if (!pick.later) {
+      restWait.current?.()
+      restWait.current = null
+    } else if (!restWait.current)
       restWait.current = afterNextPaint(() => {
+        restWait.current = null
         stager.advance()
         setRestDue((n) => n + 1)
       })

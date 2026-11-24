@@ -10,6 +10,7 @@ import { openProjects } from './projectsUi'
 import './search.css'
 import { Panel } from './shell/Panel'
 import { safePadding } from './safeArea'
+import { whenNodeDrawn } from './newNodeFocus'
 
 const TIME = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const KINDS: Array<{ id: SearchKind | 'all'; label: string }> = [
@@ -226,7 +227,8 @@ export function SearchPanel(): React.JSX.Element {
     const center = (): void => void flow.fitView({ nodes: [{ id }], padding: safePadding(), maxZoom: 1, duration: 260 })
     // A node in another project only exists on screen once its project has been drawn.
     if (!switching && flow.getNode(id)) center()
-    else setTimeout(center, 300)
+    // A switch draws the windows off screen a few a frame (stagedFlow.ts): wait until this one is.
+    else setTimeout(() => whenNodeDrawn(id, (n) => flow.getNode(n), center), 300)
     closeSearch()
     return true
   }

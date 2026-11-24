@@ -167,7 +167,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         })
       }
       if (flow.getNode(id)) go()
-      else setTimeout(go, 300)
+      // A switch draws the windows off screen a few a frame (stagedFlow.ts), so a far one can take more than 300 ms.
+      else setTimeout(() => whenNodeDrawn(id, (n) => flow.getNode(n), go), 300)
     }
 
     const onWindow = (nodeId: string | undefined, act: (id: string) => void): void => {
