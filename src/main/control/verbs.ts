@@ -486,7 +486,8 @@ export function createVerbs({
       if (!find(id)) return true
       // Stopped at a usage limit or on an error: finished for now, whatever is waiting for it. The reply says why.
       const stopped = status === 'unknown' && !!stops?.get(id)
-      if (!stopped && (!SETTLED.has(status) || sendQueue.busy(id))) {
+      // Waiting for memory shows as exited, but it hasn't run yet: it starts by itself, so it's still to come.
+      if (!stopped && (!SETTLED.has(status) || sendQueue.busy(id) || waitingForMemory(id))) {
         moved.add(id)
         settledAt.delete(id)
         return false
@@ -527,6 +528,7 @@ export function createVerbs({
       ...(over ? {} : { timedOut: true }),
       nodes: Object.fromEntries(ids.map((id) => [id, find(id) ? (tracker.get(id) ?? 'unknown') : 'closed'])),
       ...stoppedOf(ids),
+      ...memoryWaitsOf(ids),
       ...(handed.length ? { messages: handed.map((m) => ({ from: m.from, text: m.said ?? m.text })) } : {}),
       waitedSeconds: Math.round((now - started) / 100) / 10
     }
@@ -601,6 +603,15 @@ export function createVerbs({
   const waitingForMemory = (id: string): string | undefined => {
     const error = runner.errors?.()[id]
     return error?.fix === 'memory' ? error.message : undefined
+  }
+
+  /** For a wait's reply: the agents still waiting for memory, and why, so their "exited" isn't read as finished. */
+  const memoryWaitsOf = (ids: string[]): { waitingForMemory?: Record<string, string> } => {
+    const entries = ids.flatMap((id) => {
+      const why = waitingForMemory(id)
+      return why ? [[id, why] as const] : []
+    })
+    return entries.length ? { waitingForMemory: Object.fromEntries(entries) } : {}
   }
 
   const openAgent = async (caller: CanvasNode, args: Args): Promise<unknown> => {

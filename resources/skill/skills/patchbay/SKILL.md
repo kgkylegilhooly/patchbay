@@ -199,6 +199,8 @@ The person can start you as a team lead with one task. Your job is then to plan,
    - `needs-you` means the person has to answer that member. Tell them which node.
    - `unknown` doesn't mean finished, and neither `after` nor `wait` proves the work is right.
    - A member in the reply's `stopped` hit its usage limit or an error. Its `text` says what happens next.
+   - A member in `waitingForMemory` (in `wait`, `open-agent` or `spawn-team` output) hasn't started yet: Windows is
+     nearly out of memory, and it starts by itself once there's room. `wait` keeps waiting for it. Don't close or restart it.
 4. Read each result with `patchbay read --node <id>`, check it against its brief, and resolve conflicts between
    members. Use `patchbay send` to ask for fixes, one message at a time.
    - A refused verb prints why on stderr and exits 1. Don't filter its output (`| grep id`), or a refusal looks like
