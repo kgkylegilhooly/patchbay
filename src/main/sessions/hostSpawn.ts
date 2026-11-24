@@ -12,6 +12,7 @@ const realFs: typeof nodeFs = process.versions.electron ? require('original-fs')
 const { cp, open, readdir, rename, rm, stat, writeFile } = realFs.promises
 const existsSync = (path: string): boolean => realFs.existsSync(path)
 import { cleanEnv } from './env'
+import { endParentCommand } from '../../core/proc/safeKill'
 
 /** The host's own environment: clean like a session's, plus what it needs to run under Electron's Node. */
 export function hostEnv(base: NodeJS.ProcessEnv, version: string): Record<string, string> {
@@ -116,6 +117,16 @@ export function spawnSessionHost(opts: { mainDir: string; dataDir: string; versi
   child.unref()
 }
 
+/** The exit guard's script and what it needs in its environment, to end `pid` (its parent) after `ms`. Exported for tests. */
+export function exitGuard(pid: number, ms: number, platform: NodeJS.Platform = process.platform): { script: string; env: Record<string, string> } {
+  if (platform !== 'win32') return { script: `const pid=${pid};setTimeout(()=>{try{process.kill(pid)}catch{}process.exit(0)},${ms})`, env: {} }
+  const script =
+    `const k=JSON.parse(process.env.PB_EXIT_GUARD);setTimeout(()=>{try{` +
+    `const c=require('child_process').spawn(k.file,k.args,{env:k.env,stdio:'ignore',windowsHide:true});` +
+    `c.on('exit',()=>process.exit(0));c.on('error',()=>process.exit(0))}catch{process.exit(0)}},${ms})`
+  return { script, env: { PB_EXIT_GUARD: JSON.stringify(endParentCommand(pid)) } }
+}
+
 /** How long the app gets to finish exiting by itself. */
 const EXIT_GUARD_MS = 4000
 
@@ -123,13 +134,15 @@ const EXIT_GUARD_MS = 4000
  * Electron's teardown sometimes never finishes after a quit that leaves sessions running, for a cause not yet found.
  * test/acceptance/quitloop.cjs counts how often. Open notifications, in-flight port checks and exiting too soon have
  * each been tried and ruled out. Everything is saved by then, but the stuck process would keep the single-instance
- * lock, and the next launch would quit straight away. So a tiny separate process ends this one, by pid, if it's still
- * here after a while.
+ * lock, and the next launch would quit straight away. So a tiny separate process ends this one if it's still here after
+ * a while. Not by its PID alone: after a normal quit that PID may be another process's 4 s later. On Windows the guard
+ * has safeKill's helper end its parent only if the process with that PID was created before the guard, so is the app
+ * (docs/plans/r5-jobkill.md).
  */
 export function guardExit(version: string): void {
-  const script = `const pid=${process.pid};setTimeout(()=>{try{process.kill(pid)}catch{}process.exit(0)},${EXIT_GUARD_MS})`
+  const { script, env } = exitGuard(process.pid, EXIT_GUARD_MS)
   try {
-    const child = spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore', windowsHide: true, cwd: dirname(process.execPath), env: hostEnv(process.env, version) })
+    const child = spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore', windowsHide: true, cwd: dirname(process.execPath), env: { ...hostEnv(process.env, version), ...env } })
     child.on('error', () => {})
     child.unref()
   } catch (e) {

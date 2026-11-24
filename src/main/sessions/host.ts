@@ -196,14 +196,14 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
       }
     },
 
-    kill(id: string): Promise<void> {
+    kill(id: string, opts?: { tree?: boolean }): Promise<void> {
       const session = sessions.get(id)
       // node-pty's helper throws uncaught if kill runs after the process exited.
       if (!session?.running) return Promise.resolve()
       return new Promise((resolve) => {
         session.exitWaiters.push(resolve)
-        // Its console's processes are listed first, so nothing but them is killed: see ptyKill.ts.
-        endPty(session.proc, () => session.running).then(
+        // Ended through handles proven ours, never by a bare PID: see ptyKill.ts.
+        endPty(session.proc, () => session.running, { tree: opts?.tree === true }).then(
           (told) => {
             if (!told) return
             const giveUp = setTimeout(() => finish(id, session, -1), KILL_WAIT_MS)

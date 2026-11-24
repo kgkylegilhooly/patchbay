@@ -127,7 +127,7 @@ export function startHostServer(opts: HostServerOptions): Promise<HostServer> {
         return { pid: sessions.pid(args.spec.nodeId) }
       }
       case 'kill':
-        return sessions.kill(id)
+        return sessions.kill(id, { tree: args.tree === true })
       case 'forget':
         current.attached.delete(id)
         opts.onSessionForgotten?.(id)

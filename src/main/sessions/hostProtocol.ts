@@ -61,6 +61,8 @@ export interface HostRequestArgs {
   id?: string
   spec?: SessionSpec
   size?: { cols: number; rows: number }
+  /** kill: everything the session's processes started too. A host from before it ignores it and ends the console only. */
+  tree?: boolean
 }
 
 /** The pipe for one user-data folder, so a test profile and the real one can never share a host. */
