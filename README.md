@@ -398,6 +398,11 @@ that time show too. A folder outside git has the list but no diff.
 
 Agents can list the same with `patchbay files [--node ID] [--turn]`, for themselves or a node they opened or are linked to.
 
+The snapshot as each turn ends is kept too. When an agent resumes its conversation, as after a restart, Patchbay
+compares that with its checkout now. If anything changed meanwhile, by you or another agent, its window says so: "While
+it was away: 3 files changed, 1 commit." **Tell it** sends the agent the commits and files (up to 10 and 30), so it
+checks them before relying on what it knew; **Dismiss** doesn't. Nothing is sent unless you press Tell it.
+
 ## Keys
 
 `Ctrl+K` opens the command palette, which searches every action and open session. Settings > Keyboard shortcuts rebinds

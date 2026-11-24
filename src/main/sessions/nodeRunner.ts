@@ -75,6 +75,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   refreshHost?: () => Promise<unknown>
   /** A session the host still ran was taken on again, so its views should be rebuilt. See docs/plans/session-sync.md. */
   onReattached?: (id: string) => void
+  /** A session started by resuming its conversation (not a reattach) has started, once. See files/away.ts. */
+  onResumedStart?: (id: string) => void
   /** The Node a Claude launch's hooks start directly, when `hookNode` isn't set. Defaults to hookNodeFor. */
   findHookNode?: (launch: HookLaunch) => Promise<string | null>
   /** The connected session host's hook port, or null when sessions keep command hooks. See docs/plans/host-hooks.md. */
@@ -325,6 +327,7 @@ export function createNodeRunner({
         if (!run || run.sessionStarted || run.askedAtStartup || !host.isRunning(node.id)) return
         run.sessionStarted = true
         tracker.apply(node.id, { type: 'hook', name: 'SessionStart' })
+        ctx.onResumedStart?.(node.id)
       }, RESUME_FAILURE_WINDOW_MS)
     }
     // Only now: a session that never started has no conversation for a later launch to resume.
@@ -641,6 +644,7 @@ export function createNodeRunner({
       }
 
       if (name === 'SessionStart') {
+        if (run.resumed && !run.sessionStarted) ctx.onResumedStart?.(id)
         run.sessionStarted = true
         if (run.typedPrompt) {
           typePrompt(id, run.typedPrompt)

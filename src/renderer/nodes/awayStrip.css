@@ -1,0 +1,16 @@
+/* "While it was away": news, not a problem, so blue like the browser's held strip rather than red or amber. */
+.strip-away {
+  color: #cfe1ff;
+  background: rgb(61 139 253 / 0.14);
+}
+
+.strip-away .btn {
+  padding: 1px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.strip-away-problem {
+  color: #ffc9c4;
+  font-size: 12px;
+}

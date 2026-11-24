@@ -56,6 +56,7 @@ import { withDocVerbs } from './reader/verbs'
 import { spotNear } from './control/verbs'
 import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
+import { createAway, serveAway, type Away } from './files/away'
 import { withFilesVerbs } from './files/verbs'
 import { setupProjects } from './projects/ipc'
 import { setupSubagents } from './subagents/setup'
@@ -398,6 +399,8 @@ async function boot(): Promise<void> {
   const codexGate = createCodexGate()
   /** The PC's memory, once the resource monitor below is up. Until then no start waits for memory. */
   let memoryNow: () => SystemMemory | null = () => null
+  /** What changed while a resumed agent was away, shown on its node: made once files-touched exists, below. */
+  let away: Away | null = null
   const runner = createNodeRunner({
     host,
     tracker,
@@ -412,6 +415,7 @@ async function boot(): Promise<void> {
       beforeCodexStart: () => codexGate.sessionStarting(),
       refreshHost: () => host.refresh(),
       onReattached: (id) => noteReattached(id),
+      onResumedStart: (id) => void away?.resumed(id),
       pluginDir: join(resourceDir, 'skill'),
       cliDir: join(resourceDir, 'cli'),
       endpointFile,
@@ -502,6 +506,8 @@ async function boot(): Promise<void> {
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
   // Which files each agent session edited, from its transcript, with a snapshot as each turn starts. See src/main/files.
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
+  away = createAway({ changes: (id) => filesTouched.awayChanges(id), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), push: (a) => broadcast('pb:away:onChange', a) })
+  serveAway(away, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   // The reader: Markdown files shown read-only, with comments for agents. See src/main/reader.
   const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
   // Workflows: saved processes whose steps run in order, each finishing on evidence. See src/main/workflows.
