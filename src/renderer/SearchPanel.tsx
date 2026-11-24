@@ -353,7 +353,7 @@ export function SearchPanel(): React.JSX.Element {
                 </button>
                 {h.kind === 'conversation' && (h.ref.type === 'node' || h.ref.type === 'closed') && (
                   <button
-                    className="btn search-continue"
+                    className="btn btn-sm search-continue"
                     onClick={() => openHandoff(h.ref.type === 'node' ? { type: 'node', nodeId: h.ref.nodeId } : { type: 'closed', closedId: (h.ref as { closedId: string }).closedId }, h.title)}
                   >
                     Continue with another agent…
