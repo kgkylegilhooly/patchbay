@@ -12,7 +12,7 @@ const realFs: typeof nodeFs = process.versions.electron ? require('original-fs')
 const { cp, open, readdir, rename, rm, stat, writeFile } = realFs.promises
 const existsSync = (path: string): boolean => realFs.existsSync(path)
 import { cleanEnv } from './env'
-import { endParentCommand } from '../../core/proc/safeKill'
+import { endParentRequest, helperCommand } from '../../core/proc/safeKill'
 
 /** The host's own environment: clean like a session's, plus what it needs to run under Electron's Node. */
 export function hostEnv(base: NodeJS.ProcessEnv, version: string): Record<string, string> {
@@ -120,11 +120,23 @@ export function spawnSessionHost(opts: { mainDir: string; dataDir: string; versi
 /** The exit guard's script and what it needs in its environment, to end `pid` (its parent) after `ms`. Exported for tests. */
 export function exitGuard(pid: number, ms: number, platform: NodeJS.Platform = process.platform): { script: string; env: Record<string, string> } {
   if (platform !== 'win32') return { script: `const pid=${pid};setTimeout(()=>{try{process.kill(pid)}catch{}process.exit(0)},${ms})`, env: {} }
+  // Nothing to do, and no helper started, when the app has gone (nearly always): a check, not a kill. If it's still
+  // there, the helper ends it only if it's still the guard's parent. A helper that can't run falls back to the old kill.
   const script =
-    `const k=JSON.parse(process.env.PB_EXIT_GUARD);setTimeout(()=>{try{` +
-    `const c=require('child_process').spawn(k.file,k.args,{env:k.env,stdio:'ignore',windowsHide:true});` +
-    `c.on('exit',()=>process.exit(0));c.on('error',()=>process.exit(0))}catch{process.exit(0)}},${ms})`
-  return { script, env: { PB_EXIT_GUARD: JSON.stringify(endParentCommand(pid)) } }
+    `const k=JSON.parse(process.env.PB_EXIT_GUARD);setTimeout(()=>{` +
+    `const alive=()=>{try{process.kill(k.pid,0);return true}catch{return false}};if(!alive())process.exit(0);` +
+    `const old=()=>{try{if(alive())process.kill(k.pid)}catch{}process.exit(0)};let out='';` +
+    `try{const c=require('child_process').spawn(k.file,k.args,{env:k.env,stdio:['pipe','pipe','ignore'],windowsHide:true});` +
+    `c.stdout.on('data',(d)=>{out+=d});c.stdin.on('error',()=>{});c.stdin.end(k.request+'\\n');` +
+    `c.on('close',()=>/^done\\r?$/m.test(out)?process.exit(0):old());c.on('error',old)}catch{old()}},${ms})`
+  let command: ReturnType<typeof helperCommand>
+  try {
+    command = helperCommand()
+  } catch {
+    // No source file: the old kill, by PID.
+    return exitGuard(pid, ms, 'linux')
+  }
+  return { script, env: { PB_EXIT_GUARD: JSON.stringify({ pid, request: endParentRequest(pid), ...command }) } }
 }
 
 /** How long the app gets to finish exiting by itself. */

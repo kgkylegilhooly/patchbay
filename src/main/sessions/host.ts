@@ -5,7 +5,7 @@ import * as pty from 'node-pty'
 import type { SessionHost, SessionSpec } from '../../shared/contract'
 import type { HostedSession } from './hostProtocol'
 import { createSessionBuffer, type SessionBuffer } from './sessionBuffer'
-import { endPty } from './ptyKill'
+import { endPty, releaseConsole } from './ptyKill'
 
 const DEFAULT_BUFFER_BYTES = 1024 * 1024
 const FLUSH_MS = 16
@@ -18,6 +18,10 @@ const QUIET_FLUSH_MS = 250
 const QUIET_FLUSH_BYTES = 256 * 1024
 /** How long kill waits for the PTY to report its exit before treating the session as gone. */
 const KILL_WAIT_MS = 3000
+/** After node-pty's 1 s flush of a session's last output, its console is let go (ptyKill.ts releaseConsole). */
+const RELEASE_CONSOLE_MS = 1500
+/** How far either side of pty.spawn a shell's creation may read, for the clocks' sake. */
+const BORN_SLACK_MS = 1000
 
 export class SessionStartError extends Error {
   constructor(
@@ -53,6 +57,8 @@ interface Session {
   exitWaiters: Array<() => void>
   exitCode: number | null
   exitedAt: number | null
+  /** Just before and just after pty.spawn: the shell was created in between, which helps prove its PID. */
+  born: { after: number; before: number }
 }
 
 /**
@@ -151,6 +157,9 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
         throw new SessionStartError('cwd-missing', `Folder not found: ${spec.cwd}`)
       }
       let proc: pty.IPty
+      // A second either side: the app's clock and the kernel's can differ by a little, and a wider window only weakens the
+      // proof, never fails a real shell. See docs/plans/r5-jobkill.md.
+      const bornAfter = Date.now() - BORN_SLACK_MS
       try {
         proc = pty.spawn(spec.file, ptyArgs(spec), {
           name: 'xterm-256color',
@@ -170,12 +179,17 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
         timer: null,
         exitWaiters: [],
         exitCode: null,
-        exitedAt: null
+        exitedAt: null,
+        born: { after: bornAfter, before: Date.now() + BORN_SLACK_MS }
       }
       sessions.set(id, session)
       if (spec.background) lowerPriority(proc.pid)
       proc.onData((data) => receive(id, session, data))
-      proc.onExit(({ exitCode }) => finish(id, session, exitCode))
+      proc.onExit(({ exitCode }) => {
+        finish(id, session, exitCode)
+        // node-pty never closes a console whose shell has ended, so its console host would stay: see ptyKill.ts.
+        setTimeout(() => releaseConsole(proc), RELEASE_CONSOLE_MS).unref?.()
+      })
     },
 
     write(id: string, data: string): void {
@@ -203,7 +217,7 @@ export function createSessionHost(opts: { bufferBytes?: number } = {}): PtyHost 
       return new Promise((resolve) => {
         session.exitWaiters.push(resolve)
         // Ended through handles proven ours, never by a bare PID: see ptyKill.ts.
-        endPty(session.proc, () => session.running, { tree: opts?.tree === true }).then(
+        endPty(session.proc, () => session.running, { tree: opts?.tree === true, born: session.born }).then(
           (told) => {
             if (!told) return
             const giveUp = setTimeout(() => finish(id, session, -1), KILL_WAIT_MS)

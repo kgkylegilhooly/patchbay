@@ -82,6 +82,7 @@ import { createBackgroundHost } from './sessions/backgroundHost'
 import { createSessionHost } from './sessions/host'
 import { pipeNameFor } from './sessions/hostProtocol'
 import { guardExit, hostRuntime, lastHostLogLine, pruneHostRuntimes, spawnSessionHost } from './sessions/hostSpawn'
+import { HELPER_PROBLEM_LOG, onHelperProblem } from '../core/proc/safeKill'
 import { missedHooksDir, takeMissedHooks } from './sessions/missedHooks'
 import { onClaudeNodesRemoved, pruneSessionSettings, removeSessionSettings } from './sessions/sessionSettingsFiles'
 import { createNodeRunner } from './sessions/nodeRunner'
@@ -259,6 +260,7 @@ async function boot(): Promise<void> {
   const settingsFile = join(dataDir, 'settings.json')
   // What went wrong, and when, for a hang or crash that leaves nothing else behind. See watchdog.ts.
   log = createLog(join(dataDir, 'logs'))
+  onHelperProblem((why) => log?.write(`${HELPER_PROBLEM_LOG} ${why}`))
   log.write(`Patchbay ${app.getVersion()} started (Electron ${process.versions.electron}, pid ${process.pid}).`)
   // A sleep isn't a stall: the log once said "blocked for 39254.9 s" for a night with the lid shut.
   let suspended = false

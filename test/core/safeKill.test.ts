@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { afterEach, describe, expect, test } from 'vitest'
-import { endTrees, parseReport } from '../../src/core/proc/safeKill'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { createKiller, endTrees, parseReport } from '../../src/core/proc/safeKill'
 import { usesRealProcesses } from '../support/realProcess'
 
 usesRealProcesses()
@@ -54,6 +54,7 @@ test('the helper output is read line by line', () => {
   const listed: Array<[number, number[]]> = []
   const r = parseReport('listed 10 11 12\r\nkilled 10 root\nkilled 11 member\ngone 12 member\nskip 99 not-ours\n', (root, members) => listed.push([root, members]))
   expect(r).toMatchObject({ killed: [10, 11], gone: [12], skipped: [{ pid: 99, why: 'not-ours' }], listed: { 10: [11, 12] } })
+  expect(parseReport('kept 10').kept).toEqual([10])
   expect(listed).toEqual([[10, [11, 12]]])
   expect(parseReport('error starter\n').error).toBe('starter')
 })
@@ -113,5 +114,56 @@ describe.skipIf(process.platform !== 'win32')('on real processes', () => {
       }) as never
     })
     expect(report).toMatchObject({ ok: false, killed: [], error: 'no powershell' })
+  })
+
+  test('a kept root is proven and held but left running; what it started is ended', async () => {
+    const parent = spawn(process.execPath, ['-e', PARENT], { windowsHide: true })
+    started.push(parent)
+    const grandchild = await firstLine(parent)
+    const report = await endTrees([{ pid: parent.pid!, bornBefore: Date.now(), tree: true, keep: true }])
+    expect(report.kept).toEqual([parent.pid!])
+    expect(report.killed).toContain(grandchild)
+    expect(report.killed).not.toContain(parent.pid!)
+    expect(parent.exitCode).toBeNull()
+  })
+
+  test('a root created before the start window it was given (a session shell spawned later) is not proven', async () => {
+    const early = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true })
+    started.push(early)
+    await new Promise((r) => setTimeout(r, 300))
+    const report = await endTrees([{ pid: early.pid!, bornBefore: Date.now(), bornAfter: Date.now() - 50 }])
+    expect(report.skipped).toContainEqual({ pid: early.pid!, why: 'not-ours' })
+    expect(early.exitCode).toBeNull()
+  })
+
+  test('one helper serves request after request: PowerShell starts and compiles once', async () => {
+    const spawned = vi.fn(spawn)
+    const killer = createKiller({ spawn: spawned as never })
+    try {
+      for (let i = 0; i < 3; i++) {
+        const c = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { windowsHide: true })
+        started.push(c)
+        await new Promise((r) => setTimeout(r, 100))
+        const report = await killer.run([{ pid: c.pid!, bornBefore: Date.now() }])
+        expect(report.killed).toEqual([c.pid!])
+      }
+      expect(spawned).toHaveBeenCalledTimes(1)
+    } finally {
+      killer.close()
+    }
+  })
+
+  test("a helper that can't run is said once, and isn't started again", async () => {
+    const onProblem = vi.fn()
+    // Exits before it's ready, as PowerShell does when Add-Type is refused.
+    const spawned = vi.fn(() => spawn(process.execPath, ['-e', 'console.error("Add-Type refused");process.exit(1)'], { windowsHide: true }))
+    const killer = createKiller({ spawn: spawned as never, onProblem })
+    const first = await killer.run([{ pid: 4242, bornBefore: Date.now() }])
+    const second = await killer.run([{ pid: 4243, bornBefore: Date.now() }])
+    expect(first).toMatchObject({ ok: false, error: 'Add-Type refused' })
+    expect(second).toMatchObject({ ok: false, error: 'Add-Type refused' })
+    expect(onProblem).toHaveBeenCalledTimes(1)
+    expect(spawned).toHaveBeenCalledTimes(1)
+    expect(killer.problem()).toBe('Add-Type refused')
   })
 })

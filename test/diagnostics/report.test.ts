@@ -115,6 +115,12 @@ function input(over: Partial<DiagnosticsInput> = {}): DiagnosticsInput {
 }
 
 describe('diagnosticsText', () => {
+  it('says how processes are ended, and where the safe helper could not run (docs/plans/r5-jobkill.md)', () => {
+    expect(diagnosticsText(input())).toContain('Process ends: through the safe helper (no failure seen)')
+    const text = diagnosticsText(input({ processEnds: ['app: Add-Type refused', 'session host: ended with code 1'] }))
+    expect(text).toContain("Process ends: by PID as before, the safe helper couldn't run (app: Add-Type refused; session host: ended with code 1)")
+  })
+
   it('has the build, runtime, agents, host, sessions with their hooks, and the log', () => {
     const text = diagnosticsText(input())
     expect(text).toContain('Patchbay 0.1.0 (commit e94fa9b1c2 with changes on main, built 2026-11-24T10:00:00.000Z)')

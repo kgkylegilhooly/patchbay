@@ -9,6 +9,7 @@ import type { Settings } from '../../shared/settings'
 import { inTestMode } from '../testPickers'
 import { buildInfo } from './buildInfo'
 import { agentPrograms, logFolder, outsideHooks, readLogEnd, sessionLines } from './collect'
+import { HELPER_PROBLEM_LOG, helperProblem } from '../../core/proc/safeKill'
 
 /** The account's name, for redacting a home folder that doesn't end in it. */
 function accountName(): string | null {
@@ -50,7 +51,7 @@ export function setupDiagnostics(d: {
     const settings = d.settings()
     const nodes = d.store.get().nodes
     const home = homedir()
-    const [agents, sessions, log, outside] = await Promise.all([
+    const [agents, sessions, log, outside, hostLog] = await Promise.all([
       agentPrograms(settings),
       sessionLines({ nodes, isRunning: (id) => d.host.isRunning(id), status: d.status, sessionDir: d.sessionDir, hosted: d.host.sessions?.() }),
       d.logFile ? readLogEnd(d.logFile) : Promise.resolve(''),
@@ -58,8 +59,13 @@ export function setupDiagnostics(d: {
         home,
         configDir: Object.entries(process.env).find(([k]) => k.toUpperCase() === 'CLAUDE_CONFIG_DIR')?.[1],
         folders: [...d.store.get().projects.map((p) => p.folder), ...nodes.flatMap((n) => (n.kind === 'claude' ? [n.cwd] : []))]
-      })
+      }),
+      readLogEnd(join(d.dataDir, 'control', 'host.log'))
     ])
+    // The host logs it once (hostProcess.ts); the app's own is asked directly.
+    const hostProblem = hostLog.split(/\r?\n/).reverse().find((l) => l.includes(HELPER_PROBLEM_LOG))
+    const appProblem = helperProblem()
+    const processEnds = [...(appProblem ? [`app: ${appProblem}`] : []), ...(hostProblem ? [`session host: ${hostProblem.slice(hostProblem.indexOf(HELPER_PROBLEM_LOG) + HELPER_PROBLEM_LOG.length).trim()}`] : [])]
     return diagnosticsText({
       about: aboutInfo(),
       at: new Date().toISOString(),
@@ -70,6 +76,7 @@ export function setupDiagnostics(d: {
       memory: d.memory(),
       outsideHooks: outside,
       log: logTail(log, 40),
+      processEnds,
       home,
       user: accountName()
     })

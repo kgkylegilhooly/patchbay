@@ -29,7 +29,7 @@ test('a child whose exit has been seen is never killed by its PID, which may be 
   expect(start).not.toHaveBeenCalled()
 })
 
-const report = (over: Partial<KillReport> = {}): KillReport => ({ ok: true, killed: [], gone: [], skipped: [], listed: {}, ...over })
+const report = (over: Partial<KillReport> = {}): KillReport => ({ ok: true, killed: [], gone: [], kept: [], skipped: [], listed: {}, ...over })
 const flush = () => new Promise((r) => setTimeout(r, 0))
 
 test('a running child gets its whole tree ended, on Windows by the helper that proves each process ours', async () => {
@@ -43,23 +43,32 @@ test('a running child gets its whole tree ended, on Windows by the helper that p
   } else expect(live.kill).toHaveBeenCalledWith('SIGKILL')
 })
 
-test.skipIf(process.platform !== 'win32')("a child the helper couldn't end is ended through Node's own handle, while its exit is unseen", async () => {
-  const failed = child()
-  killTree(failed, async () => report({ ok: false, error: 'no powershell' }))
+test.skipIf(process.platform !== 'win32')("a helper that can't run falls back to round 4's taskkill /T, while the exit is unseen", async () => {
+  for (const end of [async () => report({ ok: false, error: 'blocked' }), () => Promise.reject(new Error('no helper'))]) {
+    const start = vi.fn(() => ({ on: vi.fn() }))
+    const live = child()
+    killTree(live, end, start as never)
+    await flush()
+    expect(start).toHaveBeenCalledWith('taskkill', ['/pid', '4242', '/T', '/F'], expect.anything())
+    expect(live.kill).not.toHaveBeenCalled()
+  }
+})
+
+test.skipIf(process.platform !== 'win32')("a child the helper ran for but couldn't prove is ended through Node's own handle; one that exited meanwhile, not at all", async () => {
+  const start = vi.fn()
+  const young = child()
+  killTree(young, async () => report({ skipped: [{ pid: 4242, why: 'not-ours' }] }), start as never)
   await flush()
-  expect(failed.kill).toHaveBeenCalledWith('SIGKILL')
-  const rejected = child()
-  killTree(rejected, () => Promise.reject(new Error('no helper')))
-  await flush()
-  expect(rejected.kill).toHaveBeenCalledWith('SIGKILL')
+  expect(young.kill).toHaveBeenCalledWith('SIGKILL')
   // Exited meanwhile: Node has let its handle go, so nothing more.
   const ended = child()
   killTree(ended, async () => {
     ended.exitCode = 0
-    return report({ skipped: [{ pid: 4242, why: 'gone' }] })
-  })
+    return report({ ok: false })
+  }, start as never)
   await flush()
   expect(ended.kill).not.toHaveBeenCalled()
+  expect(start).not.toHaveBeenCalled()
 })
 
 test('a real program past its time limit is stopped and the run settles', async () => {

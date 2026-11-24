@@ -1,9 +1,11 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
-import { endTrees } from '../../src/core/proc/safeKill'
+import * as pty from 'node-pty'
+import { endTrees, type KillRoot } from '../../src/core/proc/safeKill'
+import { endPty } from '../../src/main/sessions/ptyKill'
 import { createSessionHost } from '../../src/main/sessions/host'
 import type { SessionHost } from '../../src/shared/contract'
 import { removeTemp, usesRealProcesses } from '../support/realProcess'
@@ -146,4 +148,60 @@ test.skipIf(process.platform !== 'win32')("Stop on a run (tree) ends what the se
   await plain.h.kill('n')
   expect(plain.h.isRunning('n')).toBe(false)
   expect(alive(plain.offConsole)).toBe(true)
+}, 120_000)
+
+/** The console hosts (conhost.exe) whose parent is this process: one per live pseudo-console it made. */
+function conhosts(): number[] {
+  const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid} and Name='conhost.exe'" | ForEach-Object ProcessId`], { encoding: 'utf8', windowsHide: true })
+  return out.split(/\s+/).filter(Boolean).map(Number)
+}
+
+// Review H1: with the shell killed before node-pty closed the console, node-pty could no longer close it, and every
+// ended session left its conhost.exe in the host. A shell that ended by itself left one too, before this branch as well.
+test.skipIf(process.platform !== 'win32')('ending a session, plainly or its tree, or a shell ending by itself, leaves no console host behind', async () => {
+  const before = conhosts()
+  const fresh = (): number[] => conhosts().filter((c) => !before.includes(c))
+  const start = (args: string[]): SessionHost => {
+    const h = createSessionHost()
+    hosts.push(h)
+    h.start({ nodeId: 'n', file: CMD, args, cwd: tmpdir(), env: process.env as Record<string, string> })
+    return h
+  }
+  const plain = start(['/k', 'echo ready'])
+  await vi.waitFor(() => expect(plain.snapshot('n').data).toContain('ready'), { timeout: 30_000 })
+  const tree = await sessionWithOffConsoleChild()
+  const byItself = start(['/c', 'echo bye'])
+  expect(fresh().length).toBeGreaterThanOrEqual(2)
+  await plain.kill('n')
+  await tree.h.kill('n', { tree: true })
+  await vi.waitFor(() => expect(byItself.isRunning('n')).toBe(false), { timeout: 30_000 })
+  await vi.waitFor(() => expect(fresh()).toEqual([]), { timeout: 20_000, interval: 500 })
+}, 120_000)
+
+test.skipIf(process.platform !== 'win32')('a process that joins the console after it was read is still ended, by the console closing', async () => {
+  dir = mkdtempSync(join(tmpdir(), 'patchbay safekill '))
+  const script = join(dir, 'late.cjs')
+  writeFileSync(script, "console.log('late-' + process.pid + '-up'); setInterval(() => {}, 1000)\n")
+  const proc = pty.spawn(CMD, ['/k', 'echo ready'], { cwd: tmpdir(), env: process.env as Record<string, string> })
+  let running = true
+  let out = ''
+  proc.onData((d) => (out += d))
+  proc.onExit(() => (running = false))
+  await vi.waitFor(() => expect(out).toContain('ready'), { timeout: 30_000 })
+  let late = 0
+  // The helper reads the console, then waits; meanwhile a process starts on it, which it can't prove and leaves.
+  const end = (roots: KillRoot[]) =>
+    endTrees(roots, {
+      pauseAfterListMs: 8000,
+      onListed: () => proc.write(`"${process.execPath}" "${script}"\r`)
+    })
+  const ending = endPty(proc, () => running, { end })
+  await vi.waitFor(() => {
+    const m = /late-(\d+)-up/.exec(out)
+    expect(m).not.toBeNull()
+    late = Number(m![1])
+  }, { timeout: 30_000 })
+  expect(await ending).toBe(true)
+  await vi.waitFor(() => expect(alive(late)).toBe(false), { timeout: 15_000 })
+  await vi.waitFor(() => expect(running).toBe(false), { timeout: 15_000 })
 }, 120_000)

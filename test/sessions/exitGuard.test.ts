@@ -25,12 +25,12 @@ const exited = (c: ChildProcess, ms: number): Promise<boolean> =>
   })
 
 /** A stand-in for the app: starts the guard as the app does, naming `target` (itself unless given), then stays. */
-function stuckApp(target?: number): ChildProcess {
+function stuckApp(target?: number, opts: { noHelper?: boolean } = {}): ChildProcess {
   const { script, env } = exitGuard(0, 300)
   const named = target === undefined ? 'process.pid' : String(target)
   const code =
     `const env={...process.env,...JSON.parse(process.env.G_ENV)};` +
-    `if(env.PB_EXIT_GUARD){const k=JSON.parse(env.PB_EXIT_GUARD);k.env.PB_SAFEKILL_ROOTS=${named}+':0:p';env.PB_EXIT_GUARD=JSON.stringify(k)}` +
+    `if(env.PB_EXIT_GUARD){const k=JSON.parse(env.PB_EXIT_GUARD);k.pid=${named};k.request='0 '+${named}+':0:p';${opts.noHelper ? "k.file='C:/no/such/powershell.exe';" : ''}env.PB_EXIT_GUARD=JSON.stringify(k)}` +
     `require('child_process').spawn(process.execPath,['-e',process.env.G_SCRIPT],{detached:true,stdio:'ignore',windowsHide:true,env}).unref();` +
     `setInterval(()=>{},1000)`
   const app = spawn(process.execPath, ['-e', code], { windowsHide: true, stdio: 'ignore', env: { ...process.env, G_SCRIPT: script, G_ENV: JSON.stringify(env) } })
@@ -45,6 +45,11 @@ test('elsewhere the guard ends its parent by PID, as before', () => {
 describe.skipIf(process.platform !== 'win32')('on Windows', () => {
   test('an app still there when the guard fires is ended', async () => {
     const app = stuckApp()
+    expect(await exited(app, 30_000)).toBe(true)
+  })
+
+  test("a guard whose helper can't run falls back to the old kill, as round 4 did", async () => {
+    const app = stuckApp(undefined, { noHelper: true })
     expect(await exited(app, 30_000)).toBe(true)
   })
 
