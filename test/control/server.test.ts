@@ -95,7 +95,7 @@ test('rpc with the right token reaches the handler with the caller, verb and arg
   const res = await post(s.port, '/rpc', 'a', tokenFor(SECRET, 'a'), { verb: 'list', args: { x: 1 } })
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual({ result: { hello: 1 } })
-  expect(onRpc).toHaveBeenCalledWith('a', 'list', { x: 1 })
+  expect(onRpc).toHaveBeenCalledWith('a', 'list', { x: 1 }, expect.any(AbortSignal))
 })
 
 test('rpc with the wrong token returns 401 and no handler runs', async () => {
@@ -265,4 +265,29 @@ test.each([['a string'], [[1, 2]], [5]])('rpc args that are not an object are a 
   const res = await post(s.port, '/rpc', 'a', tokenFor(SECRET, 'a'), { verb: 'list', args })
   expect(res.status).toBe(400)
   expect(onRpc).not.toHaveBeenCalled()
+})
+
+test("an rpc's signal aborts when the caller hangs up before the answer, and not once it's answered", async () => {
+  let held: AbortSignal | undefined
+  const answered: AbortSignal[] = []
+  const s = await server({
+    onRpc: vi.fn(async (_caller: string, verb: string, _args: Record<string, unknown>, signal: AbortSignal) => {
+      if (verb === 'list') return answered.push(signal) && 'ok'
+      held = signal
+      return new Promise((done) => signal.addEventListener('abort', () => done('late')))
+    })
+  })
+  await post(s.port, '/rpc', 'a', tokenFor(SECRET, 'a'), { verb: 'list', args: {} })
+  const hangUp = new AbortController()
+  const waiting = fetch(`http://127.0.0.1:${s.port}/rpc`, {
+    method: 'POST',
+    headers: { 'x-patchbay-node': 'a', authorization: `Bearer ${tokenFor(SECRET, 'a')}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ verb: 'wait', args: {} }),
+    signal: hangUp.signal
+  }).catch(() => 'hung up')
+  await vi.waitFor(() => expect(held).toBeDefined())
+  hangUp.abort()
+  expect(await waiting).toBe('hung up')
+  await vi.waitFor(() => expect(held!.aborted).toBe(true))
+  expect(answered[0].aborted).toBe(false)
 })

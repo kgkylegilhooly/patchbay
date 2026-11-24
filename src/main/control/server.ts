@@ -75,7 +75,8 @@ export interface ControlServerOptions {
   endpointFile: string
   /** The reply may wait. The signal aborts if the caller's connection closes before then. */
   onHook(nodeId: string, payload: Record<string, unknown>, signal: AbortSignal): unknown
-  onRpc(callerNodeId: string, verb: string, args: Record<string, unknown>): Promise<unknown>
+  /** The signal aborts if the caller's connection closes before the reply, as for onHook. */
+  onRpc(callerNodeId: string, verb: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown>
   onUsage?(nodeId: string, report: UsageReport): void
 }
 
@@ -126,7 +127,11 @@ export function startControlServer(opts: ControlServerOptions): Promise<ControlS
     if (typeof args !== 'object' || args === null || Array.isArray(args)) {
       return reply(res, 400, { error: 'args must be a JSON object' })
     }
-    reply(res, 200, { result: await opts.onRpc(nodeId, fields.verb, args as Record<string, unknown>) })
+    const caller = new AbortController()
+    res.on('close', () => {
+      if (!res.writableFinished) caller.abort()
+    })
+    reply(res, 200, { result: await opts.onRpc(nodeId, fields.verb, args as Record<string, unknown>, caller.signal) })
   }
 
   const server = createServer((req, res) => {

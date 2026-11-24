@@ -97,28 +97,49 @@ async function userMessagesSince(path: string, from: number): Promise<{ messages
  * soon as a new user message matches or is garbled, or when time runs out.
  */
 export async function confirmDelivery({
-  path,
+  path: given,
   from,
   sent,
-  timing = DEFAULT_DELIVERY_TIMING
+  timing = DEFAULT_DELIVERY_TIMING,
+  heard
 }: {
-  path: string | null | undefined
+  /** A function is asked again each time, for an agent that learns its transcript only after the message is typed. */
+  path: string | null | undefined | (() => string | null | undefined)
   from: number | null
   sent: string
   timing?: DeliveryTiming
+  /** The prompts the agent's hooks reported submitted since the message was typed: see promptWitness.ts. */
+  heard?: () => string[]
 }): Promise<DeliveryCheck> {
-  if (!path) return { result: 'unconfirmed', reason: 'no-transcript' }
+  const pathNow = (): string | null | undefined => (typeof given === 'function' ? given() : given)
+  // With nothing to watch, there's nothing to wait for.
+  if (!pathNow() && !heard) return { result: 'unconfirmed', reason: 'no-transcript' }
   const until = Date.now() + timing.confirmMs
+  let read = pathNow()
   let offset = from ?? 0
+  let everPath = !!read
   for (;;) {
-    const { messages, end } = await userMessagesSince(path, offset)
+    const path = pathNow()
+    // A transcript learned since is read from its start, since the message may already be in it. One that replaced
+    // another (a resume or a fork) carries old messages, so only what's added from now counts.
+    if (path !== read) {
+      offset = read ? (transcriptEnd(path) ?? 0) : 0
+      read = path
+    }
+    everPath ||= !!path
+    for (const text of heard?.() ?? []) {
+      const seen = compareDelivered(sent, text)
+      if (seen === 'match') return { result: 'confirmed' }
+      if (seen === 'partial') return { result: 'garbled', received: text }
+    }
+    const { messages, end } = path ? await userMessagesSince(path, offset) : { messages: [], end: offset }
     offset = end
     for (const text of messages) {
       const seen = compareDelivered(sent, text)
       if (seen === 'match') return { result: 'confirmed' }
       if (seen === 'partial') return { result: 'garbled', received: text }
     }
-    if (Date.now() >= until) return { result: 'unconfirmed', reason: 'timeout' }
+    if (Date.now() >= until) return { result: 'unconfirmed', reason: everPath ? 'timeout' : 'no-transcript' }
     await new Promise((r) => setTimeout(r, timing.pollMs))
   }
 }
@@ -150,7 +171,8 @@ export function reportDelivery(check: DeliveryCheck, nodeId: string, timing: Del
   }
   const problem =
     check.reason === 'no-transcript'
-      ? `The message was typed into node "${nodeId}", but it has no transcript yet, so Patchbay couldn't check that it arrived.`
+      ? `The message was typed into node "${nodeId}", but it has no transcript yet and didn't report the message submitted within ${Math.round(timing.confirmMs / 1000)} s, so Patchbay couldn't check that it arrived. ` +
+        `Check with patchbay read --node ${nodeId} --tail 2 before sending it again.`
       : `The message was typed into node "${nodeId}", but it didn't show up in the node's transcript within ${Math.round(timing.confirmMs / 1000)} s. ` +
         `Check with patchbay read --node ${nodeId} --tail 2 before sending it again.`
   return { delivered: true, confirmed: false, problem }
