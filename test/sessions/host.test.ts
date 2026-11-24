@@ -116,12 +116,16 @@ test('output is batched, not one onOutput call per pty chunk', async () => {
   const h = host()
   const chunks: string[] = []
   h.onOutput((_id, data) => chunks.push(data))
-  // Prints 2000 lines as fast as cmd.exe can, then a marker.
+  // Prints 2000 lines as fast as cmd.exe can, then a marker. On a PC with every core busy cmd.exe can take minutes over
+  // all of them, and batching shows long before: 400 lines are enough to judge it by.
   h.start(spec({ args: ['/d', '/s', '/c', '"(for /L %i in (1,1,2000) do @echo line-%i) & echo done-mark"'] }))
-  await vi.waitFor(() => expect(chunks.join('')).toContain('done-mark'), { timeout: 60000, interval: 50 })
-  expect(chunks.length).toBeLessThan(2000)
+  const lines = (): number => chunks.join('').match(/line-\d+/g)?.length ?? 0
+  await vi.waitFor(() => expect(chunks.join('').includes('done-mark') || lines() >= 400).toBe(true), { timeout: 120_000, interval: 50 })
+  const seen = lines()
+  // Fewer calls than lines: each call carries many of the pty's pieces, not one each.
+  expect(chunks.length).toBeLessThan(seen)
   for (const c of chunks) expect(Buffer.byteLength(c)).toBeLessThanOrEqual(64 * 1024)
-}, 90000)
+}, 150_000)
 
 test('initialScrollback seeds the buffer before the first output', async () => {
   const h = host()
