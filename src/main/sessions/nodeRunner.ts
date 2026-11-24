@@ -64,8 +64,6 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   killTree?: (pid: number) => Promise<void>
   /** Every process on a session's console. Defaults to node-pty's helper. */
   consoleMembers?: (pid: number) => Promise<number[]>
-  /** Ends one process at once, by its PID, without its children. Defaults to process.kill. */
-  killNow?: (pid: number) => void
   /** Finds the ssh program for SSH terminals. Defaults to findSsh. */
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
@@ -198,15 +196,6 @@ export function createNodeRunner({
   const stoppingRuns = new Set<string>()
   const killTree = ctx.killTree ?? taskkill
   const consoleMembers = ctx.consoleMembers ?? readConsoleMembers
-  const killNow =
-    ctx.killNow ??
-    ((pid: number): void => {
-      try {
-        process.kill(pid)
-      } catch {
-        // Already gone.
-      }
-    })
 
   const setRun = (id: string, run: RunResult): void => {
     runResults.set(id, run)
@@ -419,11 +408,13 @@ export function createNodeRunner({
     // Git Bash breaks the parent chain, so taskkill /T alone can miss a real server, as with npm run dev. Everything
     // on the console has to be found first, because killing the shell can leave the rest running.
     const members = await consoleMembers(pid).catch((): number[] => [])
-    // The others on the console, at once, in the tick the list arrived, as node-pty does: a taskkill each started a
-    // process later, by when one that had finished could have handed its PID to another process. Then the shell's tree,
-    // only while the host still reports that PID as this session's: it holds the shell's handle, so the PID is its own.
-    for (const member of members) if (member !== pid) killNow(member)
-    if (host.isRunning(id) && host.pid(id) === pid) await killTree(pid)
+    // All in one round, the shell with the rest: killing the others first made Git Bash end by itself, so a taskkill for
+    // its PID, started a moment later, found the PID free and the next run's shell holding it. Each taskkill still opens
+    // its PID a process start after the list (docs/plans/r4-leftovers.md, review M1). The shell is left out if the host
+    // no longer reports it as this session's: it ended while the console was listed, and its PID may be reused.
+    const targets = new Set([pid, ...members])
+    if (!(host.isRunning(id) && host.pid(id) === pid)) targets.delete(pid)
+    await Promise.all([...targets].map((member) => killTree(member)))
     const deadline = Date.now() + TREE_EXIT_WAIT_MS
     while (host.isRunning(id) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25))
     await host.kill(id)

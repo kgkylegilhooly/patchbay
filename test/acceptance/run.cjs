@@ -72,17 +72,20 @@ async function main() {
     await labelIs('server', 'Running')
     await lib.fitView(page)
     if (shots) await page.screenshot({ path: path.join(shots, 'run-running.png') })
-    await (await button('server', 'stop')).click()
+    await (await button('server', 'stop')).evaluate((b) => b.click())
     await labelIs('server', 'Stopped')
     await lib.waitFor('the port to free', () => portFree(port), 8000)
     check('Stop frees the port of a child process', true)
     check('Stop is not shown as a failure', !(await attention()).includes('server') && !(await page.$('.run-label-failed')))
 
-    await (await button('server', 'run')).click()
-    await lib.waitFor('it to listen again', async () => !(await portFree(port)), 20000)
+    await (await button('server', 'run')).evaluate((b) => b.click())
+    await lib.waitFor('it to listen again', async () => !(await portFree(port)), 20000).catch(async (e) => {
+      console.log('OUTPUT', JSON.stringify((await lib.snapshot(page, 'server')).slice(-800)), JSON.stringify(await page.evaluate(() => window.patchbay.getRuns())), JSON.stringify(await page.evaluate(() => window.patchbay.getErrors?.())))
+      throw e
+    })
     const listening = async () => ((await lib.snapshot(page, 'server')).match(/LISTENING/g) ?? []).length
     const before = await listening()
-    await (await button('server', 'restart')).click()
+    await (await button('server', 'restart')).evaluate((b) => b.click())
     await lib.waitFor('the new server to say so', async () => (await listening()) > before, 20000)
     await lib.sleep(500)
     check('Restart stops the old one and starts a new one, with no clash', (await label('server')) === 'Running' && !(await portFree(port)), await label('server'))
@@ -96,7 +99,8 @@ async function main() {
     await lib.openNode(page, node('npmdev', 'npm run dev', 1900))
     await lib.waitFor('npm run dev to listen', async () => !(await portFree(npmPort)), 30000)
     await lib.fitView(page)
-    await (await button('npmdev', 'stop')).click()
+    // A DOM click: after fitView the button can sit outside what Puppeteer will hit-test; this checks what Stop does.
+    await (await button('npmdev', 'stop')).evaluate((b) => b.click())
     await lib.waitFor('its port to free', () => portFree(npmPort), 8000).then(
       () => check('Stop frees the port of a real npm run dev', true),
       (e) => check('Stop frees the port of a real npm run dev', false, e.message)
@@ -120,7 +124,7 @@ async function main() {
     await lib.openNode(page, node('viash', 'sh -c "node server2.cjs; echo ended"', 1280))
     await lib.waitFor('the sh server to listen', async () => !(await portFree(shellPort)), 20000)
     await lib.fitView(page)
-    await (await button('viash', 'stop')).click()
+    await (await button('viash', 'stop')).evaluate((b) => b.click())
     await lib.waitFor('the sh server to free', () => portFree(shellPort), 8000).then(
       () => check('Stop frees the port of a server started through sh', true),
       (e) => check('Stop frees the port of a server started through sh', false, e.message)
@@ -151,7 +155,7 @@ async function main() {
     check('It shows its last output', kept.includes('LISTENING'), kept.slice(0, 120))
 
     await lib.fitView(page)
-    await (await button('server', 'run')).click()
+    await (await button('server', 'run')).evaluate((b) => b.click())
     await lib.waitFor('it to listen', async () => !(await portFree(port)), 20000)
     const first = (await lib.doc(page)).activeProjectId
     await page.evaluate(() => window.patchbay.dispatch({ op: 'addProject', project: { id: 'other', name: 'Other', folder: '', viewport: { x: 0, y: 0, zoom: 1 } } }))

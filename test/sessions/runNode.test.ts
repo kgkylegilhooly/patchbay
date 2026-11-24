@@ -31,7 +31,6 @@ function setup(command: string, members: number[] = []) {
   const host = createSessionHost()
   const store = memoryStore([node(command)])
   const killed: number[] = []
-  const killedNow: number[] = []
   const consoleOf: number[] = [...members]
   /** Runs while the console is being listed. */
   const listing: { during?: () => Promise<void> } = {}
@@ -54,8 +53,7 @@ function setup(command: string, members: number[] = []) {
       consoleMembers: async () => {
         await listing.during?.()
         return consoleOf
-      },
-      killNow: (pid) => void killedNow.push(pid)
+      }
     }
   })
   const results: RunResult[] = []
@@ -66,7 +64,7 @@ function setup(command: string, members: number[] = []) {
         if (!r.running) resolve(r)
       })
     })
-  return { host, runner, results, finished, killed, killedNow, consoleOf, listing }
+  return { host, runner, results, finished, killed, consoleOf, listing }
 }
 
 test('runArgs ends with the command: bash, powershell without -NoExit, cmd /c', () => {
@@ -211,25 +209,25 @@ test('its node menu offers Edit command, Rename and Close, and no Restart of its
 })
 
 test('Stop also kills everything else on the console, which a broken parent chain would miss', async () => {
-  const { runner, killed, killedNow, host, finished, consoleOf } = setup('pause', [777, 888])
+  const { runner, killed, host, finished, consoleOf } = setup('pause', [777, 888])
   const done = finished()
   await runner.startNode('r1')
   const pid = host.pid('r1')!
-  // The shell is on its own console too.
+  // The shell is on its own console too: it's killed once, in the same round as the rest.
   consoleOf.push(pid)
   await runner.stopTree('r1')
-  // The others at once, by PID, in the tick the list came; the shell's whole tree while the host still holds it.
-  expect(killedNow).toEqual([777, 888])
-  expect(killed).toEqual([pid])
+  expect(killed).toEqual(expect.arrayContaining([pid, 777, 888]))
+  expect(killed).toHaveLength(3)
   await done
 })
 
 test('Stop sends no tree kill to a shell the host no longer runs: its PID may be another process by then', async () => {
-  const { runner, killed, killedNow, host, listing } = setup('pause', [777])
+  const { runner, killed, host, listing, consoleOf } = setup('pause', [777])
   await runner.startNode('r1')
-  // The session ends while its console is being listed.
+  const pid = host.pid('r1')!
+  // Listed while it ran, then it ends while the list comes back.
+  consoleOf.push(pid)
   listing.during = () => host.kill('r1')
   await runner.stopTree('r1')
-  expect(killedNow).toEqual([777])
-  expect(killed).toEqual([])
+  expect(killed).toEqual([777])
 })
