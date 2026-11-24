@@ -380,6 +380,25 @@ const scenes = {
     await page.click('.react-flow__node[data-id="guarded"] [data-tool="close"]').catch(() => {})
     await sleep(800)
   },
+  // The File menu, open.
+  'menubar-file': async (page) => {
+    await sleep(500)
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'File').click())
+    await sleep(300)
+  },
+  // File > Restore canvas from, and today's copy picked: the question before anything restarts. Never answered here.
+  'restore-canvas': async (page) => {
+    await scenes['menubar-file'](page)
+    // Opened again so the menu is built with the list read at start.
+    await page.keyboard.press('Escape')
+    await sleep(200)
+    await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'File').click())
+    await sleep(300)
+    await page.click('.menu-panel [data-cmd="restore-canvas"]').catch(() => {})
+    await sleep(400)
+    await page.evaluate(() => document.querySelector('[data-cmd^="restore-canvas:"]')?.click())
+    await sleep(500)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

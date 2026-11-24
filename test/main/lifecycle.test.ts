@@ -316,6 +316,7 @@ describe('createAppStore', () => {
     return {
       saved,
       load: () => ({ doc, recoveredFrom: 'primary' }),
+      seal: () => {},
       save: async () => {},
       saveDebounced: (d) => void saved.push(d),
       flush: async () => {},
