@@ -661,7 +661,7 @@ async function boot(): Promise<void> {
     for (const id of more) runner.catchUpHooks(id)
     ipcHooks.reattached(more)
   }).catch((e: unknown) => log?.write(`Adopting sessions after start-up failed: ${String(e)}`))
-  registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github })
+  registerWorkIpc({ store, startNode: (id) => runner.startNode(id), git: work.git, gh: work.gh, reader: github, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   const search = registerSearchIpc({ dataDir, mainDir: __dirname, store, messages: () => messages.all(), status: (id) => tracker.get(id), git: work.git, startNode: (id) => runner.startNode(id), log: (line) => log?.write(line) })
   registerRecipeIpc({ service: recipes, setupGate })
   registerNeedsYouIpc({ store, tracker, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })

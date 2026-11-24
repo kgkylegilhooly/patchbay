@@ -27,7 +27,7 @@ test('starting work on an issue is refused while Claude Code is off, before any 
   const store = projectStore([], dir)
   const started: string[] = []
   const toplevel = vi.fn(async () => dir)
-  registerWorkIpc({ store, startNode: async (id) => void started.push(id), git: { toplevel } as unknown as GitService, gh: {} as never, reader: {} as never })
+  registerWorkIpc({ store, startNode: async (id) => void started.push(id), git: { toplevel } as unknown as GitService, gh: {} as never, reader: {} as never, isAppUi: () => true })
   const start = handlers.get('pb:work:startIssueAgent')!
   const r = await start({}, { projectId: 'p1', number: 7, prompt: 'Fix #7', title: '#7 Fix', worktreeBranch: 'fix-7' })
   expect(r).toEqual({ ok: false, error: expect.stringMatching(/^Claude Code is turned off in Settings > Agents.*Patchbay may use Codex\./) })

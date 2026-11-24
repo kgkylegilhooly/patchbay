@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { gitEnvFrom } from '../core/git/args'
 import { createGitService, GitFailure, systemGit, type GitService } from '../core/git/service'
 import { ghFailure, isGithubPage, issueListArgs, issueViewArgs, issueWriteArgs, parseIssues, parsePrs, prListArgs, REPO_SLUG, repoFromRemote, systemGh, type Gh } from '../core/github/gh'
@@ -75,12 +75,23 @@ export function workServices(): { git: GitService; gh: Gh } {
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
 /** Serves `pb:work:*`, the git panel's and the board's channels. See src/preload/work.ts. */
-export function registerWorkIpc(s: { store: CanvasStore; startNode: (id: string) => Promise<void>; git: GitService; gh: Gh; reader: GithubReader }): void {
+export function registerWorkIpc(s: {
+  store: CanvasStore
+  startNode: (id: string) => Promise<void>
+  git: GitService
+  gh: Gh
+  reader: GithubReader
+  /** Whether a call came from the app's own window. Nothing else may commit, push or write to GitHub. */
+  isAppUi: (e: IpcMainInvokeEvent) => boolean
+}): void {
   const { store, git, gh, reader } = s
   /** Only repositories found from the canvas's own folders can be acted on. */
   const approved = new Set<string>()
   const handle = (name: string, fn: (...args: never[]) => unknown): void => {
-    ipcMain.handle(`pb:work:${name}`, (_e, ...args: unknown[]) => (fn as (...a: unknown[]) => unknown)(...args))
+    ipcMain.handle(`pb:work:${name}`, (e, ...args: unknown[]) => {
+      if (!s.isAppUi(e)) throw new Error('Only the application UI can do this.')
+      return (fn as (...a: unknown[]) => unknown)(...args)
+    })
   }
   const guarded = <A extends unknown[], R>(fn: (root: string, ...a: A) => Promise<R>) =>
     async (root: string, ...a: A): Promise<R | { ok: false; error: string }> => {
