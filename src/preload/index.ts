@@ -17,6 +17,7 @@ import { exposeDocs } from './docs'
 import { exposeWorkflows } from './workflows'
 import { exposeResources } from './resources'
 import { exposeDiagnostics } from './diagnostics'
+import { exposeAway } from './away'
 import { exposeSessionSync } from './sessionSync'
 import { exposeAppProblems } from './appProblems'
 import { reportOutputTaken } from './outputAck'
@@ -164,6 +165,7 @@ exposeDocs()
 exposeWorkflows()
 exposeResources()
 exposeDiagnostics()
+exposeAway()
 exposeSessionSync()
 exposeAppProblems()
 reportOutputTaken()

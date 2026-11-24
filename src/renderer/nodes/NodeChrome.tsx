@@ -26,6 +26,7 @@ import { askReview, reviewShown, reviewViewport, useFarReview } from '../farRevi
 import { measureSafeArea } from '../safeArea'
 import { StartFixActions } from './StartFixActions'
 import { failedStart } from '../status/startFailure'
+import { AwayStrip } from './AwayStrip'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -379,6 +380,7 @@ export function NodeChrome({
         </div>
       )}
       <Approval nodeId={node.id} />
+      {node.kind === 'claude' && <AwayStrip nodeId={node.id} />}
       {status === 'queued' && node.kind === 'claude' && node.after.length > 0 && <Held node={node} />}
       <SetupHold node={node} />
       <div className="unit-body">{children}</div>

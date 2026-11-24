@@ -268,6 +268,43 @@ const scenes = {
     await page.evaluate((b) => window.patchbay.dispatch({ op: 'addNode', node: { ...b, id: 'web', title: 'Browser', x: 930, y: 640 } }), box)
     await sleep(1200)
   },
+  // A real resume: a turn in a repository, someone else's commit while it's closed, then Restart. See files/away.ts.
+  away: async (page, { profile }) => {
+    const { execFileSync } = require('node:child_process')
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const repo = path.join(profile, 'away-repo')
+    const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { windowsHide: true })
+    fs.mkdirSync(repo, { recursive: true })
+    fs.writeFileSync(path.join(repo, 'parser.ts'), 'export const a = 1\n')
+    git('init', '-q', '-b', 'main')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'First')
+    const node = { ...box, id: 'away', kind: 'claude', title: 'Parser tests', x: 930, y: 640, width: 620, prompt: 'edits=notes.md', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: repo }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    // The turn ends, and its end snapshot is kept.
+    await page.waitForFunction(() => document.querySelector('.react-flow__node[data-id="away"]')?.textContent?.includes('Idle'), { timeout: 30000 }).catch(() => {})
+    await sleep(3000)
+    // Someone else, while it's closed.
+    fs.writeFileSync(path.join(repo, 'parser.ts'), 'export const a = 2\n')
+    fs.writeFileSync(path.join(repo, 'lexer.ts'), 'export const b = 1\n')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'Rework the lexer')
+    fs.writeFileSync(path.join(repo, 'README.md'), 'notes\n')
+    await page.evaluate(() => window.patchbay.restartNode('away'))
+    await page.waitForSelector('.react-flow__node[data-id="away"] .strip-away', { timeout: 20000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Parser tests'))?.click())
+    await sleep(600)
+  },
+  // The same, then Tell it: the strip goes, and the list reaches the agent.
+  'away-told': async (page, ctx) => {
+    await scenes.away(page, ctx)
+    await page.click('.react-flow__node[data-id="away"] [data-cmd="away-tell"]').catch(() => {})
+    await sleep(2500)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

@@ -731,3 +731,20 @@ test('a failure outside the program lookup carries no Settings fix (docs/plans/r
   await runner.startNode('c')
   expect(runner.errors().c).toEqual({ code: 'spawn-failed', message: 'port gone' })
 })
+
+// F13: what changed while a resumed agent was away is looked at once its session has started (src/main/files/away.ts).
+test('a resumed session says it started once; a new one never does', async () => {
+  const seen: string[] = []
+  const resumed = setup([claude({ sessionId: 's' })], { onResumedStart: (id) => seen.push(id) })
+  await resumed.runner.startNode('c')
+  expect(seen).toEqual([])
+  await resumed.runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 's', source: 'resume' })
+  await resumed.runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 's', source: 'compact' })
+  expect(seen).toEqual(['c'])
+
+  const fresh: string[] = []
+  const created = setup([claude({ prompt: 'hi' })], { onResumedStart: (id) => fresh.push(id) })
+  await created.runner.startNode('c')
+  await created.runner.handleHook('c', { hook_event_name: 'SessionStart', session_id: 'n', source: 'startup' })
+  expect(fresh).toEqual([])
+})
