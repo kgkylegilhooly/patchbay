@@ -153,18 +153,20 @@ const CONSOLE_LIMIT_MS = 3000
 
 /**
  * node-pty's helper, in a process of its own because attaching to another console would detach this one.
- * It fails harmlessly for a session that has just ended.
+ * It fails harmlessly for a session that has just ended. The helper is on the console it lists (it attached to read it)
+ * and exits once it has answered, so its own PID is left out: nobody holds that process's handle, and a kill by that
+ * number later could reach whatever process Windows gave it to next.
  */
-export function readConsoleMembers(rootPid: number): Promise<number[]> {
+export function readConsoleMembers(rootPid: number, start: typeof fork = fork): Promise<number[]> {
   return new Promise((resolve) => {
-    const agent = fork(require.resolve('node-pty/lib/conpty_console_list_agent'), [String(rootPid)], { silent: true })
+    const agent = start(require.resolve('node-pty/lib/conpty_console_list_agent'), [String(rootPid)], { silent: true })
     const timer = setTimeout(() => {
       agent.kill()
       resolve([])
     }, CONSOLE_LIMIT_MS)
     agent.on('message', (message: { consoleProcessList?: number[] }) => {
       clearTimeout(timer)
-      resolve(message.consoleProcessList ?? [])
+      resolve((message.consoleProcessList ?? []).filter((pid) => pid !== agent.pid))
     })
     agent.on('error', () => resolve([]))
     agent.on('exit', () => resolve([]))

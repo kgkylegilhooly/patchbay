@@ -64,6 +64,8 @@ export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   killTree?: (pid: number) => Promise<void>
   /** Every process on a session's console. Defaults to node-pty's helper. */
   consoleMembers?: (pid: number) => Promise<number[]>
+  /** Ends one process at once, by its PID, without its children. Defaults to process.kill. */
+  killNow?: (pid: number) => void
   /** Finds the ssh program for SSH terminals. Defaults to findSsh. */
   ssh?: () => string | null
   /** Hands over the hook events a session couldn't deliver, and clears them. Defaults to none. */
@@ -196,6 +198,15 @@ export function createNodeRunner({
   const stoppingRuns = new Set<string>()
   const killTree = ctx.killTree ?? taskkill
   const consoleMembers = ctx.consoleMembers ?? readConsoleMembers
+  const killNow =
+    ctx.killNow ??
+    ((pid: number): void => {
+      try {
+        process.kill(pid)
+      } catch {
+        // Already gone.
+      }
+    })
 
   const setRun = (id: string, run: RunResult): void => {
     runResults.set(id, run)
@@ -408,7 +419,11 @@ export function createNodeRunner({
     // Git Bash breaks the parent chain, so taskkill /T alone can miss a real server, as with npm run dev. Everything
     // on the console has to be found first, because killing the shell can leave the rest running.
     const members = await consoleMembers(pid).catch((): number[] => [])
-    await Promise.all([...new Set([pid, ...members])].map((member) => killTree(member)))
+    // The others on the console, at once, in the tick the list arrived, as node-pty does: a taskkill each started a
+    // process later, by when one that had finished could have handed its PID to another process. Then the shell's tree,
+    // only while the host still reports that PID as this session's: it holds the shell's handle, so the PID is its own.
+    for (const member of members) if (member !== pid) killNow(member)
+    if (host.isRunning(id) && host.pid(id) === pid) await killTree(pid)
     const deadline = Date.now() + TREE_EXIT_WAIT_MS
     while (host.isRunning(id) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25))
     await host.kill(id)
