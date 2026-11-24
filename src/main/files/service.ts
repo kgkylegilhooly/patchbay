@@ -19,7 +19,7 @@ import {
   summarize,
   type SessionRecord
 } from './touched'
-import type { DiffScope, FileDiff, FilesSummary, SessionFiles, TurnMark } from '../../shared/filesTouched'
+import { AWAY_MAX_COMMITS, AWAY_MAX_FILES, type AwayChanges, type DiffScope, type FileDiff, type FilesSummary, type SessionFiles, type TurnMark } from '../../shared/filesTouched'
 import type { AgentStatus } from '../../shared/model'
 import { backoffInterval, type Backoff } from '../backoff'
 
@@ -64,6 +64,8 @@ export interface FilesTouchedService {
   /** The same for a conversation by its transcript, such as a closed session's. Not read again. */
   byTranscript(transcriptPath: string): SessionFiles | null
   diff(nodeId: string, path: string, scope: DiffScope): Promise<FileDiff>
+  /** What changed in the checkout since the session's last turn ended, or null when nothing did or it can't be told. */
+  awayChanges(nodeId: string): Promise<AwayChanges | null>
   summary(): FilesSummary
   /** Reads a node's transcript now. `turnOver` hands back edits whose result never came, as unconfirmed. */
   scan(nodeId: string, turnOver?: boolean): Promise<void>
@@ -399,6 +401,13 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
     if (!a || !rec || !mark || mark.endCheck) return
     await starting.get(id)
     await scan(id, true)
+    // Taken whatever follows, and kept: a session resumed later is compared with it (awayChanges).
+    const snap = await slot(() => d.snapshot(rec.cwd))
+    if (snap.ok) {
+      mark.endTree = snap.tree
+      mark.endHead = snap.head
+      mark.endRoot = snap.root
+    }
     if (!mark.tree || !mark.root) {
       mark.endCheck = { at: now(), changed: 0, problem: mark.problem ?? 'There is no snapshot from the start of this turn.' }
       return changed()
@@ -408,7 +417,6 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       mark.endCheck = { at: now(), changed: 0, problem: `Changes made by commands aren't counted for this turn: ${others.join(', ')} also ${others.length === 1 ? 'works' : 'work'} in this checkout, so they can't be told apart.` }
       return changed()
     }
-    const snap = await slot(() => d.snapshot(rec.cwd))
     if (!snap.ok) {
       mark.endCheck = { at: now(), changed: 0, problem: snap.problem }
       return changed()
@@ -519,6 +527,40 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
           : 'against an empty repository'
       const out = await diffFile(d.git, snap.root, from, snap.tree, rel, d.store ? objectEnv(d.store, snap.objects) : {})
       return out.ok ? { ...out, base: label } : out
+    },
+    async awayChanges(nodeId) {
+      const rec = records.get(nodeId)
+      const mark = rec ? [...rec.turns].reverse().find((t) => t.endTree && t.endRoot) : undefined
+      if (!rec || !mark?.endTree || !mark.endRoot) return null
+      const snap = await slot(() => d.snapshot(rec.cwd))
+      // Another repository's tree could be read from Patchbay's own objects, so the roots must match.
+      if (!snap.ok || pathKey(snap.root) !== pathKey(mark.endRoot)) return null
+      const env = d.store ? objectEnv(d.store, snap.objects) : {}
+      // Fails once the snapshot's objects have been pruned: then there's nothing to say, rather than a guess.
+      const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', mark.endTree, snap.tree, '--'], { env, maxBytes: 4 * 1024 * 1024 })
+      if (out.code !== 0) return null
+      const files = out.stdout.split('\0').filter(Boolean)
+      let commits: string[] = []
+      let commitCount = 0
+      if (mark.endHead && snap.head && mark.endHead !== snap.head) {
+        const range = `${mark.endHead}..${snap.head}`
+        const count = await d.git(snap.root, ['rev-list', '--count', range], {})
+        const log = await d.git(snap.root, ['log', '--format=%h %s', '-n', String(AWAY_MAX_COMMITS), range], {})
+        if (count.code === 0 && log.code === 0) {
+          commits = log.stdout.split(/\r?\n/).filter(Boolean)
+          commitCount = Number(count.stdout.trim()) || commits.length
+        }
+      }
+      if (!files.length && !commits.length) return null
+      const others = (await d.sharing?.(nodeId, snap.root).catch(() => [])) ?? []
+      return {
+        files: files.slice(0, AWAY_MAX_FILES),
+        moreFiles: Math.max(0, files.length - AWAY_MAX_FILES),
+        commits,
+        moreCommits: Math.max(0, commitCount - commits.length),
+        since: mark.endCheck?.at ?? mark.at,
+        shared: [...new Set([...(mark.shared ?? []), ...others])]
+      }
     },
     summary: () => summarize(records.values(), findOverlaps(records.values(), live())),
     scan,

@@ -45,6 +45,47 @@ export interface TurnMark {
    * found that way; `problem` says why it wasn't done, or what it left out.
    */
   endCheck?: { at: number; changed: number; problem?: string }
+  /**
+   * The whole working copy as the turn ended, and HEAD then: what a resumed session is compared with, to say what
+   * changed while it was away. Taken even when another window shares the checkout.
+   */
+  endTree?: string
+  endHead?: string | null
+  /** The checkout's root as the turn ended, which endTree belongs to. */
+  endRoot?: string
+}
+
+/** What changed in a session's checkout since its last turn ended, as when it resumes after a restart. */
+export interface AwayChanges {
+  /** Paths from the repository's root, at most AWAY_MAX_FILES. */
+  files: string[]
+  moreFiles: number
+  /** "abc1234 subject", newest first, at most AWAY_MAX_COMMITS. */
+  commits: string[]
+  moreCommits: number
+  /** When the last turn ended. */
+  since: number
+  /** Other windows that worked in the same checkout as that turn ended, whose changes may be among these. */
+  shared: string[]
+}
+
+export const AWAY_MAX_FILES = 30
+export const AWAY_MAX_COMMITS = 10
+
+/** The message "Tell it" sends: short, capped, and plain about what it can't tell apart. */
+export function awayMessage(a: AwayChanges, when: (at: number) => string = (at) => new Date(at).toLocaleString()): string {
+  const lines = [`While you were away (since your last turn ended, ${when(a.since)}), your checkout changed:`]
+  if (a.commits.length) {
+    lines.push(`New commits (${a.commits.length + a.moreCommits}):`, ...a.commits.map((c) => `- ${c}`))
+    if (a.moreCommits) lines.push(`- and ${a.moreCommits} more`)
+  }
+  if (a.files.length) {
+    lines.push(`Files that differ (${a.files.length + a.moreFiles}):`, ...a.files.map((f) => `- ${f}`))
+    if (a.moreFiles) lines.push(`- and ${a.moreFiles} more`)
+  }
+  if (a.shared.length) lines.push(`${a.shared.join(', ')} also worked in this checkout, so some of these may be theirs.`)
+  lines.push('Check these before you rely on what you knew of these files.')
+  return lines.join('\n')
 }
 
 export interface OverlapNote {
