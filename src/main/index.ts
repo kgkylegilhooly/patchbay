@@ -57,6 +57,7 @@ import { spotNear } from './control/verbs'
 import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { createAway, serveAway, type Away } from './files/away'
+import { serveLastReply } from './lastReply'
 import { withFilesVerbs } from './files/verbs'
 import { setupProjects } from './projects/ipc'
 import { setupSubagents } from './subagents/setup'
@@ -508,6 +509,7 @@ async function boot(): Promise<void> {
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
   away = createAway({ changes: (id) => filesTouched.awayChanges(id), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), push: (a) => broadcast('pb:away:onChange', a) })
   serveAway(away, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
+  serveLastReply(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   // The reader: Markdown files shown read-only, with comments for agents. See src/main/reader.
   const docs = registerDocsIpc({ dataDir, store, broadcast, near: spotNear })
   // Workflows: saved processes whose steps run in order, each finishing on evidence. See src/main/workflows.

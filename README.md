@@ -338,6 +338,9 @@ Each window's header has Find, Maximize, **⋯** and Close. **⋯**, or Shift+F1
 Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The header shows the folder only when
 it isn't the project's own, by its folder name. On narrow windows the folder goes first, then labels.
 
+Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
+conversation, ready to paste into an email or an issue.
+
 The chat view shows the last 200 messages. **Show 200 earlier**, at the top, goes further back, up to 5,000.
 
 - **Zoomed out** below 60%, each header becomes a tile you can still read: the title, then the status and the one thing

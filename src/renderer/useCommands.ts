@@ -32,6 +32,7 @@ import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 import { savedViews } from './savedViews'
 import { pinnedNoteText, worthPinning } from './pinOutput'
 import { say } from './reader/readerUi'
+import { copyLastReply } from './lastReplyUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -246,6 +247,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         undoable('add note', [{ op: 'addNode', node }])
         reveal(node)
       },
+      copyLastReply: (nodeId) => void copyLastReply(nodeId),
       pinSelection: (nodeId) => {
         const source = doc().nodes.find((n) => n.id === nodeId)
         const selection = terminalActions(nodeId)?.selection()

@@ -98,6 +98,8 @@ export interface Commands {
   newSticky(at?: Point): void
   /** A note beside a terminal holding its selected output, cabled to it. See pinOutput.ts. */
   pinSelection(nodeId: string): void
+  /** An agent's latest reply, as Markdown, on the clipboard. See src/main/lastReply.ts. */
+  copyLastReply(nodeId: string): void
   newWhiteboard(at?: Point): void
   group(at?: Point): void
   closeSelected(): void
@@ -411,6 +413,7 @@ export function nodeMenu(
     { id: 'pin-selection', label: 'Pin selection to a note', icon: 'pin', disabled: !ctx.canCopy, run: () => c.pinSelection(node.id) },
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
+    ...(node.kind === 'claude' ? [{ id: 'copy-last-reply', label: 'Copy last reply', icon: 'copy' as const, disabled: !node.transcriptPath, run: () => c.copyLastReply(node.id) }] : []),
     'separator',
     { id: 'refresh-window', label: 'Refresh the view', icon: 'refresh', run: () => c.refreshWindow(node.id) },
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },

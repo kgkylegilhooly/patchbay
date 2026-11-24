@@ -327,3 +327,11 @@ test('a session window offers Pin selection to a note right after Copy, only wit
   expect(withSelection[copyAt + 1]).toMatchObject({ id: 'pin-selection', label: 'Pin selection to a note', disabled: false })
   expect(ids(false).find((i) => i.id === 'pin-selection')?.disabled).toBe(true)
 })
+
+// F22: an agent's latest answer, as Markdown, without scrolling and selecting (src/main/lastReply.ts).
+test('an agent window offers Copy last reply once it has a conversation; a terminal does not', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu({ ...claude, transcriptPath: 'C:\t.jsonl' } as CanvasNode).find((i) => i.id === 'copy-last-reply')).toMatchObject({ label: 'Copy last reply', disabled: false })
+  expect(menu({ ...claude, transcriptPath: null } as CanvasNode).find((i) => i.id === 'copy-last-reply')?.disabled).toBe(true)
+  expect(menu(terminal).find((i) => i.id === 'copy-last-reply')).toBeUndefined()
+})
