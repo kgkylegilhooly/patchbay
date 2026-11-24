@@ -286,8 +286,6 @@ async function boot(): Promise<void> {
       .then(() => lookUpCodexAhead())
       .catch(() => {})
   }
-  ensureStartMenuShortcut(join(resourceDir, 'icon.ico'))
-
   // A failed save is a banner in the window that clears when saving works again, not a dialog that held up the app.
   const problems = createAppProblems({ retrySave: () => docStore.flush(), push: (p) => broadcast('pb:problems:onChange', p) })
   const docStore = createDocStore(dataDir, {
@@ -851,6 +849,9 @@ async function boot(): Promise<void> {
   })
   const windowIcon = join(resourceDir, 'icon.png')
   mainWindow = createWindow(onWindowClose, windowIcon)
+  // The Start Menu shortcut is a COM call that held up every start of the packaged app before the window: written once
+  // the page has loaded instead, long before any notification needs it.
+  mainWindow.webContents.once('did-finish-load', () => ensureStartMenuShortcut(join(resourceDir, 'icon.ico')))
   reportViewSize(() => (mainWindow ? { width: mainWindow.getContentSize()[0], height: mainWindow.getContentSize()[1] } : null))
   registerViewIpc((sender) => sender === mainWindow?.webContents)
   mainWindow.on('focus', () => notifier.windowFocused())

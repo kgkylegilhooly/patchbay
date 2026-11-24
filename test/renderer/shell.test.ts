@@ -45,6 +45,9 @@ describe('Panel', () => {
     expect(view).toContain('aria-modal="true"')
     expect(drawer).not.toContain('aria-modal')
     expect(form).not.toContain('aria-modal')
+    // A form is a non-modal dialog, described by the line that says its keys (F6 there and back).
+    expect(form).toContain('aria-describedby="pb-form-keys"')
+    for (const html of [modal, view, drawer]) expect(html).not.toContain('aria-describedby')
     for (const html of [modal, view, drawer, form]) expect(html).toContain('role="dialog"')
   })
 

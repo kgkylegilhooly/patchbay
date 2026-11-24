@@ -6,6 +6,10 @@ import { createSubagentWatcher, watchedParents, type SubagentWatcher, type Watch
 import { readSubagentTranscript } from '../../src/main/subagents/transcript'
 import type { CanvasDoc, CanvasNode } from '../../src/shared/model'
 import type { SubagentSnapshot } from '../../src/shared/subagents'
+import { usesRealFiles } from '../support/realProcess'
+
+// Some of these write and read 70 transcripts: seconds, not milliseconds, in a loaded full run.
+usesRealFiles()
 
 let root: string
 let transcript: string

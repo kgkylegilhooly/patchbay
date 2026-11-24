@@ -1,13 +1,17 @@
 import { terminalActions } from '../terminalRegistry'
 
 /**
- * F6 moves the keyboard between the parts of the app: menu bar, sessions sidebar, canvas, dock, and round again
- * (Shift+F6 goes back). From inside a window, a terminal included, the first F6 steps out to that window's frame, so
- * there's always a way out of a terminal that keeps Tab and Esc for itself. Enter on a frame goes back in.
+ * F6 moves the keyboard between the parts of the app: menu bar, sessions sidebar, canvas, dock, an open small form, and
+ * round again (Shift+F6 goes back). From inside a window, a terminal included, the first F6 steps out to that window's
+ * frame, so there's always a way out of a terminal that keeps Tab and Esc for itself. Enter on a frame goes back in.
+ *
+ * A small form (New Claude Code, a run, ssh, a trigger) is a non-modal dialog: the canvas behind it stays live for the
+ * mouse, so it isn't aria-modal, and Tab wraps inside it. F6 is the way between it and the rest of the app, both ways,
+ * as for any non-modal dialog. See docs/plans/r4-leftovers.md.
  */
-export type Region = 'menubar' | 'sidebar' | 'canvas' | 'dock'
+export type Region = 'menubar' | 'sidebar' | 'canvas' | 'dock' | 'form'
 
-export const REGION_ORDER: readonly Region[] = ['menubar', 'sidebar', 'canvas', 'dock']
+export const REGION_ORDER: readonly Region[] = ['menubar', 'sidebar', 'canvas', 'dock', 'form']
 
 export interface Here {
   /** The part of the app the keyboard is in, or null on the page itself. */
@@ -32,7 +36,8 @@ const ROOTS: Record<Region, string> = {
   menubar: '.app > .bar',
   sidebar: '.stage > .sidebar',
   canvas: '.stage > .react-flow',
-  dock: '.stage > .dock'
+  dock: '.stage > .dock',
+  form: '.stage > .shell-form'
 }
 
 /** Something drawn over the app that keeps the keyboard while it's open. F6 leaves it alone. */
@@ -71,8 +76,12 @@ function presentRegions(): Region[] {
 /** The window F6 last stepped out of, or was in last, so coming back to the canvas lands there. */
 let lastWindow: string | null = null
 
+/** The control last used in an open form, so F6 back into it lands where you were. */
+let lastInForm: HTMLElement | null = null
+
 export function noteFocusIn(target: EventTarget | null): void {
   const el = target instanceof Element ? target : null
+  if (el instanceof HTMLElement && el.closest(ROOTS.form)) lastInForm = el
   // A window's frame on the canvas, or the focus view pane its card was moved into.
   const frame = el?.closest<HTMLElement>('.react-flow__node, [data-focus-slot]')
   const id = frame?.dataset.id ?? frame?.dataset.focusSlot
@@ -107,9 +116,16 @@ function canvasTarget(): HTMLElement | null {
   return byId(lastWindow) ?? selected ?? first ?? firstFocusable(document.querySelector('.stage-empty'))
 }
 
+/** Back into a form: the control used last in it, else its first field, else the form itself. */
+function formTarget(form: HTMLElement): HTMLElement {
+  if (lastInForm?.isConnected && form.contains(lastInForm) && shown(lastInForm)) return lastInForm
+  return firstFocusable(form, 'textarea:not(:disabled), input:not(:disabled):not([type=hidden])') ?? firstFocusable(form) ?? form
+}
+
 function regionTarget(region: Region): HTMLElement | null {
   if (region === 'canvas') return canvasTarget()
   const root = document.querySelector(ROOTS[region])
+  if (region === 'form') return root instanceof HTMLElement ? formTarget(root) : null
   if (region === 'menubar') return firstFocusable(root, '.menubar-item')
   if (region === 'sidebar') return firstFocusable(root, '.session') ?? firstFocusable(root)
   return firstFocusable(root)

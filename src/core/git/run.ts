@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { killTree } from '../proc/killTree'
 
 export interface RunOptions {
   cwd?: string
@@ -29,23 +30,6 @@ export interface RunResult {
   totalBytes?: number
 }
 
-/**
- * Windows ends a process without its children, so a stuck helper such as a credential prompt would live on. taskkill
- * runs alongside, never waited on: this runs in the app's main process, which waiting for it would freeze, and a git
- * fetch stuck behind a firewall is exactly when it's needed. The program's own close still settles the run.
- */
-function endTree(pid: number | undefined, child: { kill(signal?: NodeJS.Signals): boolean }): void {
-  if (process.platform === 'win32' && pid) {
-    try {
-      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-      killer.on('error', () => child.kill('SIGKILL'))
-    } catch {
-      child.kill('SIGKILL')
-    }
-  } else {
-    child.kill('SIGKILL')
-  }
-}
 
 export type ProgramRunner = (file: string, args: string[], o: RunOptions) => Promise<RunResult>
 
@@ -121,9 +105,11 @@ export function runHere(file: string, args: string[], o: RunOptions): Promise<Ru
       if (!o.keepTail) outBytes = n
     })
     child.stderr.on('data', (c: Buffer) => (errBytes = onData(err, errBytes, c)))
+    // The whole tree (a stuck helper such as a credential prompt would live on), never waited on: this runs in the app's
+    // main process, which waiting would freeze. The program's own close still settles the run. See core/proc/killTree.ts.
     const timer = setTimeout(() => {
       timedOut = true
-      endTree(child.pid, child)
+      killTree(child)
     }, o.timeoutMs)
     const finish = (code: number | null, missing: boolean, extra = ''): void => {
       if (settled) return

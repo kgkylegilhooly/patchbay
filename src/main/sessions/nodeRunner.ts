@@ -408,7 +408,13 @@ export function createNodeRunner({
     // Git Bash breaks the parent chain, so taskkill /T alone can miss a real server, as with npm run dev. Everything
     // on the console has to be found first, because killing the shell can leave the rest running.
     const members = await consoleMembers(pid).catch((): number[] => [])
-    await Promise.all([...new Set([pid, ...members])].map((member) => killTree(member)))
+    // All in one round, the shell with the rest: killing the others first made Git Bash end by itself, so a taskkill for
+    // its PID, started a moment later, found the PID free and the next run's shell holding it. Each taskkill still opens
+    // its PID a process start after the list (docs/plans/r4-leftovers.md, review M1). The shell is left out if the host
+    // no longer reports it as this session's: it ended while the console was listed, and its PID may be reused.
+    const targets = new Set([pid, ...members])
+    if (!(host.isRunning(id) && host.pid(id) === pid)) targets.delete(pid)
+    await Promise.all([...targets].map((member) => killTree(member)))
     const deadline = Date.now() + TREE_EXIT_WAIT_MS
     while (host.isRunning(id) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25))
     await host.kill(id)

@@ -116,12 +116,16 @@ test('output is batched, not one onOutput call per pty chunk', async () => {
   const h = host()
   const chunks: string[] = []
   h.onOutput((_id, data) => chunks.push(data))
-  // Prints 2000 lines as fast as cmd.exe can, then a marker.
+  // Prints 2000 lines as fast as cmd.exe can, then a marker. On a PC with every core busy cmd.exe can take minutes over
+  // all of them, and batching shows long before: 400 lines are enough to judge it by.
   h.start(spec({ args: ['/d', '/s', '/c', '"(for /L %i in (1,1,2000) do @echo line-%i) & echo done-mark"'] }))
-  await vi.waitFor(() => expect(chunks.join('')).toContain('done-mark'), { timeout: 60000, interval: 50 })
-  expect(chunks.length).toBeLessThan(2000)
+  const lines = (): number => chunks.join('').match(/line-\d+/g)?.length ?? 0
+  await vi.waitFor(() => expect(chunks.join('').includes('done-mark') || lines() >= 400).toBe(true), { timeout: 120_000, interval: 50 })
+  const seen = lines()
+  // Fewer calls than lines: each call carries many of the pty's pieces, not one each.
+  expect(chunks.length).toBeLessThan(seen)
   for (const c of chunks) expect(Buffer.byteLength(c)).toBeLessThanOrEqual(64 * 1024)
-}, 90000)
+}, 150_000)
 
 test('initialScrollback seeds the buffer before the first output', async () => {
   const h = host()
@@ -206,3 +210,33 @@ test.skipIf(testRunsBelowNormal)('any other session keeps normal priority', () =
   h.start(spec({ file: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }))
   expect(getPriority(h.pid('n') as number)).toBe(constants.priority.PRIORITY_NORMAL)
 })
+
+// node-pty 1.1 used to kill the shell's PID 5 s after it closed the console whenever its console-list helper came too
+// late (the shell already gone: "AttachConsole failed"). By then Windows may have given that PID to any other process.
+// Every kill must reach only processes listed while they were alive: none goes to the shell's PID once its exit has
+// been seen, which is when the PID is free to be reused. See src/main/sessions/ptyKill.ts.
+test.skipIf(process.platform !== 'win32')('ending a session never kills its PID after the shell has gone, when Windows may have reused it', async () => {
+  const kills: Array<{ pid: number; at: number }> = []
+  const realKill = process.kill.bind(process)
+  const spy = vi.spyOn(process, 'kill').mockImplementation(((pid: number, signal?: string | number) => {
+    kills.push({ pid, at: Date.now() })
+    return realKill(pid, signal)
+  }) as typeof process.kill)
+  try {
+    for (let round = 0; round < 3; round++) {
+      const h = host()
+      let exitedAt = 0
+      h.onExit(() => (exitedAt ||= Date.now()))
+      h.start(spec(printing(`alive-${round}`)))
+      await vi.waitFor(() => expect(h.snapshot('n').data).toContain(`alive-${round}`), { timeout: 30_000 })
+      const shell = h.pid('n')!
+      await h.kill('n')
+      await vi.waitFor(() => expect(exitedAt).toBeGreaterThan(0), { timeout: 30_000 })
+      // Past node-pty's 5 s fallback.
+      await new Promise((r) => setTimeout(r, 6000))
+      expect(kills.filter((k) => k.pid === shell && k.at >= exitedAt)).toEqual([])
+    }
+  } finally {
+    spy.mockRestore()
+  }
+}, 120_000)

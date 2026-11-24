@@ -47,7 +47,8 @@ function freePort() {
 }
 
 function build() {
-  const bin = join(root, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js')
+  // Found the way require finds it, so a worktree that resolves node_modules from a parent folder builds too.
+  const bin = join(dirname(require.resolve('electron-vite/package.json')), 'bin', 'electron-vite.js')
   const r = spawnSync(process.execPath, [bin, 'build'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' })
   if (r.status !== 0) throw new Error(`Build failed:\n${r.stdout}\n${r.stderr}`)
 }

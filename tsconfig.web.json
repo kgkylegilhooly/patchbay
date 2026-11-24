@@ -14,5 +14,5 @@
     "types": []
   },
   "include": ["src/renderer/**/*", "src/core/**/*", "src/shared/**/*"],
-  "exclude": ["src/core/persist/**", "src/core/worktree/**", "src/core/transcript/**", "src/core/git/**", "src/core/github/**", "src/core/launch/**", "src/core/search/**"]
+  "exclude": ["src/core/persist/**", "src/core/worktree/**", "src/core/transcript/**", "src/core/git/**", "src/core/github/**", "src/core/launch/**", "src/core/search/**", "src/core/proc/**"]
 }

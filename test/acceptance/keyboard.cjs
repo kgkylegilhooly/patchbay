@@ -135,6 +135,35 @@ async function main() {
     c.check('#7 Tab x10 never leaves the form', stops.every((s) => s === 'form'), stops.join(' '))
     await key(page, 'Shift+Tab')
     c.check('#7 nor does Shift+Tab', (await where(page)) === 'form')
+    // r4: the form is a non-modal dialog (the canvas behind it stays live): not aria-modal, described by its keys, and
+    // F6 is the way out of it and back in, to the control used last.
+    const formAria = await page.evaluate(() => {
+      const f = document.querySelector('.pop')
+      return { modal: f.getAttribute('aria-modal'), role: f.getAttribute('role'), desc: document.getElementById(f.getAttribute('aria-describedby') ?? '')?.textContent ?? '' }
+    })
+    c.check('r4 a form is a non-modal dialog that says its keys', formAria.role === 'dialog' && formAria.modal === null && /F6 moves between this form and the rest of the app/.test(formAria.desc), formAria)
+    const usedLast = await page.evaluate(() => {
+      const el = document.activeElement
+      return el.getAttribute('aria-label') || el.textContent || el.tagName
+    })
+    await page.keyboard.press('F6')
+    const outOfForm = await where(page)
+    c.check('r4 F6 leaves the form for the menu bar', outOfForm === 'menubar', outOfForm)
+    c.check('r4 the form stays open meanwhile', !!(await page.$('.pop')))
+    await key(page, 'Shift+F6')
+    const back = await page.evaluate(() => {
+      const el = document.activeElement
+      return { inForm: !!el.closest('.pop'), what: el.getAttribute('aria-label') || el.textContent || el.tagName }
+    })
+    c.check('r4 Shift+F6 goes back into the form, to the control used last', back.inForm && back.what === usedLast, { back, usedLast })
+    const round = []
+    for (let i = 0; i < 6 && round.at(-1) !== 'form'; i++) {
+      await page.keyboard.press('F6')
+      round.push(await where(page))
+    }
+    // The canvas stop is a window's frame; the sidebar's only when it's open.
+    const parts = round.map((s) => (s.startsWith('frame:') ? 'canvas' : s)).filter((s) => s !== 'sidebar')
+    c.check('r4 F6 round the app ends back in the form, after the dock', parts.join(' ') === 'menubar canvas dock form', round.join(' '))
     await focusTerminal(page, 'a')
     await page.keyboard.press('Escape')
     await L.sleep(150)
