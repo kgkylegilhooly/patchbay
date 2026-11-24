@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto'
+import { noteWork } from '../workLog'
 import { createReadStream, mkdirSync, writeFileSync } from 'node:fs'
 import { copyFile, mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
@@ -561,7 +562,7 @@ export function createWorkflowService(d: WorkflowServiceDeps) {
       }
     }
   }
-  const timer = setInterval(tick, TICK_MS)
+  const timer = setInterval(() => (noteWork('workflow tick'), tick()), TICK_MS)
   timer.unref?.()
 
   /**

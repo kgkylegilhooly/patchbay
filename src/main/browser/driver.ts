@@ -1,4 +1,5 @@
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { noteWork } from '../workLog'
 import { join } from 'node:path'
 import { app, session, webContents, type WebContents } from 'electron'
 import { BROWSER_PARTITIONS, checkUrl, LIMITS, partitionFor, TIMEOUTS } from '../../shared/browserPolicy'
@@ -224,7 +225,7 @@ export function createBrowserDriver({
     for (const id of [...presets.keys()]) if (stopped(id)) void releaseViewport(id)
   })
   // An agent that stops answering leaves its attempt recording. After a while it's marked abandoned.
-  setInterval(() => evidence.sweep(), 60_000).unref?.()
+  setInterval(() => (noteWork('browser evidence sweep'), evidence.sweep()), 60_000).unref?.()
 
   const nodeOf = (id: string) => store.get().nodes.find((n) => n.id === id)
   const idOf = (guest: WebContents | null): string | undefined => {

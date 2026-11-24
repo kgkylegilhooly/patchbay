@@ -1,4 +1,5 @@
 import { pendingToolOf } from '../../core/transcript/peek'
+import { noteWork } from '../workLog'
 import type { AgentStatus } from '../../shared/model'
 import type { SyncProblem, SyncReport, SyncRow } from '../../shared/sessionSync'
 import type { HostedSession } from './hostProtocol'
@@ -189,6 +190,7 @@ export function createSessionSync(deps: SessionSyncDeps): SessionSync {
   let running: Promise<SyncReport | null> | null = null
 
   const run = async (reason: string): Promise<SyncReport | null> => {
+    noteWork(`session sync (${reason})`)
     lastRun = now()
     const list = await deps.host.refresh().catch(() => null)
     const plan = planSync({

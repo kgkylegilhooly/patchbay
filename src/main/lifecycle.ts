@@ -1,4 +1,5 @@
 import type { HostInfo } from '../shared/contract'
+import { noteWork } from './workLog'
 import { isProjectArchived, isSessionNode, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 import type { Settings } from '../shared/settings'
 import { readProfileFields } from '../shared/terminalProfiles'
@@ -271,7 +272,7 @@ export function createScrollbackSaver({
     )
   }
 
-  const timer = setInterval(() => void flush(), intervalMs)
+  const timer = setInterval(() => (noteWork('scrollback save'), void flush()), intervalMs)
   timer.unref?.()
 
   return {

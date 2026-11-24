@@ -1,4 +1,5 @@
 import { open, readdir, stat } from 'node:fs/promises'
+import { noteWork } from '../workLog'
 import { basename, dirname, join } from 'node:path'
 import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
 import { diffFile, EMPTY_TREE, insideRoot, objectEnv, pruneObjects, type RunGit, type Snapshot, type SnapshotStore } from './snapshot'
@@ -467,6 +468,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
   const firstStorePrune = setTimeout(pruneStore, 60_000)
   firstStorePrune.unref?.()
   const pruner = setInterval(() => {
+    noteWork('files-touched prune')
     prune()
     pruneStore()
   }, PRUNE_EVERY_MS)
