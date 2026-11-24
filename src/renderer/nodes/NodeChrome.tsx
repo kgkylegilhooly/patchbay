@@ -345,7 +345,8 @@ export function NodeChrome({
         </span>
       </header>
       {error && (
-        <div className="strip strip-error" role="alert">
+        // Waiting for memory isn't a failure: it starts by itself, so it reads as a wait, not an alarm.
+        <div className={error.fix === 'memory' ? 'strip strip-wait' : 'strip strip-error'} role={error.fix === 'memory' ? 'status' : 'alert'}>
           <div className="strip-text">
             <span>{error.message}</span>
           </div>

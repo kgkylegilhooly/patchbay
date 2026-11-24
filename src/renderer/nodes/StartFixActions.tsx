@@ -12,6 +12,15 @@ import { restartNode } from '../store'
 export function StartFixActions({ node, error }: { node: CanvasNode; error: NodeError }): React.JSX.Element | null {
   const fix = error.fix
   if (!fix) return null
+  if (fix === 'memory') {
+    return (
+      <div className="strip-actions">
+        <button type="button" className="btn nodrag" data-start-fix="memory" title="Start it now, though memory is short" onClick={() => void restartNode(node.id, { pastMemory: true })}>
+          {FIX_LABELS.memory}
+        </button>
+      </div>
+    )
+  }
   if (fix === 'folder') {
     return (
       <div className="strip-actions">

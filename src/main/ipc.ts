@@ -298,7 +298,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     await runner.startNode(id)
     clearExited(id)
   })
-  ipcMain.handle('pb:restartNode', async (_e, id: string, opts?: { shownExited?: unknown }) => {
+  ipcMain.handle('pb:restartNode', async (_e, id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => {
     // Settings > Agents: refused as a notice the window can dismiss. A session still running keeps running.
     const agent = find(id)
     const off = agent?.kind === 'claude' ? agentOffNow(agentOf(agent)) : null
@@ -314,7 +314,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     // saved scrollback on disk. Restarting without it would let the next save overwrite that file.
     if (node?.kind === 'terminal' && !host.isRunning(id) && !host.snapshot(id).data) {
       await runner.startNode(id, { initialScrollback: restoreSeed('terminal', await scrollback.readAsync(id)) })
-    } else if ((await runner.restartOrJoin(id, { shownExited: opts?.shownExited === true })) === 'joined') {
+    } else if ((await runner.restartOrJoin(id, { shownExited: opts?.shownExited === true, pastMemory: opts?.pastMemory === true })) === 'joined') {
       // It was still running unseen, so it's shown again: the notice offers ending it first. See docs/plans/session-sync.md.
       clearExited(id)
       return { ok: false, reason: JOINED_NOTICE, joined: true } satisfies JoinedRefusal

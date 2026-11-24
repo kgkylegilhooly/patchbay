@@ -51,6 +51,15 @@ export function idleSuggestions(sessions: SessionUse[], max: number = PRESSURE.s
 
 const gb = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`
 
+/**
+ * Why a new agent waits to start, or null when it needn't. Only commit running short holds one: that's what makes
+ * programs fail to start, the new agent's and the next command of every agent already running. Low RAM only slows.
+ */
+export function memoryHoldReason(system: SystemMemory | null): string | null {
+  if (!system || pressureNow(system, { running: 0, limit: null }) !== 'commit') return null
+  return `Waiting for memory: Windows has ${gb(system.commitAvail)} of ${gb(system.commitLimit)} left to give programs, so a new agent could fail to start, or make the agents already running fail theirs. It starts by itself once memory frees up, or use Start now.`
+}
+
 export function warningText(kind: PressureKind, system: SystemMemory | null, agents: { running: number; limit: number | null }): string {
   if (kind === 'commit' && system) {
     return `Windows is nearly out of memory to give programs: ${gb(system.commitAvail)} of ${gb(system.commitLimit)} left. New programs and commands may fail to start. Closing idle sessions frees it.`

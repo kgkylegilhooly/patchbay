@@ -20,8 +20,11 @@ export interface NodeError {
   fix?: StartFix
 }
 
-/** agents: Settings › Agents. sessions: Settings › Background sessions. folder: choose another folder. */
-export type StartFix = 'agents' | 'sessions' | 'folder'
+/**
+ * agents: Settings › Agents. sessions: Settings › Background sessions. folder: choose another folder. memory: it waits
+ * for memory, and Start now starts it anyway.
+ */
+export type StartFix = 'agents' | 'sessions' | 'folder' | 'memory'
 
 /** Where an update stands. */
 export type UpdateState =
@@ -223,7 +226,7 @@ export interface PatchbayBridge {
   /** A launch.json run that can't run as its file now says gives back the reason, and nothing starts. */
   startNode(id: string): Promise<void | Refusal>
   /** `shownExited`: the window showed it as ended, so a session found still running is shown again, never ended. */
-  restartNode(id: string, opts?: { shownExited?: boolean }): Promise<void | Refusal>
+  restartNode(id: string, opts?: { shownExited?: boolean; pastMemory?: boolean }): Promise<void | Refusal>
   /** Arms exactly the spec that was shown. Refused if the trigger has changed since, or isn't complete. */
   armTrigger(id: string, shownSpec: string): Promise<{ ok: true } | Refusal>
   disarmTrigger(id: string): Promise<void>

@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, p
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
+import type { SystemMemory } from '../shared/resources'
 import { createAppStore, type AppStore } from './appStore'
 import { asleepText, createLog, logMemoryNowAndThen, watchEventLoop, watchWindow, type Log } from './watchdog'
 import { noteWork, stallText, workLog } from './workLog'
@@ -395,6 +396,8 @@ async function boot(): Promise<void> {
   let signals: SignalWatcher | null = null
   // Keeps Patchbay's own run of Codex, which reads its limits, apart from a Codex session starting. See codexGate.ts.
   const codexGate = createCodexGate()
+  /** The PC's memory, once the resource monitor below is up. Until then no start waits for memory. */
+  let memoryNow: () => SystemMemory | null = () => null
   const runner = createNodeRunner({
     host,
     tracker,
@@ -421,7 +424,8 @@ async function boot(): Promise<void> {
       onMissedStopFailure: (id, event) => stops.noteHook(id, event),
       // Sessions in the background host post their hooks to it, and start nothing. See docs/plans/host-hooks.md.
       // A host still starting after a quick boot is waited for, so a session started meanwhile still gets its port.
-      hostHookPort: () => (host.info().mode === 'starting' ? host.connect().then(() => host.hookPort()) : host.hookPort())
+      hostHookPort: () => (host.info().mode === 'starting' ? host.connect().then(() => host.hookPort()) : host.hookPort()),
+      systemMemory: () => memoryNow()
     }
   })
   const usage = createUsageService({ dataDir })
@@ -666,7 +670,11 @@ async function boot(): Promise<void> {
   registerRecipeIpc({ service: recipes, setupGate })
   registerNeedsYouIpc({ store, tracker, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   // Memory and CPU: the resource view in Settings, and a warning when the PC runs short. See src/main/resources.
-  const resources = setupResources({ dataDir, store, host, hosted: () => host.sessions(), hostPid: () => host.info().pid ?? null, tracker, settings: currentSettings, broadcast, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
+  const resources = setupResources({ dataDir, store, host, hosted: () => host.sessions(), hostPid: () => host.info().pid ?? null, tracker, settings: currentSettings, broadcast, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, onCheck: (kind) => {
+    // An agent waiting for memory starts once it's no longer short, one a check.
+    if (kind !== 'commit') void runner.startHeld()
+  } })
+  memoryNow = () => resources.systemMemory()
   // Settings > About's versions, Copy diagnostics and Open log folder. See src/main/diagnostics.
   setupDiagnostics({ dataDir, store, host, status: (id) => tracker.get(id), sessionDir, settings: currentSettings, memory: () => resources.reading(), logFile: log?.file ?? null, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame })
   registerReviewIpc({ dataDir, store, tasks, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, log: (line) => log?.write(line) })

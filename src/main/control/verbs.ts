@@ -597,6 +597,12 @@ export function createVerbs({
 
   // opening nodes
 
+  /** Why an agent just opened hasn't started yet: it waits for Windows to have memory to give it, and starts by itself. */
+  const waitingForMemory = (id: string): string | undefined => {
+    const error = runner.errors?.()[id]
+    return error?.fix === 'memory' ? error.message : undefined
+  }
+
   const openAgent = async (caller: CanvasNode, args: Args): Promise<unknown> => {
     const group = groupFor(caller, args)
     const cwd = cwdFor(args, caller, group)
@@ -622,7 +628,8 @@ export function createVerbs({
     for (const up of after) add(edge(up, node.id, 'after'))
     if (after.length) gate.arm(node.id, after)
     else await runner.startNode(node.id)
-    return rules ? { id: node.id, rules } : { id: node.id }
+    const waiting = waitingForMemory(node.id)
+    return { id: node.id, ...(rules ? { rules } : {}), ...(waiting ? { waitingForMemory: waiting } : {}) }
   }
 
   const openTerminal = async (caller: CanvasNode, args: Args): Promise<unknown> => {
@@ -769,7 +776,14 @@ export function createVerbs({
       else await runner.startNode(m.id)
     }
     const rules = plans.find((m) => m.rules)?.rules
-    return { group: group.id, members: Object.fromEntries(plans.map((m) => [m.name, m.id])), ...(rules ? { rules } : {}) }
+    // Members that wait for memory start by themselves, so a lead waiting on them isn't told they exited.
+    const waiting = plans.filter((m) => waitingForMemory(m.id))
+    return {
+      group: group.id,
+      members: Object.fromEntries(plans.map((m) => [m.name, m.id])),
+      ...(rules ? { rules } : {}),
+      ...(waiting.length ? { waitingForMemory: { members: waiting.map((m) => m.name), reason: waitingForMemory(waiting[0].id) } } : {})
+    }
   }
 
   const sticky = (caller: CanvasNode, args: Args): unknown => {
