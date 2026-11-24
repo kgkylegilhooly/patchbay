@@ -119,6 +119,20 @@ describe('agent events', () => {
     expect(e.trig().runs[0]).toMatchObject({ outcome: 'delivered', event: '"Builder" exited' })
   })
 
+  test("a start that never ran (refused, held for memory, or failed to launch) isn't an exit; a real exit after it is", () => {
+    const e = setup({ type: 'agent', nodeId: 'a', on: 'exit' })
+    e.idle('c')
+    e.service.start()
+    e.arm()
+    // As after a restart of the app: nothing heard from it yet, then Start is refused.
+    e.tracker.apply('a', { type: 'not-started' })
+    expect(e.tracker.get('a')).toBe('exited')
+    expect(e.trig().runs).toEqual([])
+    e.idle('a')
+    e.tracker.apply('a', { type: 'process-exit' })
+    expect(e.trig().runs[0]).toMatchObject({ outcome: 'delivered', event: '"Builder" exited' })
+  })
+
   test('nothing fires for what happened before it started listening, or while disarmed', () => {
     const s = setup(AGENT_TURN)
     s.idle('a')

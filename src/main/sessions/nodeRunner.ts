@@ -433,7 +433,7 @@ export function createNodeRunner({
     setError(id, null)
     const off = node.kind === 'claude' ? agentOff(node) : null
     if (off) {
-      tracker.apply(id, { type: 'process-exit' })
+      tracker.apply(id, { type: 'not-started' })
       return setError(id, { code: 'spawn-failed', message: off, fix: 'agents' })
     }
     // The soft limit on agents at once. One coming back after a restart of the app or host was already running, so it may.
@@ -441,7 +441,7 @@ export function createNodeRunner({
     if (limited) {
       // The host may run it already. That's joining it, not starting another, so the limit doesn't apply.
       if (await joinedUnseen(id)) return 'joined'
-      tracker.apply(id, { type: 'process-exit' })
+      tracker.apply(id, { type: 'not-started' })
       return setError(id, { code: 'spawn-failed', message: limited, fix: 'sessions' })
     }
     // Windows nearly out of memory to give programs: a new agent waits, and startHeld starts it once there's room.
@@ -449,7 +449,7 @@ export function createNodeRunner({
     if (hold) {
       if (await joinedUnseen(id)) return 'joined'
       held.add(id)
-      tracker.apply(id, { type: 'process-exit' })
+      tracker.apply(id, { type: 'not-started' })
       return setError(id, { code: 'spawn-failed', message: hold, fix: 'memory' })
     }
     try {
@@ -465,7 +465,7 @@ export function createNodeRunner({
         return 'joined'
       }
       started.delete(id)
-      if (node.kind === 'claude') tracker.apply(id, { type: 'process-exit' })
+      if (node.kind === 'claude') tracker.apply(id, { type: 'not-started' })
       const code = e instanceof SessionStartError ? e.reason : 'spawn-failed'
       const fix = fixOf(e, code)
       setError(id, { code, message: (e as Error).message, ...(fix ? { fix } : {}) })

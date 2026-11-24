@@ -280,11 +280,12 @@ export function createTriggerService({
     return null
   }
 
-  const onStatus = (id: string, status: AgentStatus, caughtUp = false): void => {
+  const onStatus = (id: string, status: AgentStatus, caughtUp = false, notStarted = false): void => {
     const prev = seen.get(id)
     seen.set(id, status)
     if (!running) return
-    const kind = agentEvent(prev, status)
+    // A start that never ran isn't an exit: nothing ran to end.
+    const kind = notStarted ? null : agentEvent(prev, status)
     if (kind) {
       for (const node of triggers()) {
         const s = node.schedule
@@ -428,7 +429,7 @@ export function createTriggerService({
         if (pending.get(id) === p) settled(id, p.runId, { outcome: 'missed', detail: 'Its target ended before it was idle.' })
       }
     }
-    onStatus(targetId, status, info?.caughtUp)
+    onStatus(targetId, status, info?.caughtUp, info?.notStarted)
   })
   host.onOutput?.((id) => {
     if (!ownTurns.size) return

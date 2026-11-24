@@ -4,6 +4,8 @@ export type StatusEvent =
   | { type: 'hook'; name: string; notificationType?: string; reason?: string }
   | { type: 'interrupt-key' }
   | { type: 'process-exit' }
+  /** A start that never ran: refused (agent limit, Settings > Agents), held for memory, or a program that didn't launch. */
+  | { type: 'not-started' }
   | { type: 'launched' }
   /** Held back by --after, not launched yet. */
   | { type: 'queued' }
@@ -53,6 +55,7 @@ export function nextStatus(cur: AgentStatus, ev: StatusEvent): AgentStatus {
     case 'queued':
       return 'queued'
     case 'process-exit':
+    case 'not-started':
       return 'exited'
     case 'interrupt-key':
       // Claude fires no hook for an interrupt, so nothing says what it's doing now.
