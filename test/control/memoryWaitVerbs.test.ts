@@ -27,8 +27,11 @@ function setup(holds: (title: string) => boolean) {
     ...base,
     async startNode(id: string) {
       const node = store.get().nodes.find((n) => n.id === id)
-      if (node && holds(node.title)) errors[id] = { code: 'spawn-failed', message: WAIT, fix: 'memory' }
-      else await base.startNode(id)
+      if (node && holds(node.title)) {
+        errors[id] = { code: 'spawn-failed', message: WAIT, fix: 'memory' }
+        // As the real runner marks a start it holds.
+        tracker.apply(id, { type: 'process-exit' })
+      } else await base.startNode(id)
     },
     errors: () => errors
   }
@@ -44,7 +47,7 @@ function setup(holds: (title: string) => boolean) {
     waitTiming: { pollMs: 5, graceMs: 60 },
     deliveryTiming: { confirmMs: 400, pollMs: 10 }
   })
-  return { verbs }
+  return { verbs, tracker, errors }
 }
 
 test('open-agent says when the agent waits for memory, so a lead does not take it for one that exited', async () => {
@@ -57,4 +60,21 @@ test('spawn-team names the members waiting for memory, and says nothing when non
   expect(await held.verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a' }, { name: 'b' }] })).toMatchObject({ waitingForMemory: { members: ['b'], reason: WAIT } })
   const free = setup(() => false)
   expect(await free.verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a' }] })).not.toHaveProperty('waitingForMemory')
+})
+
+test('wait does not take an agent waiting for memory for one that finished, and says it waits', async () => {
+  const { verbs, tracker, errors } = setup(() => true)
+  const { id } = (await verbs('me', 'open-agent', { prompt: 'go', title: 'W' })) as { id: string }
+  expect(await verbs('me', 'wait', { nodes: [id], timeout: 1 })).toMatchObject({ done: false, timedOut: true, waitingForMemory: { [id]: WAIT } })
+
+  // Memory frees up: it starts, works and finishes its turn, and the wait ends then.
+  const waiting = verbs('me', 'wait', { nodes: [id], timeout: 5 })
+  delete errors[id]
+  tracker.apply(id, { type: 'launched' })
+  tracker.apply(id, { type: 'hook', name: 'UserPromptSubmit' })
+  await new Promise((r) => setTimeout(r, 30))
+  tracker.apply(id, { type: 'hook', name: 'Stop' })
+  const over = (await waiting) as Record<string, unknown>
+  expect(over).toMatchObject({ done: true, nodes: { [id]: 'idle' } })
+  expect(over).not.toHaveProperty('waitingForMemory')
 })
