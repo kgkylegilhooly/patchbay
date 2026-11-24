@@ -277,6 +277,16 @@ const scenes = {
     await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].at(-1).click())
     await sleep(200)
   },
+  // Alt+Shift+3 on the canvas keeps the view in slot 3, and says so.
+  'saved-view': async (page) => {
+    await page.evaluate(() => document.activeElement?.blur())
+    await page.keyboard.down('Alt')
+    await page.keyboard.down('Shift')
+    await page.keyboard.press('Digit3')
+    await page.keyboard.up('Shift')
+    await page.keyboard.up('Alt')
+    await sleep(300)
+  },
   'approval-line': (page) => seedApproval(page),
   approval: async (page) => {
     await seedApproval(page)

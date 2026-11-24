@@ -415,6 +415,9 @@ shortcuts; the palette's entry still works. `F2` renames
 the window in use from the canvas; the palette also has Rename, Restart and Close this window. A screen reader hears
 each window's name and status, and is told when an agent needs you, fails or stops at a limit.
 
+`Alt+Shift+1` to `Alt+Shift+9` keep the view on screen in that slot, for the project you're in, and `Alt+1` to `Alt+9`
+go back to it. Saved views stay with this PC, not in the canvas file.
+
 ## Search and handoffs
 
 **Search** (Ctrl+Shift+S, or Search conversations and notes in the palette) finds words in every agent conversation

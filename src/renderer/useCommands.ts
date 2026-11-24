@@ -29,6 +29,8 @@ import { showFolderToast } from './FolderToast'
 import { whenNodeDrawn } from './newNodeFocus'
 import { closeWindowAsking } from './a11y/windowActions'
 import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
+import { savedViews } from './savedViews'
+import { say } from './reader/readerUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -304,6 +306,15 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       zoomOut: () => void flow.zoomOut({ duration: 160 }),
       zoomReset: () => void flow.zoomTo(1, { duration: 160 }),
       fitView: fitAll,
+      saveView: (n) => {
+        savedViews().set(doc().activeProjectId, n, flow.getViewport())
+        say(`Saved this view as ${n}. Alt+${n} comes back to it.`, true)
+      },
+      goToView: (n) => {
+        const view = savedViews().get(doc().activeProjectId, n)
+        if (!view) return say(`No view is saved as ${n} in this project. Alt+Shift+${n} saves the one on screen.`)
+        void flow.setViewport(view, { duration: reducedMotion() ? 0 : 220 }).then(() => dispatch({ op: 'setViewport', viewport: view }))
+      },
       tidy: (ids) => {
         // Opens the preview (see TidyLayer): the selection or the group given, else the whole project.
         const picked = (ids ?? selectedRef.current).filter((id) => doc().nodes.some((n) => n.id === id && inActiveProject(doc(), n)))

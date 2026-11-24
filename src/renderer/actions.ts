@@ -12,6 +12,7 @@ import { jumpToNext } from './needsYouUi'
 import { pickDocument } from './reader/readerUi'
 import { cycleRegion } from './a11y/regions'
 import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
+import { VIEW_SLOTS } from './savedViews'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -88,6 +89,9 @@ export const ACTIONS: Action[] = [
   { id: 'toggle-git', section: 'View', label: 'Git panel', icon: 'branch', key: 'Ctrl+Shift+H', keywords: ['commit', 'stage', 'branch', 'push', 'pull', 'history', 'diff'], run: (c) => c.toggleGit() },
   { id: 'toggle-minimap', section: 'View', label: 'Minimap', icon: 'map', keywords: ['overview'], run: (c) => c.togglePref('minimap') },
   { id: 'toggle-legend', section: 'View', label: 'Link legend', icon: 'link', keywords: ['key', 'cables'], run: (c) => c.togglePref('legend') },
+  // Saved views, per project (see savedViews.ts). Shift picks the digit by its key, so these work on any layout.
+  ...VIEW_SLOTS.map((n): Action => ({ id: `view-go-${n}`, section: 'View', label: `Go to saved view ${n}`, icon: 'fit', key: `Alt+${n}`, keywords: ['bookmark', 'jump', 'place'], run: (c) => c.goToView(n) })),
+  ...VIEW_SLOTS.map((n): Action => ({ id: `view-save-${n}`, section: 'View', label: `Save this view as ${n}`, icon: 'pin', key: `Alt+Shift+${n}`, keywords: ['bookmark', 'remember', 'place'], run: (c) => c.saveView(n) })),
   { id: 'toggle-snap', section: 'View', label: 'Snap to grid', icon: 'grid', keywords: ['align'], run: (c) => c.togglePref('snap') },
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
