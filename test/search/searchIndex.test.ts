@@ -193,6 +193,18 @@ describe('search index', () => {
     expect(index.search({ text: '   ' }).hits).toHaveLength(0)
   })
 
+  it('finds a quoted phrase whose words a line break or extra spaces split', async () => {
+    const path = join(dir, 'w.jsonl')
+    writeFileSync(path, lines(claudeSays('Next I will fix  login for the admin page.', T)))
+    const doc = baseDoc()
+    const note: StickyNode = { id: 'n1', kind: 'sticky', title: 'Plan', text: '- Then fix\nlogin flow', x: 0, y: 0, width: 200, height: 100, parentId: null, projectId: 'p1' }
+    doc.nodes = [agent('a1', path, 'p1'), note]
+    const index = createSearchIndex()
+    await index.sync(searchSources(doc, [], T))
+    expect(index.search({ text: '"fix login"' }).hits.map((h) => h.kind).sort()).toEqual(['conversation', 'note'])
+    expect(index.search({ text: '"fix login"', kinds: ['note'] }).hits[0]).toMatchObject({ snippet: expect.stringContaining('fix login'), marks: [expect.any(Array)] })
+  })
+
   it('takes sources from registered providers, such as task results', async () => {
     const doc = baseDoc()
     const extra: SyncInput['sources'] = [{ kind: 'task-result', key: 'task:1', title: 'Task 1 outcome', projectId: 'p1', ref: { type: 'text' }, at: T, text: 'Accepted after review' }]
