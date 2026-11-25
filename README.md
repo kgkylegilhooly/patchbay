@@ -342,6 +342,9 @@ it isn't the project's own, by its folder name. On narrow windows the folder goe
 Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
 conversation, ready to paste into an email or an issue.
 
+Right-click any terminal or agent window for **Open folder in Explorer**, and **Open folder in VS Code** when VS Code's
+`code` command is on PATH. An SSH terminal offers neither, since its folder is on the other machine.
+
 Closing an agent that edited files it hasn't committed asks first, naming them: "Release notes left 1 file it edited
 uncommitted: notes.md." Only its own edits count, not other work in the same checkout. **Keep** is the default.
 

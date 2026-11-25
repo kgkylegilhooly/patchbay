@@ -58,6 +58,7 @@ import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { createAway, serveAway, type Away } from './files/away'
 import { serveLastReply } from './lastReply'
+import { serveOpenFolder } from './openFolder'
 import { serveCanvasHistory } from './canvasHistoryIpc'
 import { withFilesVerbs } from './files/verbs'
 import { setupProjects } from './projects/ipc'
@@ -511,6 +512,7 @@ async function boot(): Promise<void> {
   away = createAway({ changes: (id) => filesTouched.awayChanges(id), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), push: (a) => broadcast('pb:away:onChange', a) })
   serveAway(away, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveLastReply(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
+  serveOpenFolder(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   // Canvas history: a copy a day for a week, and File > Restore canvas from, which restarts to read it.
   serveCanvasHistory({
     dataDir,
