@@ -359,6 +359,7 @@ async function boot(): Promise<void> {
     },
     windowFocused: () => mainWindow?.isFocused() ?? false,
     titleOf: (id) => store.get().nodes.find((n) => n.id === id)?.title ?? 'Claude',
+    muted: (id) => store.get().nodes.find((n) => n.id === id)?.muted === true,
     reveal(id) {
       focusWindow()
       notifier.markSeen(id)

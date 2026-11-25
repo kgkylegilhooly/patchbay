@@ -300,6 +300,11 @@ export function NodeChrome({
         {isRun ? <RunDot run={run} /> : <StatusDot status={status} nodeId={node.id} />}
         <KindIcon kind={node.kind} agent={node.kind === 'claude' ? node.agent : undefined} />
         <EditableTitle node={node} />
+        {node.muted && (
+          <span className="unit-muted" title="Notifications muted: no notification, chime or flash from this window" aria-label="Notifications muted" style={{ display: 'inline-flex', flex: 'none', color: 'var(--ink-dim)' }}>
+            <Icon name="muted" size={13} />
+          </span>
+        )}
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
         {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
         {status && <StatusBadge status={status} nodeId={node.id} />}
