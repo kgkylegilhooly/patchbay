@@ -27,6 +27,7 @@ import { measureSafeArea } from '../safeArea'
 import { StartFixActions } from './StartFixActions'
 import { failedStart } from '../status/startFailure'
 import { AwayStrip } from './AwayStrip'
+import { ContinueButton } from './ContinueButton'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -302,6 +303,7 @@ export function NodeChrome({
         {isSessionNode(node) && <SessionTaskOutcomes sessionId={node.id} />}
         {node.kind === 'claude' && <SubagentEye nodeId={node.id} />}
         {status && <StatusBadge status={status} nodeId={node.id} />}
+        {node.kind === 'claude' && <ContinueButton nodeId={node.id} stop={stop} />}
         {isRun && <RunLabel run={run} />}
         {node.kind === 'run' && node.launch && (
           <span className="run-launch" title={`From ${node.launch.folder}\\.vscode\\launch.json, read again at each run`}>

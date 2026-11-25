@@ -173,6 +173,15 @@ const NAMES: Record<StopKind, string> = {
   error: 'Stopped on an error'
 }
 
+/**
+ * Whether a Continue button can get the agent going again: a server or unknown error that left it at its prompt, where
+ * a new message simply tries again. Not a limit (it waits for its reset, and may continue by itself) nor a login or
+ * billing failure, which the person has to fix first.
+ */
+export function canContinue(stop: AgentStop | undefined): boolean {
+  return !!stop && (stop.kind === 'server' || stop.kind === 'error') && stop.holds === null
+}
+
 /** A few words for a badge: "Usage limit until 00:30", "Usage limit reset at 00:30", "Login failed". */
 export function stopLabel(stop: AgentStop, now: number): string {
   const name = NAMES[stop.kind]
