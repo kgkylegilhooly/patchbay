@@ -31,6 +31,7 @@ import { closeWindowAsking } from './a11y/windowActions'
 import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 import { savedViews } from './savedViews'
 import { pinnedNoteText, worthPinning } from './pinOutput'
+import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply } from './lastReplyUi'
 
@@ -232,6 +233,13 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       newCodexForm: (at, groupId) => setForm({ kind: 'codex', at, groupId }),
       newRunForm: (at, groupId) => setForm({ kind: 'run', at, groupId }),
       newBrowser: (at, groupId) => open(newBrowser(place(at, groupId), crypto.randomUUID())),
+      duplicateNode: (id) => {
+        const src = doc().nodes.find((n) => n.id === id)
+        if (!src) return
+        // Beside the original, in its group if it's in one.
+        const node = duplicateOf(src, { beside: src, group: groupFor(src.parentId ?? undefined), doc: doc(), view: visible() }, crypto.randomUUID(), pickedProfile)
+        if (node) open(node, { focus: true })
+      },
       setBrowserHeld: (id, held) => patchNode(id, { held }),
       reloadBrowser: (id) => void bridge.browserStep(id, 'reload'),
       spawnTeamForm: (at) => setForm({ kind: 'team', at }),

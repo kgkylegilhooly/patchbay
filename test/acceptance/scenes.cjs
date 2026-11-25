@@ -405,6 +405,12 @@ const scenes = {
     await page.click('.react-flow__node[data-id="unk"] [data-cmd="continue-after-stop"]').catch(() => {})
     await sleep(3000)
   },
+  // The Dev shell's window menu, then Duplicate: a second shell in the same folder, beside it.
+  'duplicate-window': async (page) => {
+    await scenes['pin-menu'](page)
+    await page.click('.menu-panel [data-cmd="duplicate"]').catch(() => {})
+    await sleep(1500)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

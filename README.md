@@ -345,6 +345,9 @@ conversation, ready to paste into an email or an issue.
 Right-click any terminal or agent window for **Open folder in Explorer**, and **Open folder in VS Code** when VS Code's
 `code` command is on PATH. An SSH terminal offers neither, since its folder is on the other machine.
 
+**Duplicate**, in the same menu, opens a fresh window beside it: a shell in the same folder with the same profile, the
+same SSH host, or a new agent of the same kind in the same folder. Never its output, command or conversation.
+
 Closing an agent that edited files it hasn't committed asks first, naming them: "Release notes left 1 file it edited
 uncommitted: notes.md." Only its own edits count, not other work in the same checkout. **Keep** is the default.
 
