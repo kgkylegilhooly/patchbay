@@ -399,6 +399,12 @@ const scenes = {
     await page.evaluate(() => document.querySelector('[data-cmd^="restore-canvas:"]')?.click())
     await sleep(500)
   },
+  // Old agent stopped on an error: Continue sends "continue", and it gets going again.
+  'continue-stop': async (page) => {
+    await page.waitForSelector('.react-flow__node[data-id="unk"] [data-cmd="continue-after-stop"]', { timeout: 15000 }).catch(() => {})
+    await page.click('.react-flow__node[data-id="unk"] [data-cmd="continue-after-stop"]').catch(() => {})
+    await sleep(3000)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

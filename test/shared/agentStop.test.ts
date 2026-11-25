@@ -69,3 +69,16 @@ test('labels say what happened and until when, in local 24-hour time', () => {
   expect(heldReason(stop, NOW)).toBe('Usage limit until 00:30. It goes out then')
   expect(heldReason(stop, stop.until! + RELEASE_MARGIN_MS)).toBeNull()
 })
+
+// F25: a stopped agent that a plain "continue" would get going again, and only that.
+test('Continue is offered for a server or unknown error at the prompt, not for limits, login or billing', async () => {
+  const { canContinue } = await import('../../src/shared/agentStop')
+  const stop = (kind: string, holds: 'reset' | 'person' | null) => ({ kind, at: 1, until: null, message: null, holds }) as never
+  expect(canContinue(stop('server', null))).toBe(true)
+  expect(canContinue(stop('error', null))).toBe(true)
+  expect(canContinue(stop('usage-limit', 'reset'))).toBe(false)
+  expect(canContinue(stop('rate-limit', 'reset'))).toBe(false)
+  expect(canContinue(stop('auth', 'person'))).toBe(false)
+  expect(canContinue(stop('billing', 'person'))).toBe(false)
+  expect(canContinue(undefined)).toBe(false)
+})
