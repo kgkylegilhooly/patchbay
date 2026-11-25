@@ -457,6 +457,17 @@ export function SettingsPage({
             <Row title="Sound" help="A short chime when a session needs you. The taskbar badge stays on either way." htmlFor="set-sound">
               <Toggle id="set-sound" checked={draft.sound !== 'off'} onChange={() => set('sound', draft.sound === 'off' ? '' : 'off')} />
             </Row>
+            <Row
+              title="Quiet hours"
+              help="From one time up to the other, as 22:00 to 07:00, notifications wait and the chime stays off. The canvas still shows who needs you, and one notification sums up when they end. Leave them blank for none."
+              htmlFor="set-quiet-from"
+            >
+              <div className="set-input-row">
+                <input id="set-quiet-from" type="time" aria-label="Quiet from" value={draft.quietFrom ?? ''} onChange={(e) => set('quietFrom', e.target.value)} />
+                <span className="set-value">to</span>
+                <input id="set-quiet-to" type="time" aria-label="Quiet until" value={draft.quietTo ?? ''} onChange={(e) => set('quietTo', e.target.value)} />
+              </div>
+            </Row>
             <Row title="Try them" help={testResult ?? 'Plays the chime, or sends a real notification.'}>
               <div className="set-input-row">
                 <button type="button" className="btn" data-test="chime" onClick={playChime}>

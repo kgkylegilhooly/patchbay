@@ -82,6 +82,7 @@ import {
 } from './lifecycle'
 import { createKeepAwake } from './keepAwake'
 import { createNotifier } from './notifier'
+import { createQuietGate } from './quietHours'
 import { createApprovals } from './sessions/approvals'
 import { createBackgroundHost } from './sessions/backgroundHost'
 import { createSessionHost } from './sessions/host'
@@ -341,11 +342,18 @@ async function boot(): Promise<void> {
       n.on('close', () => showing.delete(n))
       n.show()
     })
+  // Quiet hours (Settings > Notifications): toasts held, no chime or flash; one summary toast when they end.
+  const quiet = createQuietGate({ hours: () => ({ from: currentSettings().quietFrom, to: currentSettings().quietTo }) })
+  setInterval(() => {
+    const summary = quiet.ended()
+    if (summary && currentSettings().notifications !== 'off') void showToast({ ...summary, click: () => focusWindow() })
+  }, 60_000).unref()
   const notifier = createNotifier({
     show(toast) {
-      if (currentSettings().notifications !== 'off') void showToast(toast)
+      if (currentSettings().notifications !== 'off' && !quiet.hold(toast)) void showToast(toast)
     },
     alert() {
+      if (quiet.quiet()) return
       if (currentSettings().sound !== 'off') broadcast('pb:onChime')
       if (mainWindow && !QUIET_WINDOW && !mainWindow.isFocused()) mainWindow.flashFrame(true)
     },
