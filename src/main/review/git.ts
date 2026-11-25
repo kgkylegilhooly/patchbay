@@ -20,10 +20,14 @@ const OBJECTS = { timeoutMs: 120_000, maxBytes: 64 * 1024 * 1024 }
 
 export type RunGit = (cwd: string, args: string[], limit: { timeoutMs: number; maxBytes: number }, extraEnv?: Record<string, string>) => Promise<RunResult>
 
-/** The real git, with prompts off and nothing inherited pointing it at another repository or index. */
+/**
+ * The real git, with prompts off and nothing inherited pointing it at another repository or index. No fsmonitor, as in
+ * files-touched snapshots: a snapshot on a copied index must neither run a program the repository's config names nor
+ * trust a file monitor's answer meant for the real index.
+ */
 export function systemReviewGit(): RunGit {
   const env = gitEnvFrom(cleanEnv(process.env, {}))
-  return (cwd, args, limit, extraEnv) => runProgram('git', [...GLOBAL, '-C', cwd, ...args], { env: { ...env, ...extraEnv }, ...limit })
+  return (cwd, args, limit, extraEnv) => runProgram('git', [...GLOBAL, '-c', 'core.fsmonitor=false', '-C', cwd, ...args], { env: { ...env, ...extraEnv }, ...limit })
 }
 
 /** A path inside the repository, as git names it. Anything that could read as an option or leave the repository is refused. */
