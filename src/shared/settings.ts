@@ -40,6 +40,9 @@ export interface Settings {
   envNotPassed?: string
   /** 'off' turns off Windows notifications. They're on otherwise. */
   notifications?: string
+  /** Quiet hours, as HH:MM: Windows notifications are held and the chime is off from quietFrom up to quietTo. See main/quietHours.ts. */
+  quietFrom?: string
+  quietTo?: string
   /** 'off' turns off the chime. It's on otherwise. */
   sound?: string
   /** 'off' lets the PC sleep while an agent is working. It's kept awake otherwise. */

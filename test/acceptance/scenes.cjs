@@ -576,6 +576,14 @@ const scenes = {
     await page.evaluate(() => [...document.querySelectorAll('.menubar-item')].find((b) => b.textContent === 'View').click())
     await sleep(200)
   },
+  'settings-notifications': async (page) => {
+    await page.keyboard.down('Control')
+    await page.keyboard.press(',')
+    await page.keyboard.up('Control')
+    await page.waitForSelector('[data-section="notifications"]')
+    await page.click('[data-section="notifications"]')
+    await sleep(400)
+  },
   'settings-sessions': async (page) => {
     await page.keyboard.down('Control')
     await page.keyboard.press(',')
