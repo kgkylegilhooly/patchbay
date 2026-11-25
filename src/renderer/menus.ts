@@ -16,6 +16,7 @@ import { namedQuestion } from './shell/confirmStore'
 import { askRemoveWorktree } from './worktreeUi'
 import { openSettingsAt, type SettingsSection } from './settingsAsk'
 import { restoreCanvasSubmenu } from './canvasHistoryUi'
+import { openFolderEntries } from './openFolderUi'
 import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
 
 export interface Point {
@@ -421,6 +422,7 @@ export function nodeMenu(
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },
     { id: 'show-in-focus', label: 'Show in focus view', icon: 'grid', run: () => c.toggleFocus(node.id) },
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
+    ...openFolderEntries(node),
     ...openPlanEntry(node),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),

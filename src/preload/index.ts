@@ -19,6 +19,7 @@ import { exposeResources } from './resources'
 import { exposeDiagnostics } from './diagnostics'
 import { exposeAway } from './away'
 import { exposeReply } from './reply'
+import { exposeFolder } from './folder'
 import { exposeHistory } from './history'
 import { exposeSessionSync } from './sessionSync'
 import { exposeAppProblems } from './appProblems'
@@ -169,6 +170,7 @@ exposeResources()
 exposeDiagnostics()
 exposeAway()
 exposeReply()
+exposeFolder()
 exposeHistory()
 exposeSessionSync()
 exposeAppProblems()
