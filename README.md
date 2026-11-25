@@ -348,6 +348,10 @@ Right-click any terminal or agent window for **Open folder in Explorer**, and **
 **Duplicate**, in the same menu, opens a fresh window beside it: a shell in the same folder with the same profile, the
 same SSH host, or a new agent of the same kind in the same folder. Never its output, command or conversation.
 
+**Mute notifications**, in an agent or run window's menu, stops that one window's Windows notifications, chime and
+taskbar flash, for a chatty agent or a long test loop. A bell with a line through it beside its title shows it's muted;
+the canvas and the sidebar still show its status, and the same menu item unmutes it.
+
 Closing an agent that edited files it hasn't committed asks first, naming them: "Release notes left 1 file it edited
 uncommitted: notes.md." Only its own edits count, not other work in the same checkout. **Keep** is the default.
 

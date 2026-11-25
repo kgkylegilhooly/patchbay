@@ -24,7 +24,8 @@ export function createNotifier({
   windowFocused,
   titleOf,
   reveal,
-  alert
+  alert,
+  muted
 }: {
   show: (n: { title: string; body: string; click: () => void }) => void
   /** The chime and the taskbar flash, for a session waiting on you. Finishing a turn doesn't call for them. */
@@ -33,6 +34,8 @@ export function createNotifier({
   titleOf: (id: string) => string
   /** Brings the window forward and centers this node. */
   reveal: (id: string) => void
+  /** A window muted from its menu: it still counts as unseen, but gets no notification, chime or flash. */
+  muted?: (id: string) => boolean
 }): Notifier {
   let focused: string | null = null
   const unseen = new Set<string>()
@@ -46,6 +49,7 @@ export function createNotifier({
       unseen.add(id)
       for (const cb of listeners) cb()
     }
+    if (muted?.(id)) return
     show({ title: titleOf(id), body, click: () => reveal(id) })
   }
   return {
@@ -70,6 +74,7 @@ export function createNotifier({
         unseen.add(id)
         for (const cb of listeners) cb()
       }
+      if (muted?.(id)) return
       if (status === 'needs-you') alert?.()
       show({ title: titleOf(id), body, click: () => reveal(id) })
     }

@@ -411,6 +411,23 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="duplicate"]').catch(() => {})
     await sleep(1500)
   },
+  // Review the docs' window menu: Mute notifications.
+  'mute-menu': async (page) => {
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
+    await sleep(800)
+    const box = await page.$eval('.react-flow__node[data-id="idle"] .xterm-screen', (el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
+    })
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12, { button: 'right' })
+    await sleep(300)
+  },
+  // The same, then muted: the bell with a line through it beside its title.
+  'muted-window': async (page) => {
+    await scenes['mute-menu'](page)
+    await page.click('.menu-panel [data-cmd="toggle-mute"]').catch(() => {})
+    await sleep(500)
+  },
   'canvas-menu': async (page) => {
     await rightClickCanvas(page)
     await sleep(200)

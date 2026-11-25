@@ -15,6 +15,8 @@ interface Base {
   projectId?: string
   color?: string
   openedBy?: string | null
+  /** Its notifications, chime and taskbar flash are off (window menu > Mute notifications). Its status still shows. */
+  muted?: boolean
   /** This window's own terminal font size. Without one it follows the global setting. */
   fontSize?: number
 }

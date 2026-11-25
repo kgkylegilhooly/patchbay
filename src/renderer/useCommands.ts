@@ -241,6 +241,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         if (node) open(node, { focus: true })
       },
       setBrowserHeld: (id, held) => patchNode(id, { held }),
+      toggleMute: (id) => patchNode(id, { muted: doc().nodes.find((n) => n.id === id)?.muted === true ? undefined : true }),
       reloadBrowser: (id) => void bridge.browserStep(id, 'reload'),
       spawnTeamForm: (at) => setForm({ kind: 'team', at }),
       editRunCommand: (id) => setForm({ kind: 'run', editId: id }),

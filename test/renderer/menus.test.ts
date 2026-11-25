@@ -335,3 +335,11 @@ test('an agent window offers Copy last reply once it has a conversation; a termi
   expect(menu({ ...claude, transcriptPath: null } as CanvasNode).find((i) => i.id === 'copy-last-reply')?.disabled).toBe(true)
   expect(menu(terminal).find((i) => i.id === 'copy-last-reply')).toBeUndefined()
 })
+
+// F26: one window's notifications can be turned off from its menu.
+test('an agent or run window offers Mute notifications, and Unmute once muted; a terminal, which never notifies, does not', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu(claude).find((i) => i.id === 'toggle-mute')?.label).toBe('Mute notifications')
+  expect(menu({ ...claude, muted: true } as CanvasNode).find((i) => i.id === 'toggle-mute')?.label).toBe('Unmute notifications')
+  expect(menu(terminal).find((i) => i.id === 'toggle-mute')).toBeUndefined()
+})

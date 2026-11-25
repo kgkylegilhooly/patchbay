@@ -86,6 +86,8 @@ export interface Commands {
   newBrowser(at?: Point, groupId?: string): void
   /** A fresh window like this one, beside it. See duplicateNode.ts. */
   duplicateNode(id: string): void
+  /** Turns a window's notifications, chime and flash off or back on. */
+  toggleMute(id: string): void
   /** Stops agent verbs on a browser node, or lets them through again. */
   setBrowserHeld(id: string, held: boolean): void
   reloadBrowser(id: string): void
@@ -429,6 +431,7 @@ export function nodeMenu(
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
+    ...(node.kind === 'claude' || node.kind === 'run' ? [{ id: 'toggle-mute', label: node.muted ? 'Unmute notifications' : 'Mute notifications', icon: 'muted' as const, run: () => c.toggleMute(node.id) }] : []),
     ...(node.kind === 'terminal' || node.kind === 'claude' ? [{ id: 'duplicate', label: 'Duplicate', icon: 'plus' as const, run: () => c.duplicateNode(node.id) }] : []),
     { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
     ...(ctx.canRestart ? [{ id: 'restart', label: 'Restart', icon: 'restart' as const, run: () => c.restartNode(node.id) }] : []),
