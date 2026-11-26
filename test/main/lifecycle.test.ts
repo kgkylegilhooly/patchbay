@@ -146,6 +146,26 @@ describe('openTerminalLink', () => {
     }
   )
 
+  // Microsoft's blocked-attachment list, and Office add-ins: each runs something, installs or imports when opened.
+  test.each(
+    ('msu printerexport xbap cer crt der pyz pyzw pyc pyo mdb mde ade adp accde accdr vsmacros shb shs ins isp wsc sct mst ppam xlam xla ' +
+      'app asx bas cab cnt fxp grp hlp hpj htc its mad maf mcf mda msh mshxml ops osd pcd plg prf prg ps2xml psc2 vb vbp vsw webpnp ws xnk')
+      .split(' ')
+      .map((ext) => `x.${ext}`)
+  )('openTerminalLink reveals %s instead of handing it to its program', async (name) => {
+    const want = resolve('C:\repo', name)
+    const d = deps([want])
+    expect(await openTerminalLink('C:\repo', name, d)).toEqual({ ok: true })
+    expect(d.calls).toEqual([`reveal ${want}`])
+  })
+
+  test.each(['notes.md', 'a.ts', 'shot.png', 'spec.pdf', 'page.aspx', 'page.asp', 'data.json', 'log.txt'])('openTerminalLink still opens %s', async (name) => {
+    const want = resolve('C:\repo', name)
+    const d = deps([want])
+    expect(await openTerminalLink('C:\repo', name, d)).toEqual({ ok: true })
+    expect(d.calls).toEqual([`open ${want}`])
+  })
+
   test('openTerminalLink opens http and https', async () => {
     const d = deps()
     await openTerminalLink('C:\\repo', 'https://example.com/a', d)
