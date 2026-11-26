@@ -57,7 +57,7 @@ import { spotNear } from './control/verbs'
 import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { createAway, serveAway, type Away } from './files/away'
-import { serveLastReply } from './lastReply'
+import { lastReplyOf, serveLastReply } from './lastReply'
 import { serveRunFix } from './runFix'
 import { serveOpenFolder } from './openFolder'
 import { serveCanvasHistory } from './canvasHistoryIpc'
@@ -82,7 +82,8 @@ import {
   type QuitIntent
 } from './lifecycle'
 import { createKeepAwake } from './keepAwake'
-import { createNotifier } from './notifier'
+import { createNotifier, headline } from './notifier'
+import { readMessagesTail } from '../core/transcript/read'
 import { createQuietGate } from './quietHours'
 import { createApprovals } from './sessions/approvals'
 import { createBackgroundHost } from './sessions/backgroundHost'
@@ -361,6 +362,18 @@ async function boot(): Promise<void> {
     windowFocused: () => mainWindow?.isFocused() ?? false,
     titleOf: (id) => store.get().nodes.find((n) => n.id === id)?.title ?? 'Claude',
     muted: (id) => store.get().nodes.find((n) => n.id === id)?.muted === true,
+    // What the agent said or asks, unless turned off: Windows can show a notification's text on the lock screen.
+    async detail(id, status) {
+      if (currentSettings().notificationText === 'off') return null
+      if (status === 'needs-you') {
+        const asked = approvals.pending().find((a) => a.nodeId === id)
+        return asked ? `${asked.tool}: ${asked.summary}` : null
+      }
+      const node = store.get().nodes.find((n) => n.id === id)
+      if (node?.kind !== 'claude' || !node.transcriptPath) return null
+      const reply = lastReplyOf(await readMessagesTail(node.transcriptPath, 30))
+      return reply ? headline(reply) : null
+    },
     reveal(id) {
       focusWindow()
       notifier.markSeen(id)
