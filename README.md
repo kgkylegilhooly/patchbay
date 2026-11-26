@@ -670,6 +670,10 @@ Add one from the canvas menu or with Ctrl+Shift+D.
 
 Every Claude and Codex window runs with the Patchbay skill, which teaches it the `patchbay` command.
 
+After a team run, a group's menu offers **Close N finished agents…**: its idle agents, at any depth. Any that left
+files it edited uncommitted stays open and is named, and the confirmation lists what closes. Closed conversations can
+reopen each one.
+
 Agents run below normal priority, and so does everything they start. When the PC is short of CPU, the window and your
 terminals go first, so typing stays quick however many agents are busy; with CPU to spare, agents run at full speed.
 

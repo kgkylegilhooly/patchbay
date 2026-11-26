@@ -135,6 +135,8 @@ export interface Commands {
   restartNodes(ids: string[]): void
   /** Sends Esc to each of these agents, as the person would, to stop what they are doing. */
   interruptNodes(ids: string[]): void
+  /** Closes a group's idle agents, after checking what each left uncommitted and asking (F60). See closeFinished.ts. */
+  closeFinished(agents: Array<{ id: string; title: string }>): void
   /** The window in use, as window actions mean it: renamed in place, restarted, or closed (asking first if it's busy). */
   renameWindow(nodeId?: string): void
   restartWindow(nodeId?: string): void
@@ -414,7 +416,7 @@ export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }>; watching?: string | null }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }>; finished?: Array<{ id: string; title: string }>; watching?: string | null }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -463,6 +465,7 @@ export function nodeMenu(
       ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       ...(ctx.stopped?.length ? [{ id: 'restart-stopped', label: `Restart ${ctx.stopped.length} stopped window${ctx.stopped.length === 1 ? '' : 's'}`, icon: 'restart' as const, run: () => c.restartNodes(ctx.stopped!) }] : []),
       ...interruptEntry(c, ctx.working ?? []),
+      ...(ctx.finished?.length ? [{ id: 'close-finished', label: `Close ${ctx.finished.length} finished agent${ctx.finished.length === 1 ? '' : 's'}…`, icon: 'close' as const, run: () => c.closeFinished(ctx.finished!) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')

@@ -18,7 +18,7 @@ import { nearestInDirection } from './nodeNav'
 import { steppedFontSize, type Prefs, type TogglePref } from './prefs'
 import { stepProjectTab } from './projectActions'
 import { openProjects } from './projectsUi'
-import { closeNodes, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
+import { closeNodes, closeNodesNow, dispatch, nameWithAi, noteRunProblem, patchNode, redo, refreshWindow, restartNode, toggleMaximize, undo, undoable, useStore } from './store'
 import { TEAM_LEAD_TITLE, teamLeadPrompt } from './teamPrompt'
 import { defaultAgentOf } from '../shared/agents'
 import { moveBetweenPanes, revealInFocus, showInFocus, toggleFocus } from './focusState'
@@ -37,6 +37,8 @@ import { laterTrigger, useSendLater } from './sendLater'
 import { canonicalSpec } from '../core/trigger/arming'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
+import { confirmThen } from './shell/confirmStore'
+import { closeFinishedAgents } from './closeFinished'
 import { copyLastReply, revealTranscript, saveConversation, saveOutput } from './lastReplyUi'
 import { askOutputWatch, stopOutputWatch } from './outputWatchUi'
 import { askToFixRun } from './runFixUi'
@@ -349,6 +351,14 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       interruptNodes: (ids) => {
         for (const id of ids) bridge.input(id, '\x1b')
       },
+      closeFinished: (agents) =>
+        void closeFinishedAgents(
+          agents,
+          window.patchbayFiles,
+          closeNodesNow,
+          (message, run) => confirmThen({ title: `Close ${agents.length === 1 ? 'this finished agent' : 'finished agents'}?`, message, verb: 'Close', cancelLabel: 'Keep', icon: 'close', attrs: { 'data-confirm': 'close-finished' } }, run),
+          (text) => say(text)
+        ),
       restartNodes: (ids) => {
         for (const id of ids) void restartNode(id)
       },
