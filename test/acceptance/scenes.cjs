@@ -390,10 +390,13 @@ const scenes = {
     console.log('run fix: agent opened beside the run, linked to it')
   },
   // A new agent, still called "Claude", is asked to write the release notes: its first prompt becomes its name (F29).
-  'auto-title': async (page, { profile }) => {
+  'auto-title': async (page, ctx) => scenes['auto-title-from'](page, ctx, 'Write_the_release_notes_for_1.4,_from_the_merged_PRs_since_1.3'),
+  // The same, when the first thing it hears is a `patchbay send` from a lead: named from the message, not its header.
+  'auto-title-sent': async (page, ctx) => scenes['auto-title-from'](page, ctx, '[Patchbay_message_from_Team_lead_(node_1a2b3c)._Reply_with:_patchbay_send_--node_1a2b3c]|Add_retries_to_the_uploader'),
+  'auto-title-from': async (page, { profile }, ask) => {
     const dir = require('node:path').join(profile, 'title-work')
     require('node:fs').mkdirSync(dir, { recursive: true })
-    const node = { ...box, id: 'named', kind: 'claude', title: 'Claude', x: 930, y: 640, width: 620, prompt: 'edits=notes.md ask=Write_the_release_notes_for_1.4,_from_the_merged_PRs_since_1.3', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: dir }
+    const node = { ...box, id: 'named', kind: 'claude', title: 'Claude', x: 930, y: 640, width: 620, prompt: `edits=notes.md ask=${ask}`, sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: dir }
     await page.evaluate(async (n) => {
       await window.patchbay.dispatch({ op: 'addNode', node: n })
       await window.patchbay.startNode(n.id)

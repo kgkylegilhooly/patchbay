@@ -130,7 +130,8 @@ const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? nu
 const writes = /\bwrites=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
 const subedits = /\bsubedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
 const chat = /\bchat\b/.test(prompt) || !!edits
-const asked = /\bask=(\S+)/.exec(prompt)?.[1].replace(/_/g, ' ') ?? null
+// Underscores for spaces, and | for a line break.
+const asked = /\bask=(\S+)/.exec(prompt)?.[1].replace(/_/g, ' ').replace(/\|/g, '\n') ?? null
 // "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
 const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
 const transcript = chat || fanout ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
