@@ -53,8 +53,15 @@ export function planRestore(doc: CanvasDoc): RestorePlan {
   return plan
 }
 
-/** Leaves a full-screen program's screen and any styling behind, so the divider is readable. */
-const RESET = '\x1b[?1049l\x1b[?25h\x1b[0m'
+/**
+ * Leaves a full-screen program's screen and any styling behind, so the divider is readable. Leaving that screen also
+ * puts the cursor back where it was saved, the top left when no program ran, so the divider was written over the
+ * output's second line. Saving it first (ESC 7) keeps it where it is: with a program's screen up, that save is the
+ * program's own, and the shell's cursor comes back as before.
+ */
+const RESET = '\x1b7\x1b[?1049l\x1b[?25h\x1b[0m'
+/** Between a run's earlier output and its next run. See nodeRunner.ts startRun. */
+export const RUN_DIVIDER = `${RESET}\r\n\x1b[2m--- run again ---\x1b[0m\r\n`
 const DIVIDER = `${RESET}\r\n\x1b[2m--- the old process ended; this is a new shell ---\x1b[0m\r\n`
 
 /**
