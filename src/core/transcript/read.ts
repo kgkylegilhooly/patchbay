@@ -54,6 +54,8 @@ export function parseLine(line: string): Message | null {
   // Filter on the line's type: other line types, such as api-request-blob, also carry a message role.
   if (entry?.type !== 'user' && entry?.type !== 'assistant') return null
   if (entry.isMeta || entry.isSidechain) return null
+  // After compacting, Claude writes its summary as a user line. Nobody typed it, so it isn't the person's message (TR1).
+  if (entry.isCompactSummary === true) return null
   const text = textOf(entry.message?.content)
   if (!text.trim() || LOCAL_COMMAND.test(text)) return null
   return { role: entry.type, text }
