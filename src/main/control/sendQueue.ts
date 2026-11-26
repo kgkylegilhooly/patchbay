@@ -119,8 +119,9 @@ export function createSendQueue({
       const retry = timing.retryEnterMs
       if (retry === undefined) return
       const timer = setTimeout(() => {
-        // A terminal has no status, so this only ever presses Enter again for an agent.
-        if (!took.has(id) && atPrompt(id) && host.isRunning(id)) host.write(id, '\r')
+        // A terminal has no status, so this only ever presses Enter again for an agent. Not while the person is typing
+        // at that prompt: the status can lag on a busy PC, and Enter then would send their unfinished text (SQ1).
+        if (!took.has(id) && atPrompt(id) && host.isRunning(id) && !draft?.drafting(id)) host.write(id, '\r')
       }, retry)
       timer.unref?.()
     }, timing.enterDelayMs)

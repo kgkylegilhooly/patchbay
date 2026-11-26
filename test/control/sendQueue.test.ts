@@ -28,6 +28,31 @@ test('an agent left idle after Enter, its message typed but not sent, gets Enter
   expect(enters()).toBe(2)
 })
 
+// SQ1 (2026-11-26 send queue audit): on a busy PC the status can lag past the retry, while the person has started typing
+// at that prompt. Enter then would send their unfinished text, so the retry leaves it.
+test('no second Enter while the person is typing at that prompt', () => {
+  const tracker = createStatusTracker({ notify: () => {} })
+  const host = fakeHost()
+  host.running.add('a')
+  let drafting = false
+  const queue = createSendQueue({
+    host,
+    tracker,
+    exists: () => true,
+    timing: { enterDelayMs: 100, settleMs: 5000, retryEnterMs: 1000 },
+    draft: { drafting: () => drafting, onDraftSettled: () => {} }
+  })
+  tracker.apply('a', { type: 'launched' })
+  tracker.apply('a', { type: 'hook', name: 'SessionStart' })
+  const enters = () => host.writes.filter(([id, d]) => id === 'a' && d === '\r').length
+  expect(queue.add('a', { text: 'hello' })).toBe('delivered')
+  vi.advanceTimersByTime(100)
+  expect(enters()).toBe(1)
+  drafting = true
+  vi.advanceTimersByTime(1000)
+  expect(enters()).toBe(1)
+})
+
 test('an agent that took the message gets no second Enter, even once it is idle again', () => {
   const { queue, tracker, enters } = setup()
   queue.add('a', { text: 'hello' })
