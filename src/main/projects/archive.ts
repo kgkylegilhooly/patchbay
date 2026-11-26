@@ -3,7 +3,7 @@ import { archiveRefusal } from '../../core/canvas/projectOps'
 import { AGENT_PARTITION, partitionFor } from '../../shared/browserPolicy'
 import { isProjectArchived, isSessionNode, type BrowserNode, type CanvasDoc } from '../../shared/model'
 import type { CanvasStore } from '../../shared/contract'
-import type { ArchiveOptions, ArchivePreview, ArchiveResult, ArchiveSite } from '../../shared/projects'
+import { siteKey, type ArchiveOptions, type ArchivePreview, type ArchiveResult, type ArchiveSite } from '../../shared/projects'
 
 export interface ArchiverDeps {
   store: Pick<CanvasStore, 'get' | 'dispatch'>
@@ -142,7 +142,8 @@ export function createProjectArchiver(deps: ArchiverDeps): {
     const shownSites = new Set(options.clearSites)
     // Worked out again now, so a site another project has opened since is kept.
     for (const site of sitesOf(deps.store.get(), id)) {
-      if (!shownSites.has(site.origin)) continue
+      // By store and origin, as the confirmation listed them: one store's copy shown as kept is never cleared for the other's.
+      if (!shownSites.has(siteKey(site))) continue
       if (site.sharedWith.length) {
         keptSites.push(site.origin)
         continue
