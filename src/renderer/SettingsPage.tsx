@@ -1,3 +1,4 @@
+import { recordedKey } from './globalKeyView'
 import { useEffect, useRef, useState } from 'react'
 import { needsTerminal, type Settings } from '../shared/settings'
 import { bridge } from './bridge'
@@ -85,6 +86,41 @@ function Row({ title, help, htmlFor, wide, children }: { title: string; help?: R
       </div>
       <div className="set-control">{children}</div>
     </div>
+  )
+}
+
+/** F62: off, or the key that brings Patchbay to the next agent needing you from any program, and whether it took. */
+function GlobalKeyRow({ value, saved, onChange }: { value: string; saved: unknown; onChange: (v: string) => void }): React.JSX.Element {
+  const [state, setState] = useState<{ key: string | null; ok: boolean; reason?: string } | null>(null)
+  // Read again after each save, as that's when main tries the key.
+  useEffect(() => void bridge.globalKeyState().then(setState), [saved])
+  const problem = state && !state.ok && state.key === value.trim() ? state.reason : undefined
+  return (
+    <Row
+      title="Key from any program"
+      help={problem ?? 'Brings Patchbay forward on the next agent needing you, from whatever you are in, as Ctrl+Shift+J does inside it. Off unless set.'}
+      htmlFor="set-global-key"
+    >
+      <div className="set-input-row">
+        <Toggle id="set-global-key" checked={!!value} onChange={() => onChange(value ? '' : 'Ctrl+Alt+J')} />
+        {value && (
+          <input
+            type="text"
+            readOnly
+            aria-label="Key from any program"
+            title="Click, then press the keys"
+            value={value}
+            onKeyDown={(e) => {
+              const key = recordedKey(e)
+              if (!key) return
+              e.preventDefault()
+              onChange(key)
+            }}
+            data-global-key={problem ? 'problem' : 'ok'}
+          />
+        )}
+      </div>
+    </Row>
   )
 }
 
@@ -471,6 +507,7 @@ export function SettingsPage({
                 <input id="set-quiet-to" type="time" aria-label="Quiet until" value={draft.quietTo ?? ''} onChange={(e) => set('quietTo', e.target.value)} />
               </div>
             </Row>
+            <GlobalKeyRow value={draft.globalKey ?? ''} saved={saved} onChange={(v) => set('globalKey', v)} />
             <Row title="Try them" help={testResult ?? 'Plays the chime, or sends a real notification.'}>
               <div className="set-input-row">
                 <button type="button" className="btn" data-test="chime" onClick={playChime}>

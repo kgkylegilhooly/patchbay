@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, Tray, type Event as ElectronEvent } from 'electron'
 import { createDocStore } from '../core/persist/docStore'
 import { createScrollbackStore } from '../core/persist/scrollbackStore'
 import type { AgentStatus } from '../shared/model'
@@ -83,6 +83,7 @@ import {
   trayState,
   type QuitIntent
 } from './lifecycle'
+import { createGlobalKey } from './globalKey'
 import { createKeepAwake } from './keepAwake'
 import { createNotifier, headline } from './notifier'
 import { readMessagesTail } from '../core/transcript/read'
@@ -412,6 +413,20 @@ async function boot(): Promise<void> {
   })
   tracker.onChange(() => keepAwake.update(tracker.all()))
   app.on('will-quit', () => keepAwake.dispose())
+  // F62: the key from anywhere.
+  const globalKey = createGlobalKey({
+    // A test run's window checks the key the same way but takes nothing from the rest of the PC.
+    register: (key, cb) => (QUIET_WINDOW ? true : globalShortcut.register(key, cb)),
+    unregister: (key) => void (QUIET_WINDOW || globalShortcut.unregister(key)),
+    onPress: () => {
+      focusWindow()
+      broadcast('pb:onGlobalKey')
+    }
+  })
+  const applyGlobalKey = (): void => void globalKey.apply(currentSettings().globalKey)
+  applyGlobalKey()
+  ipcMain.handle('pb:globalKeyState', () => globalKey.state())
+  app.on('will-quit', () => globalKey.dispose())
   const scrollback = createScrollbackStore(dataDir)
   const saver = createScrollbackSaver({
     snapshot: (id) => host.snapshot(id).data,
@@ -725,7 +740,7 @@ async function boot(): Promise<void> {
     resolveOtherHost,
     triggers,
     launchRunner: join(resourceDir, 'launch-run.cjs'),
-    onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh())
+    onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh(), applyGlobalKey())
   })
   // A host that was there but slow to answer boot's first knock is found by the connect that goes on: its sessions are
   // adopted then, and their views fetched again. See bootAdopt.ts.

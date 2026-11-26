@@ -268,6 +268,10 @@ export interface PatchbayBridge {
   testNotification(): Promise<'shown' | 'failed' | 'unsupported'>
   /** Main asks for the chime, when a session needs you. */
   onChime(cb: () => void): () => void
+  /** F62: the key from anywhere was pressed, and the window brought forward. */
+  onGlobalKey(cb: () => void): () => void
+  /** Whether the key from anywhere is set and working, and why not. */
+  globalKeyState(): Promise<{ key: string | null; ok: boolean; reason?: string }>
   getRuns(): Promise<Record<string, RunResult>>
   onRun(cb: (id: string, run: RunResult) => void): () => void
   stopRun(id: string): Promise<void>
