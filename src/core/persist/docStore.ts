@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { chmod, copyFile, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { docJson } from './docJson'
@@ -508,14 +508,23 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
       flushedSyncAt = ++asked
       flushedSyncDoc = doc
       // Temp names of its own, so a save already under way can't write into the same file.
+      // As in a save: a copy of a read-only file is read-only too, and one left behind blocked every later flush, so
+      // it goes first and the copy is made writable; a backup made read-only from outside is made writable again.
       const replace = (target: string, fill: (temp: string) => void): void => {
         const temp = `${target}.now.tmp`
+        withLockRetrySync(() => rmSync(temp, { force: true }))
         fill(temp)
+        chmodSync(temp, 0o666)
         const fd = openSync(temp, 'r+')
         try {
           fsyncSync(fd)
         } finally {
           closeSync(fd)
+        }
+        if (target === backup) {
+          try {
+            chmodSync(backup, 0o666)
+          } catch {}
         }
         withLockRetrySync(() => renameSync(temp, target))
       }
