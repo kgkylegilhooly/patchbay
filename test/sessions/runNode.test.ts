@@ -178,7 +178,7 @@ test('a save holding a run node loads', () => {
 })
 
 test('a run node with no command is refused', () => {
-  expect(() => migrate(docWith([{ ...node(''), projectId: 'p' }]))).toThrow(/invalid nodes/)
+  expect(migrate(docWith([{ ...node(''), projectId: 'p' }])).nodes).toEqual([])
 })
 
 test('a failed run notifies with no chime', () => {

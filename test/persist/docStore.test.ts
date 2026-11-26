@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { createDocStore, migrate } from '../../src/core/persist/docStore'
+import { createDocStore, migrate, migrateKeeping } from '../../src/core/persist/docStore'
 import type { CanvasDoc } from '../../src/shared/model'
 
 /** Real file system, with a log of what happened and rename failures on demand. */
@@ -233,15 +233,60 @@ test.each<[string, unknown]>([
   ['missing closed', { ...docTitled('a'), closed: undefined }],
   ['missing viewport', { ...docTitled('a'), viewport: undefined }],
   ['a non-numeric viewport', { ...docTitled('a'), viewport: { x: 0, y: 0, zoom: 'big' } }],
-  ['a node with no id', { ...docTitled('a'), nodes: [{ kind: 'sticky', text: '' }] }],
-  ['a node of an unknown kind', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'toaster' }] }],
-  ['a terminal with no cwd', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], cwd: undefined }] }],
   ['a bad edge', { ...docTitled('a'), edges: [{ id: 'e', from: 'a', to: 'b', kind: 'nope' }] }],
   ['a bad closed entry', { ...docTitled('a'), closed: [{ id: 'c' }] }],
-  ['a whiteboard with no shapes list', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'whiteboard', shapes: undefined }] }],
-  ['a whiteboard shape whose color is not a color', { ...docTitled('a'), nodes: [{ ...docTitled('a').nodes[0], kind: 'whiteboard', shapes: [{ type: 'line', color: 'red;}', size: 2, x1: 0, y1: 0, x2: 1, y2: 1 }] }] }]
 ])('migrate rejects %s', (_name, raw) => {
   expect(() => migrate(raw)).toThrow()
+})
+
+// PS1: one window this build can't read (from a newer version, say) used to throw away the whole canvas, backup too.
+test.each([
+  ['a node with no id', { kind: 'sticky', text: '' }],
+  ['a node of an unknown kind', { ...docTitled('a').nodes[0], id: 'x', kind: 'toaster' }],
+  ['a terminal with no cwd', { ...docTitled('a').nodes[0], id: 'x', cwd: undefined }],
+  ['a whiteboard with no shapes list', { ...docTitled('a').nodes[0], id: 'x', kind: 'whiteboard', shapes: undefined }],
+  ['a whiteboard shape whose color is not a color', { ...docTitled('a').nodes[0], id: 'x', kind: 'whiteboard', shapes: [{ type: 'line', color: 'red;}', size: 2, x1: 0, y1: 0, x2: 1, y2: 1 }] }]
+])('migrate drops %s and keeps the rest', (_name, bad) => {
+  const doc = migrateKeeping({ ...docTitled('kept'), nodes: [...docTitled('kept').nodes, bad] })
+  expect(doc.dropped).toBe(1)
+  expect(doc.doc.nodes.map((n) => n.title)).toEqual(['kept'])
+})
+
+test('a dropped window takes its cables and waits with it, and what was inside it stays where it was', () => {
+  const base = { x: 0, y: 0, width: 400, height: 300, parentId: null, projectId: 'p' }
+  const raw = {
+    ...docTitled('a'),
+    nodes: [
+      { ...base, kind: 'terminal', id: 'n1', title: 'kept', cwd: 'C:/a' },
+      { ...base, kind: 'toaster', id: 'x', title: 'from a newer build', x: 100, y: 50 },
+      { ...base, kind: 'terminal', id: 'kid', title: 'inside it', cwd: 'C:/a', parentId: 'x', x: 10, y: 20 },
+      { ...base, kind: 'claude', id: 'c', title: 'waits', cwd: 'C:/a', sessionId: null, transcriptPath: null, after: ['x', 'n1'] }
+    ],
+    edges: [
+      { id: 'e1', from: 'n1', to: 'x', kind: 'link' },
+      { id: 'e2', from: 'c', to: 'n1', kind: 'opened' }
+    ]
+  }
+  const { doc, dropped } = migrateKeeping(raw)
+  expect(dropped).toBe(1)
+  expect(doc.nodes.map((n) => n.id)).toEqual(['n1', 'kid', 'c'])
+  expect(doc.nodes.find((n) => n.id === 'kid')).toMatchObject({ parentId: null, x: 110, y: 70 })
+  expect(doc.nodes.find((n) => n.id === 'c')).toMatchObject({ after: ['n1'] })
+  expect(doc.edges.map((e) => e.id)).toEqual(['e2'])
+})
+
+test('a save file with a window it cannot read loads the rest, and keeps the whole file aside first', () => {
+  const original = JSON.stringify({ ...docTitled('kept'), nodes: [...docTitled('kept').nodes, { ...docTitled('a').nodes[0], id: 'x', kind: 'toaster' }] })
+  writeFileSync(primary(), original)
+  const loaded = createDocStore(dir).load()
+  expect(loaded.recoveredFrom).toBe('primary')
+  expect(loaded.doc.nodes.map((n) => n.title)).toEqual(['kept'])
+  expect(loaded.droppedNodes).toBe(1)
+  expect(loaded.keptAside && readFileSync(loaded.keptAside, 'utf8')).toBe(original)
+  expect(basename(loaded.keptAside!)).toMatch(/^canvas\.unread-\d+\.json$/)
+  // The save file itself is left as it was until the next save.
+  expect(readFileSync(primary(), 'utf8')).toBe(original)
+  expect(corruptFiles()).toEqual([])
 })
 
 test('migrate accepts a current doc with every node kind', () => {

@@ -235,7 +235,7 @@ describe('saved triggers', () => {
   test('a window loads, and a broken one is refused', () => {
     const t = triggerNode('tr', { projectId: 'p', startsAt: START, endsAt: null })
     expect(migrate(docWith({ ...t })).nodes[0]).toEqual(t)
-    expect(() => migrate(docWith({ ...t, startsAt: 'tomorrow' }))).toThrow()
+    expect(migrate(docWith({ ...t, startsAt: 'tomorrow' })).nodes).toEqual([])
   })
 })
 

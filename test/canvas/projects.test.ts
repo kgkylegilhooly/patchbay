@@ -239,9 +239,9 @@ test('a project with a bad closed time is refused', () => {
   expect(() => migrate({ ...twoProjects(), projects: [{ ...project('a'), closedAt: 'soon' }] })).toThrow(/projects/)
 })
 
-test('a migrated save still refuses bad nodes rather than trusting them', () => {
-  expect(() => migrate({ ...version1, nodes: [{ id: 'broken' }] })).toThrow(/invalid nodes/)
-  expect(() => migrate({ ...version1, nodes: 'nope' })).toThrow(/invalid nodes/)
+test('a migrated save still never trusts a bad node: it is left out, and a missing node list refuses the file', () => {
+  expect(migrate({ ...version1, nodes: [{ id: 'broken' }] }).nodes).toEqual([])
+  expect(() => migrate({ ...version1, nodes: 'nope' })).toThrow(/no node list/)
 })
 
 test('a save with no valid projects is refused', () => {

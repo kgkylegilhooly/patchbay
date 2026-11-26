@@ -557,13 +557,16 @@ async function boot(): Promise<void> {
   const hostAtBoot = await host.connect({ quick: true })
   // Copies of older builds that no host runs from any more. Once things have settled, so it costs start-up nothing.
   if (app.isPackaged) setTimeout(() => void pruneHostRuntimes(hostRuntimeDir, runtimeInUse), 60_000).unref()
+  // A canvas recovered from a bad file, or loaded without nodes this build couldn't read, may be missing a session's
+  // node, so no session is ended and no settings pruned for want of one.
+  const canvasUncertain = !!store.loaded.quarantined || !!store.loaded.droppedNodes
   const adoptLive = (skip: ReadonlySet<string> = new Set()): string[] => {
     const plan = planReconnect(store.get(), host.sessions())
     const adopt = plan.adopt.filter((id) => !skip.has(id))
     for (const id of plan.strays) {
       // A session with no node can't be seen or used. After a damaged save, though, the node may be what's missing.
       if (!host.isRunning(id)) host.forget(id)
-      else if (!store.loaded.quarantined) void host.kill(id)
+      else if (!canvasUncertain) void host.kill(id)
     }
     for (const id of adopt) {
       runner.adoptNode(id)
@@ -580,7 +583,7 @@ async function boot(): Promise<void> {
   // A Claude node's settings hold its hook token, so they go with the node. Never those of a session still running.
   const sessionDir = join(dataDir, 'sessions')
   // After a damaged save the canvas may be what's missing, so nothing is pruned then.
-  if (!store.loaded.quarantined) pruneSessionSettings(sessionDir, (id) => store.get().nodes.some((n) => n.id === id) || host.isRunning(id))
+  if (!canvasUncertain) pruneSessionSettings(sessionDir, (id) => store.get().nodes.some((n) => n.id === id) || host.isRunning(id))
   onClaudeNodesRemoved(store, (id) => {
     if (!host.isRunning(id)) removeSessionSettings(sessionDir, id)
   })
@@ -1009,6 +1012,15 @@ async function boot(): Promise<void> {
       title: 'Patchbay recovered your canvas',
       message: `The save file was damaged, so Patchbay opened ${from}.`,
       detail: `The damaged file was kept at ${store.loaded.quarantined}.`
+    })
+  }
+  if (store.loaded.droppedNodes) {
+    const n = store.loaded.droppedNodes
+    void dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Some windows were left out',
+      message: `${n} window${n === 1 ? '' : 's'} on your canvas couldn't be read by this version of Patchbay, so ${n === 1 ? 'it was' : 'they were'} left out. Everything else opened as usual.`,
+      detail: `This happens after going back to an older version. The whole canvas, with them, was kept at ${store.loaded.keptAside}. Any session they had keeps running in the background.`
     })
   }
 }
