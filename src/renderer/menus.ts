@@ -120,6 +120,8 @@ export interface Commands {
   unwatchOutput(nodeId: string): void
   /** Restart when it stops, on or off, for a run. See src/main/runKeeper.ts. */
   toggleKeepRunning(nodeId: string): void
+  /** Runs a run command N times, counting failures (F64). See src/main/runSeries.ts. */
+  runSeries(nodeId: string, times: number): void
   /** Send later: a message to this agent once, at a time, as a trigger beside it. See sendLater.ts. */
   sendLater(nodeId: string): void
   revealTranscript(nodeId: string): void
@@ -499,6 +501,12 @@ export function nodeMenu(
     ...(node.kind === 'claude' ? [{ id: 'send-later', label: 'Send later…', icon: 'trigger' as const, run: () => c.sendLater(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
+    ...(node.kind === 'run'
+      ? [
+          { id: 'run-5-times', label: 'Run 5 times', icon: 'restart' as const, run: () => c.runSeries(node.id, 5) },
+          { id: 'run-20-times', label: 'Run 20 times', icon: 'restart' as const, run: () => c.runSeries(node.id, 20) }
+        ]
+      : []),
     ...(node.kind === 'run' ? [{ id: 'keep-running', label: 'Restart when it stops', icon: 'restart' as const, checked: node.keepRunning === true, run: () => c.toggleKeepRunning(node.id) }] : []),
     ...(node.kind === 'run' && ctx.runFailed ? [{ id: 'ask-to-fix', label: 'Ask an agent to fix…', icon: 'sparkle' as const, run: () => c.askToFixRun(node.id) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),

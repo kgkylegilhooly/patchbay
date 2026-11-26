@@ -39,6 +39,7 @@ import { readBoardImageAsync, saveBoardImageAsync } from './boardImages'
 import { agentOffNow } from './agentsAllowed'
 import { openInVsCodeAt } from './openFolder'
 import { createRunKeeper } from './runKeeper'
+import { createRunSeries } from './runSeries'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
@@ -239,6 +240,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
       const last = keep ? host.snapshot(id).data : ''
       if (last) void scrollback.write(id, last).catch((e: unknown) => console.error('Patchbay could not save scrollback:', e))
       approvals.clearNode(id)
+      series.forget(id)
       exitedTerminals.delete(id)
       saver.forget(id)
       s.sendGuard?.forget(id)
@@ -399,8 +401,19 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     },
     gaveUp: (id) => notifier.runGaveUp(id)
   })
+  // Run N times (F64): while a series lasts it owns the run's ends, so neither the keeper nor a failure notice acts on them.
+  const series = createRunSeries({
+    restart: (id) => restartNodeNow(id),
+    running: (id) => host.isRunning(id),
+    changed: (id, state) => broadcast('pb:onRunSeries', id, state),
+    finished: (id, text) => notifier.runSeriesDone(id, text)
+  })
+  ipcMain.handle('pb:runSeries:start', (_e, id: unknown, times: unknown) =>
+    typeof id === 'string' && find(id)?.kind === 'run' ? series.start(id, Number(times)) : { ok: false, reason: 'Only a run command can run several times.' }
+  )
   runner.onRun((id, run) => {
     broadcast('pb:onRun', id, run)
+    if (series.onRun(id, run)) return
     const kept = keeper.onRun(id, run)
     if (kept === 'none' && !run.running && !run.stoppedByYou && run.exitCode) notifier.runFailed(id)
   })
