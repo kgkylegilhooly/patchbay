@@ -299,6 +299,10 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         }
         useSendLater.setState({ nodeId: agentId, schedule })
       },
+      runSeries: (nodeId, times) =>
+        void bridge.startRunSeries(nodeId, times).then((r) => {
+          if (!r.ok) say(r.reason)
+        }),
       toggleKeepRunning: (nodeId) => {
         const node = doc().nodes.find((n) => n.id === nodeId)
         if (node?.kind === 'run') patchNode(nodeId, { keepRunning: node.keepRunning ? undefined : true })

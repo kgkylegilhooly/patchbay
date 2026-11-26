@@ -8,6 +8,8 @@ export interface Notifier {
   runGaveUp(id: string): void
   /** A run kept running stopped and wasn't started again, for the reason given (LJ1: its launch.json changed). */
   runNotRestarted(id: string, why: string): void
+  /** A run's series ended (F64): how many of how many failed, or why it stopped. */
+  runSeriesDone(id: string, text: string): void
   /** A window printed what the person asked to be told about (Notify when it prints…). */
   printed(id: string, phrase: string): void
   setFocusedNode(id: string | null): void
@@ -106,6 +108,7 @@ export function createNotifier({
     runFailed: (id) => announce(id, 'Stopped with an error.'),
     runGaveUp: (id) => announce(id, 'Stopped with an error 4 times in a minute, so it was not restarted again.'),
     runNotRestarted: (id, why) => announce(id, why),
+    runSeriesDone: (id, text) => announce(id, text),
     printed: (id, phrase) => announce(id, `Printed "${phrase}".`),
     setFocusedNode(id) {
       focused = id

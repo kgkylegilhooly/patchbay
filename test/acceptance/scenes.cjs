@@ -701,6 +701,37 @@ const scenes = {
     if (!/Closes Changelog and Version bump/.test(text) || /Smoke tests/.test(text)) throw new Error(`The confirmation says: ${text}`)
     await sleep(300)
   },
+  // F64: a test run that fails every second time, run 5 times from its menu: the chip counts 2 of 5 failed.
+  // Its window menu: Run 5 times and Run 20 times.
+  'run-series-menu': async (page, ctx) => scenes['run-series'](page, ctx, true),
+  'run-series': async (page, { profile }, menuOnly = false) => {
+    const path = require('node:path')
+    const fs = require('node:fs')
+    const dir = path.join(profile, 'series-work')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, 'flaky.cjs'),
+      "const fs = require('fs')\nconst n = Number(fs.existsSync('count') ? fs.readFileSync('count', 'utf8') : 0) + 1\nfs.writeFileSync('count', String(n))\nconsole.log(n % 2 ? ' PASS  test/upload.test.ts (run ' + n + ')' : ' FAIL  test/upload.test.ts > retries on 503 (run ' + n + ')')\nprocess.exit(n % 2 ? 0 : 1)\n"
+    )
+    const node = { ...box, id: 'flaky', kind: 'run', title: 'Upload tests', x: 930, y: 640, width: 620, height: 300, parentId: null, projectId: 'p1', cwd: dir, command: 'node flaky.cjs' }
+    await page.evaluate(async (n) => window.patchbay.dispatch({ op: 'addNode', node: n }), node)
+    await page.waitForSelector('.react-flow__node[data-id="flaky"] .xterm-screen', { timeout: 10000 })
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Upload tests'))?.click())
+    await sleep(600)
+    const box2 = await page.$eval('.react-flow__node[data-id="flaky"] .xterm-screen', (el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+    })
+    await page.mouse.click(box2.x, box2.y, { button: 'right' })
+    if (menuOnly) return sleep(400)
+    await page.waitForSelector('.menu-panel [data-cmd="run-5-times"]', { timeout: 5000 })
+    await page.click('.menu-panel [data-cmd="run-5-times"]')
+    await page.waitForFunction(() => /of 5 failed|of 5 passed/.test(document.querySelector('.react-flow__node[data-id="flaky"] [data-run-series]')?.textContent ?? ''), { timeout: 60000 }).catch(() => {})
+    const chip = await page.$eval('.react-flow__node[data-id="flaky"] [data-run-series]', (e) => e.textContent).catch(() => '')
+    if (chip !== '2 of 5 failed') throw new Error(`The chip says: ${JSON.stringify(chip)}`)
+    console.log(`run series: ${chip}`)
+    await sleep(400)
+  },
   // F39: prompts used before, and the New Claude Code form with Recent open.
   'recent-prompts': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([

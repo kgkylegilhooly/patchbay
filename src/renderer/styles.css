@@ -3968,6 +3968,11 @@ circle.wb-eraser {
 
 /* Run configurations from launch.json */
 
+.run-launch.run-series-failed {
+  color: var(--led-needs);
+  border-color: currentColor;
+}
+
 .run-launch {
   flex: none;
   padding: 0 6px;

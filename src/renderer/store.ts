@@ -54,6 +54,8 @@ interface State {
   attention: string[]
   usage: UsageState
   runs: Record<string, RunResult>
+  /** Run N times (F64): each run command's series, while it runs and its count after. */
+  runSeries: Record<string, import('../shared/runSeries').SeriesState>
   ports: Record<string, PortInfo[]>
   /** Each browser node's live page. */
   browsers: Record<string, BrowserState>
@@ -109,6 +111,7 @@ export const useStore = create<State>(() => ({
   attention: [],
   usage: { plan: null, nodes: {}, budget: null },
   runs: {},
+  runSeries: {},
   ports: {},
   browsers: {},
   activity: {},
@@ -183,6 +186,14 @@ export async function connectStore(): Promise<void> {
   bridge.onAttention((attention) => useStore.setState({ attention }))
   void bridge.getAttention().then((attention) => useStore.setState({ attention }))
   bridge.onRun((id, run) => useStore.setState((s) => ({ runs: { ...s.runs, [id]: run } })))
+  bridge.onRunSeries((id, state) =>
+    useStore.setState((s) => {
+      const next = { ...s.runSeries }
+      if (state) next[id] = state
+      else delete next[id]
+      return { runSeries: next }
+    })
+  )
   void bridge.getRuns().then((runs) => useStore.setState((s) => ({ runs: { ...runs, ...s.runs } })))
   bridge.onPorts((ports) => useStore.setState({ ports }))
   void bridge.getPorts().then((ports) => useStore.setState({ ports }))

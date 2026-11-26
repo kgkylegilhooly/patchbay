@@ -11,6 +11,7 @@ import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoabl
 import { contextLabel } from '../usageView'
 import { RunDot, RunLabel, StatusBadge, StatusDot } from './StatusBadge'
 import { runFailed } from '../status/status'
+import { seriesText } from '../../shared/runSeries'
 import { MaximizeTool, WindowTools } from './WindowTools'
 import { PaneTool } from './PaneTool'
 import { SetupHold } from './SetupHold'
@@ -343,6 +344,7 @@ export function NodeChrome({
         {status && <StatusBadge status={status} nodeId={node.id} />}
         {node.kind === 'claude' && <ContinueButton nodeId={node.id} stop={stop} />}
         {isRun && <RunLabel run={run} />}
+        {isRun && <SeriesChip nodeId={node.id} />}
         {isRun && runFailed(run) && (
           <button type="button" className="btn nodrag" data-cmd="ask-to-fix" title="Opens a new agent beside this run, with its command and last output as the brief" onClick={() => void askToFixRun(node.id)}>
             Ask an agent to fix
@@ -449,5 +451,17 @@ export function NodeChrome({
       <Jacks />
       {target ? createPortal(card, target) : card}
     </>
+  )
+}
+
+/** Run N times (F64): "Run 3 of 5 · 1 failed" while it runs, "1 of 5 failed" after. */
+function SeriesChip({ nodeId }: { nodeId: string }): React.JSX.Element | null {
+  const series = useStore((s) => s.runSeries[nodeId])
+  if (!series) return null
+  const bad = !series.running && series.failed > 0
+  return (
+    <span className={`run-launch run-series${bad ? ' run-series-failed' : ''}`} data-run-series title="Run N times: how many of its runs failed, from its window menu">
+      {seriesText(series)}
+    </span>
   )
 }

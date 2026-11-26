@@ -511,6 +511,9 @@ project's folder, and **Open in Reader** then shows that file on the canvas.
   When one fails, **Ask an agent to fix** (in its header and its menu) opens the New agent form in its folder, with a
   brief holding the command, the exit code and its last 80 lines of output. Nothing starts until you press Start; the
   agent, named "Fix" and the run's name, opens beside the run and linked to it.
+  For a flaky test, **Run 5 times** or **Run 20 times** in its menu runs it again after each end, and a chip counts:
+  "Run 3 of 5 · 1 failed", then "2 of 5 failed". Stop ends the series. While it lasts there's one notice at the end,
+  not one per failed run.
 - **Run configurations:** New run configuration… reads a folder's `.vscode\launch.json` (comments and trailing commas
   are fine) and lists each configuration and compound. Reading it runs nothing. Only `node` launch configurations run,
   with their `program`, `args`, `cwd`, `env`, `runtimeExecutable`, `runtimeArgs`, `windows` section and variables such

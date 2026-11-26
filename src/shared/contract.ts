@@ -270,6 +270,9 @@ export interface PatchbayBridge {
   onChime(cb: () => void): () => void
   getRuns(): Promise<Record<string, RunResult>>
   onRun(cb: (id: string, run: RunResult) => void): () => void
+  /** Runs a run command N times, counting failures (F64). */
+  startRunSeries(id: string, times: number): Promise<{ ok: true } | { ok: false; reason: string }>
+  onRunSeries(cb: (id: string, state: import('./runSeries').SeriesState | null) => void): () => void
   stopRun(id: string): Promise<void>
   getPorts(): Promise<Record<string, PortInfo[]>>
   onPorts(cb: (ports: Record<string, PortInfo[]>) => void): () => void
