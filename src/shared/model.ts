@@ -212,6 +212,14 @@ export interface Edge {
   kind: 'opened' | 'link' | 'after'
 }
 
+/** A closed terminal or run, kept whole: Reopen brings back the same node, so its saved output comes with it. */
+export interface ClosedShell {
+  node: TerminalNode | RunNode
+  closedAt: number
+}
+
+export const CLOSED_SHELLS_KEPT = 20
+
 export interface ClosedSession {
   id: string
   title: string
@@ -258,6 +266,11 @@ export interface CanvasDoc {
   edges: Edge[]
   /** Oldest first, at most the newest 200. */
   closed: ClosedSession[]
+  /**
+   * Terminals and runs closed lately, oldest first, at most CLOSED_SHELLS_KEPT, to reopen with their saved output
+   * (F48). Optional, so a build without it loads and keeps the canvas as it is.
+   */
+  closedShells?: ClosedShell[]
   /** The view of the project on screen. */
   viewport: Viewport
 }
@@ -298,6 +311,8 @@ export type CanvasOp =
   | { op: 'removeNodes'; ids: string[]; at: number }
   /** Takes an entry out of the closed history, as when its conversation is reopened. */
   | { op: 'removeClosed'; id: string }
+  /** Drops a closed terminal or run from the list, by its node id: reopened, or forgotten. */
+  | { op: 'forgetClosedShell'; id: string }
   | { op: 'addEdge'; edge: Edge }
   | { op: 'removeEdge'; id: string }
   | { op: 'setParent'; ids: string[]; parentId: string | null }

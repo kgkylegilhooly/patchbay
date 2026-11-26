@@ -389,6 +389,51 @@ const scenes = {
     if (!made.agent || !made.linked || made.title !== 'Fix Parser tests') throw new Error(`After Start: ${JSON.stringify(made)}`)
     console.log('run fix: agent opened beside the run, linked to it')
   },
+  // The Dev shell prints a line and is closed: Closed conversations lists it under Terminals and runs (F48).
+  'closed-shell': async (page) => {
+    await page.waitForSelector('.react-flow__node[data-id="term"] .xterm-screen', { timeout: 15000 })
+    await sleep(1500)
+    // A line to find again, then a screenful more, as a real session has.
+    await page.evaluate(() => window.patchbay.input('term', 'echo build-finished-ok-42; for i in $(seq 1 40); do echo "line $i"; done\r'))
+    await sleep(2000)
+    await page.evaluate(() => window.patchbay.dispatch({ op: 'removeNodes', ids: ['term'] }))
+    await page.waitForFunction(() => !document.querySelector('.react-flow__node[data-id="term"]'), { timeout: 10000 })
+    await page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await page.evaluate(() => document.querySelector('.dock .menu-panel [data-cmd="recent"]').click())
+    await page.waitForSelector('.shell-drawer .recent-entry', { timeout: 5000 })
+    await sleep(400)
+  },
+  // The same, then Reopen: the Dev shell is back on the canvas, started again, with the line it printed above.
+  'closed-shell-reopened': async (page) => {
+    await scenes['closed-shell'](page)
+    await page.click('[data-closed-shell="term"] [data-cmd="reopen-shell"]')
+    // Back under a new id, so it's found by its title.
+    const reopened = await page.waitForFunction(() => {
+      const n = [...document.querySelectorAll('.react-flow__node')].find((el) => el.querySelector('.unit-head')?.textContent?.includes('Dev shell'))
+      return n?.querySelector('.xterm-screen') ? n.getAttribute('data-id') : null
+    }, { timeout: 10000 })
+    const id = await reopened.jsonValue()
+    await sleep(2500)
+    // The earlier output is in the terminal's scrollback, above the new prompt, as after a restart: scrolled up to it.
+    const box = await page.$eval(`.react-flow__node[data-id="${id}"] .xterm-screen`, (el) => {
+      const r = el.getBoundingClientRect()
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+    })
+    await page.mouse.move(box.x, box.y)
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.wheel({ deltaY: -200 })
+      await sleep(150)
+    }
+    await sleep(600)
+    const rows = await page.evaluate((i) => [...document.querySelectorAll(`.react-flow__node[data-id="${i}"] .xterm-rows > div`)].map((r) => r.textContent).join('\n'), id)
+    const stream = await page.evaluate((i) => window.patchbay.attach(i).then((s) => s.data), id)
+    const status = await page.evaluate(async (i) => (await window.patchbay.getStatuses())[i] ?? null, id)
+    const listed = await page.evaluate(() => !!document.querySelector('[data-closed-shell="term"]'))
+    const ok = stream.includes('build-finished-ok-42') && stream.includes('process ended') && !listed && status !== 'exited'
+    if (!ok) throw new Error(`After Reopen: earlier output in the session ${stream.includes('build-finished-ok-42')}, divider ${stream.includes('process ended')}, still listed ${listed}, status ${status}`)
+    console.log(`closed shell reopened, running, earlier output in its session; scrolled into view: ${rows.includes('build-finished-ok-42')}`)
+  },
   // A new agent, still called "Claude", is asked to write the release notes: its first prompt becomes its name (F29).
   'auto-title': async (page, ctx) => scenes['auto-title-from'](page, ctx, 'Write_the_release_notes_for_1.4,_from_the_merged_PRs_since_1.3'),
   // The same, when the first thing it hears is a `patchbay send` from a lead: named from the message, not its header.

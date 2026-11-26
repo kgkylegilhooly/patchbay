@@ -332,6 +332,9 @@ and spends a little quota.
 - **Last activity** is held in memory, so after a restart a session shows no time until it next does something.
 - **Pin:** pinned, the sidebar stays open. Unpinned, clicking the canvas hides it.
 - **Closed conversations** reopens a closed Claude conversation, the same as the Closed conversations panel.
+  The panel also lists the last 20 closed **terminals and runs**. Reopen brings one back in view with its earlier
+  output in its scrollback: a terminal as a fresh shell in its folder (a command it was opened with doesn't run
+  again), a run ready for Run. Forget drops it and its saved output.
 
 ## Session windows
 

@@ -430,3 +430,35 @@ describe('removeClosed', () => {
     expect(reduce(doc, { op: 'removeClosed', id: 'nope' })).toBe(doc)
   })
 })
+
+// F48: a closed terminal or run is kept, so it can be reopened with its output, as a closed agent's conversation is.
+describe('closed terminals and runs', () => {
+  const run = (id: string): CanvasNode => ({ ...term(id, 0, 0), kind: 'run', command: 'npm test' }) as unknown as CanvasNode
+
+  test('closing a terminal or run keeps it, newest last, and an agent or note is not kept there', () => {
+    const doc = emptyDoc({ nodes: [term('t', 5, 6, { title: 'Dev shell' }), run('r'), claude('c'), sticky('s', 0, 0)] })
+    const next = reduce(doc, { op: 'removeNodes', ids: ['t', 'r', 'c', 's'], at: 50 })
+    expect(next.closedShells?.map((s) => [s.node.id, s.node.kind, s.closedAt])).toEqual([
+      ['t', 'terminal', 50],
+      ['r', 'run', 50]
+    ])
+    expect(next.closedShells?.[0].node).toMatchObject({ title: 'Dev shell', cwd: 'C:/w' })
+  })
+
+  test('the newest 20 are kept, and closing one again replaces its older entry', () => {
+    let doc = emptyDoc({ nodes: Array.from({ length: 22 }, (_, i) => term(`t${i}`, 0, 0)) })
+    for (let i = 0; i < 22; i++) doc = reduce(doc, { op: 'removeNodes', ids: [`t${i}`], at: i })
+    expect(doc.closedShells).toHaveLength(20)
+    expect(doc.closedShells?.[0].node.id).toBe('t2')
+    doc = reduce(doc, { op: 'addNode', node: term('t5', 0, 0) })
+    doc = reduce(doc, { op: 'removeNodes', ids: ['t5'], at: 99 })
+    expect(doc.closedShells?.filter((s) => s.node.id === 't5').map((s) => s.closedAt)).toEqual([99])
+  })
+
+  test('forgetting one removes it, and a doc without any is left as it was', () => {
+    const doc = reduce(emptyDoc({ nodes: [term('t', 0, 0)] }), { op: 'removeNodes', ids: ['t'], at: 1 })
+    expect(reduce(doc, { op: 'forgetClosedShell', id: 't' }).closedShells).toEqual([])
+    const plain = emptyDoc()
+    expect(reduce(plain, { op: 'forgetClosedShell', id: 'x' })).toBe(plain)
+  })
+})

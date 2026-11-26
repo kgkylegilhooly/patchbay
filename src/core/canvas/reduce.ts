@@ -1,4 +1,4 @@
-import { DISARMED, isProjectArchived, isProjectOpen, type CanvasDoc, type CanvasNode, type CanvasOp, type ClosedSession, type LayoutRestore, type Project, type TriggerNode, type TriggerState } from '../../shared/model'
+import { CLOSED_SHELLS_KEPT, DISARMED, isProjectArchived, isProjectOpen, type CanvasDoc, type CanvasNode, type CanvasOp, type ClosedSession, type LayoutRestore, type Project, type TriggerNode, type TriggerState } from '../../shared/model'
 import { canonicalSpec } from '../trigger/arming'
 import { sanitizeBoard } from '../../shared/board'
 import { arrangeNodes } from './arrange'
@@ -198,11 +198,17 @@ function removeNodes(doc: CanvasDoc, ids: string[], at: number): CanvasDoc {
   const closed = entries.length
     ? [...doc.closed, ...entries].sort((a, b) => a.closedAt - b.closedAt).slice(-CLOSED_LIMIT)
     : doc.closed
+  // Terminals and runs are kept whole, to reopen with their output (F48). One closed again replaces its older entry.
+  const shells = removed.filter((n) => n.kind === 'terminal' || n.kind === 'run').map((node) => ({ node, closedAt: at }) as NonNullable<CanvasDoc['closedShells']>[number])
+  const closedShells = shells.length
+    ? [...(doc.closedShells ?? []).filter((s) => !removing.has(s.node.id)), ...shells].slice(-CLOSED_SHELLS_KEPT)
+    : doc.closedShells
   return {
     ...doc,
     nodes: fitAll(nodes, [...refit].filter((id) => id === null || !removing.has(id))),
     edges: doc.edges.filter((e) => !removing.has(e.from) && !removing.has(e.to)),
-    closed
+    closed,
+    ...(closedShells ? { closedShells } : {})
   }
 }
 
@@ -403,6 +409,8 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
       return removeNodes(doc, op.ids, op.at)
     case 'removeClosed':
       return doc.closed.some((c) => c.id === op.id) ? { ...doc, closed: doc.closed.filter((c) => c.id !== op.id) } : doc
+    case 'forgetClosedShell':
+      return doc.closedShells?.some((s) => s.node.id === op.id) ? { ...doc, closedShells: doc.closedShells.filter((s) => s.node.id !== op.id) } : doc
     case 'addEdge': {
       const { edge } = op
       const nodeIds = new Set(doc.nodes.map((n) => n.id))

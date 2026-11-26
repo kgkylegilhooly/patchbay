@@ -2461,6 +2461,25 @@ circle.wb-eraser {
   list-style: none;
 }
 
+.recent-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.recent-scroll .recent-list {
+  flex: none;
+  overflow: visible;
+}
+
+.recent-heading {
+  margin: 0;
+  padding: 14px 14px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
 .recent-entry {
   padding: 12px 14px;
   border-bottom: 1px solid rgb(255 255 255 / 0.08);

@@ -325,9 +325,18 @@ export function migrateKeeping(input: unknown): { doc: CanvasDoc; dropped: numbe
   if (!isViewport(raw.viewport)) throw new Error('Save file has an invalid viewport')
   const read = keepReadable(raw.nodes, raw.edges)
   if (read.dropped) console.warn(`Patchbay left out ${read.dropped} node(s) it couldn't read while loading.`)
-  const doc = rehomeOrphans(showOpenProject(checkBoards({ ...raw, nodes: read.nodes, edges: read.edges } as unknown as CanvasDoc)))
+  const doc = rehomeOrphans(showOpenProject(checkBoards({ ...withShellsChecked(raw), nodes: read.nodes, edges: read.edges } as unknown as CanvasDoc)))
   // Task data never costs the canvas: a damaged record is dropped on its own, and the rest of the project loads.
   return { doc: { ...doc, projects: doc.projects.map(withTasksChecked) }, dropped: read.dropped }
+}
+
+/** Closed terminals and runs (F48) are an optional extra: an entry this build can't read is dropped on its own. */
+function withShellsChecked(raw: Fields): Fields {
+  if (raw.closedShells === undefined) return raw
+  const { closedShells, ...rest } = raw
+  if (!Array.isArray(closedShells)) return rest
+  const kept = closedShells.filter((s) => isObject(s) && isNumber(s.closedAt) && isObject(s.node) && (s.node.kind === 'terminal' || s.node.kind === 'run') && isNode(s.node))
+  return { ...rest, closedShells: kept }
 }
 
 /** migrateKeeping on a save file's text, or null when it isn't one this version can use. */
