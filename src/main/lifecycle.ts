@@ -195,7 +195,7 @@ export function decideInstance(gotLock: boolean, exiting: ExitingMark | null = n
   return 'focus-and-quit'
 }
 
-const SETTING_KEYS = ['shell', 'permissionMode', 'claudeTerminal', 'claudeCommand', 'codexCommand', 'codexApproval', 'defaultAgent', 'updateFeed', 'updateCheck', 'envNotPassed', 'notifications', 'notificationText', 'quietFrom', 'quietTo',
+const SETTING_KEYS = ['shell', 'permissionMode', 'claudeTerminal', 'claudeCommand', 'codexCommand', 'codexApproval', 'defaultAgent', 'updateFeed', 'updateCheck', 'envNotPassed', 'notifications', 'notificationText', 'triggersPaused', 'quietFrom', 'quietTo',
   'sound', 'keepAwake', 'agentsOff', 'continueAtReset', 'claudeNativeMessaging', 'agentLimit'] as const
 
 /** A settings file that can't be read means defaults: it must never stop the canvas from opening. */
@@ -222,6 +222,11 @@ export function parseSettings(text: string | null): Settings {
  * The file's new text, keeping any fields Patchbay doesn't know. Null when the current file can't be
  * read as settings, because saving over it would lose whatever was being edited by hand.
  */
+/** settings.json with only Pause all triggers changed (F54), or null when the file has a mistake in it. */
+export function withTriggersPaused(text: string | null, on: boolean): string | null {
+  return mergeSettings(text, { ...parseSettings(text), triggersPaused: on ? 'on' : undefined })
+}
+
 export function mergeSettings(text: string | null, next: Settings): string | null {
   let current: Record<string, unknown> = {}
   if (text !== null && text.trim()) {

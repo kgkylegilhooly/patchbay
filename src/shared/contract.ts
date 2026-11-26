@@ -299,6 +299,8 @@ export interface PatchbayBridge {
   agentProgramProblem(kind?: 'claude' | 'codex'): Promise<string | null>
   /** Applies to sessions started from now on. */
   saveSettings(settings: Settings): Promise<{ ok: true } | { ok: false; reason: string }>
+  /** Pause all triggers on or off (F54), leaving every other setting as it is. */
+  setTriggersPaused(on: boolean): Promise<{ ok: true } | { ok: false; reason: string }>
   getApprovals(): Promise<PendingApproval[]>
   onApprovals(cb: (a: PendingApproval[]) => void): () => void
   answerApproval(requestId: string, choice: ApprovalChoice): Promise<void>

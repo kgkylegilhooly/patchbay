@@ -1,3 +1,4 @@
+import { PAUSED_NEXT, useTriggersPaused } from '../triggersPaused'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { memo, useEffect, useState } from 'react'
 import { describeSchedule } from '../../core/trigger/schedule'
@@ -39,6 +40,9 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
   const sourceId = sourceNodeId(node.schedule)
   const sourceTitle = useStore((s) => (sourceId ? s.doc?.nodes.find((n) => n.id === sourceId)?.title : undefined))
   const limits = limitsOf(node)
+  // F54: armed, but held with all the others, so the next run it would show won't happen.
+  const held = useTriggersPaused((s) => s.paused) && armed
+  const next = held ? PAUSED_NEXT : nextLabel(node, now)
   const [problem, setProblem] = useState<string | null>(null)
 
   const runNow = async (): Promise<void> => {
@@ -55,9 +59,9 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
         <EditableTitle node={node} />
         <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>
         {/* The tile's second line, zoomed out (zoom.css): the chip, then what it waits for and when it next runs. */}
-        <span className="head-far" title={nextLabel(node, now)}>
+        <span className="head-far" title={next}>
           <span className={`trigger-chip trigger-chip-${state}`}>{STATE_LABELS[state]}</span>
-          <span className="key-badge">{triggerTileLine(describeSchedule(node.schedule, () => sourceTitle, node), { armed, nextAt: node.nextAt }, now, relative)}</span>
+          <span className="key-badge">{held ? 'Paused · ' : ''}{triggerTileLine(describeSchedule(node.schedule, () => sourceTitle, node), { armed, nextAt: held ? null : node.nextAt }, now, relative)}</span>
         </span>
         <button className="icon-btn tool-btn nodrag" aria-label={`Delete ${node.title}`} title="Delete trigger" onClick={() => closeNodes([node.id])}>
           <Icon name="close" size={15} />
@@ -68,7 +72,7 @@ export const TriggerNode = memo(function TriggerNode({ data, selected }: NodePro
           <dt>When</dt>
           <dd data-trigger="schedule">{describeSchedule(node.schedule, () => sourceTitle, node)}</dd>
           <dt>Next</dt>
-          <dd data-trigger="next">{nextLabel(node, now)}</dd>
+          <dd data-trigger="next" data-held={held || undefined}>{next}</dd>
           {node.preflight && (
             <>
               <dt>Only if</dt>

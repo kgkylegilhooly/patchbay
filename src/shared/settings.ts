@@ -42,6 +42,8 @@ export interface Settings {
   notifications?: string
   /** 'off' keeps notifications to the plain words (Finished its turn, Needs you), without what the agent said or asks. */
   notificationText?: string
+  /** 'on' holds every armed trigger: due runs are skipped, arming is kept (Work menu > Pause all triggers). */
+  triggersPaused?: string
   /** Quiet hours, as HH:MM: Windows notifications are held and the chime is off from quietFrom up to quietTo. See main/quietHours.ts. */
   quietFrom?: string
   quietTo?: string

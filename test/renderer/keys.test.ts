@@ -21,6 +21,7 @@ import type { Commands, MenuState } from '../../src/renderer/menus'
 // action leaves a rejected promise behind, which fails the whole run. Open document… asks main for a file picker.
 vi.mock('../../src/renderer/reader/readerUi', () => ({ pickDocument: vi.fn(async () => {}), openDocumentEntry: vi.fn(), openPlanEntry: vi.fn(), readerMenu: vi.fn(() => []) }))
 // Jump to next needs-you loads the store on use, which reads the window's bridge too.
+vi.mock('../../src/renderer/triggersPaused', () => ({ switchTriggersPaused: vi.fn(async () => {}), useTriggersPaused: vi.fn(() => false) }))
 vi.mock('../../src/renderer/needsYouUi', async (actual) => ({ ...(await actual<object>()), jumpToNext: vi.fn(async () => {}) }))
 
 const press = (key: string, over: Partial<{ code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean; altGr: boolean }> = {}) => ({

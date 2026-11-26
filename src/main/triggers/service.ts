@@ -77,8 +77,11 @@ export function createTriggerService({
   preflight,
   watch,
   held,
+  paused,
   now = Date.now
 }: {
+  /** Pause all triggers (F54): due runs are skipped, arming is kept, and Run now still works. */
+  paused?: () => boolean
   /** Why a target's prompts are held now, as at a usage limit until its reset (see sessions/agentStops.ts). */
   held?: (targetId: string) => string | undefined
   store: CanvasStore
@@ -228,6 +231,8 @@ export function createTriggerService({
    * must still say what was agreed when the check ends.
    */
   const fireChecked = (node: TriggerNode, source: TriggerRun['source'], at: number, event: TriggerEvent | null = null): void => {
+    // Before any check command, too. Recorded once while it lasts (skip folds repeats), and nothing is caught up after.
+    if (paused?.()) return skip(node.id, source, 'All triggers are paused.', event)
     const check = node.preflight
     if (!check || !preflight) {
       fire(node, source, at, event)

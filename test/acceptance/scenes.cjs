@@ -845,6 +845,24 @@ const scenes = {
     const t = await page.evaluate(async () => (await window.patchbay.getDoc()).nodes.find((n) => n.kind === 'trigger' && n.targetId === 'idle'))
     console.log(`send later: ${t ? `${t.title}, armed ${t.armedSpec !== null}, once ${t.schedule.type === 'once'}, prompt ${JSON.stringify(t.prompt)}` : 'no trigger'}`)
   },
+  // F54: an armed trigger, then Work > Pause all triggers, and the Work menu again with the switch ticked.
+  'pause-triggers': async (page) => {
+    await scenes.trigger(page)
+    const work = () => page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await work()
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await page.click('.dock .menu-panel [data-cmd="pause-triggers"]').catch(() => {})
+    await sleep(800)
+    await work()
+    await sleep(400)
+    const s = await page.evaluate(async () => ({
+      saved: (await window.patchbay.getSettings()).triggersPaused ?? null,
+      next: document.querySelector('.react-flow__node[data-id="trig"] [data-trigger="next"]')?.textContent,
+      tile: document.querySelector('.react-flow__node[data-id="trig"] .head-far .key-badge')?.textContent,
+      ticked: document.querySelector('.dock .menu-panel [data-cmd="pause-triggers"]')?.getAttribute('aria-checked') ?? null
+    }))
+    console.log(`pause triggers: saved ${s.saved}, ticked ${s.ticked}, next ${JSON.stringify(s.next)}, tile ${JSON.stringify(s.tile)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

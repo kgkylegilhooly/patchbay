@@ -576,7 +576,7 @@ async function boot(): Promise<void> {
   // Workflows: saved processes whose steps run in order, each finishing on evidence. See src/main/workflows.
   const workflows = setupWorkflows({ store, runner, tracker, stops, isRunning: (id) => host.isRunning(id), isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, tasks, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree, send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), docs: docs.service, broadcast, log: (line) => log?.write(line) })
   const allVerbs = withTeamVerb(workflows.wrap(withDocVerbs(withFilesVerbs(withRecipeVerbs(verbs, { store, service: recipes }), { store, service: filesTouched }), { store, docs: docs.service, comments: docs.comments })), { store, tracker, stops, messages: () => messages.all(), git: systemGit(gitEnvFrom(cleanEnv(process.env, {}))) })
-  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
+  const triggers = createTriggerService({ store, tracker, host, queue: sendQueue, paused: () => currentSettings().triggersPaused === 'on', ...triggerEventDeps({ runner, dataDir, launcher: join(resourceDir, 'launch-run.cjs') }), held: (id) => {
     const stop = tracker.get(id) === 'unknown' ? stops.get(id) : undefined
     return (stop && heldReason(stop, Date.now())) ?? undefined
   } })

@@ -22,7 +22,7 @@ import { findSsh } from './sessions/ssh'
 import type { TriggerService } from './triggers/service'
 import type { AfterGate } from './control/after'
 import { spotNear } from './control/verbs'
-import { mergeSettings, parseSettings, restoreSeed, type ScrollbackSaver } from './lifecycle'
+import { mergeSettings, parseSettings, restoreSeed, withTriggersPaused, type ScrollbackSaver } from './lifecycle'
 import { nameFromOutput, runToEnd, TITLE_ARGS } from './nameWithAi'
 import type { Notifier } from './notifier'
 import type { Approvals } from './sessions/approvals'
@@ -492,6 +492,16 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     usage.setOff(saved.usageSource === 'off')
     if (!sourceConfig(saved)) void usagePoller.refreshNow()
     onSettingsSaved?.()
+    return { ok: true }
+  })
+  // Its own save, not the whole settings: the Work menu has no copy of the rest to send back.
+  ipcMain.handle('pb:setTriggersPaused', async (_e, on: unknown) => {
+    const text = await inSettingsQueue(async () => {
+      const next = withTriggersPaused(await readIfPresent(settingsFile), on === true)
+      if (next !== null) await writeAtomic(settingsFile, next)
+      return next
+    })
+    if (text === null) return { ok: false, reason: 'settings.json has a mistake in it, so saving would overwrite it. Fix it with Open file, under About, then try again.' }
     return { ok: true }
   })
   // Never opened by an off-screen test run: see testPickers.ts.
