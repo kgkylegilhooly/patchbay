@@ -130,8 +130,8 @@ function DockView({
         ref={workRef}
         className="dock-work"
         data-cmd="work"
-        aria-label={workLabel(waiting)}
-        title="Search, recipes and workflows, review, files and projects"
+        aria-label={workLabel(waiting, triggersPaused)}
+        title={triggersPaused ? 'All triggers are paused: Work > Pause all triggers turns them back on' : 'Search, recipes and workflows, review, files and projects'}
         aria-haspopup="menu"
         aria-expanded={working}
         onMouseDown={(e) => e.preventDefault()}
@@ -139,6 +139,8 @@ function DockView({
       >
         Work
         {waiting > 0 && <span className="dock-count" aria-hidden>{waiting}</span>}
+        {/* F54 showed the pause only inside the menu, so a forgotten one stopped every trigger unseen. */}
+        {triggersPaused && <span className="dock-paused" aria-hidden data-triggers-paused>Paused</span>}
       </button>
       <span className="dock-sep" />
       {foldMap && <DockButton cmd="toggle-map" className="dock-map" label="Map of the canvas" icon="map" pressed={mapOpen} onClick={toggleFoldedMap} />}

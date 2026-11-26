@@ -19,8 +19,9 @@ export function waitingForReview(tasks: readonly Pick<Task, 'state' | 'submissio
 }
 
 /** What the Work button says to a screen reader, with what's waiting. */
-export function workLabel(waiting: number): string {
-  return waiting ? `Work: ${waiting} waiting for review` : 'Work'
+export function workLabel(waiting: number, triggersPaused = false): string {
+  const parts = [waiting ? `${waiting} waiting for review` : null, triggersPaused ? 'all triggers are paused' : null].filter(Boolean)
+  return parts.length ? `Work: ${parts.join(', ')}` : 'Work'
 }
 
 export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number; triggersPaused: boolean }): MenuEntry[] {

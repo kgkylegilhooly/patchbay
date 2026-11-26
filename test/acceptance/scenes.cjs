@@ -1027,6 +1027,21 @@ const scenes = {
     })
     console.log(`start mode started: ${JSON.stringify(s)}`)
   },
+  // F54 on the dock: all triggers paused from the Work menu, then the menu closed. The Work button should still say so.
+  'paused-dock': async (page) => {
+    await page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="pause-triggers"]', { timeout: 5000 }).catch(() => {})
+    await page.click('.dock .menu-panel [data-cmd="pause-triggers"]').catch(() => {})
+    await sleep(600)
+    await page.keyboard.press('Escape')
+    await page.mouse.click(640, 300)
+    await sleep(500)
+    const s = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('[data-cmd="work"]')].find((x) => x.closest('.dock'))
+      return { label: b?.getAttribute('aria-label'), pill: !!b?.querySelector('[data-triggers-paused]'), menuOpen: !!document.querySelector('.dock .menu-panel') }
+    })
+    console.log(`paused dock: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
