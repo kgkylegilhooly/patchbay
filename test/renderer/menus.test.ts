@@ -336,6 +336,19 @@ test('an agent window offers Copy last reply once it has a conversation; a termi
   expect(menu(terminal).find((i) => i.id === 'copy-last-reply')).toBeUndefined()
 })
 
+// F28: the whole conversation kept as Markdown, and the raw transcript found, from the agent's menu (src/main/conversation.ts).
+test('an agent window offers Save conversation and Reveal transcript right after Copy last reply, once it has a conversation', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  const withOne = menu({ ...claude, transcriptPath: 'C:\\t.jsonl' } as CanvasNode)
+  const copyAt = withOne.findIndex((i) => i.id === 'copy-last-reply')
+  expect(withOne[copyAt + 1]).toMatchObject({ id: 'save-conversation', label: 'Save conversation…', disabled: false })
+  expect(withOne[copyAt + 2]).toMatchObject({ id: 'reveal-transcript', label: 'Reveal transcript', disabled: false })
+  const without = menu({ ...claude, transcriptPath: null } as CanvasNode)
+  expect(without.find((i) => i.id === 'save-conversation')?.disabled).toBe(true)
+  expect(without.find((i) => i.id === 'reveal-transcript')?.disabled).toBe(true)
+  expect(menu(terminal).find((i) => i.id === 'save-conversation' || i.id === 'reveal-transcript')).toBeUndefined()
+})
+
 // F26: one window's notifications can be turned off from its menu.
 test('an agent or run window offers Mute notifications, and Unmute once muted; a terminal, which never notifies, does not', () => {
   const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))

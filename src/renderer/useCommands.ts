@@ -33,7 +33,7 @@ import { savedViews } from './savedViews'
 import { pinnedNoteText, worthPinning } from './pinOutput'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
-import { copyLastReply } from './lastReplyUi'
+import { copyLastReply, revealTranscript, saveConversation } from './lastReplyUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -257,6 +257,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         reveal(node)
       },
       copyLastReply: (nodeId) => void copyLastReply(nodeId),
+      saveConversation: (nodeId) => void saveConversation(nodeId),
+      revealTranscript: (nodeId) => void revealTranscript(nodeId),
       pinSelection: (nodeId) => {
         const source = doc().nodes.find((n) => n.id === nodeId)
         const selection = terminalActions(nodeId)?.selection()

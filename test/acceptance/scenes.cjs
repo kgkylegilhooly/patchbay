@@ -355,6 +355,17 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="copy-last-reply"]').catch(() => {})
     await sleep(600)
   },
+  // The same, then Save conversation…: the save dialog is answered by PB_SCENE_SAVE_AS (seeded below, test runs only), and
+  // the notice says where the Markdown went. The file is checked too.
+  'conversation-saved': async (page, ctx) => {
+    await scenes['reply-menu'](page, ctx)
+    await page.click('.menu-panel [data-cmd="save-conversation"]').catch(() => {})
+    await sleep(1200)
+    const file = `${process.env.PB_SCENE_SAVE_AS}.md`
+    const text = require('node:fs').readFileSync(file, 'utf8')
+    if (!text.startsWith('# Release notes\n') || !text.includes('\n## You\n') || !text.includes('\n## Claude Code\n')) throw new Error(`The saved file holds: ${text.slice(0, 300)}`)
+    console.log(`conversation saved: ${file}, ${text.length} characters`)
+  },
   // An agent edits a file in a repository and doesn't commit it, then its ✕ is pressed: Close asks first.
   'close-guard': async (page, { profile }) => {
     const { execFileSync } = require('node:child_process')
@@ -827,6 +838,9 @@ const seeds = {
     )
   },
   'projects-manager': (doc) => seeds.projects(doc),
+  'conversation-saved': (doc) => {
+    process.env.PB_SCENE_SAVE_AS = require('node:path').join(doc.projects[0].folder, 'release-notes-conversation')
+  },
   'archive-confirm': (doc) => seeds.projects(doc),
   'archive-done': (doc) => seeds.projects(doc),
   'project-tab-drag': (doc) => seeds.projects(doc),
