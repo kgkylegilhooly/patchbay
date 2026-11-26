@@ -424,6 +424,17 @@ const scenes = {
     if (!text.startsWith('# Release notes\n') || !text.includes('\n## You\n') || !text.includes('\n## Claude Code\n')) throw new Error(`The saved file holds: ${text.slice(0, 300)}`)
     console.log(`conversation saved: ${file}, ${text.length} characters`)
   },
+  // F43: the Dev shell's window menu, then Save output…: the dialog is answered by PB_SCENE_SAVE_AS (seeded below), and
+  // the file holds what the shell printed, colours gone.
+  'output-saved': async (page) => {
+    await scenes['pin-menu'](page)
+    await page.click('.menu-panel [data-cmd="save-output"]').catch(() => {})
+    await sleep(1200)
+    const file = `${process.env.PB_SCENE_SAVE_AS}.txt`
+    const text = require('node:fs').readFileSync(file, 'utf8')
+    if (!text.includes('you@patchbay') || text.includes('\x1b')) throw new Error(`The saved file holds: ${JSON.stringify(text.slice(0, 300))}`)
+    console.log(`output saved: ${file}, ${text.length} characters, ${text.split('\n').length - 1} lines`)
+  },
   // An agent edits a file in a repository and doesn't commit it, then its ✕ is pressed: Close asks first.
   'close-guard': async (page, { profile }) => {
     const { execFileSync } = require('node:child_process')
@@ -1004,6 +1015,9 @@ const seeds = {
     )
   },
   'projects-manager': (doc) => seeds.projects(doc),
+  'output-saved': (doc) => {
+    process.env.PB_SCENE_SAVE_AS = require('node:path').join(doc.projects[0].folder, 'dev-shell-output')
+  },
   'conversation-saved': (doc) => {
     process.env.PB_SCENE_SAVE_AS = require('node:path').join(doc.projects[0].folder, 'release-notes-conversation')
   },

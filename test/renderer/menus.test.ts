@@ -394,3 +394,11 @@ test('with two or more agents selected, the canvas menu offers Send to N agents'
   expect(ids(1).find((i) => i.id === 'send-to-agents')).toBeUndefined()
   expect(items(canvasMenu(commands, state, { x: 0, y: 0 })).find((i) => i.id === 'send-to-agents')).toBeUndefined()
 })
+
+// F43: a build log or terminal session kept as a text file.
+test('terminal and run windows offer Save output; an agent has Save conversation instead', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu(terminal).find((i) => i.id === 'save-output')?.label).toBe('Save output…')
+  expect(menu({ ...terminal, id: 'r', kind: 'run', command: 'npm test' } as CanvasNode).find((i) => i.id === 'save-output')).toBeDefined()
+  expect(menu(claude).find((i) => i.id === 'save-output')).toBeUndefined()
+})
