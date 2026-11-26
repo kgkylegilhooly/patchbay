@@ -13,6 +13,7 @@ import { pickDocument } from './reader/readerUi'
 import { cycleRegion } from './a11y/regions'
 import { copyDiagnostics, openLogFolder } from './diagnostics/diagnosticsUi'
 import { VIEW_SLOTS } from './savedViews'
+import { switchTriggersPaused } from './triggersPaused'
 
 export type ActionSection = 'New' | 'Canvas' | 'Window' | 'View' | 'App'
 
@@ -96,6 +97,7 @@ export const ACTIONS: Action[] = [
   { id: 'search', section: 'View', label: 'Search conversations and notes…', icon: 'find', key: 'Ctrl+Shift+S', keywords: ['find', 'transcript', 'history', 'closed', 'messages', 'handoff', 'decision'], run: () => toggleSearch() },
   { id: 'review-inbox', section: 'View', label: 'Review inbox…', icon: 'checklist', keywords: ['review', 'tasks', 'diff', 'comments', 'accept', 'fixes', 'submitted'], run: () => toggleReviewInbox() },
   { id: 'file-shelf', section: 'View', label: 'Files shelf…', icon: 'file', keywords: ['files', 'shared', 'pasted', 'images', 'screenshots', 'attachments', 'documents', 'pin'], run: () => toggleFileShelf() },
+  { id: 'pause-triggers', section: 'Canvas', label: 'Pause all triggers', icon: 'trigger', keywords: ['triggers', 'schedule', 'hold', 'stop', 'resume', 'unpause', 'meeting', 'quiet'], run: () => void switchTriggersPaused() },
   { id: 'recent', section: 'View', label: 'Closed conversations', icon: 'recent', keywords: ['closed', 'recent', 'history', 'reopen', 'transcript'], run: (c) => c.toggleRecent() },
   { id: 'next-needs-you', section: 'View', label: 'Next needing you', icon: 'arrow-right', key: 'Ctrl+Shift+J', keywords: ['attention', 'waiting', 'needs you', 'unread', 'jump', 'peek', 'reply', 'inbox'], run: (c) => void jumpToNext(c) },
 

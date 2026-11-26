@@ -5,11 +5,14 @@ import { bridge } from './bridge'
 import { watchForSlowTasks } from './slowWatch'
 import { connectStore } from './store'
 import { connectAgentStops } from './agentStops'
+import { noteTriggersPaused } from './triggersPaused'
 
 void connectStore()
 connectAgentStops()
-loadAgentChoice(() => bridge.getSettings())
+// The agent choice, and whether all triggers are paused (F54), from one read.
+const readSettings = () => bridge.getSettings().then((s) => (noteTriggersPaused(s), s))
+loadAgentChoice(readSettings)
 // Picks up a hand edit of settings.json too.
-window.addEventListener('focus', () => loadAgentChoice(() => bridge.getSettings()))
+window.addEventListener('focus', () => loadAgentChoice(readSettings))
 watchForSlowTasks()
 createRoot(document.getElementById('root')!).render(<App />)

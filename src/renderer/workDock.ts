@@ -1,3 +1,4 @@
+import { switchTriggersPaused } from './triggersPaused'
 import type { Task } from '../shared/task'
 import type { Commands, MenuEntry } from './menus'
 import { toggleSearch } from './searchUi'
@@ -22,7 +23,7 @@ export function workLabel(waiting: number): string {
   return waiting ? `Work: ${waiting} waiting for review` : 'Work'
 }
 
-export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number }): MenuEntry[] {
+export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number; triggersPaused: boolean }): MenuEntry[] {
   return [
     { id: 'search', label: 'Search conversations and notes…', icon: 'find', run: () => toggleSearch() },
     { id: 'new-from-recipe', label: 'Recipes and workflows…', icon: 'team', run: () => openRecipePicker() },
@@ -30,6 +31,8 @@ export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number
     // The count stands where a shortcut would: the inbox has none, and it's what the person looks for.
     { id: 'review-inbox', label: 'Review inbox…', icon: 'checklist', ...(o.waiting ? { shortcut: `${o.waiting} waiting` } : {}), run: () => openReviewInbox() },
     { id: 'comparisons', label: 'Comparisons…', icon: 'branch', run: () => openComparisons() },
+    // Holds every armed trigger, keeping each armed (F54). See triggersPaused.ts and the trigger service's paused.
+    { id: 'pause-triggers', label: 'Pause all triggers', icon: 'trigger', checked: o.triggersPaused, run: () => void switchTriggersPaused() },
     'separator',
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: () => c.toggleRecent() },

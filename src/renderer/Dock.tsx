@@ -8,6 +8,7 @@ import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
 import { toggleFoldedMap, useChromeLayout } from './safeArea'
 import { menuLeftWithin, waitingForReview, workLabel, workMenu } from './workDock'
+import { useTriggersPaused } from './triggersPaused'
 import './safeArea.css'
 import { keyOf, withKey } from './a11y/keyHints'
 import { useKeyOverrides } from './a11y/useKeyOverrides'
@@ -51,6 +52,7 @@ function DockView({
   const git = useStore((s) => s.gitOpen)
   const agents = useAgentChoice()
   const waiting = useStore((s) => waitingForReview(s.doc?.projects.find((p) => p.id === s.doc?.activeProjectId)?.tasks?.tasks))
+  const triggersPaused = useTriggersPaused((s) => s.paused)
   const keys = useKeyOverrides()
   const foldMap = useChromeLayout((s) => s.foldMap)
   const mapOpen = useChromeLayout((s) => s.mapOpen)
@@ -85,7 +87,7 @@ function DockView({
       {adding && <MenuPanel entries={addMenu(commands)} label="Add" onClose={close} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)' }} />}
       {working && (
         <MenuPanel
-          entries={workMenu(commands, { waiting })}
+          entries={workMenu(commands, { waiting, triggersPaused })}
           label="Work"
           onClose={close}
           panelRef={workPanel}

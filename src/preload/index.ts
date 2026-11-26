@@ -116,6 +116,7 @@ const bridge: PatchbayBridge = {
   getSettings: () => invoke('getSettings'),
   agentProgramProblem: (kind) => invoke('agentProgramProblem', kind),
   saveSettings: (settings) => invoke('saveSettings', settings),
+  setTriggersPaused: (on) => invoke('setTriggersPaused', on),
   getApprovals: () => invoke('getApprovals'),
   onApprovals: (cb) => listen('onApprovals', cb),
   answerApproval: (requestId, decision) => invoke('answerApproval', requestId, decision),
