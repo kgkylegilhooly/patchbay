@@ -569,6 +569,25 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="recent-prompt:1"]').catch(() => {})
     await sleep(400)
   },
+  // F44: the Backend group's menu, with one agent working and one waiting on you: Interrupt 1 working agent.
+  'interrupt-menu': async (page) => {
+    await sleep(1500)
+    const head = await (await page.$('.react-flow__node[data-id="g1"]')).boundingBox()
+    await page.mouse.click(head.x + 200, head.y + 12, { button: 'right' })
+    await sleep(400)
+  },
+  // The same, then the item: it asks first, naming the agent.
+  'interrupt-confirm': async (page) => {
+    await scenes['interrupt-menu'](page)
+    await page.click('.menu-panel [data-cmd="interrupt-working"]').catch(() => {})
+    await sleep(500)
+  },
+  // Confirmed: Esc goes to the working agent, whose status is no longer Working.
+  'interrupt-done': async (page) => {
+    await scenes['interrupt-confirm'](page)
+    await page.click('[data-confirm="interrupt-working"] .btn-solid, [data-confirm="interrupt-working"] .btn-danger').catch(() => {})
+    await sleep(1500)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

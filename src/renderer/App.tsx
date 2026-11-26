@@ -79,7 +79,7 @@ import { createStager } from './stagedFlow'
 import { afterNextPaint } from './mountQueue'
 import { linkedAgents } from './noteSend'
 import { selectedAgents } from './sendToAgents'
-import { stoppedIn } from './restartStopped'
+import { stoppedIn, workingIn } from './restartStopped'
 import { useSettingsAsk } from './settingsAsk'
 import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
 
@@ -359,8 +359,9 @@ function Canvas(): React.JSX.Element | null {
     const failed = node.kind === 'run' && runFailed(useStore.getState().runs[node.id])
     const current = useStore.getState().doc
     const stopped = current && node.kind === 'group' ? stoppedIn(current.nodes, node.id, useStore.getState().statuses, useStore.getState().errors) : []
+    const working = current && node.kind === 'group' ? workingIn(current.nodes, node.id, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) : []
     const agents = current ? linkedAgents(current, node.id).filter((a) => a.id !== node.id).map((a) => ({ id: a.id, title: a.title })) : []
-    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped }), label: node.title })
+    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped, working }), label: node.title })
   }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {

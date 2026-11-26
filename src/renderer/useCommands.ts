@@ -313,6 +313,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       closeNode: (id) => closeNodes([id]),
       renameNode: (id) => useStore.setState({ renaming: id }),
       restartNode: (id) => void restartNode(id),
+      interruptNodes: (ids) => {
+        for (const id of ids) bridge.input(id, '\x1b')
+      },
       restartNodes: (ids) => {
         for (const id of ids) void restartNode(id)
       },

@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { nodeMenu, type Commands, type MenuItem } from '../../src/renderer/menus'
-import { stoppedIn } from '../../src/renderer/restartStopped'
+import { stoppedIn, workingIn } from '../../src/renderer/restartStopped'
 import type { CanvasNode } from '../../src/shared/model'
 
 const box = { x: 0, y: 0, width: 400, height: 300, parentId: null as string | null, projectId: 'p' }
@@ -28,4 +28,24 @@ test('a group with stopped windows offers Restart N stopped windows in its menu'
   expect(restarted).toEqual([['a', 'b']])
   expect(items(['a']).find((i) => i.id === 'restart-stopped')?.label).toBe('Restart 1 stopped window')
   expect(items([]).find((i) => i.id === 'restart-stopped')).toBeUndefined()
+})
+
+// F44: a team going the wrong way is stopped from its group, not window by window.
+test('the agents at work in a group, at any depth; not ones waiting on the person, idle ones or terminals', () => {
+  const nodes = [group('g'), group('inner', 'g'), agent('a', 'g'), agent('b', 'inner'), agent('asks', 'g'), agent('idle', 'g'), shell('sh', 'g'), agent('out', 'other')]
+  const statuses = { a: 'working', b: 'working', asks: 'needs-you', idle: 'idle', sh: 'working', out: 'working' } as const
+  expect(workingIn(nodes, 'g', statuses).map((n) => n.id)).toEqual(['a', 'b'])
+})
+
+test('a group with agents at work offers to interrupt them, naming them in the confirmation', () => {
+  const sent: string[][] = []
+  const c = new Proxy({} as Commands, { get: (_t, key) => (key === 'interruptNodes' ? (ids: string[]) => sent.push(ids) : vi.fn()) })
+  const items = (working: Array<{ id: string; title: string }>) => nodeMenu(c, group('g'), null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false, working }).filter((e): e is MenuItem => e !== 'separator')
+  const item = items([{ id: 'a', title: 'Parser' }, { id: 'b', title: 'Docs' }]).find((i) => i.id === 'interrupt-working')
+  expect(item?.label).toBe('Interrupt 2 working agents…')
+  expect(item?.confirm).toContain('Parser and Docs')
+  item!.run()
+  expect(sent).toEqual([['a', 'b']])
+  expect(items([{ id: 'a', title: 'Parser' }]).find((i) => i.id === 'interrupt-working')?.label).toBe('Interrupt 1 working agent…')
+  expect(items([]).find((i) => i.id === 'interrupt-working')).toBeUndefined()
 })
