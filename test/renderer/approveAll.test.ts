@@ -2,7 +2,8 @@ import { expect, test } from 'vitest'
 import { approveAllMessage, sameRequests } from '../../src/renderer/approveAll'
 import type { PendingApproval } from '../../src/shared/contract'
 
-const ask = (nodeId: string, tool: string, detail: string, summary = detail): PendingApproval => ({ nodeId, requestId: `r-${nodeId}`, tool, summary, detail })
+/** `same` stands for main's key of the whole input (approvals.ts requestKey): here, the detail is the whole input. */
+const ask = (nodeId: string, tool: string, detail: string, summary = detail): PendingApproval => ({ nodeId, requestId: `r-${nodeId}`, tool, summary, detail, same: `${tool}:${detail}` })
 
 // F45: five agents waiting to run the same command need one decision, not five clicks.
 test('only requests for the same tool with the same whole detail count; a matching first line is not enough', () => {

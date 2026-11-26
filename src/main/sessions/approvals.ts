@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { PendingApproval } from '../../shared/contract'
 
 export type ApprovalDecision = 'allow' | 'deny'
@@ -54,6 +54,19 @@ function describe(input: Record<string, unknown>): Pick<PendingApproval, 'summar
   const line = ((field as string | undefined) ?? JSON.stringify(input)).replace(/[\s\x00-\x1f\x7f]+/g, ' ').trim()
   return { summary: cut(line, SUMMARY_MAX), detail: cut(line, DETAIL_MAX) }
 }
+
+/** JSON with every object's keys in order, so the same input always reads the same, whatever order it came in. */
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(',')}}`
+  }
+  return JSON.stringify(v) ?? 'null'
+}
+
+/** One value for the whole request: the tool and every field of its input, nothing cut or squeezed. */
+export const requestKey = (tool: string, input: unknown): string => createHash('sha256').update(`${tool}\0${stableJson(input)}`).digest('hex').slice(0, 32)
 
 const WHERE: Record<AlwaysWhere, string> = { localSettings: 'in this project', session: 'for the rest of this session' }
 const MAX_RULES = 10
@@ -136,7 +149,7 @@ export function createApprovals({ holdMs = 540000 }: { holdMs?: number } = {}): 
         const rule = alwaysRule(payload.permission_suggestions)
         const always = rule && { always: { rule: ruleText(rule), where: WHERE[rule.destination] } }
         entries.set(requestId, {
-          approval: { nodeId, requestId, tool, ...describe(input as Record<string, unknown>), ...always },
+          approval: { nodeId, requestId, tool, ...describe(input as Record<string, unknown>), same: requestKey(tool, input), ...always },
           rule,
           settle
         })
