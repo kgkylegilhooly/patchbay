@@ -106,6 +106,9 @@ export interface Commands {
   pinSelection(nodeId: string): void
   /** An agent's latest reply, as Markdown, on the clipboard. See src/main/lastReply.ts. */
   copyLastReply(nodeId: string): void
+  /** The whole conversation as a Markdown file, and the raw transcript in Explorer. See src/main/conversation.ts. */
+  saveConversation(nodeId: string): void
+  revealTranscript(nodeId: string): void
   newWhiteboard(at?: Point): void
   group(at?: Point): void
   closeSelected(): void
@@ -421,6 +424,8 @@ export function nodeMenu(
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
     ...(node.kind === 'claude' ? [{ id: 'copy-last-reply', label: 'Copy last reply', icon: 'copy' as const, disabled: !node.transcriptPath, run: () => c.copyLastReply(node.id) }] : []),
+    ...(node.kind === 'claude' ? [{ id: 'save-conversation', label: 'Save conversation…', icon: 'file' as const, disabled: !node.transcriptPath, run: () => c.saveConversation(node.id) }] : []),
+    ...(node.kind === 'claude' ? [{ id: 'reveal-transcript', label: 'Reveal transcript', icon: 'folder-open' as const, disabled: !node.transcriptPath, run: () => c.revealTranscript(node.id) }] : []),
     'separator',
     { id: 'refresh-window', label: 'Refresh the view', icon: 'refresh', run: () => c.refreshWindow(node.id) },
     { id: 'toggle-maximize', label: 'Maximize or restore', icon: 'maximize', run: () => c.toggleMaximize(node.id) },

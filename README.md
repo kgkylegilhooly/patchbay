@@ -340,7 +340,9 @@ Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The h
 it isn't the project's own, by its folder name. On narrow windows the folder goes first, then labels.
 
 Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
-conversation, ready to paste into an email or an issue.
+conversation, ready to paste into an email or an issue. **Save conversation…** writes everything you and the agent
+said as one Markdown file, where you pick (it starts in the agent's folder). **Reveal transcript** shows the agent's
+raw `.jsonl` transcript in Explorer.
 
 Right-click any terminal or agent window for **Open folder in Explorer**, and **Open folder in VS Code** when VS Code's
 `code` command is on PATH. An SSH terminal offers neither, since its folder is on the other machine.

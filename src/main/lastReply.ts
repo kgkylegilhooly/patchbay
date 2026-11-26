@@ -1,5 +1,10 @@
-import { clipboard, ipcMain, type IpcMainInvokeEvent } from 'electron'
-import { readMessagesTail, type TranscriptMessage } from '../core/transcript/read'
+import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { readAllMessages, readMessagesTail, type TranscriptMessage } from '../core/transcript/read'
+import { createConversationSaver, revealTranscript } from './conversation'
+import { pickOrStub } from './testPickers'
 import type { CanvasStore } from '../shared/contract'
 
 /** Messages read from the end of a transcript, to find the last reply without reading it all. */
@@ -29,9 +34,27 @@ export async function copyLastReply(store: CanvasStore, nodeId: string, write: (
   return { ok: true, chars: reply.length }
 }
 
-/** pb:reply:copyLast, for the app's own window only. */
+/** pb:reply:copyLast, pb:reply:saveConversation and pb:reply:revealTranscript, for the app's own window only. */
 export function serveLastReply(store: CanvasStore, isAppUi: (e: IpcMainInvokeEvent) => boolean): void {
   ipcMain.handle('pb:reply:copyLast', (e, nodeId: unknown) =>
     isAppUi(e) && typeof nodeId === 'string' ? copyLastReply(store, nodeId, (text) => clipboard.writeText(text)) : { ok: false, reason: 'Not allowed.' }
+  )
+  const saveConversation = createConversationSaver({
+    store,
+    home: homedir(),
+    read: readAllMessages,
+    writeFile: (p, text, exclusive) => writeFile(p, text, { encoding: 'utf8', flag: exclusive ? 'wx' : 'w' }),
+    // Off-screen test and screenshot runs answer with PATCHBAY_TEST_SAVE_AS instead of opening the dialog (testPickers.ts).
+    pickFile: (defaultPath) =>
+      pickOrStub('save', async () => {
+        const options: Electron.SaveDialogOptions = { title: 'Save the conversation', defaultPath, filters: [{ name: 'Markdown', extensions: ['md'] }] }
+        const win = BrowserWindow.getFocusedWindow()
+        const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+        return r.canceled || !r.filePath ? null : r.filePath
+      })
+  })
+  ipcMain.handle('pb:reply:saveConversation', (e, nodeId: unknown) => (isAppUi(e) && typeof nodeId === 'string' ? saveConversation(nodeId) : { ok: false, reason: 'Not allowed.' }))
+  ipcMain.handle('pb:reply:revealTranscript', (e, nodeId: unknown) =>
+    isAppUi(e) && typeof nodeId === 'string' ? revealTranscript(store, nodeId, (p) => shell.showItemInFolder(p), existsSync) : { ok: false, reason: 'Not allowed.' }
   )
 }
