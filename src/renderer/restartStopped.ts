@@ -2,9 +2,24 @@ import type { NodeError } from '../shared/contract'
 import type { AgentStatus, CanvasNode } from '../shared/model'
 
 /**
- * After a crash or a failed batch, every exited window in a group needed its own Restart. A group's menu restarts them
- * all at once.
+ * A group's windows, all at once: after a crash or a failed batch, every exited one needed its own Restart, and a team
+ * going the wrong way had to be stopped window by window.
  */
+
+/** The nodes inside a group, at any depth, the group itself left out. */
+function insideGroup(nodes: CanvasNode[], groupId: string): CanvasNode[] {
+  const inside = new Set([groupId])
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const n of nodes) if (n.parentId && inside.has(n.parentId) && !inside.has(n.id)) grew = !!inside.add(n.id)
+  }
+  return nodes.filter((n) => n.id !== groupId && inside.has(n.id))
+}
+
+/** The agents inside a group that are working now. One waiting on the person isn't: Esc there would answer for them. */
+export function workingIn(nodes: CanvasNode[], groupId: string, statuses: Partial<Record<string, AgentStatus>>): CanvasNode[] {
+  return insideGroup(nodes, groupId).filter((n) => n.kind === 'claude' && statuses[n.id] === 'working')
+}
 
 /**
  * The agent and terminal windows inside a group, at any depth, that have exited or couldn't start, in canvas order.
@@ -12,13 +27,8 @@ import type { AgentStatus, CanvasNode } from '../shared/model'
  * which goes by itself.
  */
 export function stoppedIn(nodes: CanvasNode[], groupId: string, statuses: Partial<Record<string, AgentStatus>>, errors: Partial<Record<string, NodeError>>): string[] {
-  const inside = new Set([groupId])
-  for (let grew = true; grew; ) {
-    grew = false
-    for (const n of nodes) if (n.parentId && inside.has(n.parentId) && !inside.has(n.id)) grew = !!inside.add(n.id)
-  }
-  return nodes
-    .filter((n) => (n.kind === 'claude' || n.kind === 'terminal') && n.id !== groupId && inside.has(n.id))
+  return insideGroup(nodes, groupId)
+    .filter((n) => n.kind === 'claude' || n.kind === 'terminal')
     .filter((n) => {
       const error = errors[n.id]
       if (error?.fix === 'memory') return false

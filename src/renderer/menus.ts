@@ -123,6 +123,8 @@ export interface Commands {
   restartNode(id: string): void
   /** Restarts each of these windows, as Restart does for one. See restartStopped.ts. */
   restartNodes(ids: string[]): void
+  /** Sends Esc to each of these agents, as the person would, to stop what they are doing. */
+  interruptNodes(ids: string[]): void
   /** The window in use, as window actions mean it: renamed in place, restarted, or closed (asking first if it's busy). */
   renameWindow(nodeId?: string): void
   restartWindow(nodeId?: string): void
@@ -380,11 +382,29 @@ function sendSelectionEntry(c: Commands, nodeId: string, canCopy: boolean, agent
   return [{ ...base, label: 'Send selection to', run: () => {}, submenu: agents.map((a): MenuItem => ({ id: `send-selection:${a.id}`, label: a.title, icon: 'claude', run: () => c.sendSelection(nodeId, a.id) })) }]
 }
 
+/** Interrupt N working agents, asking first with their names. They keep their conversations, so Continue picks up. */
+function interruptEntry(c: Commands, working: Array<{ id: string; title: string }>): MenuItem[] {
+  if (!working.length) return []
+  const n = working.length
+  const titles = working.map((a) => a.title)
+  const names = titles.length > 1 ? `${titles.slice(0, -1).join(', ')} and ${titles.at(-1)}` : titles[0]
+  return [
+    {
+      id: 'interrupt-working',
+      label: `Interrupt ${n} working agent${n === 1 ? '' : 's'}…`,
+      icon: 'stop',
+      confirmTitle: `Interrupt ${n} working agent${n === 1 ? '' : 's'}?`,
+      confirm: `Sends Esc to ${names}, as pressing it in ${n === 1 ? 'its window' : 'each window'} would. ${n === 1 ? 'It stops' : 'They stop'} what ${n === 1 ? "it's" : "they're"} doing and ${n === 1 ? 'keeps its conversation' : 'keep their conversations'}.`,
+      run: () => c.interruptNodes(working.map((a) => a.id))
+    }
+  ]
+}
+
 export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[] }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }> }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -432,6 +452,7 @@ export function nodeMenu(
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
       ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       ...(ctx.stopped?.length ? [{ id: 'restart-stopped', label: `Restart ${ctx.stopped.length} stopped window${ctx.stopped.length === 1 ? '' : 's'}`, icon: 'restart' as const, run: () => c.restartNodes(ctx.stopped!) }] : []),
+      ...interruptEntry(c, ctx.working ?? []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')
