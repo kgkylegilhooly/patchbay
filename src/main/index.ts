@@ -489,7 +489,10 @@ async function boot(): Promise<void> {
   })
   const gate = createAfterGate({ store, tracker, runner })
   // The Files shelf: references to the files shared in each project. See src/main/fileShelf.
-  const fileShelf = registerFileShelfIpc({ dataDir, store, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, windows: () => (mainWindow ? [mainWindow.webContents] : []), log: (line) => log?.write(line) })
+  // A canvas recovered from a bad file, or loaded without nodes this build couldn't read, may be missing a session's
+  // node or a project, so no session is ended and no settings or shelf pruned for want of one.
+  const canvasUncertain = !!store.loaded.quarantined || !!store.loaded.droppedNodes
+  const fileShelf = registerFileShelfIpc({ dataDir, store, canvasUncertain, isAppUi: (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame, windows: () => (mainWindow ? [mainWindow.webContents] : []), log: (line) => log?.write(line) })
   // Documents opened in a Reader go on the shelf too.
   noteReaders(store, fileShelf)
   const browser = createBrowserDriver({ dataDir, store, push: (id, state) => broadcast('pb:onBrowserState', id, state), onShot: (id, path) => noteFromNode(fileShelf, store, id, path, 'evidence') })
@@ -573,9 +576,6 @@ async function boot(): Promise<void> {
   const hostAtBoot = await host.connect({ quick: true })
   // Copies of older builds that no host runs from any more. Once things have settled, so it costs start-up nothing.
   if (app.isPackaged) setTimeout(() => void pruneHostRuntimes(hostRuntimeDir, runtimeInUse), 60_000).unref()
-  // A canvas recovered from a bad file, or loaded without nodes this build couldn't read, may be missing a session's
-  // node, so no session is ended and no settings pruned for want of one.
-  const canvasUncertain = !!store.loaded.quarantined || !!store.loaded.droppedNodes
   const adoptLive = (skip: ReadonlySet<string> = new Set()): string[] => {
     const plan = planReconnect(store.get(), host.sessions())
     const adopt = plan.adopt.filter((id) => !skip.has(id))
