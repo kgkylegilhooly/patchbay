@@ -185,6 +185,8 @@ export interface MenuState {
   selectedCount: number
   /** Agents among the selection and inside selected groups: two or more can be sent one message. */
   selectedAgents?: number
+  /** The agents in the project on screen that are working now, for Interrupt N working agents (F67). */
+  projectWorking?: Array<{ id: string; title: string }>
   canCopy: boolean
   canFind: boolean
   sidebar: boolean
@@ -383,6 +385,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
     { id: 'tidy', label: s.selectedCount > 1 ? 'Tidy selection' : 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
+    ...interruptEntry(c, s.projectWorking ?? []),
     'separator',
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent }
   ]
@@ -397,7 +400,7 @@ function sendSelectionEntry(c: Commands, nodeId: string, canCopy: boolean, agent
 }
 
 /** Interrupt N working agents, asking first with their names. They keep their conversations, so Continue picks up. */
-function interruptEntry(c: Commands, working: Array<{ id: string; title: string }>): MenuItem[] {
+export function interruptEntry(c: Pick<Commands, 'interruptNodes'>, working: Array<{ id: string; title: string }>): MenuItem[] {
   if (!working.length) return []
   const n = working.length
   const titles = working.map((a) => a.title)

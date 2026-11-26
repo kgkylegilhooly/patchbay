@@ -1,6 +1,6 @@
 import { switchTriggersPaused } from './triggersPaused'
 import type { Task } from '../shared/task'
-import type { Commands, MenuEntry } from './menus'
+import { interruptEntry, type Commands, type MenuEntry } from './menus'
 import { toggleSearch } from './searchUi'
 import { openRecipePicker } from './recipeUi'
 import { openReviewInbox } from './reviewInboxUi'
@@ -24,7 +24,7 @@ export function workLabel(waiting: number, triggersPaused = false): string {
   return parts.length ? `Work: ${parts.join(', ')}` : 'Work'
 }
 
-export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number; triggersPaused: boolean }): MenuEntry[] {
+export function workMenu(c: Pick<Commands, 'toggleRecent' | 'interruptNodes'>, o: { waiting: number; triggersPaused: boolean; working?: Array<{ id: string; title: string }> }): MenuEntry[] {
   return [
     { id: 'search', label: 'Search conversations and notes…', icon: 'find', run: () => toggleSearch() },
     { id: 'new-from-recipe', label: 'Recipes and workflows…', icon: 'team', run: () => openRecipePicker() },
@@ -34,6 +34,8 @@ export function workMenu(c: Pick<Commands, 'toggleRecent'>, o: { waiting: number
     { id: 'comparisons', label: 'Comparisons…', icon: 'branch', run: () => openComparisons() },
     // Holds every armed trigger, keeping each armed (F54). See triggersPaused.ts and the trigger service's paused.
     { id: 'pause-triggers', label: 'Pause all triggers', icon: 'trigger', checked: o.triggersPaused, run: () => void switchTriggersPaused() },
+    // Every working agent in this project, after naming them (F67), as a group's menu does for its own (F44).
+    ...interruptEntry(c, o.working ?? []),
     'separator',
     { id: 'file-shelf', label: 'Files shelf…', icon: 'file', run: () => toggleFileShelf() },
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: () => c.toggleRecent() },
