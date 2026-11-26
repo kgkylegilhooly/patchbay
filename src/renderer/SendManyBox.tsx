@@ -62,7 +62,7 @@ function SendToAgents({ ids }: { ids: string[] }): React.JSX.Element {
       <label className="field">
         <span className="field-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           Message
-          <RecentPromptsButton onPick={setText} />
+          <RecentPromptsButton onPick={setText} text={text} />
         </span>
         <textarea
           autoFocus

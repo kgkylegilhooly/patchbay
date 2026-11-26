@@ -119,6 +119,7 @@ export function NewSessionForm({
           {team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}
           {claude && (
             <RecentPromptsButton
+              text={text}
               onPick={(picked) => {
                 setText(picked)
                 promptRef.current?.focus()

@@ -3,6 +3,7 @@ import { chmod, copyFile, open, readFile, rename, rm, stat } from 'node:fs/promi
 import { join } from 'node:path'
 import { docJson } from './docJson'
 import { sanitizeBoard } from '../../shared/board'
+import { sanitizePrompts } from '../../shared/savedPrompts'
 import { recoverTasks, sanitizeTasks } from '../../shared/task'
 import { isProjectOpen, type CanvasDoc, type CanvasNode } from '../../shared/model'
 import { withArchiveChecked } from './archiveCheck'
@@ -328,7 +329,7 @@ export function migrateKeeping(input: unknown): { doc: CanvasDoc; dropped: numbe
   if (read.dropped) console.warn(`Patchbay left out ${read.dropped} node(s) it couldn't read while loading.`)
   const doc = rehomeOrphans(showOpenProject(checkBoards({ ...withShellsChecked(raw), nodes: read.nodes, edges: read.edges } as unknown as CanvasDoc)))
   // Task data never costs the canvas: a damaged record is dropped on its own, and the rest of the project loads.
-  return { doc: { ...doc, projects: doc.projects.map(withTasksChecked) }, dropped: read.dropped }
+  return { doc: { ...doc, projects: doc.projects.map((p) => withPromptsChecked(withTasksChecked(p))) }, dropped: read.dropped }
 }
 
 /** Closed terminals and runs (F48) are an optional extra: an entry this build can't read is dropped on its own. */
@@ -347,6 +348,15 @@ function parseKeeping(text: string): { doc: CanvasDoc; dropped: number } | null 
   } catch {
     return null
   }
+}
+
+/** Saved prompts (F70) are an optional extra: damaged ones are dropped on their own, never the project. */
+function withPromptsChecked(p: CanvasDoc['projects'][number]): CanvasDoc['projects'][number] {
+  if (p.prompts === undefined) return p
+  const prompts = sanitizePrompts(p.prompts)
+  if (prompts) return { ...p, prompts }
+  const { prompts: _dropped, ...rest } = p
+  return rest
 }
 
 function withTasksChecked(p: CanvasDoc['projects'][number]): CanvasDoc['projects'][number] {
