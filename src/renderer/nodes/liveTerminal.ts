@@ -11,6 +11,7 @@ import { createOutputPacer, type OutputPacer } from '../outputPacer'
 import { fontStack } from '../prefs'
 import { resourcesBridge } from '../resources/resourcesUi'
 import { useStore } from '../store'
+import { keepsScreenOnClear } from './terminalOptions'
 import { PARKING } from '../terminalParking'
 import { onFocusWanted } from '../terminalRegistry'
 import { canvasTier, paceFor } from '../terminalPace'
@@ -85,6 +86,8 @@ export function buildLiveTerminal(nodeId: string, host: HTMLElement, look: Termi
     fontSize,
     lineHeight: 1.15,
     scrollback: look.scrollback,
+    // Restored output stays above a new shell's first frame, which clears the screen. See terminalOptions.ts.
+    scrollOnEraseInDisplay: keepsScreenOnClear(useStore.getState().doc?.nodes.find((n) => n.id === nodeId)?.kind),
     cursorStyle: look.cursorStyle,
     cursorBlink: look.cursorBlink,
     allowProposedApi: true,
