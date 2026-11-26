@@ -2,12 +2,14 @@ import type { LaunchItem } from './launch'
 import type { AgentStatus, CanvasDoc, CanvasOp, TriggerRun, WhiteboardShape } from './model'
 
 export type Refusal = { ok: false; reason: string }
+/** A launch.json run that asks first (LJ1): `approvePlan` names the plan the reason shows, for Run it to agree to. */
+export type PlanQuestion = Refusal & { approvePlan: string }
 
 export interface LaunchListing {
   ok: true
   file: string
   /** A runnable configuration also says the command line it would run, and where. */
-  items: Array<LaunchItem & { command?: string; cwd?: string }>
+  items: Array<LaunchItem & { command?: string; cwd?: string; approve?: string }>
 }
 import type { Settings } from './settings'
 import type { UsageState } from './usage'
@@ -230,9 +232,10 @@ export interface PatchbayBridge {
   /** Run from source, with data of its own, apart from an installed copy. */
   devCopy: boolean
   /** A launch.json run that can't run as its file now says gives back the reason, and nothing starts. */
-  startNode(id: string): Promise<void | Refusal>
+  startNode(id: string): Promise<void | Refusal | PlanQuestion>
   /** `shownExited`: the window showed it as ended, so a session found still running is shown again, never ended. */
-  restartNode(id: string, opts?: { shownExited?: boolean; pastMemory?: boolean }): Promise<void | Refusal>
+  /** `acceptPlan`: the person agreed to the launch.json plan a PlanQuestion showed. Only that exact plan runs. */
+  restartNode(id: string, opts?: { shownExited?: boolean; pastMemory?: boolean; acceptPlan?: string }): Promise<void | Refusal | PlanQuestion>
   /** Arms exactly the spec that was shown. Refused if the trigger has changed since, or isn't complete. */
   armTrigger(id: string, shownSpec: string): Promise<{ ok: true } | Refusal>
   disarmTrigger(id: string): Promise<void>

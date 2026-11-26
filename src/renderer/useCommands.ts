@@ -485,7 +485,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
     const openLaunch = (form: NonNullable<NewForm>, { folder, item }: LaunchChoice): void => {
       lastFolder.current = folder
       if (item.kind === 'config') {
-        open(newLaunchRun(place(form.at, form.groupId), crypto.randomUUID(), { folder, name: item.name }))
+        // The form showed its command, so this click agrees to it. A compound showed only names: each asks on its first run.
+        open(newLaunchRun(place(form.at, form.groupId), crypto.randomUUID(), { folder, name: item.name, ...(item.approve ? { approved: item.approve } : {}) }))
         return
       }
       const gap = 24

@@ -6,6 +6,8 @@ export interface Notifier {
   runFailed(id: string): void
   /** A run kept running crashed again too soon, so it wasn't restarted (src/main/runKeeper.ts). */
   runGaveUp(id: string): void
+  /** A run kept running stopped and wasn't started again, for the reason given (LJ1: its launch.json changed). */
+  runNotRestarted(id: string, why: string): void
   /** A window printed what the person asked to be told about (Notify when it prints…). */
   printed(id: string, phrase: string): void
   setFocusedNode(id: string | null): void
@@ -103,6 +105,7 @@ export function createNotifier({
   return {
     runFailed: (id) => announce(id, 'Stopped with an error.'),
     runGaveUp: (id) => announce(id, 'Stopped with an error 4 times in a minute, so it was not restarted again.'),
+    runNotRestarted: (id, why) => announce(id, why),
     printed: (id, phrase) => announce(id, `Printed "${phrase}".`),
     setFocusedNode(id) {
       focused = id

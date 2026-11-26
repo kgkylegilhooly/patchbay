@@ -66,7 +66,12 @@ export interface RunNode extends Base {
   cwd: string
   command: string
   /** Set for a configuration from .vscode/launch.json. It's read again at each run, and `command` follows from that. */
-  launch?: { folder: string; name: string }
+  launch?: {
+    folder: string
+    name: string
+    /** The plan last agreed to (launchRuns.ts `planKey`). A plan that differs asks before it runs (LJ1). */
+    approved?: string
+  }
   /** Restart when it stops: started again after a crash, with backoff. See src/main/runKeeper.ts. */
   keepRunning?: boolean
 }

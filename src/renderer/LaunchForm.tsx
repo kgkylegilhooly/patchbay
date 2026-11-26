@@ -5,7 +5,8 @@ import { bridge } from './bridge'
 import { shortPath } from './shortPath'
 import { FormShell } from './shell/FormShell'
 
-export type LaunchChoice = { folder: string; item: LaunchItem }
+/** `item.approve` names the plan its row showed, so choosing it agrees to that command (LJ1). */
+export type LaunchChoice = { folder: string; item: LaunchListing['items'][number] }
 
 /**
  * Picks a configuration or compound from .vscode/launch.json. Choosing a folder only reads the file. Nothing runs
