@@ -420,3 +420,10 @@ test('a run window offers Restart when it stops, checked when on; other windows 
   expect(menu({ ...run, keepRunning: true } as CanvasNode).find((i) => i.id === 'keep-running')?.checked).toBe(true)
   expect(menu(terminal).find((i) => i.id === 'keep-running')).toBeUndefined()
 })
+
+// F46: one message to an agent at a time, without the trigger form.
+test('an agent window offers Send later; a terminal does not', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu(claude).find((i) => i.id === 'send-later')?.label).toBe('Send later…')
+  expect(menu(terminal).find((i) => i.id === 'send-later')).toBeUndefined()
+})

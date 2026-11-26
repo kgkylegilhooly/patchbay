@@ -799,6 +799,28 @@ const scenes = {
     const shown = await page.$eval('.react-flow__node[data-id="edits"] .strip-approval code', (el) => el.textContent).catch(() => null)
     console.log(`approval shows: ${JSON.stringify(shown)}`)
   },
+  // F46: Review the docs' window menu, Send later…, with a message and a time typed.
+  'send-later': async (page) => {
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
+    await sleep(800)
+    const box = await page.$eval('.react-flow__node[data-id="idle"] .xterm-screen', (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12, { button: 'right' })
+    await sleep(300)
+    await page.click('.menu-panel [data-cmd="send-later"]').catch(() => {})
+    await page.waitForSelector('[data-send-later="text"]', { timeout: 5000 }).catch(() => {})
+    await page.keyboard.type('Check the deploy and tell me if anything failed.')
+    await page.$eval('[data-send-later="time"]', (el) => el.focus())
+    await page.keyboard.type('2130')
+    await sleep(300)
+  },
+  // The same, scheduled: a trigger beside it, armed, to send once at 21:30.
+  'send-later-armed': async (page) => {
+    await scenes['send-later'](page)
+    await page.click('[data-send-later="schedule"]').catch(() => {})
+    await sleep(1500)
+    const t = await page.evaluate(async () => (await window.patchbay.getDoc()).nodes.find((n) => n.kind === 'trigger' && n.targetId === 'idle'))
+    console.log(`send later: ${t ? `${t.title}, armed ${t.armedSpec !== null}, once ${t.schedule.type === 'once'}, prompt ${JSON.stringify(t.prompt)}` : 'no trigger'}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

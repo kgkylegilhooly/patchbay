@@ -33,6 +33,8 @@ import { savedViews } from './savedViews'
 import { pinnedNoteText, sentSelectionText, worthPinning } from './pinOutput'
 import { sendSummary, type SendResult } from './noteSend'
 import { openSendToAgents, selectedAgents } from './sendToAgents'
+import { laterTrigger, useSendLater } from './sendLater'
+import { canonicalSpec } from '../core/trigger/arming'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply, revealTranscript, saveConversation, saveOutput } from './lastReplyUi'
@@ -272,6 +274,29 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       saveOutput: (nodeId) => void saveOutput(nodeId),
       watchOutput: (nodeId) => askOutputWatch(nodeId),
       unwatchOutput: (nodeId) => stopOutputWatch(nodeId),
+      sendLater: (agentId) => {
+        // Makes the trigger, waits for main to have it, then arms exactly what was written. A refusal takes it away again.
+        const schedule = async (text: string, at: number): Promise<{ ok: true } | { ok: false; reason: string }> => {
+          const agent = doc().nodes.find((n) => n.id === agentId)
+          if (agent?.kind !== 'claude') return { ok: false, reason: 'That agent is gone.' }
+          const base = newTrigger({ beside: agent, group: null, doc: doc(), view: visible() }, crypto.randomUUID(), { schedule: { type: 'once', at }, prompt: text, targetId: agentId })
+          const node = { ...laterTrigger(base, agentId, text, at), ...(agent.projectId ? { projectId: agent.projectId } : {}) }
+          dispatch({ op: 'addNode', node })
+          const arrived = await new Promise<boolean>((done) => {
+            if (doc().nodes.some((n) => n.id === node.id)) return done(true)
+            const stop = useStore.subscribe((s) => {
+              if (!s.doc?.nodes.some((n) => n.id === node.id)) return
+              stop()
+              done(true)
+            })
+            setTimeout(() => (stop(), done(doc().nodes.some((n) => n.id === node.id))), 3000)
+          })
+          const r = arrived ? await bridge.armTrigger(node.id, canonicalSpec(node)) : { ok: false as const, reason: "The trigger wasn't saved. Try again." }
+          if (!r.ok) dispatch({ op: 'removeNodes', ids: [node.id], at: Date.now() })
+          return r
+        }
+        useSendLater.setState({ nodeId: agentId, schedule })
+      },
       toggleKeepRunning: (nodeId) => {
         const node = doc().nodes.find((n) => n.id === nodeId)
         if (node?.kind === 'run') patchNode(nodeId, { keepRunning: node.keepRunning ? undefined : true })
