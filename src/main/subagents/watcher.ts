@@ -301,6 +301,9 @@ export function createSubagentWatcher(opts: {
         active = true
         opts.push(snap)
       }
+      // A look asked for from outside, as on a status change, that finds things moving: the timer may still be at its
+      // slowest, and would keep that pace until its own next look, up to 8 s, so a first card would come late.
+      if (active) timer?.wake()
     } finally {
       ticking = false
     }
