@@ -3,6 +3,7 @@ import type { AgentStatus } from '../../shared/model'
 import { chipLabel, dueForCheck, nextIdleSince } from '../idleUncommitted'
 import { useStore } from '../store'
 import '../filesView'
+import { openCommitOwn } from '../commitOwn'
 
 /** See idleUncommitted.ts: when each agent became idle, when it was last looked at, and what it left uncommitted. */
 const useIdleUncommitted = create<{ idleSince: Record<string, number>; checkedAt: Record<string, number>; files: Record<string, string[]> }>(() => ({
@@ -54,8 +55,11 @@ function watchIdleUncommitted(): void {
   }, TICK_MS)
 }
 
-/** "2 files uncommitted, idle 1 h" on an idle agent's header. A click opens the Git panel on its folder. */
-export function UncommittedChip({ nodeId, cwd }: { nodeId: string; cwd: string }): React.JSX.Element | null {
+/**
+ * "2 files uncommitted, idle 1 h" on an idle agent's header. A click opens the Git panel on its folder with those files
+ * staged and its last reply as the message, ready to commit (F56).
+ */
+export function UncommittedChip({ nodeId, cwd, title }: { nodeId: string; cwd: string; title: string }): React.JSX.Element | null {
   watchIdleUncommitted()
   const files = useIdleUncommitted((s) => s.files[nodeId])
   const since = useIdleUncommitted((s) => s.idleSince[nodeId])
@@ -66,9 +70,9 @@ export function UncommittedChip({ nodeId, cwd }: { nodeId: string; cwd: string }
       // The files chip's look beside it: quiet, a thing to look at, not a status or an alarm.
       className="files-chip nodrag"
       data-uncommitted-chip
-      title={`Its own edits, not committed yet:\n${files.slice(0, 12).join('\n')}${files.length > 12 ? `\n…and ${files.length - 12} more` : ''}\n\nOpens the Git panel.`}
+      title={`Its own edits, not committed yet:\n${files.slice(0, 12).join('\n')}${files.length > 12 ? `\n…and ${files.length - 12} more` : ''}\n\nStages them in the Git panel, with its last reply as the message. Nothing is committed until you press Commit.`}
       style={{ border: 'none' }}
-      onClick={() => useStore.setState({ gitOpen: true, gitFolder: cwd })}
+      onClick={() => void openCommitOwn({ id: nodeId, title, cwd }, files, (folder) => useStore.setState({ gitOpen: true, gitFolder: folder }))}
     >
       {chipLabel(files, Date.now() - since)}
     </button>

@@ -359,7 +359,7 @@ export function NodeChrome({
           </span>
         )}
         {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
-        {node.kind === 'claude' && status === 'idle' && <UncommittedChip nodeId={node.id} cwd={node.cwd} />}
+        {node.kind === 'claude' && status === 'idle' && <UncommittedChip nodeId={node.id} cwd={node.cwd} title={node.title} />}
         {folder && (
           <span className="cwd" title={cwd}>
             {folder}
