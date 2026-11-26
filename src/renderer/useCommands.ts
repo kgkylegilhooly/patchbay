@@ -363,6 +363,11 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
           (message, run) => confirmThen({ title: `Close ${agents.length === 1 ? 'this finished agent' : 'finished agents'}?`, message, verb: 'Close', cancelLabel: 'Keep', icon: 'close', attrs: { 'data-confirm': 'close-finished' } }, run),
           (text) => say(text)
         ),
+      saveGroupReport: (groupId) =>
+        void bridge.saveGroupReport(groupId).then((r) => {
+          if (!r.ok && r.cancelled) return
+          say(r.ok ? `Saved a report on ${r.members} agent${r.members === 1 ? '' : 's'} to ${r.path}.` : r.reason, r.ok)
+        }),
       restartNodes: (ids) => {
         for (const id of ids) void restartNode(id)
       },

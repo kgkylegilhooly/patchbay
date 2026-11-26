@@ -141,6 +141,8 @@ export interface Commands {
   interruptNodes(ids: string[]): void
   /** Closes a group's idle agents, after checking what each left uncommitted and asking (F60). See closeFinished.ts. */
   closeFinished(agents: Array<{ id: string; title: string }>): void
+  /** Each member's last reply and files, and the branch's own commits, as one Markdown file (F66). */
+  saveGroupReport(groupId: string): void
   /** The window in use, as window actions mean it: renamed in place, restarted, or closed (asking first if it's busy). */
   renameWindow(nodeId?: string): void
   restartWindow(nodeId?: string): void
@@ -472,6 +474,7 @@ export function nodeMenu(
       ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       ...(ctx.stopped?.length ? [{ id: 'restart-stopped', label: `Restart ${ctx.stopped.length} stopped window${ctx.stopped.length === 1 ? '' : 's'}`, icon: 'restart' as const, run: () => c.restartNodes(ctx.stopped!) }] : []),
       ...interruptEntry(c, ctx.working ?? []),
+      { id: 'save-report', label: 'Save a report…', icon: 'file', run: () => c.saveGroupReport(node.id) },
       ...(ctx.finished?.length ? [{ id: 'close-finished', label: `Close ${ctx.finished.length} finished agent${ctx.finished.length === 1 ? '' : 's'}…`, icon: 'close' as const, run: () => c.closeFinished(ctx.finished!) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },

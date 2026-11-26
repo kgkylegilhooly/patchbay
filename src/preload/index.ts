@@ -101,6 +101,7 @@ const bridge: PatchbayBridge = {
   stopRun: (id) => invoke('stopRun', id),
   getPorts: () => invoke('getPorts'),
   onPorts: (cb) => listen('onPorts', cb),
+  saveGroupReport: (groupId) => invoke('report:save', groupId),
   onPortInUse: (cb) => listen('portInUse', cb),
   dismissPortInUse: (id) => invoke('portInUse:dismiss', id),
   openPort: (nodeId, port) => invoke('openPort', nodeId, port),

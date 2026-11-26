@@ -58,6 +58,7 @@ import { setupCompare } from './compare/setup'
 import { setupFilesTouched } from './files/setup'
 import { createAway, serveAway, type Away } from './files/away'
 import { lastReplyOf, serveLastReply } from './lastReply'
+import { serveGroupReport } from './groupReport'
 import { serveRunFix } from './runFix'
 import { serveSaveOutput } from './saveOutput'
 import { createOutputWatch, serveOutputWatch } from './outputWatch'
@@ -553,6 +554,8 @@ async function boot(): Promise<void> {
   const recipes = createRecipeService({ store, runner, gate, setupGate, dataDir, launcher: join(resourceDir, 'launch-run.cjs'), toplevel: (folder) => work.git.toplevel(folder), createWorktree })
   // Which files each agent session edited, from its transcript, with a snapshot as each turn starts. See src/main/files.
   const filesTouched = setupFilesTouched({ store, tracker, dataDir, log: (line) => log?.write(line) })
+  // A group's report (F66): each member's last reply and files, and the commits only on the group's branch.
+  serveGroupReport({ store, status: (id) => tracker.get(id), files: filesTouched }, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   away = createAway({ changes: (id) => filesTouched.awayChanges(id), send: (id, text) => sendToAgent({ store, status: (i) => tracker.get(i), queue: sendQueue }, id, text), push: (a) => broadcast('pb:away:onChange', a) })
   serveAway(away, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveLastReply(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)

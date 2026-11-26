@@ -280,6 +280,8 @@ export interface PatchbayBridge {
   stopRun(id: string): Promise<void>
   getPorts(): Promise<Record<string, PortInfo[]>>
   onPorts(cb: (ports: Record<string, PortInfo[]>) => void): () => void
+  /** A group's report as a Markdown file, where the person picks (F66). */
+  saveGroupReport(groupId: string): Promise<{ ok: true; path: string; members: number } | { ok: false; reason: string; cancelled?: true }>
   /** A run or terminal failed on a port that's taken (F68), or null once it starts again or the strip is dismissed. */
   onPortInUse(cb: (id: string, state: import('./portInUse').PortInUse | null) => void): () => void
   dismissPortInUse(id: string): Promise<void>
