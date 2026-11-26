@@ -244,6 +244,10 @@ async function main() {
   if (/\bneeds\b/.test(prompt)) {
     await hook('UserPromptSubmit')
     await hook('Notification', { notification_type: 'permission_prompt' })
+  } else if (/\bpermission-edit\b/.test(prompt)) {
+    // Asks to edit a file: an approval whose summary is only the path, and whose change is in its input.
+    await hook('UserPromptSubmit')
+    void hook('PermissionRequest', { tool_name: 'Edit', tool_input: { file_path: 'C:\\app\\src\\config.ts', old_string: "  debug: false,\n  apiKey: process.env.API_KEY,", new_string: "  debug: true,\n  apiKey: 'sk-live-4f9a2c'," } })
   } else if (/\bpermission\b/.test(prompt)) {
     // Asks to run a long command, and isn't waited for: the request is held until someone answers it. Offers a rule for
     // "don't ask again", as Claude does, in the shape its PermissionRequest hook documents.

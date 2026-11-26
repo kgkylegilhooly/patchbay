@@ -783,6 +783,22 @@ const scenes = {
     await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height - 12, { button: 'right' })
     await sleep(400)
   },
+  // AP2: an agent asks to edit a file, and Show all on its strip: the change it would make, not just the file.
+  'approve-edit': async (page) => {
+    const node = { ...box, id: 'edits', kind: 'claude', title: 'Config fix', x: 930, y: 640, width: 620, prompt: 'permission-edit', sessionId: null, transcriptPath: null, after: [], projectId: 'p1' }
+    await page.evaluate(async (n) => {
+      const cwd = (await window.patchbay.getDoc()).nodes.find((o) => o.id === 'term').cwd
+      await window.patchbay.dispatch({ op: 'addNode', node: { ...n, cwd } })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    await page.waitForSelector('.react-flow__node[data-id="edits"] .strip-approval', { timeout: 15000 })
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Config fix'))?.click())
+    await sleep(600)
+    await page.click('.react-flow__node[data-id="edits"] .strip-more').catch(() => {})
+    await sleep(400)
+    const shown = await page.$eval('.react-flow__node[data-id="edits"] .strip-approval code', (el) => el.textContent).catch(() => null)
+    console.log(`approval shows: ${JSON.stringify(shown)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

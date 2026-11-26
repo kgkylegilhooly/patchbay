@@ -14,7 +14,8 @@ test('two different edits, or writes, of one file are not the same request', () 
     ['Edit', { file_path: 'C:\\app\\config.ts', old_string: 'debug: false', new_string: 'debug: true' }],
     ['Edit', { file_path: 'C:\\app\\config.ts', old_string: "token: ''", new_string: "token: 'sk-live'" }]
   )
-  expect(edits[0].detail).toBe(edits[1].detail)
+  // Same file, so the same summary. (Since AP2 the detail shows each change, so it differs too.)
+  expect(edits[0].summary).toBe(edits[1].summary)
   expect(sameRequests(edits, edits[0])).toHaveLength(1)
   const writes = asks(['Write', { file_path: 'run.ps1', content: 'echo hi' }], ['Write', { file_path: 'run.ps1', content: 'Remove-Item -Recurse C:\\data' }])
   expect(sameRequests(writes, writes[0])).toHaveLength(1)

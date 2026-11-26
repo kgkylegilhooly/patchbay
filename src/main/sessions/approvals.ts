@@ -48,11 +48,37 @@ const DETAIL_MAX = 4000
 
 const cut = (line: string, max: number): string => (line.length <= max ? line : line.slice(0, max - 1).replace(/[\ud800-\udbff]$/, '') + '…')
 
+/** Text's lines under a mark, with control characters gone (a screen-clearing escape must not reach the strip). */
+const marked = (mark: string, text: string): string[] =>
+  text
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n+$/, '')
+    .split('\n')
+    .map((l) => `${mark} ${l.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')}`.trimEnd())
+
+/**
+ * What an Edit, MultiEdit, Write or NotebookEdit would change, under its file: lines taken out with "-", put in with
+ * "+". Its summary names only the file, and approving it from the strip meant approving a change you couldn't read.
+ * Null for any other call.
+ */
+function change(input: Record<string, unknown>): string | null {
+  const text = (v: unknown): v is string => typeof v === 'string'
+  const path = text(input.file_path) ? input.file_path : text(input.notebook_path) ? input.notebook_path : null
+  if (!path) return null
+  const pair = (e: Record<string, unknown>): string[] => (text(e.old_string) && text(e.new_string) ? [...marked('-', e.old_string), ...marked('+', e.new_string)] : [])
+  let body: string[] | null = null
+  if (text(input.old_string) && text(input.new_string)) body = pair(input)
+  else if (Array.isArray(input.edits)) body = input.edits.flatMap((e, i) => [...(i ? [''] : []), ...pair((e ?? {}) as Record<string, unknown>)])
+  else if (text(input.content)) body = marked('+', input.content)
+  else if (text(input.new_source)) body = marked('+', input.new_source)
+  return body?.length ? [path.replace(/[\x00-\x1f\x7f]/g, ''), ...body].join('\n') : null
+}
+
 function describe(input: Record<string, unknown>): Pick<PendingApproval, 'summary' | 'detail'> {
   const field = SUMMARY_FIELDS.map((k) => input[k]).find((v) => typeof v === 'string' && v)
   // Collapsing runs of whitespace stops padding from pushing the dangerous part out of view.
   const line = ((field as string | undefined) ?? JSON.stringify(input)).replace(/[\s\x00-\x1f\x7f]+/g, ' ').trim()
-  return { summary: cut(line, SUMMARY_MAX), detail: cut(line, DETAIL_MAX) }
+  return { summary: cut(line, SUMMARY_MAX), detail: cut(change(input) ?? line, DETAIL_MAX) }
 }
 
 /** JSON with every object's keys in order, so the same input always reads the same, whatever order it came in. */
