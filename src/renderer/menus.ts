@@ -120,6 +120,8 @@ export interface Commands {
   unwatchOutput(nodeId: string): void
   /** Restart when it stops, on or off, for a run. See src/main/runKeeper.ts. */
   toggleKeepRunning(nodeId: string): void
+  /** Send later: a message to this agent once, at a time, as a trigger beside it. See sendLater.ts. */
+  sendLater(nodeId: string): void
   revealTranscript(nodeId: string): void
   /** A failed run's command, exit code and last output, as a new agent's brief. See src/renderer/runFixUi.ts. */
   askToFixRun(nodeId: string): void
@@ -491,6 +493,7 @@ export function nodeMenu(
     { id: 'open-git', label: 'Open in Git panel', icon: 'branch', run: () => c.toggleGit(node.cwd) },
     ...openFolderEntries(node),
     ...openPlanEntry(node),
+    ...(node.kind === 'claude' ? [{ id: 'send-later', label: 'Send later…', icon: 'trigger' as const, run: () => c.sendLater(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
     ...(node.kind === 'run' ? [{ id: 'keep-running', label: 'Restart when it stops', icon: 'restart' as const, checked: node.keepRunning === true, run: () => c.toggleKeepRunning(node.id) }] : []),

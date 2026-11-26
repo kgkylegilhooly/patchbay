@@ -13,6 +13,7 @@ import { ReviewInboxLayer } from './ReviewInbox'
 import { SearchLayer } from './SearchLayer'
 import { SendToAgentsLayer } from './SendManyBox'
 import { NotifyWhenLayer } from './NotifyWhenBox'
+import { SendLaterLayer } from './SendLaterBox'
 import { ConfirmHost } from './shell/Confirm'
 import { DiagnosticsToast } from './diagnostics/AboutDiagnostics'
 import { SubagentLayer } from './subagents/SubagentLayer'
@@ -38,6 +39,7 @@ export const CanvasOverlays = memo(function CanvasOverlays({ commands, selected,
       <RecipeLayer selected={selected} />
       <SendToAgentsLayer />
       <NotifyWhenLayer />
+      <SendLaterLayer />
       <CompareLayer />
       <WorkflowLayer />
       <ProjectsLayer commands={commands} />
