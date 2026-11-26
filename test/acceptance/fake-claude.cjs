@@ -105,7 +105,9 @@ const hook = (name, extra = {}) => {
   const entry = settings.hooks[name]?.[0]?.hooks?.[0]
   if (!entry) return Promise.resolve()
   const started = Date.now()
-  const payload = { hook_event_name: name, session_id: sessionId, transcript_path: '', ...extra }
+  // As Claude does, UserPromptSubmit says what was asked, when the prompt gives one with ask= (underscores for spaces).
+  const said = name === 'UserPromptSubmit' && asked ? { prompt: asked } : {}
+  const payload = { hook_event_name: name, session_id: sessionId, transcript_path: '', ...said, ...extra }
   if (entry.type === 'http') {
     return postHook(entry, payload).then(({ code, answer, proxied }) => {
       const noProxy = process.env.NO_PROXY ?? process.env.no_proxy
@@ -128,6 +130,7 @@ const edits = /\bedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? nu
 const writes = /\bwrites=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
 const subedits = /\bsubedits=(\S+)/.exec(prompt)?.[1].split(',').filter(Boolean) ?? []
 const chat = /\bchat\b/.test(prompt) || !!edits
+const asked = /\bask=(\S+)/.exec(prompt)?.[1].replace(/_/g, ' ') ?? null
 // "fanout=N" starts N pretend subagents, written where Claude Code writes them. See fanOut below.
 const fanout = Number(/\bfanout=(\d+)/.exec(prompt)?.[1] ?? 0)
 const transcript = chat || fanout ? require('node:path').join(require('node:os').tmpdir(), `pb-fake-${sessionId}.jsonl`) : ''
