@@ -67,6 +67,8 @@ export interface RunNode extends Base {
   command: string
   /** Set for a configuration from .vscode/launch.json. It's read again at each run, and `command` follows from that. */
   launch?: { folder: string; name: string }
+  /** Restart when it stops: started again after a crash, with backoff. See src/main/runKeeper.ts. */
+  keepRunning?: boolean
 }
 
 /** Something on this PC a trigger fires on, instead of a time. See src/core/trigger/events.ts. */

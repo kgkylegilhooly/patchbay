@@ -684,6 +684,30 @@ const scenes = {
     await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12, { button: 'right' })
     await sleep(400)
   },
+  // F50: a run that crashes at once, with Restart when it stops on: it's started again after 2 s, 5 s and 15 s, then
+  // given up on at the fourth crash within a minute. Each run adds a line to runs.txt, so that's counted. Then its menu.
+  'keep-running': async (page, ctx) => {
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const dir = path.join(ctx.profile, 'crashy')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'crash.cjs'), "require('fs').appendFileSync('runs.txt', 'run\\n'); console.log('crashing'); process.exit(3)\n")
+    const node = { ...box, id: 'crashy', kind: 'run', title: 'dev server', x: 930, y: 640, width: 560, cwd: dir, command: 'node crash.cjs', keepRunning: true, projectId: 'p1' }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    const count = () => (fs.existsSync(path.join(dir, 'runs.txt')) ? fs.readFileSync(path.join(dir, 'runs.txt'), 'utf8').split('\n').filter(Boolean).length : 0)
+    await sleep(30000)
+    const runs = count()
+    await sleep(3000)
+    console.log(`runs: ${runs}, then ${count()} after 3 s more`)
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('dev server'))?.click())
+    await sleep(800)
+    const box2 = await page.$eval('.react-flow__node[data-id="crashy"] .xterm-screen', (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height - 12, { button: 'right' })
+    await sleep(400)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

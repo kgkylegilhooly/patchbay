@@ -272,6 +272,10 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       saveOutput: (nodeId) => void saveOutput(nodeId),
       watchOutput: (nodeId) => askOutputWatch(nodeId),
       unwatchOutput: (nodeId) => stopOutputWatch(nodeId),
+      toggleKeepRunning: (nodeId) => {
+        const node = doc().nodes.find((n) => n.id === nodeId)
+        if (node?.kind === 'run') patchNode(nodeId, { keepRunning: node.keepRunning ? undefined : true })
+      },
       revealTranscript: (nodeId) => void revealTranscript(nodeId),
       askToFixRun: (nodeId) => void askToFixRun(nodeId),
       pinSelection: (nodeId) => {

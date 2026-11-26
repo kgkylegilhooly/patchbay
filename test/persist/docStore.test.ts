@@ -442,3 +442,9 @@ test('a sealed store writes nothing more: no save, no debounced save, no flush, 
   await new Promise((r) => setTimeout(r, 1200))
   expect(titleOnDisk(join(dir, 'canvas.json'))).toBe('before')
 })
+
+test('a run keeps its Restart when it stops; a value that is not a yes or no leaves the run out', () => {
+  const run = { kind: 'run', id: 'r', title: 'dev', x: 0, y: 0, width: 1, height: 1, parentId: null, projectId: 'p', cwd: 'C:/a', command: 'npm run dev' }
+  expect(migrate({ ...docTitled('a'), nodes: [{ ...run, keepRunning: true }] }).nodes[0]).toMatchObject({ keepRunning: true })
+  expect(migrate({ ...docTitled('a'), nodes: [{ ...run, keepRunning: 'yes' }] }).nodes).toEqual([])
+})
