@@ -257,18 +257,6 @@
   border-radius: var(--r-lg);
 }
 
-.handoff-label-tag {
-  flex: none;
-  padding: 0 6px;
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #1a1606;
-  background: var(--tape-line);
-  border-radius: var(--r-sm);
-}
-
 .handoff-section {
   margin-bottom: 14px;
 }
@@ -300,10 +288,16 @@
   display: block;
   width: 100%;
   padding: 8px 10px;
-  font-family: var(--mono);
+  font-family: var(--ui);
   font-size: var(--fs-md);
+  font-weight: 400;
   line-height: 1.5;
   resize: vertical;
+}
+
+/* Paths, commands and output, where columns and exact characters matter. */
+.handoff-section textarea.handoff-code {
+  font-family: var(--mono);
 }
 
 .evidence {

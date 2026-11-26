@@ -16,6 +16,9 @@ import { safePadding } from './safeArea'
 const EVIDENCE: Record<Evidence, string> = { found: 'Found', partial: 'Partial', stale: 'Stale', missing: 'Missing' }
 
 /** Enough rows to show a section without scrolling, up to a point. */
+/** Sections that hold paths, commands and output stay in monospace. The rest is prose, in the interface font. */
+const CODE_SECTIONS = new Set(['changed', 'verification', 'sources'])
+
 const rowsFor = (text: string): number => Math.min(14, Math.max(3, text.split('\n').length + 1))
 
 /**
@@ -186,7 +189,6 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
           {draft && <span className="handoff-from-agent"> · {AGENT_NAMES[draft.agent]}</span>}
         </p>
         <p className="handoff-label" role="note">
-          <span className="handoff-label-tag">Extracted</span>
           {EXTRACTED_NOTE} Edit anything before starting.
         </p>
         {!draft && !problem && <p className="drawer-empty">Reading the conversation…</p>}
@@ -198,7 +200,7 @@ export function HandoffEditor({ source }: { source: HandoffSource & { title: str
               {s.note && <span className="handoff-note">{s.note}</span>}
               {edited(s) && <span className="handoff-edited">edited</span>}
             </div>
-            <textarea id={`handoff-${s.id}`} spellCheck={false} rows={rowsFor(s.text)} value={s.text} onChange={(e) => edit(s.id, e.target.value)} />
+            <textarea id={`handoff-${s.id}`} className={CODE_SECTIONS.has(s.id) ? 'handoff-code' : undefined} spellCheck={false} rows={rowsFor(s.text)} value={s.text} onChange={(e) => edit(s.id, e.target.value)} />
           </div>
         ))}
     </Panel>
