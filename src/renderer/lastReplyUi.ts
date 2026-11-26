@@ -7,6 +7,7 @@ declare global {
       copyLast(nodeId: string): Promise<{ ok: true; chars: number } | { ok: false; reason: string }>
       saveConversation(nodeId: string): Promise<{ ok: true; path: string; messages: number } | { ok: false; reason: string; cancelled?: true }>
       revealTranscript(nodeId: string): Promise<{ ok: true } | { ok: false; reason: string }>
+      headline(nodeId: string): Promise<string | null>
       saveOutput(nodeId: string): Promise<{ ok: true; path: string; lines: number } | { ok: false; reason: string; cancelled?: true }>
     }
   }

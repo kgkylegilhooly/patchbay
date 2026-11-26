@@ -5,6 +5,7 @@ import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEve
 import { readAllMessages, readMessagesTail, type TranscriptMessage } from '../core/transcript/read'
 import { createConversationSaver, revealTranscript } from './conversation'
 import { pickOrStub } from './testPickers'
+import { headline } from './notifier'
 import type { CanvasStore } from '../shared/contract'
 
 /** Messages read from the end of a transcript, to find the last reply without reading it all. */
@@ -34,6 +35,15 @@ export async function copyLastReply(store: CanvasStore, nodeId: string, write: (
   return { ok: true, chars: reply.length }
 }
 
+/** F57: the first line of an agent's latest answer, for the sidebar's tooltip. Null when there's none, or it can't be read. */
+export async function replyHeadline(store: CanvasStore, nodeId: string, read = readMessagesTail): Promise<string | null> {
+  const node = store.get().nodes.find((n) => n.id === nodeId)
+  if (node?.kind !== 'claude' || !node.transcriptPath) return null
+  const messages = await read(node.transcriptPath, TAIL).catch(() => null)
+  const reply = messages && lastReplyOf(messages)
+  return reply ? headline(reply) : null
+}
+
 /** pb:reply:copyLast, pb:reply:saveConversation and pb:reply:revealTranscript, for the app's own window only. */
 export function serveLastReply(store: CanvasStore, isAppUi: (e: IpcMainInvokeEvent) => boolean): void {
   ipcMain.handle('pb:reply:copyLast', (e, nodeId: unknown) =>
@@ -54,6 +64,7 @@ export function serveLastReply(store: CanvasStore, isAppUi: (e: IpcMainInvokeEve
       })
   })
   ipcMain.handle('pb:reply:saveConversation', (e, nodeId: unknown) => (isAppUi(e) && typeof nodeId === 'string' ? saveConversation(nodeId) : { ok: false, reason: 'Not allowed.' }))
+  ipcMain.handle('pb:reply:headline', (e, nodeId: unknown) => (isAppUi(e) && typeof nodeId === 'string' ? replyHeadline(store, nodeId) : null))
   ipcMain.handle('pb:reply:revealTranscript', (e, nodeId: unknown) =>
     isAppUi(e) && typeof nodeId === 'string' ? revealTranscript(store, nodeId, (p) => shell.showItemInFolder(p), existsSync) : { ok: false, reason: 'Not allowed.' }
   )

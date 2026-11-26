@@ -482,6 +482,19 @@ const scenes = {
     await page.evaluate(() => [...document.querySelectorAll('.react-flow__node[data-id="named"] .xterm-screen')][0]?.click())
     await sleep(800)
   },
+  // F57: the agent has replied; hovering its sidebar row puts its last reply's first line in the row's tooltip. A native
+  // tooltip isn't in a screenshot, so the scene prints the text it finds.
+  'reply-hover': async (page, ctx) => {
+    await scenes['reply-menu'](page, ctx)
+    await page.keyboard.press('Escape')
+    const row = await page.waitForSelector('.session[data-session="replier"]', { timeout: 5000 })
+    await row.hover()
+    await page.waitForFunction(() => /Last reply:/.test(document.querySelector('.session[data-session="replier"]')?.getAttribute('title') ?? ''), { timeout: 5000 }).catch(() => {})
+    const title = await page.$eval('.session[data-session="replier"]', (e) => e.getAttribute('title'))
+    if (!/\nLast reply: \S/.test(title ?? '')) throw new Error(`The row's tooltip is: ${JSON.stringify(title)}`)
+    console.log(`row tooltip: ${JSON.stringify(title)}`)
+    await sleep(300)
+  },
   // The same, then the item: the reply is on the clipboard, and the notice says so.
   'reply-copied': async (page, ctx) => {
     await scenes['reply-menu'](page, ctx)
