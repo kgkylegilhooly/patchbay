@@ -304,7 +304,8 @@ and spends a little quota.
 ## Sessions sidebar
 
 - **Project** lists sessions under each open project, across all of them. Headers fold, and stay folded after a restart.
-  A row shows its folder only when it isn't the project's folder.
+  A row shows its folder only when it isn't the project's folder. Hover an agent's row for its folder and the first line
+  of its last reply, read again only once it has done something since.
 - **Status** sorts every session by what it's doing: Need attention, Unread, Working, Idle and No status yet. Only a session
   whose Claude hooks said so is ever Idle. Queued and starting sessions go under Starting, ended ones under Exited,
   and terminals and run commands, which can't report a status, under Terminals and commands. Each session appears once.

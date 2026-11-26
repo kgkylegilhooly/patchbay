@@ -8,6 +8,8 @@ export function exposeReply(): void {
     saveConversation: (nodeId: string): Promise<{ ok: true; path: string; messages: number } | { ok: false; reason: string; cancelled?: true }> =>
       ipcRenderer.invoke('pb:reply:saveConversation', nodeId),
     revealTranscript: (nodeId: string): Promise<{ ok: true } | { ok: false; reason: string }> => ipcRenderer.invoke('pb:reply:revealTranscript', nodeId),
+    // The last reply's first line, for the sidebar's tooltip (F57).
+    headline: (nodeId: string): Promise<string | null> => ipcRenderer.invoke('pb:reply:headline', nodeId),
     // Save output (F43): a terminal's or run's output as a text file. Served in src/main/saveOutput.ts.
     saveOutput: (nodeId: string): Promise<{ ok: true; path: string; lines: number } | { ok: false; reason: string; cancelled?: true }> => ipcRenderer.invoke('pb:output:save', nodeId)
   })

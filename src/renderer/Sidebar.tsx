@@ -15,6 +15,7 @@ import type { Prefs } from './prefs'
 import type { Session } from './sessionTree'
 import { closedProjects, projectBadge, projectSections, recentlyClosed, relativeTime, rowShowsWhere, statusSections } from './sidebarView'
 import { useStore } from './store'
+import { headlineKey, loadReplyHeadline, rowTitle, useReplyHeadlines } from './replyHeadlineUi'
 import { contextLabel } from './usageView'
 import { useAgentOff } from './agentChoice'
 import { useAgentStop, useAgentStops } from './agentStops'
@@ -68,13 +69,18 @@ const Row = memo(function Row({ session, project, tab, now, onReveal }: { sessio
   // Under its own project's heading the badge and the project's folder would only repeat the heading.
   const where = whereShown(session)
   const showWhere = rowShowsWhere(where, project, tab)
+  // F57: what an agent last answered, read when the row is hovered or focused, and kept until it next does something.
+  const reply = useReplyHeadlines((s) => (session.kind === 'claude' ? s[session.id]?.text : undefined))
+  const wantReply = session.kind === 'claude' ? (): void => void loadReplyHeadline(session.id, headlineKey(status, at)) : undefined
   return (
     <li>
       <button
         type="button"
         className={`session${inStatus ? '' : ' session-in-project'}`}
         data-session={session.id}
-        title={where || 'Home folder'}
+        title={rowTitle(where, reply)}
+        onMouseEnter={wantReply}
+        onFocus={wantReply}
         onClick={() => onReveal(session.id)}
         onKeyDown={(e) => {
           // Space peeks, as in Claude's agent view. Enter still goes to the window.
