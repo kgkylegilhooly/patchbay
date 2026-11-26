@@ -43,11 +43,11 @@ import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPa
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
 import type { SignalWatcher } from './sessions/signals'
-import { removeRefusal } from '../core/canvas/projectOps'
 import { JOINED_NOTICE, type JoinedRefusal } from '../shared/sessionSync'
 import { createOutputPacer } from './outputPacer'
 import { onScreenIds } from './onScreen'
 import { inSettingsQueue } from './settingsQueue'
+import { removeProjectStopped } from './projects/remove'
 import { agentProgramProblem } from './sessions/agentProgramCheck'
 import { defaultAgentOf } from '../shared/agents'
 import { pickOrStub } from './testPickers'
@@ -263,12 +263,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     // Arming goes through armTrigger, which checks what was shown. The page can't set a trigger's state itself.
     // Archiving stops the project's sessions first, so it goes through pb:projects:archive. See src/main/projects.
     if (op.op === 'setTriggerState' || op.op === 'setTasks' || op.op === 'archiveProject') return
-    if (op.op === 'removeProject') {
-      // The last project stays, so its sessions must too. So does the last one that isn't archived.
-      if (removeRefusal(store.get(), op.id)) return
-      await stopSessions(store.get().nodes.filter((n) => n.projectId === op.id).map((n) => n.id))
-      return store.dispatch({ ...op, at: Date.now() })
-    }
+    // The last project stays, so its sessions must too. So does the last one that isn't archived. See projects/remove.ts.
+    if (op.op === 'removeProject') return removeProjectStopped({ store, stopSessions, isRunning: (id) => host.isRunning(id), stopNode: (id) => runner.stopNode(id) }, op.id, Date.now())
     if (op.op !== 'removeNodes') return store.dispatch(withDefaultFolder(op))
     await stopSessions(op.ids)
     store.dispatch({ ...op, at: Date.now() })
