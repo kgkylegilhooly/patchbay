@@ -44,6 +44,11 @@ export interface PendingApproval {
   summary: string
   /** The same text without the cut, for when the person asks to see all of it. */
   detail: string
+  /**
+   * The whole request, tool and input, as one value: equal only for the very same request. `detail` is display text,
+   * the path alone for an Edit or Write, so it can't say two requests are the same. Used by Approve all N.
+   */
+  same: string
   /** Claude's own "don't ask again" rule for this call, when it offered one Patchbay passes on: see approvals.ts. */
   always?: { rule: string; where: string }
 }
