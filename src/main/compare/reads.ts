@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
-import { describeFailure, LIMITS, type Git, type GitService } from '../../core/git/service'
+import { NO_FSMONITOR } from '../../core/git/args'
+import { describeFailure, LIMITS, systemGit, type Git, type GitService } from '../../core/git/service'
 import type { AttemptState, FileChange, SourceInfo } from '../../shared/compare'
 
 /**
@@ -47,6 +48,14 @@ export async function fingerprintChanges(root: string, paths: string[]): Promise
     h.update(`${p}\0${content ?? '-'}\0`)
   }
   return h.digest('hex')
+}
+
+/** A diff runs no program the attempt's own config names (GX1): no external diff, no textconv. */
+const NO_DIFF_PROGRAMS = ['--no-ext-diff', '--no-textconv']
+
+/** The git compare runs in attempts, which agents write, config included: no fsmonitor program either (GX1). */
+export function compareGit(env: Record<string, string>): Git {
+  return systemGit(env, NO_FSMONITOR)
 }
 
 export function createCompareReads(git: Git, service: Pick<GitService, 'status' | 'toplevel' | 'diff'>) {
@@ -103,7 +112,7 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
     return { count: all.length, first: all.slice(0, SHOWN_IGNORED) }
   }
 
-  const numstat = async (path: string, from: string, to?: string): Promise<FileChange[]> => parseNumstat(await out(path, ['diff', '--no-renames', '--numstat', from, ...(to ? [to] : []), '--'], LIMITS.diff))
+  const numstat = async (path: string, from: string, to?: string): Promise<FileChange[]> => parseNumstat(await out(path, ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--numstat', from, ...(to ? [to] : []), '--'], LIMITS.diff))
 
   /** An attempt as it is now, against its base. */
   async function attempt(path: string, base: string): Promise<AttemptState> {
@@ -160,7 +169,7 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
         const d = await service.diff(path, file, false)
         return { ok: true, text: d.binary ? `New, untracked binary file: ${file}` : d.text, truncated: d.truncated }
       }
-      const r = await run(path, side === 'committed' ? ['diff', '--no-renames', base, 'HEAD', '--', file] : ['diff', '--no-renames', 'HEAD', '--', file], LIMITS.diff)
+      const r = await run(path, side === 'committed' ? ['diff', ...NO_DIFF_PROGRAMS, '--no-renames', base, 'HEAD', '--', file] : ['diff', ...NO_DIFF_PROGRAMS, '--no-renames', 'HEAD', '--', file], LIMITS.diff)
       if (r.code !== 0) return { ok: false, reason: describeFailure(r, 'git diff') }
       return { ok: true, text: r.stdout, truncated: r.truncated }
     } catch (e) {
@@ -170,3 +179,4 @@ export function createCompareReads(git: Git, service: Pick<GitService, 'status' 
 
   return { source, isCommit, branchExists, attempt, fileDiff, unmergedCount, ignored }
 }
+

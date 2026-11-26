@@ -7,6 +7,12 @@ export const LOG_LIMIT = 300
 /** Settings for every call: no colors, no pager, nothing that asks. */
 export const GLOBAL = ['-c', 'color.ui=false', '-c', 'core.quotepath=false', '-c', 'credential.interactive=false']
 
+/**
+ * For git run in a repository an agent works in, whose config the agent can write: no fsmonitor program is run to ask
+ * what changed (GX1). Diffs say the same with --no-ext-diff and --no-textconv.
+ */
+export const NO_FSMONITOR = ['-c', 'core.fsmonitor=false']
+
 export const statusArgs = (): string[] => ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']
 
 export function stageArgs(paths: string[] | 'all'): string[] {
@@ -62,7 +68,7 @@ export function logArgs(limit = LOG_LIMIT): string[] {
 }
 
 export function diffArgs(path: string, staged: boolean): string[] {
-  return ['diff', '--no-ext-diff', '--no-color', ...(staged ? ['--cached'] : []), '--', path]
+  return ['diff', '--no-ext-diff', '--no-textconv', '--no-color', ...(staged ? ['--cached'] : []), '--', path]
 }
 
 /** The environment for git: nothing inherited may point it elsewhere, and nothing may wait on a person typing. */

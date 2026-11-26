@@ -7,6 +7,7 @@ import { promisify } from 'node:util'
 import type { TaskRevision, TaskVerification } from '../../shared/task'
 import { cleanEnv } from '../sessions/env'
 import { killTree as killChildTree } from '../../core/proc/killTree'
+import { NO_FSMONITOR } from '../../core/git/args'
 
 const runFile = promisify(execFile)
 export const unknownRevision = (reason?: string): TaskRevision => ({ revision: null, uncommitted: null, fingerprint: null, ...(reason ? { reason } : {}) })
@@ -46,19 +47,20 @@ function fileInto(hash: Hash, file: string): Promise<void> {
 export async function readRevision(cwd: string): Promise<TaskRevision> {
   let root: string
   try {
-    root = (await runFile('git', ['rev-parse', '--show-toplevel'], { cwd, windowsHide: true, timeout: 15000 })).stdout.trim()
+    root = (await runFile('git', [...NO_FSMONITOR, 'rev-parse', '--show-toplevel'], { cwd, windowsHide: true, timeout: 15000 })).stdout.trim()
   } catch (e) {
     const text = `${(e as { stderr?: string }).stderr ?? ''}${(e as Error).message}`
     if (/not a git repository/i.test(text)) return { revision: null, uncommitted: null, fingerprint: null, noRepo: true }
     return unknownRevision(`git couldn't be run in ${cwd}`)
   }
   try {
-    const git = async (...args: string[]): Promise<string> => (await runFile('git', args, { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 64 * 1024 * 1024 })).stdout
+    const git = async (...args: string[]): Promise<string> => (await runFile('git', [...NO_FSMONITOR, ...args], { cwd: root, windowsHide: true, timeout: 15000, maxBuffer: 64 * 1024 * 1024 })).stdout
     const revision = (await git('rev-parse', 'HEAD')).trim()
     const status = await git('status', '--porcelain=v1', '-z', '--untracked-files=all')
     const hash = createHash('sha256').update(status)
-    await gitInto(hash, root, ['diff', '--binary', 'HEAD', '--'])
-    await gitInto(hash, root, ['diff', '--cached', '--binary', '--'])
+    // An agent can write this repository's config, so no program it names runs (GX1): no fsmonitor, external diff or textconv.
+    await gitInto(hash, root, [...NO_FSMONITOR, 'diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', '--'])
+    await gitInto(hash, root, [...NO_FSMONITOR, 'diff', '--no-ext-diff', '--no-textconv', '--cached', '--binary', '--'])
     const untracked = await git('ls-files', '--others', '--exclude-standard', '--full-name', '-z')
     for (const file of untracked.split('\0').filter(Boolean).sort()) {
       hash.update(file).update('\0')
