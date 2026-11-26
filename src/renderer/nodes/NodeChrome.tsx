@@ -25,6 +25,7 @@ import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
 import { approveAllMessage, sameRequests } from '../approveAll'
+import { UncommittedChip } from './UncommittedChip'
 import { askReview, reviewShown, reviewViewport, useFarReview } from '../farReview'
 import { measureSafeArea } from '../safeArea'
 import { StartFixActions } from './StartFixActions'
@@ -358,6 +359,7 @@ export function NodeChrome({
           </span>
         )}
         {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
+        {node.kind === 'claude' && status === 'idle' && <UncommittedChip nodeId={node.id} cwd={node.cwd} />}
         {folder && (
           <span className="cwd" title={cwd}>
             {folder}

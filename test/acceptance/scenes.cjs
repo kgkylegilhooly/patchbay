@@ -460,6 +460,37 @@ const scenes = {
     await page.click('.react-flow__node[data-id="guarded"] [data-tool="close"]').catch(() => {})
     await sleep(800)
   },
+  // F52: the same agent left its edit uncommitted and has been idle 31 minutes (the page's clock moved on): its header
+  // gets the chip at the next minute's look. Slow, since the look runs once a minute.
+  'uncommitted-chip': async (page, ctx) => {
+    const { execFileSync } = require('node:child_process')
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const repo = path.join(ctx.profile, 'idle-repo')
+    const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { windowsHide: true })
+    fs.mkdirSync(repo, { recursive: true })
+    fs.writeFileSync(path.join(repo, 'README.md'), 'first\n')
+    git('init', '-q', '-b', 'main')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'First')
+    const node = { ...box, id: 'idler', kind: 'claude', title: 'Release notes', x: 930, y: 640, width: 620, prompt: 'edits=notes.md', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', cwd: repo }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    const shows = (word) => page.waitForFunction((w) => document.querySelector('.react-flow__node[data-id="idler"]')?.textContent?.includes(w), { timeout: 30000 }, word).catch(() => {})
+    await shows('Working')
+    await shows('Idle')
+    await page.evaluate(() => {
+      const real = Date.now
+      Date.now = () => real() + 31 * 60_000
+    })
+    await page.waitForSelector('.react-flow__node[data-id="idler"] [data-uncommitted-chip]', { timeout: 90000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Release notes'))?.click())
+    await sleep(800)
+    const chip = await page.$eval('.react-flow__node[data-id="idler"] [data-uncommitted-chip]', (el) => el.textContent).catch(() => null)
+    console.log(`uncommitted chip: ${chip}`)
+  },
   // The File menu, open.
   'menubar-file': async (page) => {
     await sleep(500)
