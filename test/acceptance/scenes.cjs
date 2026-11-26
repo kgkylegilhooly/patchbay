@@ -778,6 +778,39 @@ const scenes = {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Dev server'))?.click())
     await sleep(800)
   },
+  // F66: a team of two agents, each of which edited a file and replied, and the group's menu: Save a report.
+  'group-report-menu': async (page, { profile }) => {
+    const dir = require('node:path').join(profile, 'team-work')
+    require('node:fs').mkdirSync(dir, { recursive: true })
+    const g = { id: 'g-rep', kind: 'group', title: 'Release team', x: 930, y: 640, width: 1140, height: 380, parentId: null, worktree: null, projectId: 'p1' }
+    const agentIn = (id, title, x, prompt) => ({ ...box, id, kind: 'claude', title, x, y: 50, width: 520, height: 300, prompt, sessionId: null, transcriptPath: null, after: [], projectId: 'p1', parentId: 'g-rep', cwd: dir })
+    await page.evaluate(async (nodes) => {
+      for (const n of nodes) await window.patchbay.dispatch({ op: 'addNode', node: n })
+      for (const n of nodes.slice(1)) await window.patchbay.startNode(n.id)
+    }, [g, agentIn('rep-a', 'Changelog', 30, 'edits=CHANGELOG.md'), agentIn('rep-b', 'Version bump', 590, 'edits=package.json')])
+    // Each starts, edits its file, replies and goes idle.
+    await page.waitForFunction(() => window.patchbay.getStatuses().then((s) => s['rep-a'] === 'working' || s['rep-b'] === 'working'), { timeout: 30000, polling: 500 }).catch(() => {})
+    await page.waitForFunction(() => window.patchbay.getStatuses().then((s) => s['rep-a'] === 'idle' && s['rep-b'] === 'idle'), { timeout: 60000, polling: 500 }).catch(() => {})
+    await sleep(2500)
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Changelog'))?.click())
+    await sleep(600)
+    const head = await (await page.$('.react-flow__node[data-id="g-rep"]')).boundingBox()
+    await page.mouse.click(head.x + 200, head.y + 12, { button: 'right' })
+    await sleep(400)
+  },
+  // The same, then the item: the save dialog is answered by PB_SCENE_SAVE_AS (test runs only); the file is checked.
+  'group-report': async (page, ctx) => {
+    await scenes['group-report-menu'](page, ctx)
+    await page.click('.menu-panel [data-cmd="save-report"]').catch(() => {})
+    await sleep(2000)
+    const file = `${process.env.PB_SCENE_SAVE_AS}.md`
+    const text = require('node:fs').readFileSync(file, 'utf8')
+    const want = ['# Report: Release team', '## Changelog', '## Version bump', '### Last reply', '- `CHANGELOG.md`', '- `package.json`']
+    const missing = want.filter((w) => !text.includes(w))
+    if (missing.length) throw new Error(`The report lacks ${JSON.stringify(missing)}: ${text.slice(0, 600)}`)
+    console.log(`group report: ${file}, ${text.length} characters`)
+    console.log(text)
+  },
   // F39: prompts used before, and the New Claude Code form with Recent open.
   'recent-prompts': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([
@@ -1530,6 +1563,9 @@ const seeds = {
   },
   'conversation-saved': (doc) => {
     process.env.PB_SCENE_SAVE_AS = require('node:path').join(doc.projects[0].folder, 'release-notes-conversation')
+  },
+  'group-report': (doc) => {
+    process.env.PB_SCENE_SAVE_AS = require('node:path').join(doc.projects[0].folder, 'release-team-report')
   },
   'archive-confirm': (doc) => seeds.projects(doc),
   'archive-done': (doc) => seeds.projects(doc),

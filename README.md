@@ -679,7 +679,9 @@ Every Claude and Codex window runs with the Patchbay skill, which teaches it the
 
 After a team run, a group's menu offers **Close N finished agents…**: its idle agents, at any depth. Any that left
 files it edited uncommitted stays open and is named, and the confirmation lists what closes. Closed conversations can
-reopen each one.
+reopen each one. **Save a report…**, in the same menu, writes one Markdown file where you pick: each agent's status,
+last reply and the files it edited (uncommitted ones marked), then, for a worktree group, the commits only on its
+branch.
 
 When agents across groups are going the wrong way, the canvas menu and the dock's Work menu offer **Interrupt N
 working agents…** for the project on screen: it names them, then sends Esc to each, and they keep their conversations.
