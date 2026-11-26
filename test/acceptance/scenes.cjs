@@ -599,6 +599,35 @@ const scenes = {
     await page.click('[data-confirm="interrupt-working"] .btn-solid, [data-confirm="interrupt-working"] .btn-danger').catch(() => {})
     await sleep(1500)
   },
+  // F45: two agents asking to run the same command: each strip offers Approve all 2.
+  'approve-all': async (page) => {
+    await page.evaluate(async () => {
+      const cwd = (await window.patchbay.getDoc()).nodes.find((o) => o.id === 'term').cwd
+      const base = { kind: 'claude', prompt: 'permission', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', parentId: null, width: 560, height: 300, cwd }
+      for (const [id, title, x] of [['ask-a', 'Ship the fix', 930], ['ask-b', 'Ship the docs', 1520]]) {
+        await window.patchbay.dispatch({ op: 'addNode', node: { ...base, id, title, x, y: 640 } })
+        await window.patchbay.startNode(id)
+      }
+    })
+    await page.waitForFunction(() => document.querySelectorAll('[data-cmd="approve-all"]').length === 2, { timeout: 20000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Ship the fix'))?.click())
+    await sleep(800)
+  },
+  // The same, then Approve all 2: it asks first, naming both windows.
+  'approve-all-confirm': async (page) => {
+    await scenes['approve-all'](page)
+    await page.click('.react-flow__node[data-id="ask-a"] [data-cmd="approve-all"]').catch(() => {})
+    await sleep(500)
+  },
+  // Confirmed: both strips go, as both requests are answered.
+  'approve-all-done': async (page) => {
+    await scenes['approve-all-confirm'](page)
+    await page.click('[data-confirm="approve-all"] .btn-solid').catch(() => {})
+    await page.waitForFunction(() => !document.querySelector('.react-flow__node[data-id="ask-a"] .strip-approval, .react-flow__node[data-id="ask-b"] .strip-approval'), { timeout: 10000 }).catch(() => {})
+    const left = await page.evaluate(() => document.querySelectorAll('.strip-approval').length)
+    console.log(`approval strips left: ${left}`)
+    await sleep(500)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

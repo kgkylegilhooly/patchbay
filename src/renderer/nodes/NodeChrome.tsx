@@ -24,6 +24,7 @@ import { headerFolder, keyBadge } from '../zoomTier'
 import { JoinedStrip } from '../sessionSyncUi'
 import '../zoom.css'
 import { confirmThen } from '../shell/confirmStore'
+import { approveAllMessage, sameRequests } from '../approveAll'
 import { askReview, reviewShown, reviewViewport, useFarReview } from '../farReview'
 import { measureSafeArea } from '../safeArea'
 import { StartFixActions } from './StartFixActions'
@@ -103,6 +104,27 @@ export function Resizer({ node, min }: { node: CanvasNode; min: { w: number; h: 
   )
 }
 
+/** Approves every window waiting on this very request, after the person has seen them listed. */
+function askApproveAll(approval: PendingApproval): void {
+  const s = useStore.getState()
+  const same = sameRequests(s.approvals, approval)
+  const titles = same.map((a) => s.doc?.nodes.find((n) => n.id === a.nodeId)?.title ?? 'a window')
+  void confirmThen(
+    {
+      title: `Approve in ${same.length} windows?`,
+      // The whole command, never the cut summary: nobody approves what they can't read the end of.
+      message: approveAllMessage(approval.tool, approval.detail, titles),
+      tone: 'neutral',
+      verb: `Approve all ${same.length}`,
+      cancelLabel: 'Cancel',
+      attrs: { 'data-confirm': 'approve-all' }
+    },
+    () => {
+      for (const a of same) void bridge.answerApproval(a.requestId, 'allow')
+    }
+  )
+}
+
 function Approval({ nodeId }: { nodeId: string }): React.JSX.Element | null {
   const approval = useStore((s) => s.approvals.find((a) => a.nodeId === nodeId))
   // Keyed, so the next request starts on one line again.
@@ -134,6 +156,8 @@ function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.E
     return () => watcher.disconnect()
   }, [open])
   const more = open || clipped || approval.detail !== approval.summary
+  // How many windows wait on exactly this, this one included: a number, so the strip draws again only when it changes.
+  const same = useStore((s) => sameRequests(s.approvals, approval).length)
   return (
     <div className={`strip strip-approval${open ? ' strip-open' : ''}`}>
       <div className="strip-text">
@@ -151,6 +175,11 @@ function ApprovalStrip({ approval }: { approval: PendingApproval }): React.JSX.E
         <button className="btn btn-solid" onClick={() => void bridge.answerApproval(approval.requestId, 'allow')}>
           Approve
         </button>
+        {same > 1 && (
+          <button className="btn btn-always" data-cmd="approve-all" title={`Approve this same request in all ${same} windows waiting on it. Asks first, listing them.`} onClick={() => askApproveAll(approval)}>
+            Approve all {same}
+          </button>
+        )}
         {approval.always && (
           // Claude's own "don't ask again" rule, saved by Claude where it says: never your own or the shared settings.
           <button
