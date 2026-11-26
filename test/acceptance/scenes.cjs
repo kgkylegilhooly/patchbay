@@ -434,6 +434,36 @@ const scenes = {
     if (!ok) throw new Error(`After Reopen: earlier output in the session ${stream.includes('build-finished-ok-42')}, divider ${stream.includes('process ended')}, still listed ${listed}, status ${status}`)
     console.log(`closed shell reopened, running, earlier output in its session; scrolled into view: ${rows.includes('build-finished-ok-42')}`)
   },
+  // A short output, one line, closed and reopened: the new shell's first frame clears the screen, which held all of it.
+  // Read from the rendered rows after scrolling up a little, not from the stream (which always had it).
+  'restored-short': async (page) => {
+    await page.waitForSelector('.react-flow__node[data-id="term"] .xterm-screen', { timeout: 15000 })
+    await sleep(1500)
+    await page.evaluate(() => window.patchbay.input('term', 'echo short-output-77\r'))
+    await sleep(1500)
+    await page.evaluate(() => window.patchbay.dispatch({ op: 'removeNodes', ids: ['term'] }))
+    await page.waitForFunction(() => !document.querySelector('.react-flow__node[data-id="term"]'), { timeout: 10000 })
+    await page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await page.evaluate(() => document.querySelector('.dock .menu-panel [data-cmd="recent"]').click())
+    await page.waitForSelector('[data-closed-shell="term"] [data-cmd="reopen-shell"]', { timeout: 5000 })
+    await page.click('[data-closed-shell="term"] [data-cmd="reopen-shell"]')
+    const reopened = await page.waitForFunction(() => {
+      const n = [...document.querySelectorAll('.react-flow__node')].find((el) => el.querySelector('.unit-head')?.textContent?.includes('Dev shell'))
+      return n?.querySelector('.xterm-screen') ? n.getAttribute('data-id') : null
+    }, { timeout: 10000 })
+    const id = await reopened.jsonValue()
+    await sleep(2500)
+    const box = await page.$eval(`.react-flow__node[data-id="${id}"] .xterm-screen`, (el) => { const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } })
+    await page.mouse.move(box.x, box.y)
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.wheel({ deltaY: -120 })
+      await sleep(150)
+    }
+    await sleep(600)
+    const rows = await page.evaluate((i) => [...document.querySelectorAll(`.react-flow__node[data-id="${i}"] .xterm-rows > div`)].map((r) => r.textContent).join('\n'), id)
+    console.log(`restored short output on screen: ${rows.includes('short-output-77')}, divider on screen: ${rows.includes('process ended')}`)
+  },
   // A new agent, still called "Claude", is asked to write the release notes: its first prompt becomes its name (F29).
   'auto-title': async (page, ctx) => scenes['auto-title-from'](page, ctx, 'Write_the_release_notes_for_1.4,_from_the_merged_PRs_since_1.3'),
   // The same, when the first thing it hears is a `patchbay send` from a lead: named from the message, not its header.
