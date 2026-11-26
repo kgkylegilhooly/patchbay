@@ -313,6 +313,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       closeNode: (id) => closeNodes([id]),
       renameNode: (id) => useStore.setState({ renaming: id }),
       restartNode: (id) => void restartNode(id),
+      restartNodes: (ids) => {
+        for (const id of ids) void restartNode(id)
+      },
       renameWindow: (nodeId) => onWindow(nodeId, (id) => useStore.setState({ renaming: id })),
       restartWindow: (nodeId) => onWindow(nodeId, (id) => void restartNode(id)),
       closeWindow: (nodeId) => onWindow(nodeId, closeWindowAsking),

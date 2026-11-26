@@ -519,6 +519,31 @@ const scenes = {
     await page.keyboard.up('Control')
     await sleep(2500)
   },
+  // F36: a group whose two agents exited, and its menu: Restart 2 stopped windows.
+  'restart-stopped-menu': async (page) => {
+    const g = { id: 'g-done', kind: 'group', title: 'Nightly batch', x: 930, y: 640, width: 1120, height: 380, parentId: null, worktree: null, projectId: 'p1' }
+    const agentIn = (id, title, x) => ({ ...box, id, kind: 'claude', title, x, y: 50, width: 500, height: 300, prompt: 'exit', sessionId: null, transcriptPath: null, after: [], projectId: 'p1', parentId: 'g-done' })
+    await page.evaluate(async (nodes) => {
+      for (const n of nodes) await window.patchbay.dispatch({ op: 'addNode', node: n })
+      for (const n of nodes.slice(1)) await window.patchbay.startNode(n.id)
+    }, [g, agentIn('done-a', 'Migrate users', 30), agentIn('done-b', 'Migrate orders', 590)])
+    await page.waitForFunction(() => ['done-a', 'done-b'].every((id) => /Exited|Stopped|Restart/.test(document.querySelector(`.react-flow__node[data-id="${id}"]`)?.textContent ?? '')), { timeout: 30000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Migrate users'))?.click())
+    await sleep(800)
+    const head = await (await page.$('.react-flow__node[data-id="g-done"]')).boundingBox()
+    await page.mouse.click(head.x + 200, head.y + 12, { button: 'right' })
+    await sleep(400)
+  },
+  // The same, then the item, with the two told to stay up this time: both come back.
+  'restart-stopped-done': async (page) => {
+    await scenes['restart-stopped-menu'](page)
+    await page.evaluate(async () => {
+      for (const id of ['done-a', 'done-b']) await window.patchbay.dispatch({ op: 'patchNode', id, patch: { prompt: 'idle context=9' } })
+    })
+    await page.click('.menu-panel [data-cmd="restart-stopped"]').catch(() => {})
+    await page.waitForFunction(() => ['done-a', 'done-b'].every((id) => /Idle/.test(document.querySelector(`.react-flow__node[data-id="${id}"]`)?.textContent ?? '')), { timeout: 30000 }).catch(() => {})
+    await sleep(500)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
