@@ -916,6 +916,27 @@ const scenes = {
     }))
     console.log(`launch changed: ${JSON.stringify(s)}`)
   },
+  // F62: Settings > Notifications, Key from any program turned on (Ctrl+Alt+J), then set to a key with no Ctrl or Alt.
+  'global-key': async (page) => {
+    await scenes['settings-notifications'](page)
+    await page.click('#set-global-key').catch(() => {})
+    await sleep(1500)
+    const read = () => page.evaluate(async () => ({ shown: document.querySelector('[aria-label="Key from any program"]')?.value ?? null, state: await window.patchbay.globalKeyState?.() }))
+    const on = await read()
+    await page.evaluate(() => document.querySelector('[aria-label="Key from any program"]')?.scrollIntoView({ block: 'center' }))
+    console.log(`global key on: ${JSON.stringify(on)}`)
+  },
+  'global-key-bad': async (page) => {
+    await scenes['global-key'](page)
+    // Pressed while the field has the keyboard: Shift and J, with no Ctrl, Alt or Win.
+    await page.focus('[aria-label="Key from any program"]').catch(() => {})
+    await page.keyboard.down('Shift')
+    await page.keyboard.press('KeyJ')
+    await page.keyboard.up('Shift')
+    await sleep(2000)
+    const s = await page.evaluate(async () => ({ state: await window.patchbay.globalKeyState?.(), shown: document.querySelector('[data-global-key]')?.dataset.globalKey ?? null }))
+    console.log(`global key bad: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

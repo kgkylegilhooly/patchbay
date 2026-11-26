@@ -22,7 +22,7 @@ import { SshForm } from './SshForm'
 import { LaunchForm } from './LaunchForm'
 import { TriggerNode } from './nodes/TriggerNode'
 import { ArmReview, TriggerForm } from './TriggerForm'
-import { ACTIONS, actionReady, worksOverBoard } from './actions'
+import { ACTIONS, actionById, actionReady, worksOverBoard } from './actions'
 import { bridge } from './bridge'
 import { setRunFixForm } from './runFixUi'
 import { runFailed } from './status/status'
@@ -285,6 +285,8 @@ function Canvas(): React.JSX.Element | null {
     }
   }, [])
   const keyboard = useRef({ commands, menuState })
+  // F62: the key from anywhere brought the window forward. Next needing you does the rest, as Ctrl+Shift+J does.
+  useEffect(() => bridge.onGlobalKey(() => actionById('next-needs-you')?.run(keyboard.current.commands)), [])
   keyboard.current = { commands, menuState }
 
   // One listener for every shortcut, ahead of a focused terminal. appTakesKey decides what the terminal keeps.

@@ -47,6 +47,8 @@ export interface Settings {
   /** Quiet hours, as HH:MM: Windows notifications are held and the chime is off from quietFrom up to quietTo. See main/quietHours.ts. */
   quietFrom?: string
   quietTo?: string
+  /** F62: a key that works from any program, bringing Patchbay to the next agent needing you. Blank means off. */
+  globalKey?: string
   /** 'off' turns off the chime. It's on otherwise. */
   sound?: string
   /** 'off' lets the PC sleep while an agent is working. It's kept awake otherwise. */
