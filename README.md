@@ -514,6 +514,9 @@ project's folder, and **Open in Reader** then shows that file on the canvas.
   For a flaky test, **Run 5 times** or **Run 20 times** in its menu runs it again after each end, and a chip counts:
   "Run 3 of 5 · 1 failed", then "2 of 5 failed". Stop ends the series. While it lasts there's one notice at the end,
   not one per failed run.
+  A run or terminal that fails because its port is taken (EADDRINUSE, "address already in use") gets a strip naming
+  the window that serves that port, with **Go to it** and, for a run, **Stop it…** (asking first). When no window here
+  holds it, the strip says another program does.
 - **Run configurations:** New run configuration… reads a folder's `.vscode\launch.json` (comments and trailing commas
   are fine) and lists each configuration and compound. Reading it runs nothing. Only `node` launch configurations run,
   with their `program`, `args`, `cwd`, `env`, `runtimeExecutable`, `runtimeArgs`, `windows` section and variables such

@@ -33,6 +33,7 @@ import { measureSafeArea } from '../safeArea'
 import { StartFixActions } from './StartFixActions'
 import { failedStart } from '../status/startFailure'
 import { AwayStrip } from './AwayStrip'
+import { PortInUseStrip } from './PortInUseStrip'
 import { ContinueButton } from './ContinueButton'
 import { askToFixRun } from '../runFixUi'
 
@@ -438,6 +439,7 @@ export function NodeChrome({
       )}
       <Approval nodeId={node.id} />
       {node.kind === 'claude' && <AwayStrip nodeId={node.id} />}
+      {(node.kind === 'run' || node.kind === 'terminal') && <PortInUseStrip nodeId={node.id} />}
       {status === 'queued' && node.kind === 'claude' && node.after.length > 0 && <Held node={node} />}
       <SetupHold node={node} />
       <div className="unit-body">{children}</div>
