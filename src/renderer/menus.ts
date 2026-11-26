@@ -121,6 +121,8 @@ export interface Commands {
   closeNode(id: string): void
   renameNode(id: string): void
   restartNode(id: string): void
+  /** Restarts each of these windows, as Restart does for one. See restartStopped.ts. */
+  restartNodes(ids: string[]): void
   /** The window in use, as window actions mean it: renamed in place, restarted, or closed (asking first if it's busy). */
   renameWindow(nodeId?: string): void
   restartWindow(nodeId?: string): void
@@ -382,7 +384,7 @@ export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }> }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[] }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -429,6 +431,7 @@ export function nodeMenu(
       'separator',
       ...(node.worktree ? [{ id: 'open-git', label: 'Open in Git panel', icon: 'branch' as const, run: () => c.toggleGit(node.worktree!.path) }] : []),
       ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
+      ...(ctx.stopped?.length ? [{ id: 'restart-stopped', label: `Restart ${ctx.stopped.length} stopped window${ctx.stopped.length === 1 ? '' : 's'}`, icon: 'restart' as const, run: () => c.restartNodes(ctx.stopped!) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },
       { id: 'tidy-group', label: 'Tidy group', icon: 'tidy', run: () => c.tidy([node.id]) },
       close('Remove group')
