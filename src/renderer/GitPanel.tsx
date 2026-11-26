@@ -1,3 +1,4 @@
+import { stagedNotice, useCommitPrep } from './commitOwn'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BranchInfo, ChangeEntry, CommitRow, DiffResult, GitOutcome, RepoChoice, RepoStatus } from '../shared/git'
 import { discardWarning, refChip, repoCandidates, switchWarning } from './gitView'
@@ -66,6 +67,9 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   const [diff, setDiff] = useState<DiffResult | string | null>(null)
   const lastRefresh = useRef(0)
   const refreshes = useRef(oneAtATime())
+  /** Which repository `status` was read from, so a status still showing the last one isn't taken for this one's. */
+  const statusRoot = useRef<string | null>(null)
+  const prep = useCommitPrep((s) => s.prep)
 
   // Which repositories there are, worked out again only when the folders on the canvas change.
   const candidates = useMemo(() => (doc ? repoCandidates(doc, asked ? [] : selected) : []), [doc, asked, selected])
@@ -98,6 +102,7 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
         return
       }
       setError(null)
+      statusRoot.current = root
       setStatus(s.status)
       if (b.ok) setBranches(b.branches)
       if (which === 'history') {
@@ -154,6 +159,31 @@ export function GitPanel({ selected }: { selected: string[] }): React.JSX.Elemen
   }
 
   if (!doc) return null
+  // F56: an agent's chip asked for its files to be staged, with its last reply as the message. Once this folder's
+  // repository is shown and read, they're staged here, where the person sees them and Unstage all takes them back.
+  useEffect(() => {
+    if (!prep || !root || !status || statusRoot.current !== root || asked !== prep.folder || busy) return
+    useCommitPrep.setState({ prep: null })
+    const before = status.staged.map((e) => e.path)
+    const useMessage = !!prep.message && !message.trim()
+    const what = 'Stage its files'
+    setTab('changes')
+    setBusy(what)
+    void work
+      .gitStage(root, prep.paths)
+      .then((r) => {
+        if (!r.ok) return setOutput({ ok: false, text: r.error, what })
+        if (useMessage) setMessage(prep.message)
+        setOutput({ ok: true, text: stagedNotice(prep, before, useMessage), what })
+      })
+      .catch((e: unknown) => setOutput({ ok: false, text: e instanceof Error ? e.message : String(e), what }))
+      .finally(() => {
+        setBusy(null)
+        void refresh()
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prep, root, status, asked])
+
   const close = (): void => useStore.setState({ gitOpen: false, gitFolder: null })
   const r = root!
   const tracked = status?.unstaged ?? []

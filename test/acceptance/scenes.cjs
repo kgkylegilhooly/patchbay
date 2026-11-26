@@ -876,6 +876,20 @@ const scenes = {
     }))
     console.log(`pause triggers: saved ${s.saved}, ticked ${s.ticked}, next ${JSON.stringify(s.next)}, tile ${JSON.stringify(s.tile)}`)
   },
+  // F56: the same chip, clicked: the Git panel on its repository with its file staged and its last reply as the message.
+  'commit-own': async (page, ctx) => {
+    await scenes['uncommitted-chip'](page, ctx)
+    await page.click('.react-flow__node[data-id="idler"] [data-uncommitted-chip]').catch(() => {})
+    await page.waitForSelector('.git-panel [data-git="commit"]', { timeout: 15000 }).catch(() => {})
+    await page.waitForFunction(() => /staged/.test(document.querySelector('[data-git-output]')?.textContent ?? ''), { timeout: 15000 }).catch(() => {})
+    await sleep(800)
+    const s = await page.evaluate(() => ({
+      message: document.querySelector('textarea[aria-label="Commit message"]')?.value ?? null,
+      commit: document.querySelector('[data-git="commit"]')?.textContent?.trim() ?? null,
+      said: document.querySelector('[data-git-output]')?.textContent?.trim() ?? null
+    }))
+    console.log(`commit own: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
