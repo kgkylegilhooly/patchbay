@@ -3,6 +3,8 @@ import { bridge } from './bridge'
 import { sendSummary, type SendResult } from './noteSend'
 import { say } from './reader/readerUi'
 import { closeSendToAgents, useSendToAgents } from './sendToAgents'
+import { RecentPromptsButton } from './RecentPromptsButton'
+import { rememberPrompt } from './recentPrompts'
 import { Panel } from './shell/Panel'
 import { useStore } from './store'
 
@@ -22,6 +24,7 @@ function SendToAgents({ ids }: { ids: string[] }): React.JSX.Element {
   const send = async (): Promise<void> => {
     if (busy || !text.trim() || !agents.length) return
     setBusy(true)
+    rememberPrompt(text)
     const results: Array<{ title: string; result: SendResult }> = []
     for (const a of agents) {
       const result = await bridge.sendToAgent(a.id, text.trim()).catch((e: unknown): SendResult => ({ ok: false, reason: e instanceof Error ? e.message : String(e) }))
@@ -57,7 +60,10 @@ function SendToAgents({ ids }: { ids: string[] }): React.JSX.Element {
         To {agents.map((a) => a.title).join(', ')}. A busy agent gets it once it's idle.
       </p>
       <label className="field">
-        <span className="field-label">Message</span>
+        <span className="field-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Message
+          <RecentPromptsButton onPick={setText} />
+        </span>
         <textarea
           autoFocus
           rows={5}

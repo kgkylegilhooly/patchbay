@@ -6,6 +6,8 @@ import { FormShell } from './shell/FormShell'
 import { ProfilePicker } from './TerminalProfilePicker'
 import { blockedReason, once, oneOpen } from './startHints'
 import { AgentProgramWarning } from './AgentProgramWarning'
+import { RecentPromptsButton } from './RecentPromptsButton'
+import { rememberPrompt } from './recentPrompts'
 
 /** The same words as the menu items that open each form. */
 const NAMES = { claude: 'New Claude Code', codex: 'New Codex', team: 'New team', terminal: 'New terminal', run: 'New run command' }
@@ -40,7 +42,13 @@ export function NewSessionForm({
   const [pickFolder] = useState(() => oneOpen(() => bridge.pickFolder()))
   const latestOpen = useRef(onOpen)
   latestOpen.current = onOpen
-  const [openOnce] = useState(() => once((fields: Parameters<typeof onOpen>[0]) => latestOpen.current(fields)))
+  const [openOnce] = useState(() =>
+    once((fields: Parameters<typeof onOpen>[0]) => {
+      // An agent's prompt, kept for Recent. One filled in for the person (a handoff, a fix brief) only if they changed it.
+      if (kind !== 'terminal' && kind !== 'run' && fields.text && fields.text !== initialCommand.trim()) rememberPrompt(fields.text)
+      latestOpen.current(fields)
+    })
+  )
   const team = kind === 'team'
   const claude = kind === 'claude' || kind === 'codex' || team
   const agentName = kind === 'codex' ? 'Codex' : 'Claude Code'
@@ -102,7 +110,17 @@ export function NewSessionForm({
         />
       )}
       <label className="field">
-        <span className="field-label">{team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}</span>
+        <span className="field-label" style={claude ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } : undefined}>
+          {team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}
+          {claude && (
+            <RecentPromptsButton
+              onPick={(picked) => {
+                setText(picked)
+                promptRef.current?.focus()
+              }}
+            />
+          )}
+        </span>
         {claude ? (
           // The folder is already filled in, so typing goes to the prompt or the command.
           <textarea ref={promptRef} data-autofocus name={team ? 'task' : undefined} rows={team ? 5 : claude && initialCommand.includes('\n') ? 8 : 3} value={text} onChange={(e) => setText(e.target.value)} />
