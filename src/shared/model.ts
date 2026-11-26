@@ -47,6 +47,9 @@ export interface ClaudeNode extends Base {
   after: string[]
   /** Held for a recipe's setup steps. See src/main/recipes/setupGate.ts. */
   setupWait?: SetupWait
+  /** F61: its own permission mode and model, over the global setting (Claude only). See shared/startMode.ts. */
+  startMode?: string
+  model?: string
 }
 
 /**

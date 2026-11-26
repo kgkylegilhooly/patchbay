@@ -1004,6 +1004,29 @@ const scenes = {
       clearInterval(keeper)
     }
   },
+  // F61: New Claude Code from the canvas menu, set to plan first on sonnet.
+  'start-mode-form': async (page) => {
+    await rightClickCanvas(page)
+    await sleep(200)
+    await page.click('.menu-panel [data-cmd="new-claude"]').catch(() => {})
+    await page.waitForSelector('.pop-claude', { timeout: 5000 }).catch(() => {})
+    await page.select('.pop-claude select[aria-label="Permission mode"]', 'plan').catch(() => {})
+    await page.type('.pop-claude input[aria-label="Model"]', 'sonnet').catch(() => {})
+    await page.type('.pop-claude textarea', 'Review the parser change and plan the tests.').catch(() => {})
+    await sleep(300)
+    console.log(`start mode form: ${!!(await page.$('[data-start-mode]'))}`)
+  },
+  // The same, started: the window says how, and its saved node holds it.
+  'start-mode-started': async (page) => {
+    await scenes['start-mode-form'](page)
+    await page.click('.pop-claude button[type=submit]').catch(() => {})
+    await sleep(2500)
+    const s = await page.evaluate(async () => {
+      const n = (await window.patchbay.getDoc()).nodes.filter((x) => x.kind === 'claude').find((x) => x.startMode || x.model)
+      return { node: n ? { startMode: n.startMode, model: n.model } : null, chip: document.querySelector('[data-start-chip]')?.textContent ?? null }
+    })
+    console.log(`start mode started: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

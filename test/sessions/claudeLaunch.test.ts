@@ -288,3 +288,21 @@ test('a direct launch keeps newlines in a prompt', () => {
   const launch = buildClaudeLaunch(node({ prompt: 'line one\nline two' }), ctx())
   expect(launch.args.slice(-1)).toEqual(['line one\nline two'])
 })
+
+// F61: a reviewer started in plan mode, a quick lookup on a cheaper model, without changing the one global setting.
+test("an agent's own start mode and model win over the global setting; only the fixed modes and plain model names pass", () => {
+  const mine = buildClaudeLaunch(node({ startMode: 'plan', model: 'sonnet' }), ctx({ permissionMode: 'acceptEdits' })).args
+  expect(after(mine, '--permission-mode')).toBe('plan')
+  expect(after(mine, '--model')).toBe('sonnet')
+  expect(after(buildClaudeLaunch(node({ model: 'claude-sonnet-5-5[1m]' }), ctx()).args, '--model')).toBe('claude-sonnet-5-5[1m]')
+  // Nothing set: the global setting, and no --model.
+  const plain = buildClaudeLaunch(node(), ctx({ permissionMode: 'acceptEdits' })).args
+  expect(after(plain, '--permission-mode')).toBe('acceptEdits')
+  expect(plain).not.toContain('--model')
+  // Never bypass, and never a value read as an option or more than one word.
+  const odd = buildClaudeLaunch(node({ startMode: 'bypassPermissions', model: '--dangerously-skip-permissions' }), ctx()).args
+  expect(odd).not.toContain('--permission-mode')
+  expect(odd).not.toContain('--model')
+  expect(odd).not.toContain('--dangerously-skip-permissions')
+  expect(buildClaudeLaunch(node({ model: 'opus --x' }), ctx()).args).not.toContain('--model')
+})

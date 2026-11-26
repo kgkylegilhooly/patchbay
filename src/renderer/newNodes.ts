@@ -88,7 +88,7 @@ export function newTrigger(p: Place, id: string, fields: Pick<TriggerNode, 'sche
   return { ...placed(p, SIZES.trigger), id, kind: 'trigger', title: 'Trigger', ...fields, ...DISARMED, runs: [] }
 }
 
-export function newClaude(p: Place, id: string, fields: { cwd: string; prompt?: string; agent?: AgentKind }): ClaudeNode {
+export function newClaude(p: Place, id: string, fields: { cwd: string; prompt?: string; agent?: AgentKind; startMode?: string; model?: string }): ClaudeNode {
   const node: ClaudeNode = {
     ...placed(p, SIZES.claude),
     id,
@@ -101,6 +101,11 @@ export function newClaude(p: Place, id: string, fields: { cwd: string; prompt?: 
     after: []
   }
   if (fields.prompt) node.prompt = fields.prompt
+  // F61: Claude Code only. Codex has its own modes.
+  if (fields.agent !== 'codex') {
+    if (fields.startMode) node.startMode = fields.startMode
+    if (fields.model) node.model = fields.model
+  }
   return node
 }
 

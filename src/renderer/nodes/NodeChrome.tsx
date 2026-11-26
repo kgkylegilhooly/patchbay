@@ -1,3 +1,4 @@
+import { StartChip } from './StartChip'
 import { Handle, NodeResizer, Position, useReactFlow } from '@xyflow/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -360,6 +361,7 @@ export function NodeChrome({
             {context.text}
           </span>
         )}
+        {node.kind === 'claude' && <StartChip node={node} />}
         {node.kind === 'claude' && <FilesChip nodeId={node.id} />}
         {node.kind === 'claude' && status === 'idle' && <UncommittedChip nodeId={node.id} cwd={node.cwd} title={node.title} />}
         {folder && (
