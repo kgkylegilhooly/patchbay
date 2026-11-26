@@ -386,3 +386,11 @@ test('with something selected, a window linked to agents offers Send selection t
   expect(menu(false, [{ id: 'a1', title: 'Fixer' }]).find((i) => i.id === 'send-selection')?.disabled).toBe(true)
   expect(menu(true, []).find((i) => i.id === 'send-selection')).toBeUndefined()
 })
+
+// F30: one message to a whole team, rather than typed into each window.
+test('with two or more agents selected, the canvas menu offers Send to N agents', () => {
+  const ids = (selectedAgents: number) => items(canvasMenu(commands, { ...state, selectedCount: selectedAgents, selectedAgents }, { x: 0, y: 0 }))
+  expect(ids(3).find((i) => i.id === 'send-to-agents')?.label).toBe('Send to 3 agents…')
+  expect(ids(1).find((i) => i.id === 'send-to-agents')).toBeUndefined()
+  expect(items(canvasMenu(commands, state, { x: 0, y: 0 })).find((i) => i.id === 'send-to-agents')).toBeUndefined()
+})

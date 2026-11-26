@@ -78,6 +78,7 @@ import { cancelAllConfirms } from './shell/confirmStore'
 import { createStager } from './stagedFlow'
 import { afterNextPaint } from './mountQueue'
 import { linkedAgents } from './noteSend'
+import { selectedAgents } from './sendToAgents'
 import { useSettingsAsk } from './settingsAsk'
 import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
 
@@ -262,6 +263,7 @@ function Canvas(): React.JSX.Element | null {
     const windowKind = current?.nodes.find((n) => n.id === windowId)?.kind
     return {
       selectedCount: selectedRef.current.length,
+      selectedAgents: current ? selectedAgents(current, selectedRef.current).length : 0,
       canCopy: !!terminal?.hasSelection(),
       canFind: !!terminal,
       sidebar: prefsRef.current.sidebar,

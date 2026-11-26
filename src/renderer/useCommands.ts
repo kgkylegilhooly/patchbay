@@ -32,6 +32,7 @@ import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 import { savedViews } from './savedViews'
 import { pinnedNoteText, sentSelectionText, worthPinning } from './pinOutput'
 import { sendSummary, type SendResult } from './noteSend'
+import { openSendToAgents, selectedAgents } from './sendToAgents'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply, revealTranscript, saveConversation } from './lastReplyUi'
@@ -282,6 +283,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         ])
         reveal(node)
       },
+      sendToAgents: () => openSendToAgents(selectedAgents(doc(), selectedRef.current).map((a) => a.id)),
       sendSelection: (nodeId, agentId) => {
         const source = doc().nodes.find((n) => n.id === nodeId)
         const agent = doc().nodes.find((n) => n.id === agentId)

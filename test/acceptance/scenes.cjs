@@ -489,6 +489,36 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="send-selection"]').catch(() => {})
     await sleep(2500)
   },
+  // F30: Review the docs and the Backend group (two agents) selected, and the canvas menu: Send to 3 agents.
+  'send-many-menu': async (page) => {
+    await sleep(1500)
+    const head = async (id) => (await page.$(`.react-flow__node[data-id="${id}"]`)).boundingBox()
+    const idle = await head('idle')
+    await page.mouse.click(idle.x + 120, idle.y + 14)
+    const group = await head('g1')
+    await page.keyboard.down('Control')
+    await page.mouse.click(group.x + 60, group.y + 12)
+    await page.keyboard.up('Control')
+    await sleep(300)
+    await page.mouse.click(600, 660, { button: 'right' })
+    await sleep(400)
+  },
+  // The same, then the box, with a message typed.
+  'send-many-box': async (page) => {
+    await scenes['send-many-menu'](page)
+    await page.click('.menu-panel [data-cmd="send-to-agents"]').catch(() => {})
+    await page.waitForSelector('[data-send-many="text"]', { timeout: 5000 }).catch(() => {})
+    await page.keyboard.type('Stop and commit what you have, then rebase on main.')
+    await sleep(300)
+  },
+  // The same, sent with Ctrl+Enter: who got it now and who gets it once idle.
+  'send-many-sent': async (page) => {
+    await scenes['send-many-box'](page)
+    await page.keyboard.down('Control')
+    await page.keyboard.press('Enter')
+    await page.keyboard.up('Control')
+    await sleep(2500)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
