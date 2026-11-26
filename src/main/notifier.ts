@@ -4,6 +4,8 @@ export interface Notifier {
   notify(id: string, status: AgentStatus): void
   /** A run node's command failed by itself. Worth a look, though nobody's waiting, so it gets no chime. */
   runFailed(id: string): void
+  /** A run kept running crashed again too soon, so it wasn't restarted (src/main/runKeeper.ts). */
+  runGaveUp(id: string): void
   /** A window printed what the person asked to be told about (Notify when it prints…). */
   printed(id: string, phrase: string): void
   setFocusedNode(id: string | null): void
@@ -100,6 +102,7 @@ export function createNotifier({
   }
   return {
     runFailed: (id) => announce(id, 'Stopped with an error.'),
+    runGaveUp: (id) => announce(id, 'Stopped with an error 4 times in a minute, so it was not restarted again.'),
     printed: (id, phrase) => announce(id, `Printed "${phrase}".`),
     setFocusedNode(id) {
       focused = id

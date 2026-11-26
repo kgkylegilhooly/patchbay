@@ -38,6 +38,7 @@ import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImageAsync, saveBoardImageAsync } from './boardImages'
 import { agentOffNow } from './agentsAllowed'
 import { openInVsCodeAt } from './openFolder'
+import { createRunKeeper } from './runKeeper'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
@@ -316,7 +317,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     await runner.startNode(id)
     clearExited(id)
   })
-  ipcMain.handle('pb:restartNode', async (_e, id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => {
+  const restartNodeNow = async (id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => {
     // Settings > Agents: refused as a notice the window can dismiss. A session still running keeps running.
     const agent = find(id)
     const off = agent?.kind === 'claude' ? agentOffNow(agentOf(agent)) : null
@@ -338,7 +339,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
       return { ok: false, reason: JOINED_NOTICE, joined: true } satisfies JoinedRefusal
     }
     clearExited(id)
-  })
+  }
+  ipcMain.handle('pb:restartNode', (_e, id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => restartNodeNow(id, opts))
 
   ipcMain.handle('pb:createWorktree', async (_e, groupId: string, a: { repo: string; branch: string }) => {
     const group = find(groupId)
@@ -385,9 +387,17 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   ipcMain.handle('pb:getAttention', () => attention())
   ipcMain.handle('pb:getRuns', () => runner.runs())
   ipcMain.handle('pb:stopRun', (_e, id: string) => runner.stopTree(id))
+  // Restart when it stops (F50): a crash of a run with it on is started again, rather than announced as a failure.
+  const keeper = createRunKeeper({
+    keep: (id) => { const n = find(id); return n?.kind === 'run' && n.keepRunning === true },
+    running: (id) => host.isRunning(id),
+    restart: (id) => restartNodeNow(id),
+    gaveUp: (id) => notifier.runGaveUp(id)
+  })
   runner.onRun((id, run) => {
     broadcast('pb:onRun', id, run)
-    if (!run.running && !run.stoppedByYou && run.exitCode) notifier.runFailed(id)
+    const kept = keeper.onRun(id, run)
+    if (kept === 'none' && !run.running && !run.stoppedByYou && run.exitCode) notifier.runFailed(id)
   })
   ipcMain.handle('pb:getPorts', () => ports.current())
   ports.onChange(() => broadcast('pb:onPorts', ports.current()))

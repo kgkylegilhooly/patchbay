@@ -140,7 +140,8 @@ function isNode(n: unknown): boolean {
         isString(n.cwd) &&
         isString(n.command) &&
         n.command.length > 0 &&
-        (n.launch === undefined || (isObject(n.launch) && isString(n.launch.folder) && isString(n.launch.name)))
+        (n.launch === undefined || (isObject(n.launch) && isString(n.launch.folder) && isString(n.launch.name))) &&
+        (n.keepRunning === undefined || typeof n.keepRunning === 'boolean')
       )
     case 'sticky':
       return isString(n.text)

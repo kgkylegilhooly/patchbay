@@ -411,3 +411,12 @@ test('terminal and run windows offer Notify when it prints, or to stop waiting f
   expect(menu(terminal, 'Compiled successfully').find((i) => i.id === 'watch-output')).toBeUndefined()
   expect(menu(claude).find((i) => i.id === 'watch-output' || i.id === 'unwatch-output')).toBeUndefined()
 })
+
+// F50: a run's Restart when it stops, shown as on or off.
+test('a run window offers Restart when it stops, checked when on; other windows do not', () => {
+  const run = { ...terminal, id: 'r', kind: 'run', command: 'npm run dev' } as CanvasNode
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu(run).find((i) => i.id === 'keep-running')).toMatchObject({ label: 'Restart when it stops', checked: false })
+  expect(menu({ ...run, keepRunning: true } as CanvasNode).find((i) => i.id === 'keep-running')?.checked).toBe(true)
+  expect(menu(terminal).find((i) => i.id === 'keep-running')).toBeUndefined()
+})

@@ -289,6 +289,12 @@ test('a save file with a window it cannot read loads the rest, and keeps the who
   expect(corruptFiles()).toEqual([])
 })
 
+test('a run keeps its Restart when it stops; a value that is not a yes or no leaves the run out', () => {
+  const run = { kind: 'run', id: 'r', title: 'dev', x: 0, y: 0, width: 1, height: 1, parentId: null, projectId: 'p', cwd: 'C:/a', command: 'npm run dev' }
+  expect(migrate({ ...docTitled('a'), nodes: [{ ...run, keepRunning: true }] }).nodes[0]).toMatchObject({ keepRunning: true })
+  expect(migrate({ ...docTitled('a'), nodes: [{ ...run, keepRunning: 'yes' }] }).nodes).toEqual([])
+})
+
 test('migrate accepts a current doc with every node kind', () => {
   const base = { title: 't', x: 0, y: 0, width: 1, height: 1, parentId: null, projectId: 'p' }
   const doc: CanvasDoc = {
