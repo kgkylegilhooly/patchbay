@@ -21,6 +21,18 @@ test("a team member's prompt is named from its brief, not the team rules put bef
   expect(titleFromPrompt(prompt)).toBe('Add retries to the uploader')
 })
 
+// The first thing an agent hears may be a `patchbay send`, which starts with a line saying which node sent it
+// (main/control/verbs.ts senderLine). The name comes from the message, not that line.
+test("a message from another node is named from what it says, not the line saying who sent it", () => {
+  const sent = '[Patchbay message from "Team lead" (node 1a2b3c). Reply with: patchbay send --node 1a2b3c --text "..."]\nAdd retries to the uploader\nThen report back.'
+  expect(titleFromPrompt(sent)).toBe('Add retries to the uploader')
+  expect(titleFromPrompt('[Patchbay message from another node]\n\nCheck the deploy')).toBe('Check the deploy')
+  expect(titleFromPrompt('[Patchbay notice about your earlier message to node x]\nIt was not delivered.')).toBe('It was not delivered.')
+  expect(titleFromPrompt('[Patchbay message from "Lead" (node a).]')).toBeNull()
+  // Brackets the person wrote are kept.
+  expect(titleFromPrompt('[WIP] Fix the parser')).toBe('[WIP] Fix the parser')
+})
+
 test('a slash command, a bare tag, or nothing to read gives no title', () => {
   expect(titleFromPrompt('/model opus')).toBeNull()
   expect(titleFromPrompt('<command-name>/clear</command-name>')).toBeNull()

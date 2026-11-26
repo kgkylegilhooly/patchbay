@@ -20,10 +20,15 @@ export function hasDefaultTitle(n: { title: string; agent?: AgentKind }): boolea
 /** The brief after the team rules `patchbay open` puts before it (main/control/teamRules.ts). */
 const BRIEF_AFTER_RULES = /^Team rules \(from the [^\n]*\n[\s\S]*?\n\nYour brief:\n/
 
+/** A whole line Patchbay writes ahead of a message: "[Patchbay message from …]", "[Patchbay notice about …]". */
+const PATCHBAY_HEADER = /^\s*\[Patchbay [^\n]*\]\s*$/
+
 /** A title from a prompt's first line that says something, or null: a slash command, a tag or a word or two of nothing. */
 export function titleFromPrompt(prompt: string): string | null {
   const text = prompt.replace(BRIEF_AFTER_RULES, '')
   for (const raw of text.split(/\r?\n/)) {
+    // The line `patchbay send` puts first, saying which node a message is from (main/control/verbs.ts senderLine).
+    if (PATCHBAY_HEADER.test(raw)) continue
     const line = raw
       .replace(/^\s*(?:#{1,6}|[-*+>]|\d+[.)])\s+/, '')
       .replace(/[*_`]+/g, '')
