@@ -833,6 +833,20 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="recent-prompt:1"]').catch(() => {})
     await sleep(400)
   },
+  // F70: two prompts saved in this project and one in Website, with Prompts ▾ open: saved first, then recent.
+  'saved-prompts': async (page) => {
+    await page.evaluate(async () => {
+      const at = Date.now()
+      await window.patchbay.dispatch({ op: 'setProjectPrompts', id: 'p1', prompts: [
+        { id: 's1', name: 'Review this branch against main and list anything risky.', text: 'Review this branch against main and list anything risky.', at },
+        { id: 's2', name: 'Write the release note for this branch, from its commits.', text: 'Write the release note for this branch, from its commits.', at }
+      ] })
+      await window.patchbay.dispatch({ op: 'setProjectPrompts', id: 'p2', prompts: [{ id: 's3', name: 'Check every link on the site.', text: 'Check every link on the site.', at }] })
+    })
+    await scenes['recent-prompts'](page)
+    await page.waitForSelector('.menu-panel [data-cmd="saved-prompt:s1"]', { timeout: 5000 })
+    await sleep(300)
+  },
   // F44: the Backend group's menu, with one agent working and one waiting on you: Interrupt 1 working agent.
   'interrupt-menu': async (page) => {
     await sleep(1500)

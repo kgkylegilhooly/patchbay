@@ -1,6 +1,7 @@
 import { CLOSED_SHELLS_KEPT, DISARMED, isProjectArchived, isProjectOpen, type CanvasDoc, type CanvasNode, type CanvasOp, type ClosedSession, type LayoutRestore, type Project, type TriggerNode, type TriggerState } from '../../shared/model'
 import { canonicalSpec } from '../trigger/arming'
 import { sanitizeBoard } from '../../shared/board'
+import { sanitizePrompts } from '../../shared/savedPrompts'
 import { arrangeNodes } from './arrange'
 import { archived, archiveRefusal, moveProjectBefore, nearestUnarchived, orderProjects, removeRefusal, unarchived } from './projectOps'
 
@@ -371,6 +372,19 @@ function apply(doc: CanvasDoc, op: CanvasOp): CanvasDoc {
       // A new project starts with no tasks. Task records only ever come from the task service, through setTasks.
       const { tasks: _tasks, ...project } = op.project
       return showProject({ ...doc, projects: [...doc.projects, project] }, project.id)
+    }
+    case 'setProjectPrompts': {
+      if (!doc.projects.some((p) => p.id === op.id)) return doc
+      const prompts = sanitizePrompts(op.prompts)
+      return {
+        ...doc,
+        projects: doc.projects.map((p) => {
+          if (p.id !== op.id) return p
+          if (prompts) return { ...p, prompts }
+          const { prompts: _gone, ...rest } = p
+          return rest
+        })
+      }
     }
     case 'patchProject': {
       if (!doc.projects.some((p) => p.id === op.id)) return doc

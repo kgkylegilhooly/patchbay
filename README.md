@@ -347,6 +347,11 @@ A new agent still called "Claude" or "Codex" takes its name from the first thing
 prompt, cut short (a team member's brief, not the team rules before it). A name you gave it, or one from Name with AI,
 is never replaced, and a slash command or a resumed conversation doesn't rename it.
 
+**Prompts ▾**, beside the New agent form's prompt and the Send to N agents box, fills the box with a prompt saved for
+this project, one saved in another project, or one of the last 20 you used. **Save this prompt** keeps what's in the
+box with the project (named from its first line), and **Forget a saved prompt** drops one. Saved prompts are kept in
+the canvas file, on this PC only.
+
 Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
 conversation, ready to paste into an email or an issue. **Save conversation…** writes everything you and the agent
 said as one Markdown file, where you pick (it starts in the agent's folder). **Reveal transcript** shows the agent's

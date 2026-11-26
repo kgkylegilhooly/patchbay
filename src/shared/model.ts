@@ -246,6 +246,8 @@ export type Viewport = { x: number; y: number; zoom: number }
 export interface Project {
   /** Explicit outcomes, independent of session status. Absent in older projects. */
   tasks?: import('./task').TaskRecords
+  /** Prompts saved for this project, newest first (F70). Absent when there are none. */
+  prompts?: import('./savedPrompts').SavedPrompt[]
   id: string
   name: string
   /** Where new sessions start. Empty means the home folder. */
@@ -333,6 +335,8 @@ export type CanvasOp =
   /** Adds it and puts it on screen. */
   | { op: 'addProject'; project: Project }
   | { op: 'patchProject'; id: string; patch: Partial<Pick<Project, 'name' | 'folder'>> }
+  /** A project's saved prompts, all at once (F70). Checked on the way in; none removes the list. */
+  | { op: 'setProjectPrompts'; id: string; prompts: import('./savedPrompts').SavedPrompt[] }
   /** Showing a closed project reopens it. */
   | { op: 'switchProject'; id: string }
   /** Takes it off the tabs, keeping its nodes and leaving its sessions running. The last open one can't be closed. */
