@@ -547,6 +547,28 @@ const scenes = {
     await page.waitForFunction(() => ['done-a', 'done-b'].every((id) => /Idle/.test(document.querySelector(`.react-flow__node[data-id="${id}"]`)?.textContent ?? '')), { timeout: 30000 }).catch(() => {})
     await sleep(500)
   },
+  // F39: prompts used before, and the New Claude Code form with Recent open.
+  'recent-prompts': async (page) => {
+    await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([
+      'Run the tests and fix what fails, then commit.',
+      'Review the open PR for security issues and leave comments as a note on the canvas.',
+      'Rebase on main and resolve conflicts'
+    ])))
+    await page.keyboard.down('Control')
+    await page.keyboard.down('Shift')
+    await page.keyboard.press('KeyC')
+    await page.keyboard.up('Shift')
+    await page.keyboard.up('Control')
+    await page.waitForSelector('.pop-claude [data-recent-prompts]', { timeout: 5000 }).catch(() => {})
+    await page.click('.pop-claude [data-recent-prompts]').catch(() => {})
+    await sleep(400)
+  },
+  // The same, with the second prompt picked: it fills the box, ready to start.
+  'recent-prompts-picked': async (page) => {
+    await scenes['recent-prompts'](page)
+    await page.click('.menu-panel [data-cmd="recent-prompt:1"]').catch(() => {})
+    await sleep(400)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
