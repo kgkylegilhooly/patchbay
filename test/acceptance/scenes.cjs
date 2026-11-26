@@ -1088,6 +1088,27 @@ const scenes = {
     })
     console.log(`paused dock: ${JSON.stringify(s)}`)
   },
+  // F69: Review the docs' window menu, Restart as…, set to plan first on sonnet.
+  'restart-as': async (page) => {
+    await scenes['mute-menu'](page)
+    await page.click('.menu-panel [data-cmd="restart-as"]').catch(() => {})
+    await page.waitForSelector('[data-restart-as="mode"]', { timeout: 5000 }).catch(() => {})
+    await page.select('[data-restart-as="mode"]', 'plan').catch(() => {})
+    await page.type('[data-restart-as="model"]', 'sonnet').catch(() => {})
+    await sleep(300)
+    console.log(`restart as box: ${!!(await page.$('[data-restart-as="go"]'))}`)
+  },
+  // The same, then Restart: the window starts again that way and says so.
+  'restart-as-done': async (page) => {
+    await scenes['restart-as'](page)
+    await page.click('[data-restart-as="go"]').catch(() => {})
+    await sleep(3000)
+    const s = await page.evaluate(async () => {
+      const n = (await window.patchbay.getDoc()).nodes.find((x) => x.id === 'idle')
+      return { startMode: n?.startMode ?? null, model: n?.model ?? null, chip: document.querySelector('.react-flow__node[data-id="idle"] [data-start-chip]')?.textContent ?? null }
+    })
+    console.log(`restart as done: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
