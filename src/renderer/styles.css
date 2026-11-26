@@ -3486,6 +3486,12 @@ circle.wb-eraser {
   box-shadow: 0 0 0 1px rgb(61 139 253 / 0.35);
 }
 
+/* A window waiting on you glows on the canvas, but a pane clips its card's shadow, so the pane carries the glow. */
+.focus-pane:has(> .focus-pane-body .unit-needs-you) {
+  border-color: var(--led-needs);
+  box-shadow: 0 0 0 1px var(--led-needs), 0 0 18px rgb(255 69 58 / 0.35);
+}
+
 .focus-pane-bar {
   display: flex;
   align-items: center;
