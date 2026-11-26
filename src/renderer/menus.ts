@@ -4,6 +4,7 @@ import type { IconName } from './iconPaths'
 import type { Direction } from './nodeNav'
 import { openHandoff } from './searchUi'
 import { openRecipePicker, openRecipeSave } from './recipeUi'
+import { phraseLabel } from './outputWatchUi'
 import { toggleReviewInbox } from './reviewInboxUi'
 import { terminalProfileSubmenu } from './terminalProfilesUi'
 import { minimapItems } from './minimapItem'
@@ -114,6 +115,9 @@ export interface Commands {
   saveConversation(nodeId: string): void
   /** A terminal's or run's output as a text file. See src/main/saveOutput.ts. */
   saveOutput(nodeId: string): void
+  /** Notify when it prints…, or stop waiting. See src/main/outputWatch.ts. */
+  watchOutput(nodeId: string): void
+  unwatchOutput(nodeId: string): void
   revealTranscript(nodeId: string): void
   /** A failed run's command, exit code and last output, as a new agent's brief. See src/renderer/runFixUi.ts. */
   askToFixRun(nodeId: string): void
@@ -406,7 +410,7 @@ export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }> }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }>; watching?: string | null }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -468,6 +472,13 @@ export function nodeMenu(
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
     ...(node.kind === 'claude' ? [{ id: 'copy-last-reply', label: 'Copy last reply', icon: 'copy' as const, disabled: !node.transcriptPath, run: () => c.copyLastReply(node.id) }] : []),
+    ...(node.kind === 'terminal' || node.kind === 'run'
+      ? [
+          ctx.watching
+            ? { id: 'unwatch-output', label: `Stop waiting for ${phraseLabel(ctx.watching)}`, icon: 'muted' as const, run: () => c.unwatchOutput(node.id) }
+            : { id: 'watch-output', label: 'Notify when it prints…', icon: 'find' as const, run: () => c.watchOutput(node.id) }
+        ]
+      : []),
     ...(node.kind === 'terminal' || node.kind === 'run' ? [{ id: 'save-output', label: 'Save output…', icon: 'file' as const, run: () => c.saveOutput(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'save-conversation', label: 'Save conversation…', icon: 'file' as const, disabled: !node.transcriptPath, run: () => c.saveConversation(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'reveal-transcript', label: 'Reveal transcript', icon: 'folder-open' as const, disabled: !node.transcriptPath, run: () => c.revealTranscript(node.id) }] : []),

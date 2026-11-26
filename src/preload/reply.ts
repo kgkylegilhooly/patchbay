@@ -11,6 +11,17 @@ export function exposeReply(): void {
     // Save output (F43): a terminal's or run's output as a text file. Served in src/main/saveOutput.ts.
     saveOutput: (nodeId: string): Promise<{ ok: true; path: string; lines: number } | { ok: false; reason: string; cancelled?: true }> => ipcRenderer.invoke('pb:output:save', nodeId)
   })
+  // Notify when it prints… (F41). Served in src/main/outputWatch.ts.
+  contextBridge.exposeInMainWorld('patchbayOutputWatch', {
+    watch: (nodeId: string, phrase: string): Promise<{ ok: true; phrase: string } | { ok: false; reason: string }> => ipcRenderer.invoke('pb:output:watch', nodeId, phrase),
+    unwatch: (nodeId: string): Promise<void> => ipcRenderer.invoke('pb:output:unwatch', nodeId),
+    all: (): Promise<Record<string, string>> => ipcRenderer.invoke('pb:output:watches'),
+    onChange: (cb: (all: Record<string, string>) => void): (() => void) => {
+      const listener = (_e: unknown, all: Record<string, string>): void => cb(all)
+      ipcRenderer.on('pb:output:watchesChanged', listener)
+      return () => void ipcRenderer.removeListener('pb:output:watchesChanged', listener)
+    }
+  })
   // Ask an agent to fix: a failed run's brief. Served in src/main/runFix.ts.
   contextBridge.exposeInMainWorld('patchbayRunFix', {
     brief: (nodeId: string): Promise<RunFixResult> => ipcRenderer.invoke('pb:run:fixBrief', nodeId)

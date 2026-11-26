@@ -60,6 +60,7 @@ import { createAway, serveAway, type Away } from './files/away'
 import { lastReplyOf, serveLastReply } from './lastReply'
 import { serveRunFix } from './runFix'
 import { serveSaveOutput } from './saveOutput'
+import { createOutputWatch, serveOutputWatch } from './outputWatch'
 import { serveOpenFolder } from './openFolder'
 import { serveCanvasHistory } from './canvasHistoryIpc'
 import { withFilesVerbs } from './files/verbs'
@@ -540,6 +541,15 @@ async function boot(): Promise<void> {
   serveAway(away, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveLastReply(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   // A run that ended before this start has only its saved output.
+  // Notify when it prints… (F41): new output is matched in main, so it works with the window closed or off screen.
+  const outputWatch = createOutputWatch({
+    found(id, phrase) {
+      notifier.printed(id, phrase)
+      broadcast('pb:output:watchesChanged', Object.fromEntries(store.get().nodes.flatMap((n) => (outputWatch.watching(n.id) ? [[n.id, outputWatch.watching(n.id)]] : []))))
+    }
+  })
+  host.onOutput((id, data) => outputWatch.output(id, data))
+  serveOutputWatch({ watch: outputWatch, store, changed: (all) => broadcast('pb:output:watchesChanged', all), ipc: ipcMain }, (e: Electron.IpcMainInvokeEvent) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveSaveOutput({ store, output: async (id) => host.snapshot(id).data || ((await scrollback.readAsync(id)) ?? '') }, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveRunFix({ store, runs: () => runner.runs(), output: (id) => host.snapshot(id).data }, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveOpenFolder(store, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)

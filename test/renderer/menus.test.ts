@@ -402,3 +402,12 @@ test('terminal and run windows offer Save output; an agent has Save conversation
   expect(menu({ ...terminal, id: 'r', kind: 'run', command: 'npm test' } as CanvasNode).find((i) => i.id === 'save-output')).toBeDefined()
   expect(menu(claude).find((i) => i.id === 'save-output')).toBeUndefined()
 })
+
+// F41: told when a run prints "Compiled successfully", rather than watching it.
+test('terminal and run windows offer Notify when it prints, or to stop waiting for the phrase set; agents neither', () => {
+  const menu = (node: CanvasNode, watching: string | null = null) => items(nodeMenu(commands, node, null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false, watching }))
+  expect(menu(terminal).find((i) => i.id === 'watch-output')?.label).toBe('Notify when it prints…')
+  expect(menu(terminal, 'Compiled successfully').find((i) => i.id === 'unwatch-output')?.label).toBe('Stop waiting for "Compiled successfully"')
+  expect(menu(terminal, 'Compiled successfully').find((i) => i.id === 'watch-output')).toBeUndefined()
+  expect(menu(claude).find((i) => i.id === 'watch-output' || i.id === 'unwatch-output')).toBeUndefined()
+})

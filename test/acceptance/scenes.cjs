@@ -628,6 +628,31 @@ const scenes = {
     console.log(`approval strips left: ${left}`)
     await sleep(500)
   },
+  // F41: the Dev shell's menu, then Notify when it prints…, with a phrase typed.
+  'notify-when': async (page) => {
+    await scenes['pin-menu'](page)
+    await page.click('.menu-panel [data-cmd="watch-output"]').catch(() => {})
+    await page.waitForSelector('[data-notify-when="text"]', { timeout: 5000 }).catch(() => {})
+    await page.keyboard.type('build finished')
+    await sleep(300)
+  },
+  // The same, set, then the shell prints it: the watch fires once and is forgotten, so the menu offers it again.
+  'notify-when-fired': async (page) => {
+    await scenes['notify-when'](page)
+    await page.click('[data-notify-when="start"]').catch(() => {})
+    await sleep(500)
+    const before = await page.evaluate(() => window.patchbayOutputWatch.all())
+    if (before.term !== 'build finished') throw new Error(`Not watching: ${JSON.stringify(before)}`)
+    await page.click('.react-flow__node[data-id="term"] .xterm-screen')
+    // Typed so the line itself doesn't hold the phrase: what's echoed as typed is output too, and only printf's output does.
+    await page.keyboard.type("printf 'BUILD %s in 3s\n' FINISHED")
+    await page.keyboard.press('Enter')
+    await page.waitForFunction(async () => !(await window.patchbayOutputWatch.all()).term, { timeout: 15000 })
+    console.log('watch fired and was forgotten')
+    const box = await page.$eval('.react-flow__node[data-id="term"] .xterm-screen', (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12, { button: 'right' })
+    await sleep(400)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
