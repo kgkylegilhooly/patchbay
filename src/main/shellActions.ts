@@ -14,6 +14,8 @@ export interface LinkDeps {
   /** Resolves to an error message, or an empty string on success. */
   openPath(path: string): Promise<string>
   reveal(path: string): void
+  /** Opens a file at a line in the editor, if there's one to do it. False when there isn't, so it opens as usual. */
+  openAt?(path: string, line: number, column?: number): boolean
   /** For ~. Defaults to the person's home folder. */
   home?: string
 }
@@ -46,6 +48,17 @@ const LOCATION_SUFFIX = /(?::\d+){1,2}$|\(\d+,\d+\)$/
 const LINE_ANCHOR = /#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?$/i
 
 type Local = { ok: true; paths: string[] } | { ok: false; reason: string }
+
+/** The line (and column) a link points at: a.ts:42:7, a.ts:42, a.ts(12,5), or a GitHub-style #L12C3. */
+export function locationOf(target: string): { line: number; column?: number } | null {
+  const t = target.trim()
+  const m =
+    /#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?$/i.exec(t) ?? /\((\d+),(\d+)\)$/.exec(t) ?? /:(\d+)(?::(\d+))?$/.exec(t)
+  if (!m) return null
+  const line = Number(m[1])
+  const column = m[2] === undefined ? undefined : Number(m[2])
+  return line > 0 ? { line, ...(column ? { column } : {}) } : null
+}
 
 /**
  * The Windows paths a path written by a program may mean, most likely first. Agents and shells write the same file
@@ -118,6 +131,9 @@ export async function openTerminalLink(cwd: string, target: string, deps: LinkDe
     deps.reveal(path)
     return { ok: true }
   }
+  // A test failure's a.ts:42:7 means that line: in VS Code, when there is one, rather than the top of the file.
+  const at = locationOf(target)
+  if (at && deps.openAt?.(path, at.line, at.column)) return { ok: true }
   const error = await deps.openPath(path)
   return error ? { ok: false, reason: error } : { ok: true }
 }

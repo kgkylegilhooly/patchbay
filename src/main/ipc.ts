@@ -34,6 +34,7 @@ import { sourceConfig, type UsagePoller } from './usage/usageSource'
 import type { StatusTracker } from './sessions/statusTracker'
 import { readBoardImageAsync, saveBoardImageAsync } from './boardImages'
 import { agentOffNow } from './agentsAllowed'
+import { openInVsCodeAt } from './openFolder'
 import { openTerminalLink, readClosedTranscript, reopenClosed, resolveTerminalPath, savePastedImage, type ResolvedPath } from './shellActions'
 import type { Log } from './watchdog'
 import type { SendGuard } from './sessions/sendGuard'
@@ -513,7 +514,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
       exists: existsSync,
       openExternal: (url) => shell.openExternal(url),
       openPath: (path) => shell.openPath(path),
-      reveal: (path) => shell.showItemInFolder(path)
+      reveal: (path) => shell.showItemInFolder(path),
+      openAt: (path, line, column) => openInVsCodeAt(path, line, column)
     })
   })
   const resolvePath = (nodeId: string, target: string): ResolvedPath => {
