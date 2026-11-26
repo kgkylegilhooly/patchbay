@@ -38,9 +38,9 @@ export interface Git {
   (cwd: string, args: string[], limit: { timeoutMs: number; maxBytes: number }): Promise<RunResult>
 }
 
-/** The real git, with prompts off. `env` is already cleaned by the caller. */
-export function systemGit(env: Record<string, string>): Git {
-  return (cwd, args, limit) => runProgram('git', [...GLOBAL, '-C', cwd, ...args], { env, ...limit })
+/** The real git, with prompts off. `env` is already cleaned by the caller. `config` is more -c settings, such as NO_FSMONITOR. */
+export function systemGit(env: Record<string, string>, config: string[] = []): Git {
+  return (cwd, args, limit) => runProgram('git', [...GLOBAL, ...config, '-C', cwd, ...args], { env, ...limit })
 }
 
 /** What went wrong, in git's own words, plus a plain hint for the failures people most often hit. */

@@ -427,7 +427,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       mark.endCheck = { at: now(), changed: 0, problem: 'The session moved to another repository during the turn.' }
       return changed()
     }
-    const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', mark.tree, snap.tree, '--'], { env: d.store ? objectEnv(d.store, snap.objects) : {}, maxBytes: 4 * 1024 * 1024 })
+    const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', mark.tree, snap.tree, '--'], { env: d.store ? objectEnv(d.store, snap.objects) : {}, maxBytes: 4 * 1024 * 1024 })
     if (out.code !== 0) {
       mark.endCheck = { at: now(), changed: 0, problem: `git couldn't compare the snapshots: ${(out.stderr || out.stdout).trim().split('\n')[0]}` }
       return changed()
@@ -551,7 +551,7 @@ export function createFilesTouched(d: FilesTouchedDeps): FilesTouchedService {
       if (!snap.ok || pathKey(snap.root) !== pathKey(mark.endRoot)) return null
       const env = d.store ? objectEnv(d.store, snap.objects) : {}
       // Fails once the snapshot's objects have been pruned: then there's nothing to say, rather than a guess.
-      const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', mark.endTree, snap.tree, '--'], { env, maxBytes: 4 * 1024 * 1024 })
+      const out = await d.git(snap.root, ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-textconv', mark.endTree, snap.tree, '--'], { env, maxBytes: 4 * 1024 * 1024 })
       if (out.code !== 0) return null
       const files = out.stdout.split('\0').filter(Boolean)
       let commits: string[] = []

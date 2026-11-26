@@ -145,14 +145,14 @@ export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewG
    * same). Fails rather than return a list cut short.
    */
   async function changed(root: string, from: string, to: string, section: ChangeSection): Promise<ChangedFile[]> {
-    return parseNameStatus(await ok(root, ['diff', '--no-ext-diff', '-M', '--name-status', '-z', from, to, '--']), section)
+    return parseNameStatus(await ok(root, ['diff', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z', from, to, '--']), section)
   }
 
   /** Where each file renamed between two revisions went: old path to new. Empty when either revision is gone. */
   async function renames(root: string, from: string, to: string): Promise<Map<string, string>> {
     const out = new Map<string, string>()
     if (!isOid(from) || !isOid(to)) return out
-    const r = await inRepo(root, ['diff', '--no-ext-diff', '-M', '--diff-filter=R', '--name-status', '-z', from, to, '--'], READ)
+    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-textconv', '-M', '--diff-filter=R', '--name-status', '-z', from, to, '--'], READ)
     if (r.code !== 0 || r.truncated) return out
     for (const f of parseNameStatus(r.stdout, 'local')) if (f.oldPath) out.set(f.oldPath, f.path)
     return out
@@ -161,7 +161,7 @@ export function createReviewGit(objectsRoot: string, run: RunGit = systemReviewG
   /** One file's diff. A renamed file is named by both its paths, so git shows the rename and what changed in it. */
   async function diff(root: string, from: string, to: string, path: string, oldPath?: string): Promise<{ text: string; truncated: boolean }> {
     const paths = oldPath && oldPath !== path ? [repoPath(oldPath), repoPath(path)] : [repoPath(path)]
-    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-color', '-M', from, to, '--', ...paths], DIFF)
+    const r = await inRepo(root, ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '-M', from, to, '--', ...paths], DIFF)
     if (r.code !== 0) throw new Error(r.stderr.trim() || 'git diff failed')
     return { text: r.stdout, truncated: r.truncated }
   }

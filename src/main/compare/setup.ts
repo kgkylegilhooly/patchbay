@@ -1,12 +1,12 @@
 import { isAbsolute, join, resolve } from 'node:path'
 import { gitEnvFrom } from '../../core/git/args'
-import { LIMITS, systemGit, type GitService } from '../../core/git/service'
+import { LIMITS, type GitService } from '../../core/git/service'
 import { createWorktree, removeWorktree } from '../../core/worktree/service'
 import type { CanvasStore } from '../../shared/contract'
 import { cleanEnv } from '../sessions/env'
 import { knownFolders } from '../workIpc'
 import { registerCompareIpc } from './ipc'
-import { createCompareReads } from './reads'
+import { compareGit, createCompareReads } from './reads'
 import { createCompareService } from './service'
 import { createVerifyRunner } from './verifyRunner'
 import { createCompareTaskLink } from './taskLink'
@@ -21,7 +21,7 @@ export function setupCompare(d: {
   /** Saves the canvas document, where task records live, after a comparison writes to a task. */
   persist?: () => Promise<void>
 }): void {
-  const git = systemGit(gitEnvFrom(cleanEnv(process.env, {})))
+  const git = compareGit(gitEnvFrom(cleanEnv(process.env, {})))
   const reads = createCompareReads(git, d.git)
   const service = createCompareService({
     store: d.store,
