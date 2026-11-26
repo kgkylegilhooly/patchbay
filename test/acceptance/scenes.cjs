@@ -664,6 +664,30 @@ const scenes = {
     await page.waitForFunction(() => ['done-a', 'done-b'].every((id) => /Idle/.test(document.querySelector(`.react-flow__node[data-id="${id}"]`)?.textContent ?? '')), { timeout: 30000 }).catch(() => {})
     await sleep(500)
   },
+  // F60: a team whose two agents are done (idle) and one still working, and its menu: Close 2 finished agents.
+  'close-finished-menu': async (page) => {
+    const g = { id: 'g-team', kind: 'group', title: 'Release team', x: 930, y: 640, width: 1680, height: 380, parentId: null, worktree: null, projectId: 'p1' }
+    const agentIn = (id, title, x, prompt) => ({ ...box, id, kind: 'claude', title, x, y: 50, width: 500, height: 300, prompt, sessionId: null, transcriptPath: null, after: [], projectId: 'p1', parentId: 'g-team' })
+    await page.evaluate(async (nodes) => {
+      for (const n of nodes) await window.patchbay.dispatch({ op: 'addNode', node: n })
+      for (const n of nodes.slice(1)) await window.patchbay.startNode(n.id)
+    }, [g, agentIn('fin-a', 'Changelog', 30, 'idle'), agentIn('fin-b', 'Version bump', 590, 'idle'), agentIn('fin-c', 'Smoke tests', 1150, 'working')])
+    await page.waitForFunction(() => ['fin-a', 'fin-b'].every((id) => /Idle/.test(document.querySelector(`.react-flow__node[data-id="${id}"]`)?.textContent ?? '')), { timeout: 30000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Changelog'))?.click())
+    await sleep(800)
+    const head = await (await page.$('.react-flow__node[data-id="g-team"]')).boundingBox()
+    await page.mouse.click(head.x + 200, head.y + 12, { button: 'right' })
+    await sleep(400)
+  },
+  // The same, then the item: the confirmation names the two it will close; the working one isn't among them.
+  'close-finished-confirm': async (page) => {
+    await scenes['close-finished-menu'](page)
+    await page.click('.menu-panel [data-cmd="close-finished"]').catch(() => {})
+    await page.waitForSelector('[data-confirm="close-finished"]', { timeout: 5000 }).catch(() => {})
+    const text = await page.$eval('[data-confirm="close-finished"]', (e) => e.textContent).catch(() => '')
+    if (!/Closes Changelog and Version bump/.test(text) || /Smoke tests/.test(text)) throw new Error(`The confirmation says: ${text}`)
+    await sleep(300)
+  },
   // F39: prompts used before, and the New Claude Code form with Recent open.
   'recent-prompts': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([

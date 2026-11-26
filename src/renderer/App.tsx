@@ -80,6 +80,7 @@ import { afterNextPaint } from './mountQueue'
 import { linkedAgents } from './noteSend'
 import { selectedAgents } from './sendToAgents'
 import { stoppedIn, workingIn } from './restartStopped'
+import { finishedIn } from './closeFinished'
 import { useOutputWatch } from './outputWatchUi'
 import { useSettingsAsk } from './settingsAsk'
 import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
@@ -361,8 +362,9 @@ function Canvas(): React.JSX.Element | null {
     const current = useStore.getState().doc
     const stopped = current && node.kind === 'group' ? stoppedIn(current.nodes, node.id, useStore.getState().statuses, useStore.getState().errors) : []
     const working = current && node.kind === 'group' ? workingIn(current.nodes, node.id, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) : []
+    const finished = current && node.kind === 'group' ? finishedIn(current.nodes, node.id, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) : []
     const agents = current ? linkedAgents(current, node.id).filter((a) => a.id !== node.id).map((a) => ({ id: a.id, title: a.title })) : []
-    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped, working, watching: useOutputWatch.getState().watches[node.id] ?? null }), label: node.title })
+    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped, working, finished, watching: useOutputWatch.getState().watches[node.id] ?? null }), label: node.title })
   }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
