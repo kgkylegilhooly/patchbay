@@ -25,7 +25,13 @@ const RUNNABLE = new Set(
   ('exe com scr msi msp pif cpl hta jar bat cmd ps1 psm1 psd1 vbs vbe js jse wsf wsh sh bash py pyw rb pl reg lnk url scf inf application appref-ms msc gadget ' +
     // Help that runs script, files that make Windows connect out (and send credentials), installers, disk images that
     // skip download warnings, a sandbox config, an Excel add-in, and their kin.
-    'chm library-ms search-ms searchconnector-ms settingcontent-ms rdp appinstaller appx appxbundle msix msixbundle iso img vhd vhdx wsb xll diagcab theme themepack website jnlp ps1xml psc1 mht mhtml')
+    'chm library-ms search-ms searchconnector-ms settingcontent-ms rdp appinstaller appx appxbundle msix msixbundle iso img vhd vhdx wsb xll diagcab theme themepack website jnlp ps1xml psc1 mht mhtml ' +
+    // The rest of Microsoft's blocked-attachment list, and Office add-ins. Some run on any PC (.msu runs the update
+    // installer, .printerexport imports printers, .xbap runs PresentationHost, .cer offers to install a certificate),
+    // the rest wherever their program is installed: Python archives and bytecode, Access databases, old help, macros.
+    'msu printerexport xbap cer crt der pyz pyzw pyc pyo mdb mde ade adp accde accdr mda mdt mdw mdz mad maf mag mam maq mar mas mat mau mav ' +
+    'maw vsmacros vsw shb shs ins isp wsc sct mst ppam xlam xla app asx bas cab cnt fxp grp hlp hpj htc its mcf msh msh1 msh2 mshxml ' +
+    'msh1xml msh2xml ops osd pcd plg prf prg ps2 ps2xml psc2 psdm1 csh ksh vb vbp webpnp ws xnk')
     .split(' ')
 )
 
