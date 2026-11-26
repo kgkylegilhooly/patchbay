@@ -454,6 +454,9 @@ export function SettingsPage({
             <Row title="Windows notifications" help="When a session needs you or finishes its turn, unless you're already in that window." htmlFor="set-notifications">
               <Toggle id="set-notifications" checked={draft.notifications !== 'off'} onChange={() => set('notifications', draft.notifications === 'off' ? '' : 'off')} />
             </Row>
+            <Row title="Say what happened" help="A finished turn shows the first line of the agent's reply, and a request shows what it asks. Off, they only say Finished its turn or Needs you. Windows may show notifications on the lock screen." htmlFor="set-notification-text">
+              <Toggle id="set-notification-text" checked={draft.notificationText !== 'off'} disabled={draft.notifications === 'off'} onChange={() => set('notificationText', draft.notificationText === 'off' ? '' : 'off')} />
+            </Row>
             <Row title="Sound" help="A short chime when a session needs you. The taskbar badge stays on either way." htmlFor="set-sound">
               <Toggle id="set-sound" checked={draft.sound !== 'off'} onChange={() => set('sound', draft.sound === 'off' ? '' : 'off')} />
             </Row>
