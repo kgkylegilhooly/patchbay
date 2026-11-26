@@ -10,6 +10,9 @@ import { conversationAnswer, conversationLimit, type ConversationAnswer } from '
 import { checkRemovable, createWorktree, removeWorktree } from '../core/worktree/service'
 import type { ApprovalChoice, BrowserStep, CanvasStore, HostInfo, NodeError, PendingApproval, SessionHost } from '../shared/contract'
 import { agentOf, isSessionNode, type AgentStatus, type BrowserNode, type CanvasDoc, type CanvasNode, type CanvasOp, type ClaudeNode, type GroupNode, type TerminalNode, type WhiteboardShape } from '../shared/model'
+import { placeInProject } from '../core/canvas/place'
+import { viewSize } from './viewSize'
+import { outputKeptFor } from '../shared/closedShells'
 import type { Settings } from '../shared/settings'
 import { createActivityLog } from './activity'
 import type { LiveBrowserDriver } from './browser/driver'
@@ -228,6 +231,12 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     const closing = ids.filter((id) => isSession(find(id)))
     await Promise.all(closing.map((id) => runner.stopNode(id)))
     for (const id of closing) {
+      // A terminal's or run's output is kept for Reopen (F48): its last screen goes to disk before the host forgets it.
+      // An empty one is left alone, as the file may be all there is from a launch it never started in.
+      const kind = find(id)?.kind
+      const keep = kind === 'terminal' || kind === 'run'
+      const last = keep ? host.snapshot(id).data : ''
+      if (last) void scrollback.write(id, last).catch((e: unknown) => console.error('Patchbay could not save scrollback:', e))
       approvals.clearNode(id)
       exitedTerminals.delete(id)
       saver.forget(id)
@@ -236,9 +245,17 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
       host.forget?.(id)
       usage.forget(id)
       activity.forget(id)
-      void scrollback.remove(id).catch((e: unknown) => console.error('Patchbay could not remove scrollback:', e))
+      if (!keep) void scrollback.remove(id).catch((e: unknown) => console.error('Patchbay could not remove scrollback:', e))
     }
   }
+  // A terminal's or run's saved output goes once it's neither on the canvas nor in the closed list: forgotten, past the
+  // newest 20, or in a project that was deleted (F48).
+  let outputKept = outputKeptFor(store.get())
+  store.subscribe(() => {
+    const now = outputKeptFor(store.get())
+    for (const id of outputKept) if (!now.has(id)) void scrollback.remove(id).catch((e: unknown) => console.error('Patchbay could not remove scrollback:', e))
+    outputKept = now
+  })
 
   ipcMain.handle('pb:getDoc', () => store.get())
   ipcMain.handle('pb:dispatch', async (_e, op: CanvasOp) => {
@@ -537,6 +554,24 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     return r.ok ? { ok: true } : r
   })
 
+  // Reopen a closed terminal or run (F48): the same node, placed in view, started with its saved output shown above.
+  ipcMain.handle('pb:reopenShell', async (_e, id: unknown) => {
+    const entry = typeof id === 'string' ? store.get().closedShells?.find((s) => s.node.id === id) : undefined
+    if (!entry) return
+    // Read before the entry goes, as its file goes with it. Started under a new id: the old session's exit can still be
+    // on its way, and an event for the old id must not mark the new window exited.
+    const saved = await scrollback.readAsync(entry.node.id).catch(() => null)
+    const doc = store.get()
+    const { x, y } = placeInProject(doc, doc.activeProjectId, { width: entry.node.width, height: entry.node.height }, viewSize())
+    const node = { ...entry.node, id: randomUUID(), x, y, parentId: null, projectId: doc.activeProjectId }
+    // The output goes under the new id, so it's kept and shown as any window's is.
+    if (saved) await scrollback.write(node.id, saved).catch(() => {})
+    store.dispatch({ op: 'addNode', node })
+    store.dispatch({ op: 'forgetClosedShell', id: entry.node.id })
+    // A run never starts by itself: it's back with its output, for Run. A terminal is a fresh shell in its folder, as
+    // after a restart: a command it was opened with (a deploy, say) doesn't run again.
+    if (node.kind === 'terminal') await runner.startNode(node.id, { initialScrollback: restoreSeed('terminal', saved), restored: true })
+  })
   ipcMain.handle('pb:reopenClosed', async (_e, closedId: string) => {
     // Settings > Agents: an agent turned off isn't reopened, and its entry stays in the list for later.
     const entry = store.get().closed.find((c) => c.id === closedId)

@@ -316,6 +316,8 @@ export interface PatchbayBridge {
   /** The person's own message to an agent window. A busy agent gets it once it's idle. */
   sendToAgent(nodeId: string, text: string): Promise<{ ok: true; queued: boolean } | { ok: false; reason: string }>
   reopenClosed(closedId: string): Promise<void>
+  /** A closed terminal or run, by its node id, reopened with its saved output (F48). */
+  reopenShell(id: string): Promise<void>
   readClosedTranscript(closedId: string): Promise<{ ok: true; text: string } | { ok: false; reason: string }>
   /** Which node's terminal has the keyboard, so a notification can skip the node being watched. */
   noteFocus(id: string | null): void

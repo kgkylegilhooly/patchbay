@@ -130,6 +130,7 @@ const bridge: PatchbayBridge = {
   checkForUpdates: () => invoke('checkForUpdates'),
   restartToUpdate: () => invoke('restartToUpdate'),
   reopenClosed: (closedId) => invoke('reopenClosed', closedId),
+  reopenShell: (id) => invoke('reopenShell', id),
   readClosedTranscript: (closedId) => invoke('readClosedTranscript', closedId),
   noteFocus: (id) => ipcRenderer.send('pb:noteFocus', id),
   onRenderWhiteboard: (cb) => listen('onRenderWhiteboard', cb),

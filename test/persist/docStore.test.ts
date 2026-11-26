@@ -442,3 +442,21 @@ test('a sealed store writes nothing more: no save, no debounced save, no flush, 
   await new Promise((r) => setTimeout(r, 1200))
   expect(titleOnDisk(join(dir, 'canvas.json'))).toBe('before')
 })
+
+// F48: closed terminals and runs are an optional extra. A damaged entry is dropped alone, never the canvas.
+test('closed terminals and runs load, and an entry this build cannot read is left out', () => {
+  const t = docTitled('a').nodes[0]
+  const raw = {
+    ...docTitled('a'),
+    closedShells: [
+      { node: { ...t, id: 'gone' }, closedAt: 5 },
+      { node: { ...t, id: 'odd', kind: 'toaster' }, closedAt: 6 },
+      { node: { ...t, id: 'sticky', kind: 'sticky', text: 'x' }, closedAt: 7 },
+      { closedAt: 8 },
+      'x'
+    ]
+  }
+  expect(migrate(raw).closedShells?.map((s) => s.node.id)).toEqual(['gone'])
+  expect(migrate({ ...docTitled('a'), closedShells: 'nope' }).closedShells).toBeUndefined()
+  expect(migrate(docTitled('a')).closedShells).toBeUndefined()
+})
