@@ -968,6 +968,42 @@ const scenes = {
     const s = await page.evaluate(async () => ({ state: await window.patchbay.globalKeyState?.(), shown: document.querySelector('[data-global-key]')?.dataset.globalKey ?? null }))
     console.log(`global key bad: ${JSON.stringify(s)}`)
   },
+  // TR1: an agent's chat view after Claude compacted its conversation: the summary it wrote is a user line in the file.
+  'chat-compacted': async (page, ctx) => {
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const tpath = path.join(ctx.profile, 'compacted.jsonl')
+    const user = (content, extra = {}) => ({ type: 'user', isSidechain: false, message: { role: 'user', content }, ...extra })
+    const said = (text) => ({ type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [{ type: 'text', text }] } })
+    const summary = user('This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary Request and Intent: fix the parser and add tests.\n2. Key Technical Concepts: ...', { isCompactSummary: true, isVisibleInTranscriptOnly: true })
+    const lines = [user('Fix the parser so it keeps comments.'), said('Fixed: comments are kept now.'), summary, user('Now add tests for it.'), said('Added three tests; all pass.')]
+    fs.writeFileSync(tpath, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+    const node = { ...box, id: 'compacted', kind: 'claude', title: 'Parser work', x: 930, y: 640, width: 620, height: 480, prompt: 'idle', sessionId: null, transcriptPath: null, after: [], projectId: 'p1' }
+    await page.evaluate(async (n) => {
+      const cwd = (await window.patchbay.getDoc()).nodes.find((o) => o.id === 'term').cwd
+      await window.patchbay.dispatch({ op: 'addNode', node: { ...n, cwd } })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    await sleep(2500)
+    // The fake's own start hook can clear the path after this, so it's kept set.
+    const keep = () => page.evaluate(async (p) => {
+      const n = (await window.patchbay.getDoc()).nodes.find((x) => x.id === 'compacted')
+      if (n && n.transcriptPath !== p) await window.patchbay.dispatch({ op: 'patchNode', id: 'compacted', patch: { transcriptPath: p } })
+    }, tpath).catch(() => {})
+    await keep()
+    const keeper = setInterval(keep, 250)
+    try {
+      await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Parser work'))?.click())
+      await sleep(600)
+      await require('./uilib.cjs').headerTool(page, 'compacted', 'chat')
+      await page.waitForSelector('.react-flow__node[data-id="compacted"] .chat-msg', { timeout: 15000 }).catch(() => {})
+      await sleep(800)
+      const msgs = await page.$$eval('.react-flow__node[data-id="compacted"] .chat-msg', (ms) => ms.map((m) => `${m.querySelector('.chat-who')?.textContent}: ${m.querySelector('.chat-text')?.textContent.slice(0, 40)}`))
+      console.log(`chat compacted: ${JSON.stringify(msgs)}`)
+    } finally {
+      clearInterval(keeper)
+    }
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

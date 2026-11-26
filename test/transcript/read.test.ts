@@ -200,3 +200,18 @@ test('readAllMessages reads several lines longer than a stretch in a row, each f
   const file = fixture([big(1), assistant([text('between')]), big(2), big(3), assistant([text('end')])])
   expect(await readAllMessages(file)).toEqual(readMessages(file))
 })
+
+// TR1: after compacting, Claude writes its summary as a user line (isCompactSummary, isVisibleInTranscriptOnly, string
+// content, not isMeta), shaped as in real transcripts on this PC. Nobody typed it: it's not the person's message, for the
+// chat view ("You"), Save conversation, search ("asked"), handoffs or `patchbay read`.
+test("a compaction summary isn't taken for the person's message", async () => {
+  const summary = user('This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary Request and Intent: ...', {
+    isCompactSummary: true,
+    isVisibleInTranscriptOnly: true,
+    userType: 'external'
+  })
+  const file = fixture([user('fix the parser'), assistant([text('Fixed.')]), summary, user('now add tests'), assistant([text('Added.')])])
+  expect(readTranscript(file)).toBe('[user]\nfix the parser\n\n[assistant]\nFixed.\n\n[user]\nnow add tests\n\n[assistant]\nAdded.\n')
+  expect((await readAllMessages(file)).map((m) => m.text)).toEqual(['fix the parser', 'Fixed.', 'now add tests', 'Added.'])
+  expect((await readMessagesTail(file, 3)).map((m) => m.text)).toEqual(['Fixed.', 'now add tests', 'Added.'])
+})

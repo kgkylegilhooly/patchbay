@@ -25,6 +25,13 @@ describe('transcript events', () => {
     ])
   })
 
+  // TR1: search lists it as "asked" and a handoff as a later request, though Claude wrote it on compacting.
+  it('leaves out a compaction summary, which no one asked', () => {
+    const summary = JSON.stringify({ type: 'user', isSidechain: false, isCompactSummary: true, isVisibleInTranscriptOnly: true, timestamp: new Date(T + 1).toISOString(), message: { role: 'user', content: 'This session is being continued from a previous conversation that ran out of context.' } })
+    const { events } = transcriptEvents(lines(claudeUser('Fix the parser', T), summary, claudeUser('Now add tests', T + 2)))
+    expect(events.filter((e) => e.kind === 'message').map((e) => (e as { text: string }).text)).toEqual(['Fix the parser', 'Now add tests'])
+  })
+
   it("reads Codex's current rollout items", () => {
     const { events } = transcriptEvents(lines(codexUser('Add search', T), codexRun('npm test', 0, 'ok', T + 1), codexChange('C:\\repo\\a.ts', T + 2), codexSays('Done.', T + 3)))
     expect(events).toEqual([
