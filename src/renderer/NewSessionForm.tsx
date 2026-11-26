@@ -1,3 +1,4 @@
+import { modelNameOf, START_MODE_LABELS, START_MODES, type StartMode } from '../shared/startMode'
 import { useRef, useState } from 'react'
 import { bridge } from './bridge'
 import { shortPath } from './shortPath'
@@ -29,11 +30,15 @@ export function NewSessionForm({
   folderFor?: (profile: string | undefined) => string
   editing?: boolean
   onCancel: () => void
-  onOpen: (fields: { cwd: string; text?: string; profile?: string; chose?: boolean }) => void
+  onOpen: (fields: { cwd: string; text?: string; profile?: string; chose?: boolean; startMode?: StartMode; model?: string }) => void
 }): React.JSX.Element {
   const [cwd, setCwd] = useState(() => (folderFor ? folderFor(undefined) : initialFolder))
   const [text, setText] = useState(initialCommand)
   const [profile, setProfile] = useState<string | undefined>(undefined)
+  // F61: how this Claude starts, over the global setting. Blank keeps the global one.
+  const [mode, setMode] = useState<StartMode | ''>('')
+  const [model, setModel] = useState('')
+  const own = (): { startMode?: StartMode; model?: string } => (kind === 'claude' ? { ...(mode ? { startMode: mode } : {}), ...(modelNameOf(model) ? { model: modelNameOf(model) } : {}) } : {})
   /** The folder the person chose, so picking a profile with its own folder doesn't replace it. */
   const chose = useRef(false)
   const promptRef = useRef<HTMLTextAreaElement>(null)
@@ -61,7 +66,7 @@ export function NewSessionForm({
       if (!folder) return
       chose.current = true
       setCwd(folder)
-      if (start && !blockedReason(kind, { cwd: folder, text })) openOnce({ cwd: folder, text: text.trim() || undefined, chose: true })
+      if (start && !blockedReason(kind, { cwd: folder, text })) openOnce({ cwd: folder, text: text.trim() || undefined, chose: true, ...own() })
       else promptRef.current?.focus()
     })
 
@@ -77,7 +82,7 @@ export function NewSessionForm({
       blockedKeyHint={claude && !cwd ? 'Ctrl+Enter asks for a folder, then starts there' : undefined}
       hint={claude}
       submitLabel={team ? 'Start team lead' : claude ? `Start ${agentName}` : run ? (editing ? 'Save command' : 'Start run') : 'Start terminal'}
-      onSubmit={() => openOnce({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}), ...(chose.current ? { chose: true } : {}) })}
+      onSubmit={() => openOnce({ cwd, text: text.trim() || undefined, ...(kind === 'terminal' && profile ? { profile } : {}), ...(chose.current ? { chose: true } : {}), ...own() })}
     >
       {team && <p className="pop-note">One lead Claude opens here. It splits the task into workstreams, starts a team for them, and brings the results together.</p>}
       {claude && <AgentProgramWarning agent={kind === 'codex' ? 'codex' : kind === 'claude' ? 'claude' : undefined} />}
@@ -128,6 +133,30 @@ export function NewSessionForm({
           <input data-autofocus name="command" placeholder={run ? 'For example, npm run dev' : 'For example, codex'} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
         )}
       </label>
+      {kind === 'claude' && (
+        <div className="field" data-start-mode>
+          <span className="field-label">How it starts (optional)</span>
+          <div className="folder-row">
+            <select aria-label="Permission mode" value={mode} onChange={(e) => setMode(e.target.value as StartMode | '')}>
+              <option value="">As in Settings</option>
+              {START_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {START_MODE_LABELS[m]}
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label="Model"
+              placeholder="Model, as opus or sonnet"
+              spellCheck={false}
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              aria-invalid={model.trim() !== '' && !modelNameOf(model)}
+              title={model.trim() && !modelNameOf(model) ? 'One word, as opus, sonnet or a model id' : undefined}
+            />
+          </div>
+        </div>
+      )}
     </FormShell>
   )
 }

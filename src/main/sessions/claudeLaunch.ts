@@ -1,3 +1,4 @@
+import { modelNameOf, startModeOf } from '../../shared/startMode'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -495,7 +496,11 @@ export function buildClaudeLaunch(node: ClaudeNode, ctx: ClaudeLaunchContext): C
   const configDir = Object.entries(ctx.baseEnv ?? process.env).find(([k]) => k.toUpperCase() === 'CLAUDE_CONFIG_DIR')?.[1]
   const hookPort = ctx.hookPort && !httpHooksBlocked({ cwd: node.cwd, home: ctx.home ?? homedir(), configDir, managedFile: ctx.managedSettingsFile }) ? ctx.hookPort : undefined
   const args = ['--settings', writeSettings(node, { ...ctx, hookPort }, own), '--plugin-dir', ctx.pluginDir]
-  if (ctx.permissionMode) args.push('--permission-mode', ctx.permissionMode)
+  // Its own mode, set in the form, over the global one (F61). Only the fixed modes count, and never bypass.
+  const mode = startModeOf(node.startMode) ?? ctx.permissionMode
+  if (mode) args.push('--permission-mode', mode)
+  const model = modelNameOf(node.model)
+  if (model) args.push('--model', model)
   if (resumed) {
     args.push('--resume', sessionId)
   } else {

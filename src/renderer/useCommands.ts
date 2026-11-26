@@ -86,7 +86,7 @@ interface Options {
 /** Every action the menu bar, right-click menus and dock can take. */
 export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref, toggleRecent, openSettings, openPalette, setProjectFormOpen }: Options): {
   commands: Commands
-  openFromForm: (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; chose?: boolean }) => void
+  openFromForm: (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; chose?: boolean; startMode?: string; model?: string }) => void
   openLaunch: (form: NonNullable<NewForm>, choice: LaunchChoice) => void
   openSsh: (form: NonNullable<NewForm>, fields: { host: string; home: string }) => void
   saveTrigger: (form: NonNullable<NewForm>, fields: TriggerFields) => void
@@ -435,7 +435,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       toggleFocus: (nodeId) => (nodeId ? showInFocus(nodeId) : toggleFocus(selectedRef.current))
     }
 
-    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string; chose?: boolean }): void => {
+    const openFromForm = (form: NonNullable<NewForm>, fields: { cwd: string; text?: string; profile?: string; chose?: boolean; startMode?: string; model?: string }): void => {
+    const own = { ...(fields.startMode ? { startMode: fields.startMode } : {}), ...(fields.model ? { model: fields.model } : {}) }
       lastFolder.current = fields.cwd || lastFolder.current
       // A project with no folder takes the one chosen for its first agent, so the next one starts with no picker.
       const keep = form.editId ? null : folderToKeep(doc(), form.kind, fields)
@@ -466,7 +467,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       const from = form.fix ? doc().nodes.find((n) => n.id === form.fix!.from) : undefined
       if (from && (form.kind === 'claude' || form.kind === 'codex')) {
         // Beside the failed run, and linked to it, so the agent can read its output and run it again.
-        const made = newClaude({ beside: from, group: from.parentId ? groupFor(from.parentId) : null, doc: doc(), view: visible() }, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
+        const made = newClaude({ beside: from, group: from.parentId ? groupFor(from.parentId) : null, doc: doc(), view: visible() }, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind, ...own })
         const node = { ...made, title: `Fix ${from.title}` }
         open(node, { focus: true })
         dispatch({ op: 'addEdge', edge: { id: crypto.randomUUID(), from: from.id, to: node.id, kind: 'link' } })
@@ -475,7 +476,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       const p = place(form.at, form.groupId)
       open(
         form.kind === 'claude' || form.kind === 'codex'
-          ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
+          ? newClaude(p, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind, ...own })
           : newTerminal(p, id, { cwd: fields.cwd, command: fields.text, profile: pickedProfile(fields.profile) }),
         { focus: true }
       )
