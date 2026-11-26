@@ -227,6 +227,23 @@ export function withTriggersPaused(text: string | null, on: boolean): string | n
   return mergeSettings(text, { ...parseSettings(text), triggersPaused: on ? 'on' : undefined })
 }
 
+/** Settings set from elsewhere with a save of their own, so the Settings page's copy of them may be stale. */
+const SET_ELSEWHERE = ['triggersPaused'] as const
+
+/**
+ * A save from the Settings page. The page sends the whole settings as it read them when it opened, so a setting changed
+ * since by its own control (Work menu > Pause all triggers) keeps the file's value rather than the page's old one.
+ */
+export function savedFromSettingsPage(text: string | null, next: Settings): string | null {
+  const now = parseSettings(text)
+  const kept: Settings = { ...next }
+  for (const key of SET_ELSEWHERE) {
+    if (now[key] !== undefined) kept[key] = now[key]
+    else delete kept[key]
+  }
+  return mergeSettings(text, kept)
+}
+
 export function mergeSettings(text: string | null, next: Settings): string | null {
   let current: Record<string, unknown> = {}
   if (text !== null && text.trim()) {

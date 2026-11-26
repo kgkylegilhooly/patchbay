@@ -22,7 +22,7 @@ import { findSsh } from './sessions/ssh'
 import type { TriggerService } from './triggers/service'
 import type { AfterGate } from './control/after'
 import { spotNear } from './control/verbs'
-import { mergeSettings, parseSettings, restoreSeed, withTriggersPaused, type ScrollbackSaver } from './lifecycle'
+import { parseSettings, restoreSeed, savedFromSettingsPage, withTriggersPaused, type ScrollbackSaver } from './lifecycle'
 import { nameFromOutput, runToEnd, TITLE_ARGS } from './nameWithAi'
 import type { Notifier } from './notifier'
 import type { Approvals } from './sessions/approvals'
@@ -500,7 +500,8 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   ipcMain.handle('pb:saveSettings', async (_e, next: Settings) => {
     // One read-merge-write at a time, so a save from another page can't undo this one. See settingsQueue.ts.
     const text = await inSettingsQueue(async () => {
-      const merged = mergeSettings(await readIfPresent(settingsFile), next)
+      // The page's copy of a setting saved from elsewhere since it opened (Pause all triggers) isn't written back.
+      const merged = savedFromSettingsPage(await readIfPresent(settingsFile), next)
       if (merged !== null) await writeAtomic(settingsFile, merged)
       return merged
     })
