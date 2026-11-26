@@ -134,6 +134,6 @@ describe('saving', () => {
 
   test('a malformed trigger is refused rather than loaded', () => {
     const d = doc([{ ...triggerNode('tr'), schedule: { type: 'weekly' } } as unknown as CanvasNode])
-    expect(() => migrate(JSON.parse(JSON.stringify(d)))).toThrow(/invalid nodes/)
+    expect(migrate(JSON.parse(JSON.stringify(d))).nodes).toEqual([])
   })
 })

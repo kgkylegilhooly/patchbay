@@ -211,8 +211,8 @@ describe('loading saved triggers', () => {
   })
 
   test('damaged ones are refused', () => {
-    expect(() => migrate(save({ schedule: { type: 'agent', nodeId: 'a', on: 'sometimes' } }))).toThrow(/invalid nodes/)
-    expect(() => migrate(save({ preflight: { argv: 'npm test', cwd: root } }))).toThrow(/invalid nodes/)
+    expect(migrate(save({ schedule: { type: 'agent', nodeId: 'a', on: 'sometimes' } })).nodes).toEqual([])
+    expect(migrate(save({ preflight: { argv: 'npm test', cwd: root } })).nodes).toEqual([])
   })
 })
 

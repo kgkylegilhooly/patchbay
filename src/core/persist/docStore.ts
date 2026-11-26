@@ -26,6 +26,9 @@ export interface LoadResult {
   recoveredFrom: 'primary' | 'backup' | 'new'
   /** Where a bad file was moved to. The primary's, when both were bad. */
   quarantined?: string
+  /** Nodes this build couldn't read, left out of the canvas. The whole file is kept at `keptAside`. */
+  droppedNodes?: number
+  keptAside?: string
 }
 
 export interface DocStore {
@@ -267,8 +270,44 @@ function rehomeOrphans(doc: CanvasDoc): CanvasDoc {
   }
 }
 
+/**
+ * The nodes this build can read, and the cables and waits that don't lead to one it can't. One unreadable node, as
+ * from a newer build after going back to an older one, used to refuse the whole file and its backup with it, so the
+ * canvas opened empty. A node inside a dropped one keeps its place on the canvas, under the dropped one's own parent.
+ */
+function keepReadable(all: unknown[], edges: unknown[]): { nodes: unknown[]; edges: unknown[]; dropped: number } {
+  const bad = all.filter((n) => !isNode(n))
+  if (!bad.length) return { nodes: all, edges, dropped: 0 }
+  const gone = new Map<string, Fields>()
+  for (const n of bad) if (isObject(n) && isString(n.id)) gone.set(n.id, n)
+  const lift = (n: Fields): Fields => {
+    let parentId = n.parentId as string | null
+    if (parentId === null || !gone.has(parentId)) return n
+    let x = n.x as number
+    let y = n.y as number
+    for (let steps = 0; parentId !== null && gone.has(parentId) && steps <= gone.size; steps++) {
+      const parent: Fields = gone.get(parentId)!
+      x += isNumber(parent.x) ? parent.x : 0
+      y += isNumber(parent.y) ? parent.y : 0
+      parentId = isString(parent.parentId) ? parent.parentId : null
+    }
+    return { ...n, parentId: parentId !== null && gone.has(parentId) ? null : parentId, x, y }
+  }
+  const nodes = all.filter(isNode).map((raw) => {
+    const n = lift(raw as Fields)
+    return n.kind === 'claude' && (n.after as string[]).some((a) => gone.has(a)) ? { ...n, after: (n.after as string[]).filter((a) => !gone.has(a)) } : n
+  })
+  const linked = edges.filter((e) => !gone.has((e as Fields).from as string) && !gone.has((e as Fields).to as string))
+  return { nodes, edges: linked, dropped: bad.length }
+}
+
 /** Brings saved data up to the current version. Throws if it isn't a doc this version can trust. */
 export function migrate(input: unknown): CanvasDoc {
+  return migrateKeeping(input).doc
+}
+
+/** migrate, saying how many nodes it had to leave out because this build can't read them. */
+export function migrateKeeping(input: unknown): { doc: CanvasDoc; dropped: number } {
   if (!isObject(input)) throw new Error('Save file is not an object')
   const atTwo = input.version === 1 ? fromVersion1(input) : input
   const atThree = atTwo.version === 2 ? fromVersion2(atTwo) : atTwo
@@ -278,15 +317,26 @@ export function migrate(input: unknown): CanvasDoc {
     throw new Error('Save file has invalid projects')
   }
   if (!isString(raw.activeProjectId)) throw new Error('Save file has no active project')
-  if (!Array.isArray(raw.nodes) || !raw.nodes.every(isNode)) throw new Error('Save file has invalid nodes')
+  if (!Array.isArray(raw.nodes)) throw new Error('Save file has no node list')
   if (!Array.isArray(raw.edges) || !raw.edges.every(isEdge)) throw new Error('Save file has invalid edges')
   if (!Array.isArray(raw.closed) || !raw.closed.every(isClosedSession)) {
     throw new Error('Save file has an invalid closed list')
   }
   if (!isViewport(raw.viewport)) throw new Error('Save file has an invalid viewport')
-  const doc = rehomeOrphans(showOpenProject(checkBoards(raw as unknown as CanvasDoc)))
+  const read = keepReadable(raw.nodes, raw.edges)
+  if (read.dropped) console.warn(`Patchbay left out ${read.dropped} node(s) it couldn't read while loading.`)
+  const doc = rehomeOrphans(showOpenProject(checkBoards({ ...raw, nodes: read.nodes, edges: read.edges } as unknown as CanvasDoc)))
   // Task data never costs the canvas: a damaged record is dropped on its own, and the rest of the project loads.
-  return { ...doc, projects: doc.projects.map(withTasksChecked) }
+  return { doc: { ...doc, projects: doc.projects.map(withTasksChecked) }, dropped: read.dropped }
+}
+
+/** migrateKeeping on a save file's text, or null when it isn't one this version can use. */
+function parseKeeping(text: string): { doc: CanvasDoc; dropped: number } | null {
+  try {
+    return migrateKeeping(JSON.parse(text))
+  } catch {
+    return null
+  }
 }
 
 function withTasksChecked(p: CanvasDoc['projects'][number]): CanvasDoc['projects'][number] {
@@ -349,6 +399,19 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
     withLockRetrySync(() => renameSync(file, target))
     if (file === primary) trusted = null
     return target
+  }
+
+  /**
+   * A file that loaded without some of its nodes is copied aside whole first: the next save writes the canvas without
+   * them, and the backup follows a save later. Going back to the build that wrote them, the copy still has them.
+   */
+  function keptWhole(file: string, dropped: number): { droppedNodes?: number; keptAside?: string } {
+    if (!dropped) return {}
+    const stamp = Date.now()
+    let target = join(dir, `canvas.unread-${stamp}.json`)
+    for (let n = 1; existsSync(target); n++) target = join(dir, `canvas.unread-${stamp}-${n}.json`)
+    withLockRetrySync(() => copyFileSync(file, target))
+    return { droppedNodes: dropped, keptAside: target }
   }
 
   /**
@@ -452,17 +515,17 @@ export function createDocStore(dir: string, options: DocStoreOptions = {}): DocS
   return {
     load() {
       const primaryText = readIfPresentSync(primary)
-      const primaryDoc = primaryText === null ? null : parseDoc(primaryText)
-      if (primaryDoc) {
+      const primaryRead = primaryText === null ? null : parseKeeping(primaryText)
+      if (primaryRead) {
         trusted = stampOf(primary)
-        return { doc: primaryDoc, recoveredFrom: 'primary' }
+        return { doc: primaryRead.doc, recoveredFrom: 'primary', ...keptWhole(primary, primaryRead.dropped) }
       }
       const badPrimary = primaryText === null ? undefined : quarantine(primary)
 
       const backupText = readIfPresentSync(backup)
-      const backupDoc = backupText === null ? null : parseDoc(backupText)
+      const backupRead = backupText === null ? null : parseKeeping(backupText)
       const quarantined = badPrimary ? { quarantined: badPrimary } : {}
-      if (backupDoc) return { doc: backupDoc, recoveredFrom: 'backup', ...quarantined }
+      if (backupRead) return { doc: backupRead.doc, recoveredFrom: 'backup', ...quarantined, ...keptWhole(backup, backupRead.dropped) }
       const badBackup = backupText === null ? undefined : quarantine(backup)
 
       const firstBad = badPrimary ?? badBackup
