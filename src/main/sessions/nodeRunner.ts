@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { RUN_DIVIDER } from '../lifecycle'
 import { basename } from 'node:path'
 import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../shared/contract'
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
@@ -41,7 +42,6 @@ const RESUME_FAILURE_WINDOW_MS = 5000
 const TYPE_PROMPT_DELAY_MS = 800
 /** Claude reads one chunk as a paste, so Enter has to come separately. */
 const SUBMIT_DELAY_MS = 200
-const RUN_DIVIDER = '\x1b[?1049l\x1b[?25h\x1b[0m\r\n\x1b[2m--- run again ---\x1b[0m\r\n'
 
 export interface NodeRunnerContext extends Omit<ClaudeLaunchContext, 'token'> {
   /** Tokens are derived from this per node. */
