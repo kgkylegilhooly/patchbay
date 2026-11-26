@@ -112,6 +112,8 @@ export interface Commands {
   copyLastReply(nodeId: string): void
   /** The whole conversation as a Markdown file, and the raw transcript in Explorer. See src/main/conversation.ts. */
   saveConversation(nodeId: string): void
+  /** A terminal's or run's output as a text file. See src/main/saveOutput.ts. */
+  saveOutput(nodeId: string): void
   revealTranscript(nodeId: string): void
   /** A failed run's command, exit code and last output, as a new agent's brief. See src/renderer/runFixUi.ts. */
   askToFixRun(nodeId: string): void
@@ -466,6 +468,7 @@ export function nodeMenu(
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
     ...(node.kind === 'claude' ? [{ id: 'copy-last-reply', label: 'Copy last reply', icon: 'copy' as const, disabled: !node.transcriptPath, run: () => c.copyLastReply(node.id) }] : []),
+    ...(node.kind === 'terminal' || node.kind === 'run' ? [{ id: 'save-output', label: 'Save output…', icon: 'file' as const, run: () => c.saveOutput(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'save-conversation', label: 'Save conversation…', icon: 'file' as const, disabled: !node.transcriptPath, run: () => c.saveConversation(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'reveal-transcript', label: 'Reveal transcript', icon: 'folder-open' as const, disabled: !node.transcriptPath, run: () => c.revealTranscript(node.id) }] : []),
     'separator',
