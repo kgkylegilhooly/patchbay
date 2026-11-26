@@ -36,6 +36,7 @@ import { openSendToAgents, selectedAgents } from './sendToAgents'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply, revealTranscript, saveConversation, saveOutput } from './lastReplyUi'
+import { askOutputWatch, stopOutputWatch } from './outputWatchUi'
 import { askToFixRun } from './runFixUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -269,6 +270,8 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       copyLastReply: (nodeId) => void copyLastReply(nodeId),
       saveConversation: (nodeId) => void saveConversation(nodeId),
       saveOutput: (nodeId) => void saveOutput(nodeId),
+      watchOutput: (nodeId) => askOutputWatch(nodeId),
+      unwatchOutput: (nodeId) => stopOutputWatch(nodeId),
       revealTranscript: (nodeId) => void revealTranscript(nodeId),
       askToFixRun: (nodeId) => void askToFixRun(nodeId),
       pinSelection: (nodeId) => {
