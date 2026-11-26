@@ -525,7 +525,7 @@ export function SettingsPage({
           <>
             {draft && (
               <div className="set-group">
-                <Row title="Keep the PC awake while agents work" help="Stops Windows sleeping while any session is starting or working. The screen can still turn off. It lets go once every agent is idle or waiting on you." htmlFor="set-keep-awake">
+                <Row title="Keep the PC awake while anything is busy" help="Stops Windows sleeping while an agent is starting, working or waiting on you, or a run window is still running. The screen can still turn off. It lets go once every agent is idle and no run is running." htmlFor="set-keep-awake">
                   <Toggle id="set-keep-awake" checked={draft.keepAwake !== 'off'} onChange={() => set('keepAwake', draft.keepAwake === 'off' ? '' : 'off')} />
                 </Row>
                 <Row title="Continue after a usage limit resets" help={'When an agent stopped at its usage limit, it gets "continue" once at the reset time, unless a message is already waiting for it. Its badge says so beforehand. Never sent to an idle agent.'} htmlFor="set-continue-at-reset">
