@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -106,6 +106,39 @@ test('flushSync writes the pending doc on the spot, and the old primary becomes 
   // Nothing left for the timer or a later flush.
   await store.flush()
   expect(titleOnDisk(primary())).toBe('second')
+})
+
+// Windows ending the session must not lose the last changes to a file made read-only from outside, as a save doesn't.
+test('flushSync still writes the pending doc when the backup was made read-only from outside', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  await store.save(doc('second'))
+  chmodSync(backup(), 0o444)
+  try {
+    store.saveDebounced(doc('at session end'))
+    store.flushSync()
+    expect(titleOnDisk(primary())).toBe('at session end')
+    expect(titleOnDisk(backup())).toBe('second')
+  } finally {
+    chmodSync(backup(), 0o644)
+  }
+})
+
+test('a read-only copy left by a failed flushSync does not block the next one', async () => {
+  const store = createDocStore(dir)
+  await store.save(doc('first'))
+  chmodSync(primary(), 0o444)
+  store.saveDebounced(doc('while read-only'))
+  try {
+    store.flushSync()
+  } catch {
+    // Windows can't replace a read-only file: this one may fail.
+  }
+  chmodSync(primary(), 0o644)
+  store.saveDebounced(doc('writable again'))
+  store.flushSync()
+  expect(titleOnDisk(primary())).toBe('writable again')
+  expect(titleOnDisk(backup())).toBe('first')
 })
 
 test('the text written is exactly JSON.stringify, and a big unchanged node is not turned into text again', () => {
