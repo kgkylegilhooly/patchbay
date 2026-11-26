@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events'
-import { expect, test } from 'vitest'
-import { createUpdates, parseFeed, type Updater } from '../../src/main/updates'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, test } from 'vitest'
+import { createUpdates, noteUpdateFailure, parseFeed, takeUpdateFailure, type Updater } from '../../src/main/updates'
 
 test.each([
   ['github:acme/patchbay', { provider: 'github', owner: 'acme', repo: 'patchbay' }],
@@ -85,3 +88,60 @@ async function run(u: ReturnType<typeof createUpdates>) {
   await u.check()
   return u
 }
+
+// U2 (2026-11-26 updates audit): Restart to update ended every session before finding out the installer couldn't start.
+describe('an update that cannot install', () => {
+  const ready = (over: { exists?: (p: string) => boolean; install?: (u: EventEmitter) => void } = {}) => {
+    const { updater } = fake()
+    if (over.install) (updater as unknown as { quitAndInstall: () => void }).quitAndInstall = () => over.install!(updater)
+    const updates = createUpdates({ updater, feed: () => 'github:a/b', packaged: true, exists: over.exists })
+    updater.emit('update-downloaded', { version: '0.2.0', downloadedFile: 'C:\cache\Patchbay-Setup-0.2.0.exe' })
+    return updates
+  }
+
+  test('an installer that is gone from disk is found before anything stops, and the update is no longer offered', () => {
+    const asked: string[] = []
+    const updates = ready({ exists: (p) => (asked.push(p), false) })
+    expect(updates.installerGone()).toBe(true)
+    expect(asked).toEqual(['C:\cache\Patchbay-Setup-0.2.0.exe'])
+    expect(updates.ready()).toBe(false)
+    expect(updates.state()).toEqual({ phase: 'error', install: true, message: expect.stringContaining('no longer on disk') })
+  })
+
+  test('an installer that is there is fine, and so is one whose path electron-updater did not say', () => {
+    expect(ready({ exists: () => true }).installerGone()).toBe(false)
+    const { updater } = fake()
+    const updates = createUpdates({ updater, feed: () => 'github:a/b', packaged: true, exists: () => false })
+    updater.emit('update-downloaded', { version: '0.2.0' })
+    expect(updates.installerGone()).toBe(false)
+  })
+
+  test('install says whether it started: not when electron-updater reports an error or throws', () => {
+    expect(ready({ install: () => {} }).install()).toBe(true)
+    const failing = ready({ install: (u) => void u.emit('error', new Error("No update filepath provided, can't quit and install")) })
+    expect(failing.install()).toBe(false)
+    expect(failing.state()).toEqual({ phase: 'error', install: true, message: "The update didn't install: No update filepath provided, can't quit and install" })
+    const throwing = ready({
+      install: () => {
+        throw new Error('spawn EPERM')
+      }
+    })
+    expect(throwing.install()).toBe(false)
+    expect(throwing.state()).toEqual({ phase: 'error', install: true, message: "The update didn't install: spawn EPERM" })
+  })
+
+  test('a failure kept across the relaunch is shown once at the next start', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'patchbay updates '))
+    try {
+      expect(takeUpdateFailure(dir)).toBeUndefined()
+      noteUpdateFailure(dir, "The update didn't install: spawn EPERM")
+      const initial = takeUpdateFailure(dir)
+      expect(initial).toEqual({ phase: 'error', install: true, message: "The update didn't install: spawn EPERM Patchbay restarted as it was, and your sessions resumed." })
+      expect(takeUpdateFailure(dir)).toBeUndefined()
+      const { updater } = fake()
+      expect(createUpdates({ updater, feed: () => 'github:a/b', packaged: true, initial }).state()).toEqual(initial)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

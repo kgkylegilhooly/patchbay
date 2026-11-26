@@ -111,7 +111,7 @@ import { setupCodexStops } from './sessions/codexStopsSetup'
 import { noteSubagentHook } from './subagents/setup'
 import { heldReason } from '../shared/agentStop'
 import { lazyUpdater } from './lazyUpdater'
-import { createUpdates, type Updater } from './updates'
+import { createUpdates, noteUpdateFailure, takeUpdateFailure, type Updater } from './updates'
 import { lookUpClaudeAhead, resolveClaudeAsync, type ClaudeProgram } from './sessions/claudeLaunch'
 import { lookUpCodexAhead, resolveCodexAsync } from './sessions/codexLaunch'
 import { noteFromNode, registerFileShelfIpc } from './fileShelf/ipc'
@@ -853,12 +853,14 @@ async function boot(): Promise<void> {
   // Updates. The background host runs from this app's own program file, which an installer can't replace while it
   // runs, so updating ends every session first. Agents resume their conversations when the new version starts.
   // electron-updater loads when first used, not on the way to the window. See lazyUpdater.ts.
-  const updates = createUpdates({ updater: lazyUpdater(() => (require('electron-updater') as typeof import('electron-updater')).autoUpdater as unknown as Updater), feed: () => currentSettings().updateFeed, packaged: app.isPackaged })
+  const updates = createUpdates({ updater: lazyUpdater(() => (require('electron-updater') as typeof import('electron-updater')).autoUpdater as unknown as Updater), feed: () => currentSettings().updateFeed, packaged: app.isPackaged, initial: takeUpdateFailure(app.getPath('userData')) })
   updates.onChange((s) => broadcast('pb:onUpdateState', s))
   ipcMain.handle('pb:getUpdateState', () => updates.state())
   ipcMain.handle('pb:checkForUpdates', () => updates.check())
   ipcMain.handle('pb:restartToUpdate', async () => {
     if (!updates.ready() || phase !== 'running') return
+    // Before any session ends: with the installer gone, electron-updater would quit the app and start nothing (U2).
+    if (updates.installerGone()) return
     phase = 'stopping'
     try {
       await shutdown('stop-all')
@@ -866,7 +868,15 @@ async function boot(): Promise<void> {
       phase = 'done'
       markExiting()
       guardExit(app.getVersion())
-      updates.install()
+      if (!updates.install()) {
+        // The installer didn't start, and the exit guard would end the app with nothing said. Start again as it was,
+        // so sessions resume, and say why in Settings.
+        const s = updates.state()
+        noteUpdateFailure(app.getPath('userData'), s.phase === 'error' ? s.message : "The update didn't install: the installer didn't start.")
+        log?.write(`update: install failed, relaunching (${s.phase === 'error' ? s.message : s.phase})`)
+        app.relaunch()
+        app.exit(0)
+      }
     }
   })
   const autoCheck = (): void => {
