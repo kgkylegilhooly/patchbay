@@ -28,17 +28,27 @@ describe('keep-awake', () => {
     keep.update(s({ a: 'working', b: 'working' }))
     expect(calls).toEqual(['start'])
     expect(keep.active()).toBe(true)
-    keep.update(s({ a: 'idle', b: 'needs-you' }))
+    keep.update(s({ a: 'idle', b: 'exited' }))
     expect(calls).toEqual(['start', 'stop 1'])
     expect(keep.active()).toBe(false)
   })
 
-  it('treats starting as working, and waiting on the owner as not', () => {
+  // The owner asked for it: the PC stays up while anything isn't idle, an agent waiting on them included.
+  it('treats starting and waiting on the owner as busy too; idle, ended, unknown and queued are not', () => {
     const { keep, calls } = setup()
     keep.update(s({ a: 'starting' }))
     expect(calls).toEqual(['start'])
     keep.update(s({ a: 'needs-you' }))
-    keep.update(s({ a: 'exited', b: 'unknown', c: 'queued' }))
+    expect(calls).toEqual(['start'])
+    keep.update(s({ a: 'exited', b: 'unknown', c: 'queued', d: 'idle' }))
+    expect(calls).toEqual(['start', 'stop 1'])
+  })
+
+  it('holds the PC awake while a run window is still running, though every agent is idle', () => {
+    const { keep, calls } = setup()
+    keep.update(s({ a: 'idle' }), true)
+    expect(calls).toEqual(['start'])
+    keep.update(s({ a: 'idle' }), false)
     expect(calls).toEqual(['start', 'stop 1'])
   })
 

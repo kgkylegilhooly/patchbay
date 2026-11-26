@@ -1,11 +1,11 @@
 import type { AgentStatus } from '../shared/model'
 
-/** Statuses during which an agent is busy and a sleeping PC would stall it. */
-const BUSY = new Set<AgentStatus>(['working', 'starting'])
+/** Statuses that aren't idle: an agent at work, starting, or waiting on the person. A sleeping PC would stall it. */
+const BUSY = new Set<AgentStatus>(['working', 'starting', 'needs-you'])
 
 export interface KeepAwake {
-  /** Call with every session's status after any change. */
-  update(statuses: Record<string, AgentStatus>): void
+  /** Call with every session's status after any change. `runs`: a run window is still running. */
+  update(statuses: Record<string, AgentStatus>, runs?: boolean): void
   active(): boolean
   dispose(): void
 }
@@ -22,8 +22,8 @@ export function createKeepAwake(deps: { start: () => number; stop: (id: number) 
     held = null
   }
   return {
-    update(statuses) {
-      const busy = deps.enabled() && Object.values(statuses).some((s) => BUSY.has(s))
+    update(statuses, runs = false) {
+      const busy = deps.enabled() && (runs || Object.values(statuses).some((s) => BUSY.has(s)))
       if (busy && held === null) held = deps.start()
       else if (!busy) release()
     },

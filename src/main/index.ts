@@ -412,7 +412,10 @@ async function boot(): Promise<void> {
     stop: (id) => powerSaveBlocker.stop(id),
     enabled: () => currentSettings().keepAwake !== 'off'
   })
-  tracker.onChange(() => keepAwake.update(tracker.all()))
+  // Runs count too (a long test run, a server): set once the runner exists, below.
+  let runsRunning = (): boolean => false
+  const updateKeepAwake = (): void => keepAwake.update(tracker.all(), runsRunning())
+  tracker.onChange(updateKeepAwake)
   app.on('will-quit', () => keepAwake.dispose())
   // F62: the key from anywhere.
   const globalKey = createGlobalKey({
@@ -572,6 +575,8 @@ async function boot(): Promise<void> {
     const kind = store.get().nodes.find((n) => n.id === id)?.kind
     if (kind === 'run' || kind === 'terminal') portInUse.output(id, data)
   })
+  runsRunning = () => Object.values(runner.runs()).some((r) => r.running)
+  runner.onRun(updateKeepAwake)
   runner.onRun((id, run) => {
     if (!run.running) return
     portInUse.reset(id)
@@ -758,7 +763,7 @@ async function boot(): Promise<void> {
     resolveOtherHost,
     triggers,
     launchRunner: join(resourceDir, 'launch-run.cjs'),
-    onSettingsSaved: () => (keepAwake.update(tracker.all()), stops.refresh(), applyGlobalKey())
+    onSettingsSaved: () => (updateKeepAwake(), stops.refresh(), applyGlobalKey())
   })
   // A host that was there but slow to answer boot's first knock is found by the connect that goes on: its sessions are
   // adopted then, and their views fetched again. See bootAdopt.ts.
