@@ -105,7 +105,7 @@ export function NewSessionForm({
         <span className="field-label">{team ? 'The task' : claude ? 'Starting prompt (optional)' : run ? 'Command' : 'Command (optional)'}</span>
         {claude ? (
           // The folder is already filled in, so typing goes to the prompt or the command.
-          <textarea ref={promptRef} data-autofocus name={team ? 'task' : undefined} rows={team ? 5 : 3} value={text} onChange={(e) => setText(e.target.value)} />
+          <textarea ref={promptRef} data-autofocus name={team ? 'task' : undefined} rows={team ? 5 : claude && initialCommand.includes('\n') ? 8 : 3} value={text} onChange={(e) => setText(e.target.value)} />
         ) : (
           <input data-autofocus name="command" placeholder={run ? 'For example, npm run dev' : 'For example, codex'} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} />
         )}

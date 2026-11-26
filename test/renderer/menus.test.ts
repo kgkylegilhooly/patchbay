@@ -349,6 +349,16 @@ test('an agent window offers Save conversation and Reveal transcript right after
   expect(menu(terminal).find((i) => i.id === 'save-conversation' || i.id === 'reveal-transcript')).toBeUndefined()
 })
 
+// F31: a failed run's command and output go to a new agent from its menu (src/renderer/runFixUi.ts).
+test('a run window offers Ask an agent to fix only once it has failed', () => {
+  const run = { id: 'r', kind: 'run' as const, title: 'npm test', cwd: 'C:\\x', command: 'npm test', x: 0, y: 0, width: 1, height: 1, parentId: null }
+  const menu = (runFailed?: boolean) => items(nodeMenu(commands, run, null, { at: { x: 0, y: 0 }, canCopy: false, canRestart: false, runFailed }))
+  expect(menu(true).find((i) => i.id === 'ask-to-fix')).toMatchObject({ label: 'Ask an agent to fix…' })
+  expect(menu(false).find((i) => i.id === 'ask-to-fix')).toBeUndefined()
+  expect(menu().find((i) => i.id === 'ask-to-fix')).toBeUndefined()
+  expect(items(nodeMenu(commands, claude, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false, runFailed: true })).find((i) => i.id === 'ask-to-fix')).toBeUndefined()
+})
+
 // F26: one window's notifications can be turned off from its menu.
 test('an agent or run window offers Mute notifications, and Unmute once muted; a terminal, which never notifies, does not', () => {
   const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))

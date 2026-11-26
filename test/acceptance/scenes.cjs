@@ -349,6 +349,46 @@ const scenes = {
     await page.mouse.click(box2.x + box2.width / 2, box2.y + box2.height - 12, { button: 'right' })
     await sleep(300)
   },
+  // A run that fails with a test error: its header offers Ask an agent to fix (F31).
+  'run-failed': async (page, { profile }) => {
+    const path = require('node:path')
+    const dir = path.join(profile, 'fix-work')
+    require('node:fs').mkdirSync(dir, { recursive: true })
+    require('node:fs').writeFileSync(
+      path.join(dir, 'check.cjs'),
+      "console.log(' RUN  v5.1.0')\nconsole.log(' FAIL  test/parser.test.ts > splits quoted fields')\nconsole.log('AssertionError: expected [ \\'a\\', \\'b,c\\' ] to deeply equal [ \\'a\\', \\'b\\', \\'c\\' ]')\nconsole.log(' Tests  1 failed | 41 passed (42)')\nprocess.exit(1)\n"
+    )
+    const node = { ...box, id: 'failing', kind: 'run', title: 'Parser tests', x: 930, y: 640, width: 620, height: 300, parentId: null, projectId: 'p1', cwd: dir, command: 'node check.cjs' }
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.startNode(n.id)
+    }, node)
+    await page.waitForSelector('.react-flow__node[data-id="failing"] [data-cmd="ask-to-fix"]', { timeout: 30000 }).catch(() => {})
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Parser tests'))?.click())
+    await sleep(800)
+  },
+  // The same, then the button: the New agent form, in the run's folder, with the brief filled in.
+  'run-fix-form': async (page, ctx) => {
+    await scenes['run-failed'](page, ctx)
+    await page.click('.react-flow__node[data-id="failing"] [data-cmd="ask-to-fix"]').catch(() => {})
+    await sleep(1000)
+  },
+  // The same, then Start: the agent opens beside the run, linked to it, with the brief as its prompt.
+  'run-fix-started': async (page, ctx) => {
+    await scenes['run-fix-form'](page, ctx)
+    await page.keyboard.down('Control')
+    await page.keyboard.press('Enter')
+    await page.keyboard.up('Control')
+    await sleep(2500)
+    const made = await page.evaluate(async () => {
+      const doc = await window.patchbay.getDoc()
+      const agent = doc.nodes.find((n) => n.kind === 'claude' && n.cwd.endsWith('fix-work'))
+      const linked = agent && doc.edges.some((e) => e.kind === 'link' && e.from === 'failing' && e.to === agent.id)
+      return { agent: !!agent, linked: !!linked, title: agent?.title }
+    })
+    if (!made.agent || !made.linked || made.title !== 'Fix Parser tests') throw new Error(`After Start: ${JSON.stringify(made)}`)
+    console.log('run fix: agent opened beside the run, linked to it')
+  },
   // A new agent, still called "Claude", is asked to write the release notes: its first prompt becomes its name (F29).
   'auto-title': async (page, { profile }) => {
     const dir = require('node:path').join(profile, 'title-work')

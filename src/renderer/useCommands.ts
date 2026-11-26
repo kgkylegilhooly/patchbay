@@ -34,10 +34,18 @@ import { pinnedNoteText, worthPinning } from './pinOutput'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply, revealTranscript, saveConversation } from './lastReplyUi'
+import { askToFixRun } from './runFixUi'
 
 const reducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
-export type NewForm = { kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'; at?: Point; groupId?: string; editId?: string } | null
+export type NewForm = {
+  kind: 'claude' | 'codex' | 'terminal' | 'ssh' | 'run' | 'team' | 'run-config' | 'trigger' | 'arm'
+  at?: Point
+  groupId?: string
+  editId?: string
+  /** Ask an agent to fix a failed run (runFixUi.ts): its folder and brief to start with, and the run to sit beside and link to. */
+  fix?: { from: string; cwd: string; prompt: string }
+} | null
 
 /**
  * The window that window actions mean: one filling the canvas, the one the keyboard is in, or a single selected
@@ -259,6 +267,7 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       copyLastReply: (nodeId) => void copyLastReply(nodeId),
       saveConversation: (nodeId) => void saveConversation(nodeId),
       revealTranscript: (nodeId) => void revealTranscript(nodeId),
+      askToFixRun: (nodeId) => void askToFixRun(nodeId),
       pinSelection: (nodeId) => {
         const source = doc().nodes.find((n) => n.id === nodeId)
         const selection = terminalActions(nodeId)?.selection()
@@ -387,6 +396,15 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         return
       }
       const id = crypto.randomUUID()
+      const from = form.fix ? doc().nodes.find((n) => n.id === form.fix!.from) : undefined
+      if (from && (form.kind === 'claude' || form.kind === 'codex')) {
+        // Beside the failed run, and linked to it, so the agent can read its output and run it again.
+        const made = newClaude({ beside: from, group: from.parentId ? groupFor(from.parentId) : null, doc: doc(), view: visible() }, id, { cwd: fields.cwd, prompt: fields.text, agent: form.kind })
+        const node = { ...made, title: `Fix ${from.title}` }
+        open(node, { focus: true })
+        dispatch({ op: 'addEdge', edge: { id: crypto.randomUUID(), from: from.id, to: node.id, kind: 'link' } })
+        return
+      }
       const p = place(form.at, form.groupId)
       open(
         form.kind === 'claude' || form.kind === 'codex'

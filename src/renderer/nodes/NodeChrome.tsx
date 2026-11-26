@@ -10,6 +10,7 @@ import { FilesChip } from '../FilesChip'
 import { closeNodes, dismissNamingError, dismissRunProblem, restartNode, undoable, useStore } from '../store'
 import { contextLabel } from '../usageView'
 import { RunDot, RunLabel, StatusBadge, StatusDot } from './StatusBadge'
+import { runFailed } from '../status/status'
 import { MaximizeTool, WindowTools } from './WindowTools'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
@@ -28,6 +29,7 @@ import { StartFixActions } from './StartFixActions'
 import { failedStart } from '../status/startFailure'
 import { AwayStrip } from './AwayStrip'
 import { ContinueButton } from './ContinueButton'
+import { askToFixRun } from '../runFixUi'
 
 /** Double-click to rename. Enter or leaving the field saves, and Esc cancels. */
 export function EditableTitle({ node }: { node: CanvasNode }): React.JSX.Element {
@@ -310,6 +312,11 @@ export function NodeChrome({
         {status && <StatusBadge status={status} nodeId={node.id} />}
         {node.kind === 'claude' && <ContinueButton nodeId={node.id} stop={stop} />}
         {isRun && <RunLabel run={run} />}
+        {isRun && runFailed(run) && (
+          <button type="button" className="btn nodrag" data-cmd="ask-to-fix" title="Opens a new agent beside this run, with its command and last output as the brief" onClick={() => void askToFixRun(node.id)}>
+            Ask an agent to fix
+          </button>
+        )}
         {node.kind === 'run' && node.launch && (
           <span className="run-launch" title={`From ${node.launch.folder}\\.vscode\\launch.json, read again at each run`}>
             launch.json

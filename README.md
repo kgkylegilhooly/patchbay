@@ -504,6 +504,9 @@ project's folder, and **Open in Reader** then shows that file on the canvas.
 
 - **Usage:** the title bar shows your Claude plan limits, and each Claude window shows how full its context is.
 - **Run commands:** add one from the canvas menu for a command you run repeatedly. It has Run, Stop and Restart, and never starts by itself.
+  When one fails, **Ask an agent to fix** (in its header and its menu) opens the New agent form in its folder, with a
+  brief holding the command, the exit code and its last 80 lines of output. Nothing starts until you press Start; the
+  agent, named "Fix" and the run's name, opens beside the run and linked to it.
 - **Run configurations:** New run configuration… reads a folder's `.vscode\launch.json` (comments and trailing commas
   are fine) and lists each configuration and compound. Reading it runs nothing. Only `node` launch configurations run,
   with their `program`, `args`, `cwd`, `env`, `runtimeExecutable`, `runtimeArgs`, `windows` section and variables such
