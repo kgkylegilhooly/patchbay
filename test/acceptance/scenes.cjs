@@ -732,6 +732,22 @@ const scenes = {
     console.log(`run series: ${chip}`)
     await sleep(400)
   },
+  // F67: the Work menu, with one agent working in the project: Interrupt 1 working agent.
+  'work-interrupt': async (page) => {
+    await page.waitForFunction(() => /Working/.test(document.querySelector('.react-flow__node[data-id="work"]')?.textContent ?? ''), { timeout: 30000 }).catch(() => {})
+    await sleep(600)
+    await page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await sleep(300)
+  },
+  // The same on the canvas menu, from a right-click on empty canvas.
+  'canvas-interrupt': async (page) => {
+    await page.waitForFunction(() => /Working/.test(document.querySelector('.react-flow__node[data-id="work"]')?.textContent ?? ''), { timeout: 30000 }).catch(() => {})
+    await sleep(600)
+    await page.mouse.click(1000, 620, { button: 'right' })
+    await page.waitForSelector('.menu-panel [data-cmd="interrupt-working"]', { timeout: 5000 })
+    await sleep(300)
+  },
   // F39: prompts used before, and the New Claude Code form with Recent open.
   'recent-prompts': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([

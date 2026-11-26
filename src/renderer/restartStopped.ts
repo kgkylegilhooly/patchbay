@@ -1,5 +1,5 @@
 import type { NodeError } from '../shared/contract'
-import type { AgentStatus, CanvasNode } from '../shared/model'
+import { inActiveProject, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 
 /**
  * A group's windows, all at once: after a crash or a failed batch, every exited one needed its own Restart, and a team
@@ -19,6 +19,12 @@ function insideGroup(nodes: CanvasNode[], groupId: string): CanvasNode[] {
 /** The agents inside a group that are working now. One waiting on the person isn't: Esc there would answer for them. */
 export function workingIn(nodes: CanvasNode[], groupId: string, statuses: Partial<Record<string, AgentStatus>>): CanvasNode[] {
   return insideGroup(nodes, groupId).filter((n) => n.kind === 'claude' && statuses[n.id] === 'working')
+}
+
+/** The agents in the project on screen that are working now (F67), for Interrupt N working agents on the canvas. */
+export function workingInProject(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'> | null | undefined, statuses: Partial<Record<string, AgentStatus>>): CanvasNode[] {
+  if (!doc) return []
+  return doc.nodes.filter((n) => n.kind === 'claude' && inActiveProject(doc, n) && statuses[n.id] === 'working')
 }
 
 /**

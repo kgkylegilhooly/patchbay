@@ -678,6 +678,10 @@ After a team run, a group's menu offers **Close N finished agents…**: its idle
 files it edited uncommitted stays open and is named, and the confirmation lists what closes. Closed conversations can
 reopen each one.
 
+When agents across groups are going the wrong way, the canvas menu and the dock's Work menu offer **Interrupt N
+working agents…** for the project on screen: it names them, then sends Esc to each, and they keep their conversations.
+A group's menu does the same for its own.
+
 Agents run below normal priority, and so does everything they start. When the PC is short of CPU, the window and your
 terminals go first, so typing stays quick however many agents are busy; with CPU to spare, agents run at full speed.
 

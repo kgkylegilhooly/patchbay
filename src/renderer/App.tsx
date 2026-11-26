@@ -79,7 +79,7 @@ import { createStager } from './stagedFlow'
 import { afterNextPaint } from './mountQueue'
 import { linkedAgents } from './noteSend'
 import { selectedAgents } from './sendToAgents'
-import { stoppedIn, workingIn } from './restartStopped'
+import { stoppedIn, workingIn, workingInProject } from './restartStopped'
 import { finishedIn } from './closeFinished'
 import { useOutputWatch } from './outputWatchUi'
 import { useSettingsAsk } from './settingsAsk'
@@ -267,6 +267,7 @@ function Canvas(): React.JSX.Element | null {
     return {
       selectedCount: selectedRef.current.length,
       selectedAgents: current ? selectedAgents(current, selectedRef.current).length : 0,
+      projectWorking: workingInProject(current, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })),
       canCopy: !!terminal?.hasSelection(),
       canFind: !!terminal,
       sidebar: prefsRef.current.sidebar,
