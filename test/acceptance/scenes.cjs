@@ -983,7 +983,22 @@ const launchJsonExample = `{
 `
 
 /** Extra profile files for a scene, by scene name. */
-const files = {}
+const files = {
+  // U2: the last Restart to update couldn't start the installer, so the app started again as it was.
+  'update-failed': () => ({ 'update-failed.json': JSON.stringify({ reason: "The update didn't install: No update filepath provided, can't quit and install." }) })
+}
+
+// Settings > About, where the update status says why the version is unchanged.
+scenes['update-failed'] = async (page) => {
+  await page.keyboard.down('Control')
+  await page.keyboard.press(',')
+  await page.keyboard.up('Control')
+  await page.waitForSelector('[data-section="about"]')
+  await page.click('[data-section="about"]')
+  await page.waitForSelector('[data-update-status]', { timeout: 5000 }).catch(() => {})
+  await page.evaluate(() => document.querySelector('[data-settings-updates]')?.scrollIntoView({ block: 'center' }))
+  await sleep(400)
+}
 
 function prepare(name, cwdRoot) {
   if (!scenes[name]) throw new Error(`No scene called ${name}. There are: ${Object.keys(scenes).join(', ')}`)

@@ -34,7 +34,8 @@ export type UpdateState =
   | { phase: 'none'; checkedAt: number }
   | { phase: 'downloading'; version: string; percent: number }
   | { phase: 'ready'; version: string }
-  | { phase: 'error'; message: string }
+  /** `install`: Restart to update couldn't install, rather than a check or download failing. The message says so itself. */
+  | { phase: 'error'; message: string; install?: true }
 
 export interface PendingApproval {
   nodeId: string

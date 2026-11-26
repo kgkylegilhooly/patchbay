@@ -541,7 +541,7 @@ function updateText(s: UpdateState | null): string {
     case 'ready':
       return `Version ${s.version} is ready to install.`
     case 'error':
-      return `The check failed: ${s.message}`
+      return s.install ? s.message : `The check failed: ${s.message}`
   }
 }
 

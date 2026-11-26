@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { UpdateState } from '../shared/contract'
 
 export type UpdateFeed = { provider: 'github'; owner: string; repo: string } | { provider: 'generic'; url: string }
@@ -38,8 +40,16 @@ export interface Updates {
   check(): Promise<void>
   /** True if an update is downloaded and waiting for Restart to update. */
   ready(): boolean
-  /** Installs the downloaded update and starts the new version. The caller has already shut down. */
-  install(): void
+  /**
+   * Whether the downloaded installer has gone from disk since (antivirus software removes some). Asked before any
+   * session ends: electron-updater would quit the app anyway and start nothing. When gone, the update is an error.
+   */
+  installerGone(): boolean
+  /**
+   * Installs the downloaded update and starts the new version. The caller has already shut down. False when
+   * electron-updater couldn't start it, which it reports as an error instead of quitting.
+   */
+  install(): boolean
   onChange(cb: (s: UpdateState) => void): void
 }
 
@@ -49,15 +59,22 @@ export function createUpdates({
   updater,
   feed,
   packaged,
-  now = Date.now
+  now = Date.now,
+  exists = existsSync,
+  initial = { phase: 'idle' }
 }: {
   updater: Updater
+  exists?: (path: string) => boolean
+  /** A failure from the last run's Restart to update (takeUpdateFailure), shown until the next check. */
+  initial?: UpdateState
   /** Read at each check, so a saved change applies without a restart. */
   feed: () => string | undefined
   packaged: boolean
   now?: () => number
 }): Updates {
-  let state: UpdateState = { phase: 'idle' }
+  let state: UpdateState = initial
+  /** The downloaded installer, as update-downloaded names it. */
+  let installer: string | undefined
   const listeners: Array<(s: UpdateState) => void> = []
   const set = (next: UpdateState): void => {
     state = next
@@ -72,7 +89,10 @@ export function createUpdates({
   updater.on('download-progress', (p: { percent: number }) => {
     if (state.phase === 'downloading') set({ ...state, percent: Math.round(p.percent) })
   })
-  updater.on('update-downloaded', (info: { version: string }) => set({ phase: 'ready', version: info.version }))
+  updater.on('update-downloaded', (info: { version: string; downloadedFile?: string }) => {
+    installer = typeof info.downloadedFile === 'string' ? info.downloadedFile : undefined
+    set({ phase: 'ready', version: info.version })
+  })
   updater.on('error', (e: Error) => set({ phase: 'error', message: message(e) }))
 
   return {
@@ -90,11 +110,50 @@ export function createUpdates({
         set({ phase: 'error', message: message(e) })
       }
     },
+    installerGone() {
+      if (state.phase !== 'ready' || !installer || exists(installer)) return false
+      set({ phase: 'error', install: true, message: "The downloaded update is no longer on disk, so it wasn't installed and nothing was stopped. Security software may have removed it. Check now to download it again." })
+      return true
+    },
     install() {
-      updater.quitAndInstall(true, true)
+      try {
+        updater.quitAndInstall(true, true)
+      } catch (e) {
+        set({ phase: 'error', message: message(e) })
+      }
+      // electron-updater reports a failure to start the installer as an error event, at once, and then doesn't quit.
+      if (state.phase !== 'error') return true
+      set({ phase: 'error', install: true, message: `The update didn't install: ${state.message}` })
+      return false
     },
     onChange(cb) {
       listeners.push(cb)
     }
   }
+}
+
+/** Where a failed install is noted, so the relaunched app can say why it's still the old version. */
+const failureFile = (dir: string): string => join(dir, 'update-failed.json')
+
+export function noteUpdateFailure(dir: string, reason: string): void {
+  try {
+    writeFileSync(failureFile(dir), JSON.stringify({ reason }))
+  } catch (e) {
+    console.error('Patchbay could not note the failed update:', e)
+  }
+}
+
+/** The last run's failed install, once: the note is removed as it's read. */
+export function takeUpdateFailure(dir: string): UpdateState | undefined {
+  let reason: unknown
+  try {
+    reason = (JSON.parse(readFileSync(failureFile(dir), 'utf8')) as { reason?: unknown }).reason
+  } catch {
+    // Missing, or unreadable: either way it's not shown, and a broken one isn't kept.
+    rmSync(failureFile(dir), { force: true })
+    return undefined
+  }
+  rmSync(failureFile(dir), { force: true })
+  if (typeof reason !== 'string') return undefined
+  return { phase: 'error', install: true, message: `${reason.slice(0, 300)} Patchbay restarted as it was, and your sessions resumed.` }
 }
