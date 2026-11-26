@@ -28,10 +28,15 @@ export function registerFileShelfIpc(s: {
   isAppUi: (e: IpcMainInvokeEvent) => boolean
   windows: () => WebContents[]
   log?: (line: string) => void
+  /**
+   * The canvas came from a damaged file, or left out nodes it couldn't read: a project missing from it may only be
+   * missing for now, so no shelf is dropped for want of one (FS1, as index.ts does for session settings).
+   */
+  canvasUncertain?: boolean
 }): FileShelfStore {
   const shelf = new FileShelfStore(join(s.dataDir, 'file-shelf.json'), { log: s.log })
   if (shelf.loadProblem) s.log?.(shelf.loadProblem)
-  shelf.keepOnly(s.store.get().projects.map((p) => p.id))
+  if (!s.canvasUncertain) shelf.keepOnly(s.store.get().projects.map((p) => p.id))
   shelf.onChange((projectId) => {
     for (const w of s.windows()) if (!w.isDestroyed()) w.send('pb:shelf:changed', projectId)
   })

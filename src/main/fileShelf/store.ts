@@ -1,4 +1,5 @@
-import { readIfPresentSync, writeAtomic } from '../../core/persist/atomicFile'
+import { existsSync, renameSync } from 'node:fs'
+import { readIfPresentSync, withLockRetrySync, writeAtomic } from '../../core/persist/atomicFile'
 import { forgetEntry, isShelfEntry, noteEntry, SHELF_LIMIT, type ShelfEntry } from '../../shared/fileShelf'
 
 const WRITE_DELAY_MS = 500
@@ -40,7 +41,24 @@ export class FileShelfStore {
         if (entries.length) this.projects.set(id, entries)
       }
     } catch (e) {
-      this.loadProblem = `The Files shelf couldn't be read, so it starts empty: ${(e as Error).message}`
+      // Moved aside first, so the next change can't write over what was in it (FS1).
+      const kept = this.setAside()
+      this.loadProblem = `The Files shelf couldn't be read, so it starts empty: ${(e as Error).message}${kept ? ` The file was kept at ${kept}.` : ''}`
+    }
+  }
+
+  /** Renames the unreadable file beside itself, as the canvas's corrupt copies are. Null if it couldn't be moved. */
+  private setAside(): string | null {
+    const stamp = Date.now()
+    const base = this.file.replace(/\.json$/i, '')
+    let target = `${base}.corrupt-${stamp}.json`
+    for (let n = 1; existsSync(target); n++) target = `${base}.corrupt-${stamp}-${n}.json`
+    try {
+      withLockRetrySync(() => renameSync(this.file, target))
+      return target
+    } catch (e) {
+      this.opts.log?.(`The unreadable Files shelf couldn't be moved aside: ${(e as Error).message}`)
+      return null
     }
   }
 

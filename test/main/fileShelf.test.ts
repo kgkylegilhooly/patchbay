@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -50,6 +50,22 @@ describe('the shelf store', () => {
     const mixed = join(dir, 'mixed.json')
     writeFileSync(mixed, JSON.stringify({ version: 1, projects: { p1: [{ path: 'C:\\ok.txt', source: 'drop', at: 1 }, { path: 5 }, 'x'], p2: 'nope' } }))
     expect(new FileShelfStore(mixed).list('p1')).toEqual([{ path: 'C:\\ok.txt', source: 'drop', at: 1 }])
+  })
+
+  // FS1b: the next change wrote over a file that couldn't be read, so whatever was in it was gone for good.
+  test('a file that cannot be read is moved aside before anything is written over it', async () => {
+    const file = join(dir, 'file-shelf.json')
+    writeFileSync(file, '{ "version": 1, "projects": { "p1": [ cut off')
+    const shelf = new FileShelfStore(file, { writeDelayMs: 0 })
+    expect(shelf.loadProblem).toMatch(/kept at .*file-shelf\.corrupt-\d+\.json/)
+    shelf.note('p1', { path: 'C:\\new.txt', source: 'drop', at: 2 })
+    await shelf.flush()
+    await new Promise((r) => setTimeout(r, 20))
+    await shelf.flush()
+    const kept = readdirSync(dir).filter((f) => f.startsWith('file-shelf.corrupt-'))
+    expect(kept).toHaveLength(1)
+    expect(readFileSync(join(dir, kept[0]), 'utf8')).toBe('{ "version": 1, "projects": { "p1": [ cut off')
+    expect(new FileShelfStore(file).list('p1').map((e) => e.path)).toEqual(['C:\\new.txt'])
   })
 
   test('refuses entries that are not well formed', () => {
