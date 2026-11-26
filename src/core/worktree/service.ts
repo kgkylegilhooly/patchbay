@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, type Dirent } from 'node:fs'
 import { readdir, rmdir, unlink } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
+import { NO_FSMONITOR } from '../git/args'
 
 export interface Worktree {
   path: string
@@ -20,12 +21,15 @@ function gitEnv(): NodeJS.ProcessEnv {
   return env
 }
 
-/** Arguments go straight to git as an array, so no shell ever parses them. */
+/**
+ * Arguments go straight to git as an array, so no shell ever parses them. No fsmonitor program the repository's config
+ * names is run (WT1): an agent can write that config, and `worktree remove` runs a status of its own.
+ */
 function git(cwd: string, ...args: string[]): Promise<string> {
   return new Promise((done, fail) => {
     execFile(
       'git',
-      ['-C', cwd, ...args],
+      [...NO_FSMONITOR, '-C', cwd, ...args],
       { env: gitEnv(), windowsHide: true, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
       (error, stdout, stderr) => {
         if (!error) return done(stdout)
@@ -96,7 +100,7 @@ export async function checkRemovable(wt: Worktree): Promise<RemoveResult> {
   if (!existsSync(wt.path)) return { ok: false, reason: `The worktree folder no longer exists: ${wt.path}` }
   try {
     // The flag overrides a status.showUntrackedFiles setting that would hide new files.
-    const status = await git(wt.path, '-c', 'core.fsmonitor=false', 'status', '--porcelain', '--untracked-files=normal')
+    const status = await git(wt.path, 'status', '--porcelain', '--untracked-files=normal')
     return status.trim() === '' ? { ok: true } : { ok: false, reason: 'The worktree has uncommitted changes.' }
   } catch (e) {
     return { ok: false, reason: (e as Error).message }
