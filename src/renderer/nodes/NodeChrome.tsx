@@ -12,6 +12,7 @@ import { contextLabel } from '../usageView'
 import { RunDot, RunLabel, StatusBadge, StatusDot } from './StatusBadge'
 import { runFailed } from '../status/status'
 import { MaximizeTool, WindowTools } from './WindowTools'
+import { PaneTool } from './PaneTool'
 import { SetupHold } from './SetupHold'
 import { SessionTaskOutcomes } from '../tasks/TaskOutcomes'
 import { SubagentEye } from '../subagents/SubagentEye'
@@ -353,6 +354,7 @@ export function NodeChrome({
         )}
         <FarMeta node={node} status={isRun ? null : status} folder={folder} />
         <span className="head-tools">
+          {slot && <PaneTool nodeId={node.id} title={node.title} />}
           <WindowTools node={node} />
           <CloseControl node={node} status={status} />
           {/* Maximized, Restore is the rightmost control, where a window's own restore button is, so it isn't Close. */}

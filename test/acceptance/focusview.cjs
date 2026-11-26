@@ -17,7 +17,16 @@ const plain = (text) => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x
 const shown = async (page, id) => plain(await L.snapshot(page, id))
 /** A UI change, waited for rather than slept on: a busy machine draws later. Gives back what it waited for, or null. */
 const until = (what, fn, ms = 10000) => L.waitFor(what, fn, ms, 100).catch(() => null)
-const panes = (page) => page.$$eval('[data-focus-pane]', (ps) => ps.map((p) => ({ id: p.dataset.focusPane, shows: p.querySelector('select').value, card: !!p.querySelector('.unit-in-pane') })))
+const panes = (page) => page.$$eval('[data-focus-pane]', (ps) => ps.map((p) => ({ id: p.dataset.focusPane, shows: p.dataset.focusShows, card: !!p.querySelector('.unit-in-pane') })))
+
+/** A pane's control: on its own bar when it's empty, otherwise in the pane menu in its window's header. */
+async function paneDo(page, id, tool) {
+  const onBar = await page.$(`[data-focus-pane="${id}"] .focus-pane-bar [data-focus="${tool}"]`)
+  if (onBar) return onBar.click()
+  await page.click(`[data-focus-pane="${id}"] [data-focus="pane-menu"]`)
+  const row = await page.waitForSelector(`.menu-panel [data-tool="${tool}"]`, { timeout: 5000 })
+  await row.click()
+}
 
 async function main() {
   const profile = L.newProfile({ notifications: 'off', sound: 'off' })
@@ -68,7 +77,7 @@ async function main() {
     c.check('The first key typed after a resize is never lost', !/command not found/.test(after) && ran.size === 6, { ran: [...ran], lost: after.match(/[^\r\n]{0,8}cho first-key-\d[^\r\n]*\r?\n[^\r\n]*/g)?.filter((l) => /not found/.test(l)) })
     c.check('The guard byte never shows on screen', !/\^@/.test((await L.screen(page, 'one')).join('\n')))
 
-    await page.click('[data-focus-pane="a"] [data-focus="split-down"]')
+    await paneDo(page, 'a', 'split-down')
     await until('the new pane', async () => (await panes(page)).length === 4)
     now = await panes(page)
     c.check('Split down adds an empty pane under it', now.length === 4 && now[1].shows === '', now)
@@ -89,7 +98,7 @@ async function main() {
     c.check('Dragging a divider resizes the panes', w2 > w1 + 120, { w1, w2 })
     console.log('SHOT', await L.shot(page, 'focusview-after-split'))
 
-    await page.click('[data-focus-pane="bb"] [data-focus="close-pane"]')
+    await paneDo(page, 'bb', 'close-pane')
     await until('the pane to close', async () => (await panes(page)).length === 3)
     now = await panes(page)
     c.check('Closing a pane gives its space to the others', now.length === 3 && now.some((p) => p.id === 'b' && p.shows === 'two'), now)
@@ -111,9 +120,9 @@ async function main() {
     c.check('Ctrl+Shift+Right and Left move the keyboard between panes on screen', right === 'b' && left?.startsWith('a'), { right, left })
 
     // An empty pane offers the windows that aren't in the view, one click each.
-    await page.click('[data-focus-pane="ab"] [data-focus="close-pane"]')
+    await paneDo(page, 'ab', 'close-pane')
     await until('the pane to close', async () => !(await page.$('[data-focus-pane="ab"]')))
-    await page.click('[data-focus-pane="b"] [data-focus="split-down"]')
+    await paneDo(page, 'b', 'split-down')
     await until('the empty pane', () => page.$('[data-focus-pane="bb"] [data-focus-choice]'))
     const offered = await page.$$eval('[data-focus-pane="bb"] [data-focus-choice]', (bs) => bs.map((b) => b.dataset.focusChoice))
     c.check('An empty pane lists the windows not in the view', JSON.stringify(offered) === '["three"]', offered)
@@ -124,7 +133,7 @@ async function main() {
     c.check('Choosing one shows it there and gives it the keyboard', now.find((p) => p.id === 'bb')?.shows === 'three' && (await typingIn()) === 'bb', { now, typing: await typingIn() })
 
     // The sidebar, while the view covers the canvas, brings a window to a pane rather than centering the hidden canvas.
-    await page.click('[data-focus-pane="bb"] [data-focus="close-pane"]')
+    await paneDo(page, 'bb', 'close-pane')
     await until('the pane to close', async () => !(await page.$('[data-focus-pane="bb"]')))
     if (!(await page.$('.sidebar [data-session="three"]'))) await page.click('.dock [data-cmd="toggle-sidebar"]').catch(() => {})
     await page.click('[data-session="three"]')
