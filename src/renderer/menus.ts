@@ -109,6 +109,8 @@ export interface Commands {
   /** The whole conversation as a Markdown file, and the raw transcript in Explorer. See src/main/conversation.ts. */
   saveConversation(nodeId: string): void
   revealTranscript(nodeId: string): void
+  /** A failed run's command, exit code and last output, as a new agent's brief. See src/renderer/runFixUi.ts. */
+  askToFixRun(nodeId: string): void
   newWhiteboard(at?: Point): void
   group(at?: Point): void
   closeSelected(): void
@@ -365,7 +367,7 @@ export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -435,6 +437,7 @@ export function nodeMenu(
     ...openPlanEntry(node),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
+    ...(node.kind === 'run' && ctx.runFailed ? [{ id: 'ask-to-fix', label: 'Ask an agent to fix…', icon: 'sparkle' as const, run: () => c.askToFixRun(node.id) }] : []),
     ...(node.kind === 'run' && !node.launch ? [{ id: 'edit-command', label: 'Edit command…', icon: 'edit' as const, run: () => c.editRunCommand(node.id) }] : []),
     ...(node.kind === 'claude' || node.kind === 'run' ? [{ id: 'toggle-mute', label: node.muted ? 'Unmute notifications' : 'Mute notifications', icon: 'muted' as const, run: () => c.toggleMute(node.id) }] : []),
     ...(node.kind === 'terminal' || node.kind === 'claude' ? [{ id: 'duplicate', label: 'Duplicate', icon: 'plus' as const, run: () => c.duplicateNode(node.id) }] : []),

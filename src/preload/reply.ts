@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { RunFixResult } from '../shared/runFix'
 
 /** Copy last reply, Save conversation and Reveal transcript: main reads the agent's transcript. Served in src/main/lastReply.ts. */
 export function exposeReply(): void {
@@ -7,5 +8,9 @@ export function exposeReply(): void {
     saveConversation: (nodeId: string): Promise<{ ok: true; path: string; messages: number } | { ok: false; reason: string; cancelled?: true }> =>
       ipcRenderer.invoke('pb:reply:saveConversation', nodeId),
     revealTranscript: (nodeId: string): Promise<{ ok: true } | { ok: false; reason: string }> => ipcRenderer.invoke('pb:reply:revealTranscript', nodeId)
+  })
+  // Ask an agent to fix: a failed run's brief. Served in src/main/runFix.ts.
+  contextBridge.exposeInMainWorld('patchbayRunFix', {
+    brief: (nodeId: string): Promise<RunFixResult> => ipcRenderer.invoke('pb:run:fixBrief', nodeId)
   })
 }

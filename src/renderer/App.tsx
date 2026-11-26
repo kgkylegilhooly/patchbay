@@ -24,6 +24,9 @@ import { TriggerNode } from './nodes/TriggerNode'
 import { ArmReview, TriggerForm } from './TriggerForm'
 import { ACTIONS, actionReady, worksOverBoard } from './actions'
 import { bridge } from './bridge'
+import { setRunFixForm } from './runFixUi'
+import { runFailed } from './status/status'
+import { defaultAgentOf } from '../shared/agents'
 import { setCableMotion } from './cableMotion'
 import { CommandPalette } from './CommandPalette'
 import { Dock } from './Dock'
@@ -231,6 +234,12 @@ function Canvas(): React.JSX.Element | null {
     useStore.setState({ triggerAsk: null })
   }, [triggerAsk])
 
+  // Ask an agent to fix a failed run: the New agent form for the default agent, with the run's brief (runFixUi.ts).
+  useEffect(() => {
+    setRunFixForm((fix) => void bridge.getSettings().then((settings) => setForm({ kind: defaultAgentOf(settings), fix })))
+    return () => setRunFixForm(null)
+  }, [])
+
   // Each project keeps its own view. Nothing waiting to save, and no open confirmation, may land on the project just shown.
   const activeProjectId = doc?.activeProjectId
   const shownProject = useRef(activeProjectId)
@@ -343,7 +352,8 @@ function Canvas(): React.JSX.Element | null {
     const canRestart = status === 'exited' || !!useStore.getState().errors[node.id]
     const at = { x: e.clientX, y: e.clientY }
     const canCopy = !!terminalActions(node.id)?.hasSelection()
-    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart }), label: node.title })
+    const failed = node.kind === 'run' && runFailed(useStore.getState().runs[node.id])
+    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed }), label: node.title })
   }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
@@ -530,8 +540,8 @@ function Canvas(): React.JSX.Element | null {
         {form && form.kind !== 'run-config' && form.kind !== 'ssh' && form.kind !== 'trigger' && form.kind !== 'arm' && (
           <NewSessionForm
             kind={form.kind}
-            initialFolder={editedRun(doc, form.editId)?.cwd ?? defaultFolder(form.groupId)}
-            initialCommand={editedRun(doc, form.editId)?.command}
+            initialFolder={form.fix?.cwd ?? editedRun(doc, form.editId)?.cwd ?? defaultFolder(form.groupId)}
+            initialCommand={form.fix?.prompt ?? editedRun(doc, form.editId)?.command}
             folderFor={form.kind === 'terminal' ? (profile) => terminalFolder(form.groupId, profile) : undefined}
             editing={!!form.editId}
             onCancel={() => setForm(null)}
