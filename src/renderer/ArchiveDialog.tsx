@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { formatBytes, type ArchivePreview, type ArchiveResult } from '../shared/projects'
+import { formatBytes, siteKey, type ArchivePreview, type ArchiveResult } from '../shared/projects'
 import { projectsBridge } from './projectsBridge'
 import { archiveLines, plural } from './projectsView'
 import { archivedToast } from './archiveToast'
@@ -27,7 +27,7 @@ export function ArchiveDialog({ projectId, onClose }: { projectId: string; onClo
     const shown = preview?.ok ? preview : null
     const result = await projectsBridge.archive(projectId, {
       clearScrollback: clearScrollback && shown ? shown.sessions.map((s) => s.id) : [],
-      clearSites: clearSites && shown ? shown.sites.filter((s) => !s.sharedWith.length).map((s) => s.origin) : []
+      clearSites: clearSites && shown ? shown.sites.filter((s) => !s.sharedWith.length).map(siteKey) : []
     })
     setBusy(false)
     // Done: a toast says so, with Unarchive, instead of a dialog to dismiss. A refusal stays here to be read.

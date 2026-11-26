@@ -42,7 +42,7 @@ export type ArchivePreview =
 export interface ArchiveOptions {
   /** Session node ids whose saved output to clear. */
   clearScrollback: string[]
-  /** Site origins whose data to clear, skipping any another project shows by then. */
+  /** Sites whose data to clear, by `siteKey` (store and origin), skipping any another project shows by then. */
   clearSites: string[]
 }
 
@@ -92,3 +92,6 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
+
+/** How the archive confirmation names a site it agreed to clear: its browser store and origin, as it lists them (PJ1). */
+export const siteKey = (site: Pick<ArchiveSite, 'store' | 'origin'>): string => `${site.store} ${site.origin}`

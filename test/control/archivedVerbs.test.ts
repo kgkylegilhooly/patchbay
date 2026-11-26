@@ -3,6 +3,7 @@ import { createAfterGate } from '../../src/main/control/after'
 import { RpcRefusal } from '../../src/main/control/server'
 import { createVerbs } from '../../src/main/control/verbs'
 import { createProjectArchiver, sitesOf } from '../../src/main/projects/archive'
+import { siteKey } from '../../src/shared/projects'
 import { createStatusTracker } from '../../src/main/sessions/statusTracker'
 import type { BrowserNode, CanvasNode, Project, TriggerNode } from '../../src/shared/model'
 import { canonicalSpec } from '../../src/core/trigger/arming'
@@ -152,7 +153,7 @@ test('archiving stops what runs, disarms triggers, keeps agents resumable, and c
     { origin: 'https://github.com', store: 'person', sharedWith: ['Live work'] }
   ])
 
-  const result = await archiver.archive('old', { clearScrollback: ['old', 'shell'], clearSites: ['https://docs.example.com', 'https://github.com'] })
+  const result = await archiver.archive('old', { clearScrollback: ['old', 'shell'], clearSites: ['person https://docs.example.com', 'person https://github.com'] })
   expect(result).toEqual({
     ok: true,
     stopped: 2,
@@ -264,7 +265,7 @@ test('only the output and sites the confirmation showed are cleared', async () =
   // A page and a terminal arrive after the confirmation was drawn.
   store.dispatch({ op: 'addNode', node: page('late-page', 'old', 'https://bank.example') })
   store.dispatch({ op: 'addNode', node: terminalNode('late-term', { projectId: 'old' }) })
-  const result = await archiver.archive('old', { clearScrollback: ['shell'], clearSites: ['https://docs.example.com'] })
+  const result = await archiver.archive('old', { clearScrollback: ['shell'], clearSites: ['person https://docs.example.com'] })
   expect(cleared).toEqual(['shell', 'https://docs.example.com'])
   expect(result).toMatchObject({ clearedSites: ['https://docs.example.com'] })
 })
@@ -281,4 +282,28 @@ test("a team member can't be told to wait on a node in an archived project", asy
   store.dispatch({ op: 'archiveProject', id: 'old', at: 1 })
   const message = await refusal(verbs('me', 'spawn-team', { label: 'T', members: [{ name: 'a', prompt: 'x', after: ['old'] }] }))
   expect(message).toMatch(/doesn't exist|archived/)
+})
+
+// PJ1: the confirmation lists a site once per browser store. What was agreed for one store's copy isn't taken for the
+// other's, even when that one stops being shared after the confirmation was drawn.
+test("a site shown as kept in one browser store isn't cleared because its other store's copy was agreed to", async () => {
+  const { store } = setup([
+    page('mine', 'old', 'https://app.example.com'),
+    page('agents', 'old', 'https://app.example.com', 'old'),
+    page('elsewhere', 'live', 'https://app.example.com', 'me')
+  ])
+  const cleared: string[] = []
+  const archiver = quietArchiver(store, new Set(), { clearSite: async (which, origin) => void cleared.push(`${which} ${origin}`) })
+  const preview = archiver.preview('old')
+  if (!preview.ok) throw new Error('expected a preview')
+  expect(preview.sites).toEqual([
+    { origin: 'https://app.example.com', store: 'person', sharedWith: [] },
+    { origin: 'https://app.example.com', store: 'agent', sharedWith: ['Live work'] }
+  ])
+  // What the dialog sends: the sites it showed as clearable.
+  const agreed = preview.sites.filter((s) => !s.sharedWith.length).map(siteKey)
+  // Before Archive is pressed, the other project's page moves on, so the agents' copy is no longer shared.
+  store.dispatch({ op: 'patchNode', id: 'elsewhere', patch: { url: 'https://other.example' } as Partial<BrowserNode> })
+  await archiver.archive('old', { clearScrollback: [], clearSites: agreed })
+  expect(cleared).toEqual(['person https://app.example.com'])
 })
