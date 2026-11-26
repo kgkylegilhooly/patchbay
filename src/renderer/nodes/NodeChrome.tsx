@@ -403,13 +403,19 @@ export function NodeChrome({
       )}
       {status !== 'exited' && <JoinedStrip id={node.id} />}
       {runProblem && (
-        <div className="strip strip-error" role="alert" data-run-problem>
+        <div className={runProblem.approvePlan ? 'strip strip-wait' : 'strip strip-error'} role="alert" data-run-problem>
           <div className="strip-text">
-            <span>{runProblem}</span>
+            <span>{runProblem.reason}</span>
           </div>
           <div className="strip-actions">
+            {/* LJ1: agrees to exactly the command shown. If launch.json changes again meanwhile, it asks again. */}
+            {runProblem.approvePlan && (
+              <button className="btn nodrag" data-run-plan="accept" onClick={() => void restartNode(node.id, { acceptPlan: runProblem.approvePlan })}>
+                Run it
+              </button>
+            )}
             <button className="btn nodrag" onClick={() => dismissRunProblem(node.id)}>
-              Dismiss
+              {runProblem.approvePlan ? 'Not now' : 'Dismiss'}
             </button>
           </div>
         </div>

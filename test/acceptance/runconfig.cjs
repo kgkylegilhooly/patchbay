@@ -117,10 +117,34 @@ async function main() {
       fs.writeFileSync(path.join(cwd, '.vscode', 'launch.json'), launchJson())
     })
 
+    // LJ1: launch.json is a file an agent can edit. A changed command asks before it runs, showing what it now is.
+    await step('a changed launch.json asks first', async () => {
+      fs.rmSync(marker, { force: true })
+      fs.writeFileSync(path.join(cwd, '.vscode', 'launch.json'), launchJson().replace('"hello-from-env"', '"changed-by-an-edit"'))
+      await page.$eval(`.react-flow__node[data-id="${id}"] [data-run-problem] button:last-child`, (b) => b.click()).catch(() => {})
+      await press(id, 'run')
+      await page.waitForSelector(`.react-flow__node[data-id="${id}"] [data-run-plan="accept"]`, { timeout: 5000 })
+      const asked = await page.$eval(`.react-flow__node[data-id="${id}"] [data-run-problem]`, (s) => s.textContent)
+      await L.sleep(1500)
+      c.check('It names the new command and runs nothing until agreed', /changed since/.test(asked) && /GREETING=changed-by-an-edit/.test(asked) && !fs.existsSync(marker) && (await portFree(port)), { asked, ran: fs.existsSync(marker) })
+      if (process.env.SHOTS) await L.shot(page, 'runconfig-accept-changed')
+      await page.$eval(`.react-flow__node[data-id="${id}"] [data-run-plan="accept"]`, (b) => b.click())
+      await L.waitFor('it to listen once agreed', async () => !(await portFree(port)), 20000)
+      const out = await L.waitFor('the new output', async () => { const s = await L.snapshot(page, id); return /changed-by-an-edit/.test(s) && s }, 5000).catch(() => '')
+      c.check('Run it runs exactly the command shown', /changed-by-an-edit/.test(out))
+      await press(id, 'stop')
+      await L.waitFor('the port to free after it', () => portFree(port), 10000)
+      fs.writeFileSync(path.join(cwd, '.vscode', 'launch.json'), launchJson())
+    })
+
     await step('compound', async () => {
       await openForm()
       await page.click(`${item('Both')} input`)
       await page.click('form[aria-label="New run configuration"] .btn-solid')
+      // Its form showed only names, so each member asks once, with its command, before its first run (LJ1).
+      const asking = await L.waitFor('both to ask', async () => { const n = await page.$$('[data-run-plan="accept"]'); return n.length === 2 && n }, 10000)
+      c.check('Each member of a compound asks before its first run', asking.length === 2)
+      await page.$$eval('[data-run-plan="accept"]', (bs) => bs.forEach((b) => b.click()))
       await L.waitFor('both servers', async () => !(await portFree(port)) && !(await portFree(port2)), 25000)
       const doc = await L.doc(page)
       const group = doc.nodes.find((n) => n.kind === 'group' && n.title === 'Both')

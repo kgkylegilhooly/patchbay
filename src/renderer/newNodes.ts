@@ -80,7 +80,7 @@ export function newRun(p: Place, id: string, fields: { cwd: string; command: str
  * A run node for one launch.json configuration. Its command is only a placeholder: main reads launch.json again and
  * sets the real one on each Run.
  */
-export function newLaunchRun(p: Place, id: string, launch: { folder: string; name: string }): RunNode {
+export function newLaunchRun(p: Place, id: string, launch: { folder: string; name: string; approved?: string }): RunNode {
   return { ...placed(p, SIZES.run), id, kind: 'run', title: launch.name, cwd: launch.folder, command: `launch.json: ${launch.name}`, launch }
 }
 

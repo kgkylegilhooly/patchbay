@@ -294,13 +294,18 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   })
   ipcMain.on('pb:noteFocus', (_e, id: string | null) => notifier.setFocusedNode(id))
 
-  /** A launch.json run is read again on each click, so it runs what the file says now, or says why it can't. */
-  const prepareRun = async (id: string): Promise<{ ok: false; reason: string } | null> => {
+  /**
+   * A launch.json run is read again on each click, so it runs what the file says now, or says why it can't. A plan not
+   * agreed to yet, or changed since, asks first, and `accept` is the person's answer (LJ1, see launchRuns.ts).
+   */
+  const prepareRun = async (id: string, accept?: string): Promise<{ ok: false; reason: string; approvePlan?: string } | null> => {
     const node = find(id)
     if (node?.kind !== 'run' || !node.launch) return null
-    const ready = await prepareLaunchRun(node.launch, { planFile: join(dataDir, 'launch', `${id}.json`), launcher: launchRunner })
+    const ready = await prepareLaunchRun(node.launch, { planFile: join(dataDir, 'launch', `${id}.json`), launcher: launchRunner }, accept)
     if (!ready.ok) return ready
-    if (ready.command !== node.command || ready.cwd !== node.cwd) store.dispatch({ op: 'patchNode', id, patch: { command: ready.command, cwd: ready.cwd } })
+    if (ready.command !== node.command || ready.cwd !== node.cwd || ready.approved !== node.launch.approved) {
+      store.dispatch({ op: 'patchNode', id, patch: { command: ready.command, cwd: ready.cwd, launch: { ...node.launch, approved: ready.approved } } })
+    }
     return null
   }
 
@@ -313,12 +318,12 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     await runner.startNode(id)
     clearExited(id)
   })
-  const restartNodeNow = async (id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => {
+  const restartNodeNow = async (id: string, opts?: { shownExited?: unknown; pastMemory?: unknown; acceptPlan?: unknown }) => {
     // Settings > Agents: refused as a notice the window can dismiss. A session still running keeps running.
     const agent = find(id)
     const off = agent?.kind === 'claude' ? agentOffNow(agentOf(agent)) : null
     if (off) return { ok: false as const, reason: off }
-    const refused = await prepareRun(id)
+    const refused = await prepareRun(id, typeof opts?.acceptPlan === 'string' ? opts.acceptPlan : undefined)
     if (refused) return refused
     const node = find(id)
     if (node?.kind === 'run' && !host.isRunning(id) && !host.snapshot(id).data) {
@@ -336,7 +341,7 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
     }
     clearExited(id)
   }
-  ipcMain.handle('pb:restartNode', (_e, id: string, opts?: { shownExited?: unknown; pastMemory?: unknown }) => restartNodeNow(id, opts))
+  ipcMain.handle('pb:restartNode', (_e, id: string, opts?: { shownExited?: unknown; pastMemory?: unknown; acceptPlan?: unknown }) => restartNodeNow(id, opts))
 
   ipcMain.handle('pb:createWorktree', async (_e, groupId: string, a: { repo: string; branch: string }) => {
     const group = find(groupId)
@@ -387,7 +392,11 @@ export function registerIpc(s: IpcServices): { reattached(ids: string[]): void; 
   const keeper = createRunKeeper({
     keep: (id) => { const n = find(id); return n?.kind === 'run' && n.keepRunning === true },
     running: (id) => host.isRunning(id),
-    restart: (id) => restartNodeNow(id),
+    // Never with an answer: a launch.json changed since it was agreed to waits for the person, and they're told (LJ1).
+    restart: async (id) => {
+      const r = await restartNodeNow(id)
+      if (r && 'approvePlan' in r) notifier.runNotRestarted(id, 'Stopped, and not started again: launch.json changed what it runs. Restart it to see the new command.')
+    },
     gaveUp: (id) => notifier.runGaveUp(id)
   })
   runner.onRun((id, run) => {

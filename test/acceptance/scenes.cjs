@@ -890,6 +890,32 @@ const scenes = {
     }))
     console.log(`commit own: ${JSON.stringify(s)}`)
   },
+  // LJ1: a launch.json run whose file an agent has just rewritten (it now runs a different program), then Run.
+  'launch-changed': async (page, ctx) => {
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const dir = path.join(ctx.profile, 'launch-changed')
+    fs.mkdirSync(path.join(dir, '.vscode'), { recursive: true })
+    const write = (args) => fs.writeFileSync(path.join(dir, '.vscode', 'launch.json'), JSON.stringify({ configurations: [{ name: 'Dev server', type: 'node', request: 'launch', program: 'server.cjs', args }] }))
+    fs.writeFileSync(path.join(dir, 'server.cjs'), "console.log('server ran with', process.argv.slice(2).join(' '))\n")
+    write(['--port', '3000'])
+    const listing = await page.evaluate((d) => window.patchbay.readLaunchConfigs(d), dir)
+    const approved = listing.ok ? listing.items.find((i) => i.name === 'Dev server')?.approve : undefined
+    // Made from the form, which showed "node server.cjs --port 3000": agreed to that.
+    const node = { ...box, id: 'devrun', kind: 'run', title: 'Dev server', x: 930, y: 640, width: 620, height: 300, parentId: null, projectId: 'p1', cwd: dir, command: 'launch.json: Dev server', launch: { folder: dir, name: 'Dev server', ...(approved ? { approved } : {}) } }
+    await page.evaluate(async (n) => window.patchbay.dispatch({ op: 'addNode', node: n }), node)
+    // Then an agent rewrites it.
+    write(['--port', '3000', '--inspect=0.0.0.0:9229'])
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Dev server'))?.click())
+    await sleep(800)
+    await page.$eval('.react-flow__node[data-id="devrun"] [data-run="run"]', (b) => b.click()).catch(() => {})
+    await sleep(2500)
+    const s = await page.evaluate(() => ({
+      asked: document.querySelector('.react-flow__node[data-id="devrun"] [data-run-problem]')?.textContent ?? null,
+      ran: /server ran with/.test(document.querySelector('.react-flow__node[data-id="devrun"]')?.textContent ?? '')
+    }))
+    console.log(`launch changed: ${JSON.stringify(s)}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

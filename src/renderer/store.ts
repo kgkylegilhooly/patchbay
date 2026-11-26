@@ -77,8 +77,11 @@ interface State {
   boardOpen: boolean
   /** A trigger's own buttons asking the canvas for its edit or arm form. */
   triggerAsk: { kind: 'edit' | 'arm'; id: string } | null
-  /** Why a launch.json run didn't start, until dismissed or run again. */
-  runProblem: Record<string, string>
+  /**
+   * Why a launch.json run didn't start, until dismissed or run again. `approvePlan`: it asks first, and Run it agrees to
+   * exactly the command the reason shows (LJ1).
+   */
+  runProblem: Record<string, { reason: string; approvePlan?: string }>
   /** Cables carrying a message right now, by edge id. `at` tells one message from the next on the same cable. */
   pulses: Record<string, { at: number; reverse: boolean }>
   /** What nodes have sent each other since the app started, newest last. */
@@ -302,10 +305,13 @@ export function closeNodesNow(ids: string[]): void {
   if (sessions.length) dispatch({ op: 'removeNodes', ids: sessions, at: Date.now() })
 }
 
-/** `pastMemory`: Start now on an agent waiting for memory, which starts it anyway. */
-export async function restartNode(id: string, opts: { pastMemory?: boolean } = {}): Promise<void> {
+/**
+ * `pastMemory`: Start now on an agent waiting for memory, which starts it anyway. `acceptPlan`: Run it, on a launch.json
+ * run that asked first.
+ */
+export async function restartNode(id: string, opts: { pastMemory?: boolean; acceptPlan?: string } = {}): Promise<void> {
   // What it showed is sent along: a revive that lands just before the click mustn't turn Restart into ending it.
-  const result = await bridge.restartNode(id, { shownExited: useStore.getState().statuses[id] === 'exited', ...(opts.pastMemory ? { pastMemory: true } : {}) })
+  const result = await bridge.restartNode(id, { shownExited: useStore.getState().statuses[id] === 'exited', ...(opts.pastMemory ? { pastMemory: true } : {}), ...(opts.acceptPlan ? { acceptPlan: opts.acceptPlan } : {}) })
   // Still running unseen, so shown again: its own notice says so. See sessionSyncUi.tsx.
   if (!noteJoined(id, result)) noteRunProblem(id, result)
   useStore.setState((s) => ({ epochs: { ...s.epochs, [id]: (s.epochs[id] ?? 0) + 1 } }))
@@ -323,8 +329,9 @@ export function openTerminalBeside(besideId: string, cwd: string, profile?: { id
 }
 
 /** Starting a launch.json run can be refused, when its file no longer says something it can run. */
-export function noteRunProblem(id: string, result: void | { ok: false; reason: string }): void {
-  useStore.setState((s) => ({ runProblem: result ? { ...s.runProblem, [id]: result.reason } : dropKey(s.runProblem, id) }))
+export function noteRunProblem(id: string, result: void | { ok: false; reason: string; approvePlan?: string }): void {
+  const problem = result ? { reason: result.reason, ...(result.approvePlan ? { approvePlan: result.approvePlan } : {}) } : null
+  useStore.setState((s) => ({ runProblem: problem ? { ...s.runProblem, [id]: problem } : dropKey(s.runProblem, id) }))
 }
 
 export function dismissRunProblem(id: string): void {
