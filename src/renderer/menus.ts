@@ -106,6 +106,8 @@ export interface Commands {
   pinSelection(nodeId: string): void
   /** The window's selected output to an agent linked to it, as a block, through the send queue. */
   sendSelection(nodeId: string, agentId: string): void
+  /** One message to every agent in the selection, from a small box. See sendToAgents.ts. */
+  sendToAgents(): void
   /** An agent's latest reply, as Markdown, on the clipboard. See src/main/lastReply.ts. */
   copyLastReply(nodeId: string): void
   /** The whole conversation as a Markdown file, and the raw transcript in Explorer. See src/main/conversation.ts. */
@@ -163,6 +165,8 @@ export interface Commands {
 
 export interface MenuState {
   selectedCount: number
+  /** Agents among the selection and inside selected groups: two or more can be sent one message. */
+  selectedAgents?: number
   canCopy: boolean
   canFind: boolean
   sidebar: boolean
@@ -356,6 +360,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'new-whiteboard', label: 'New whiteboard', icon: 'whiteboard', run: () => c.newWhiteboard(at) },
     { id: 'group', label: s.selectedCount ? 'Group selection' : 'New group', icon: 'group', run: () => c.group(at) },
     ...(s.selectedCount ? [{ id: 'save-recipe', label: 'Save selection as recipe…', icon: 'note' as const, run: () => openRecipeSave() }] : []),
+    ...((s.selectedAgents ?? 0) >= 2 ? [{ id: 'send-to-agents', label: `Send to ${s.selectedAgents} agents…`, icon: 'arrow-right' as const, run: () => c.sendToAgents() }] : []),
     'separator',
     { id: 'select-all', label: 'Select all', icon: 'select-all', run: c.selectAll },
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
