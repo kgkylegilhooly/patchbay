@@ -14,6 +14,7 @@ import { SearchLayer } from './SearchLayer'
 import { SendToAgentsLayer } from './SendManyBox'
 import { NotifyWhenLayer } from './NotifyWhenBox'
 import { SendLaterLayer } from './SendLaterBox'
+import { RestartAsLayer } from './RestartAsBox'
 import { ConfirmHost } from './shell/Confirm'
 import { DiagnosticsToast } from './diagnostics/AboutDiagnostics'
 import { SubagentLayer } from './subagents/SubagentLayer'
@@ -40,6 +41,7 @@ export const CanvasOverlays = memo(function CanvasOverlays({ commands, selected,
       <SendToAgentsLayer />
       <NotifyWhenLayer />
       <SendLaterLayer />
+      <RestartAsLayer />
       <CompareLayer />
       <WorkflowLayer />
       <ProjectsLayer commands={commands} />

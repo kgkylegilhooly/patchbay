@@ -427,3 +427,11 @@ test('an agent window offers Send later; a terminal does not', () => {
   expect(menu(claude).find((i) => i.id === 'send-later')?.label).toBe('Send later…')
   expect(menu(terminal).find((i) => i.id === 'send-later')).toBeUndefined()
 })
+
+// F69: plan mode or another model for an agent already open, without a new window or losing the conversation.
+test('a Claude window offers Restart as; Codex and terminals do not', () => {
+  const menu = (node: CanvasNode) => items(nodeMenu(commands, node, 'idle', { at: { x: 0, y: 0 }, canCopy: false, canRestart: false }))
+  expect(menu(claude).find((i) => i.id === 'restart-as')?.label).toBe('Restart as…')
+  expect(menu({ ...claude, agent: 'codex' } as CanvasNode).find((i) => i.id === 'restart-as')).toBeUndefined()
+  expect(menu(terminal).find((i) => i.id === 'restart-as')).toBeUndefined()
+})

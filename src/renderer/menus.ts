@@ -1,3 +1,5 @@
+import { agentOf } from '../shared/model'
+import { openRestartAs } from './restartAs'
 import { isArmed } from '../core/trigger/arming'
 import type { AgentStatus, CanvasNode } from '../shared/model'
 import type { IconName } from './iconPaths'
@@ -502,6 +504,8 @@ export function nodeMenu(
     ...openFolderEntries(node),
     ...openPlanEntry(node),
     ...(node.kind === 'claude' ? [{ id: 'send-later', label: 'Send later…', icon: 'trigger' as const, run: () => c.sendLater(node.id) }] : []),
+    // F69: another mode or model for this agent, conversation kept. Claude only: Codex has its own modes.
+    ...(node.kind === 'claude' && agentOf(node) === 'claude' ? [{ id: 'restart-as', label: 'Restart as…', icon: 'restart' as const, run: () => openRestartAs(node.id) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'continue-handoff', label: 'Continue with another agent…', icon: 'arrow-right' as const, run: () => openHandoff({ type: 'node', nodeId: node.id }, node.title) }] : []),
     ...(node.kind === 'claude' ? [{ id: 'try-approach', label: 'Try another approach…', icon: 'branch' as const, run: () => openTryApproach({ source: node.cwd, brief: node.prompt }) }] : []),
     ...(node.kind === 'run'
