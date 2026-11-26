@@ -748,6 +748,36 @@ const scenes = {
     await page.waitForSelector('.menu-panel [data-cmd="interrupt-working"]', { timeout: 5000 })
     await sleep(300)
   },
+  // F68: Site server holds a port; Dev server, started on the same one, fails with EADDRINUSE. Its strip names Site server.
+  'port-in-use': async (page, { profile }) => {
+    const path = require('node:path')
+    const fs = require('node:fs')
+    const dir = path.join(profile, 'port-work')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'serve.cjs'), "const port = Number(process.argv[2])\nrequire('http').createServer((q, s) => s.end('ok')).listen(port, '127.0.0.1', () => console.log('Listening on http://127.0.0.1:' + port))\n")
+    const port = await new Promise((r) => {
+      const s = require('node:net').createServer().listen(0, '127.0.0.1', () => {
+        const p = s.address().port
+        s.close(() => r(p))
+      })
+    })
+    const run = (id, title, x) => ({ ...box, id, kind: 'run', title, x, y: 640, width: 560, height: 260, parentId: null, projectId: 'p1', cwd: dir, command: `node serve.cjs ${port}` })
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.restartNode(n.id)
+    }, run('site', 'Site server', 930))
+    await page.waitForFunction((p) => window.patchbay.getPorts().then((all) => (all.site ?? []).some((x) => x.port === p)), { timeout: 30000, polling: 1000 }, port).catch(() => {})
+    await page.evaluate(async (n) => {
+      await window.patchbay.dispatch({ op: 'addNode', node: n })
+      await window.patchbay.restartNode(n.id)
+    }, run('dev', 'Dev server', 1530))
+    await page.waitForSelector('.react-flow__node[data-id="dev"] [data-port-in-use]', { timeout: 15000 }).catch(() => {})
+    const text = await page.$eval('.react-flow__node[data-id="dev"] [data-port-in-use]', (e) => e.textContent).catch(() => '')
+    if (!text.includes(`Port ${port} is in use by Site server.`)) throw new Error(`The strip says: ${JSON.stringify(text)}`)
+    console.log(`port strip: ${text}`)
+    await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Dev server'))?.click())
+    await sleep(800)
+  },
   // F39: prompts used before, and the New Claude Code form with Recent open.
   'recent-prompts': async (page) => {
     await page.evaluate(() => localStorage.setItem('patchbay.recentPrompts', JSON.stringify([

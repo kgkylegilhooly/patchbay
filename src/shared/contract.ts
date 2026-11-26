@@ -280,6 +280,9 @@ export interface PatchbayBridge {
   stopRun(id: string): Promise<void>
   getPorts(): Promise<Record<string, PortInfo[]>>
   onPorts(cb: (ports: Record<string, PortInfo[]>) => void): () => void
+  /** A run or terminal failed on a port that's taken (F68), or null once it starts again or the strip is dismissed. */
+  onPortInUse(cb: (id: string, state: import('./portInUse').PortInUse | null) => void): () => void
+  dismissPortInUse(id: string): Promise<void>
   /** False if that port isn't currently listed for that node. */
   openPort(nodeId: string, port: number): Promise<boolean>
   getUsage(): Promise<UsageState>

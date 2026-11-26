@@ -25,6 +25,7 @@ import { ArmReview, TriggerForm } from './TriggerForm'
 import { ACTIONS, actionById, actionReady, worksOverBoard } from './actions'
 import { bridge } from './bridge'
 import { setRunFixForm } from './runFixUi'
+import { setPortGoTo } from './nodes/PortInUseStrip'
 import { runFailed } from './status/status'
 import { defaultAgentOf } from '../shared/agents'
 import { setCableMotion } from './cableMotion'
@@ -238,6 +239,12 @@ function Canvas(): React.JSX.Element | null {
     setForm({ kind: triggerAsk.kind === 'arm' ? 'arm' : 'trigger', editId: triggerAsk.id })
     useStore.setState({ triggerAsk: null })
   }, [triggerAsk])
+
+  // The port strip's Go to it (F68) goes where the sidebar's rows do.
+  useEffect(() => {
+    setPortGoTo((id) => commands.revealNode(id))
+    return () => setPortGoTo(null)
+  }, [commands])
 
   // Ask an agent to fix a failed run: the New agent form for the default agent, with the run's brief (runFixUi.ts).
   useEffect(() => {

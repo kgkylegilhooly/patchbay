@@ -61,6 +61,7 @@ import { lastReplyOf, serveLastReply } from './lastReply'
 import { serveRunFix } from './runFix'
 import { serveSaveOutput } from './saveOutput'
 import { createOutputWatch, serveOutputWatch } from './outputWatch'
+import { createPortInUseWatch } from './portInUse'
 import { serveOpenFolder } from './openFolder'
 import { serveCanvasHistory } from './canvasHistoryIpc'
 import { withFilesVerbs } from './files/verbs'
@@ -564,6 +565,23 @@ async function boot(): Promise<void> {
     }
   })
   host.onOutput((id, data) => outputWatch.output(id, data))
+  // "Port 3000 is in use" (F68): a run's or terminal's output read for the error, once per start, so its window can name
+  // the session holding the port. A new start, or the strip dismissed, makes the next one news again.
+  const portInUse = createPortInUseWatch({ found: (id, port) => broadcast('pb:portInUse', id, { port }) })
+  host.onOutput((id, data) => {
+    const kind = store.get().nodes.find((n) => n.id === id)?.kind
+    if (kind === 'run' || kind === 'terminal') portInUse.output(id, data)
+  })
+  runner.onRun((id, run) => {
+    if (!run.running) return
+    portInUse.reset(id)
+    broadcast('pb:portInUse', id, null)
+  })
+  ipcMain.handle('pb:portInUse:dismiss', (e, id: unknown) => {
+    if (e.sender !== mainWindow?.webContents || typeof id !== 'string') return
+    portInUse.reset(id)
+    broadcast('pb:portInUse', id, null)
+  })
   serveOutputWatch({ watch: outputWatch, store, changed: (all) => broadcast('pb:output:watchesChanged', all), ipc: ipcMain }, (e: Electron.IpcMainInvokeEvent) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveSaveOutput({ store, output: async (id) => host.snapshot(id).data || ((await scrollback.readAsync(id)) ?? '') }, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)
   serveRunFix({ store, runs: () => runner.runs(), output: (id) => host.snapshot(id).data }, (e) => e.sender === mainWindow?.webContents && e.senderFrame === mainWindow.webContents.mainFrame)

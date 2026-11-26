@@ -57,6 +57,8 @@ interface State {
   /** Run N times (F64): each run command's series, while it runs and its count after. */
   runSeries: Record<string, import('../shared/runSeries').SeriesState>
   ports: Record<string, PortInfo[]>
+  /** Windows that failed on a taken port, and which port (F68). */
+  portInUse: Record<string, import('../shared/portInUse').PortInUse>
   /** Each browser node's live page. */
   browsers: Record<string, BrowserState>
   /** When each session last did something, since the app started. */
@@ -113,6 +115,7 @@ export const useStore = create<State>(() => ({
   runs: {},
   runSeries: {},
   ports: {},
+  portInUse: {},
   browsers: {},
   activity: {},
   maximized: null,
@@ -196,6 +199,14 @@ export async function connectStore(): Promise<void> {
   )
   void bridge.getRuns().then((runs) => useStore.setState((s) => ({ runs: { ...runs, ...s.runs } })))
   bridge.onPorts((ports) => useStore.setState({ ports }))
+  bridge.onPortInUse((id, state) =>
+    useStore.setState((s) => {
+      const next = { ...s.portInUse }
+      if (state) next[id] = state
+      else delete next[id]
+      return { portInUse: next }
+    })
+  )
   void bridge.getPorts().then((ports) => useStore.setState({ ports }))
   // Main has every change still showing, those that arrived while this loaded included, so they're rebuilt from it.
   void bridge.getAgentEdits().then(({ notes, boards }) => {
