@@ -30,7 +30,8 @@ import { whenNodeDrawn } from './newNodeFocus'
 import { closeWindowAsking } from './a11y/windowActions'
 import { keyboardElement, windowFor, windowOfElement } from './a11y/keyboardAt'
 import { savedViews } from './savedViews'
-import { pinnedNoteText, worthPinning } from './pinOutput'
+import { pinnedNoteText, sentSelectionText, worthPinning } from './pinOutput'
+import { sendSummary, type SendResult } from './noteSend'
 import { duplicateOf } from './duplicateNode'
 import { say } from './reader/readerUi'
 import { copyLastReply, revealTranscript, saveConversation } from './lastReplyUi'
@@ -280,6 +281,17 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
           { op: 'addEdge', edge: { id: crypto.randomUUID(), from: nodeId, to: node.id, kind: 'link' } }
         ])
         reveal(node)
+      },
+      sendSelection: (nodeId, agentId) => {
+        const source = doc().nodes.find((n) => n.id === nodeId)
+        const agent = doc().nodes.find((n) => n.id === agentId)
+        const selection = terminalActions(nodeId)?.selection()
+        if (!source || !agent || !worthPinning(selection)) return
+        // Through the same queue as a note's send arrow: a busy agent gets it once it's idle, and the line says which.
+        void bridge
+          .sendToAgent(agentId, sentSelectionText(source.title, selection))
+          .catch((e: unknown): SendResult => ({ ok: false, reason: e instanceof Error ? e.message : String(e) }))
+          .then((result) => say(sendSummary([{ title: agent.title, result }]), result.ok))
       },
       // Not undoable: redoing it would bring the board back empty, losing what was drawn since. Deleting it is undoable.
       newWhiteboard: (at) => {

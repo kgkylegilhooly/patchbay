@@ -477,6 +477,18 @@ const scenes = {
     await page.click('.menu-panel [data-cmd="duplicate"]').catch(() => {})
     await sleep(1500)
   },
+  // F32: the Dev shell linked to Review the docs, text selected, and its window menu: Send selection to Review the docs.
+  'send-selection-menu': async (page) => {
+    await page.evaluate(() => window.patchbay.dispatch({ op: 'addEdge', edge: { id: 'send-link', from: 'term', to: 'idle', kind: 'link' } }))
+    await sleep(300)
+    await scenes['pin-menu'](page)
+  },
+  // The same, then the item: the agent gets the text, and a line says so.
+  'send-selection-sent': async (page) => {
+    await scenes['send-selection-menu'](page)
+    await page.click('.menu-panel [data-cmd="send-selection"]').catch(() => {})
+    await sleep(2500)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

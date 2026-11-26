@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { pinnedNoteText, worthPinning } from '../../src/renderer/pinOutput'
+import { pinnedNoteText, sentSelectionText, worthPinning } from '../../src/renderer/pinOutput'
 
 const at = new Date(2026, 10, 24, 15, 30)
 
@@ -20,4 +20,8 @@ test('only a selection with something in it is worth pinning', () => {
   expect(worthPinning('  \n ')).toBe(false)
   expect(worthPinning('')).toBe(false)
   expect(worthPinning(undefined)).toBe(false)
+})
+
+test('a selection sent to an agent says where it came from, in a block its own backticks cannot end', () => {
+  expect(sentSelectionText('Dev shell', 'npm ERR! ```x```\r\nat line 3\n\n')).toBe('Output from Dev shell:\n\n````\nnpm ERR! ```x```\nat line 3\n````')
 })

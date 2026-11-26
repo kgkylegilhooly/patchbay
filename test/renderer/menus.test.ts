@@ -366,3 +366,23 @@ test('an agent or run window offers Mute notifications, and Unmute once muted; a
   expect(menu({ ...claude, muted: true } as CanvasNode).find((i) => i.id === 'toggle-mute')?.label).toBe('Unmute notifications')
   expect(menu(terminal).find((i) => i.id === 'toggle-mute')).toBeUndefined()
 })
+
+// F32: an error in a terminal goes to the agent linked to it in one step, without a note left behind.
+test('with something selected, a window linked to agents offers Send selection to each, right after Pin selection', () => {
+  const sent: string[] = []
+  const own = new Proxy({} as Commands, { get: (_t, key) => (key === 'sendSelection' ? (from: string, to: string) => sent.push(`${from}>${to}`) : vi.fn()) })
+  const menu = (canCopy: boolean, agents: Array<{ id: string; title: string }>) => items(nodeMenu(own, terminal, null, { at: { x: 0, y: 0 }, canCopy, canRestart: false, agents }))
+  const one = menu(true, [{ id: 'a1', title: 'Fixer' }])
+  const pinAt = one.findIndex((i) => i.id === 'pin-selection')
+  expect(one[pinAt + 1]).toMatchObject({ id: 'send-selection', label: 'Send selection to Fixer', disabled: false })
+  one[pinAt + 1].run()
+  expect(sent).toEqual(['t>a1'])
+  const two = menu(true, [{ id: 'a1', title: 'Fixer' }, { id: 'a2', title: 'Reviewer' }]).find((i) => i.id === 'send-selection')!
+  expect(two.label).toBe('Send selection to')
+  const rows = items(two.submenu!)
+  expect(rows.map((r) => r.label)).toEqual(['Fixer', 'Reviewer'])
+  rows[1].run()
+  expect(sent).toEqual(['t>a1', 't>a2'])
+  expect(menu(false, [{ id: 'a1', title: 'Fixer' }]).find((i) => i.id === 'send-selection')?.disabled).toBe(true)
+  expect(menu(true, []).find((i) => i.id === 'send-selection')).toBeUndefined()
+})

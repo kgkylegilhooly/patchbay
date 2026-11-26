@@ -104,6 +104,8 @@ export interface Commands {
   newSticky(at?: Point): void
   /** A note beside a terminal holding its selected output, cabled to it. See pinOutput.ts. */
   pinSelection(nodeId: string): void
+  /** The window's selected output to an agent linked to it, as a block, through the send queue. */
+  sendSelection(nodeId: string, agentId: string): void
   /** An agent's latest reply, as Markdown, on the clipboard. See src/main/lastReply.ts. */
   copyLastReply(nodeId: string): void
   /** The whole conversation as a Markdown file, and the raw transcript in Explorer. See src/main/conversation.ts. */
@@ -363,11 +365,19 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
   ]
 }
 
+/** Send selection to the agent linked to the window, or to one of them, as a submenu. None linked, none offered. */
+function sendSelectionEntry(c: Commands, nodeId: string, canCopy: boolean, agents: Array<{ id: string; title: string }>): MenuItem[] {
+  if (!agents.length) return []
+  const base = { id: 'send-selection', icon: 'arrow-right' as const, disabled: !canCopy }
+  if (agents.length === 1) return [{ ...base, label: `Send selection to ${agents[0].title}`, run: () => c.sendSelection(nodeId, agents[0].id) }]
+  return [{ ...base, label: 'Send selection to', run: () => {}, submenu: agents.map((a): MenuItem => ({ id: `send-selection:${a.id}`, label: a.title, icon: 'claude', run: () => c.sendSelection(nodeId, a.id) })) }]
+}
+
 export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }> }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -423,6 +433,7 @@ export function nodeMenu(
   return [
     { id: 'copy', label: 'Copy', icon: 'copy', disabled: !ctx.canCopy, run: () => c.copy(node.id) },
     { id: 'pin-selection', label: 'Pin selection to a note', icon: 'pin', disabled: !ctx.canCopy, run: () => c.pinSelection(node.id) },
+    ...sendSelectionEntry(c, node.id, ctx.canCopy, ctx.agents ?? []),
     { id: 'paste', label: 'Paste', icon: 'paste', run: () => c.paste(node.id) },
     { id: 'find', label: 'Find', icon: 'find', run: () => c.find(node.id) },
     ...(node.kind === 'claude' ? [{ id: 'copy-last-reply', label: 'Copy last reply', icon: 'copy' as const, disabled: !node.transcriptPath, run: () => c.copyLastReply(node.id) }] : []),

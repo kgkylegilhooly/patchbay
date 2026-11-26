@@ -77,6 +77,7 @@ import './shell/shell.css'
 import { cancelAllConfirms } from './shell/confirmStore'
 import { createStager } from './stagedFlow'
 import { afterNextPaint } from './mountQueue'
+import { linkedAgents } from './noteSend'
 import { useSettingsAsk } from './settingsAsk'
 import { A11yLayer, useCanvasAriaLabels } from './a11y/A11yLayer'
 
@@ -353,7 +354,9 @@ function Canvas(): React.JSX.Element | null {
     const at = { x: e.clientX, y: e.clientY }
     const canCopy = !!terminalActions(node.id)?.hasSelection()
     const failed = node.kind === 'run' && runFailed(useStore.getState().runs[node.id])
-    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed }), label: node.title })
+    const current = useStore.getState().doc
+    const agents = current ? linkedAgents(current, node.id).filter((a) => a.id !== node.id).map((a) => ({ id: a.id, title: a.title })) : []
+    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents }), label: node.title })
   }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {

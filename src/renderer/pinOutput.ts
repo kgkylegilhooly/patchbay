@@ -17,5 +17,12 @@ export function pinnedNoteText(source: string, selection: string, at: Date): str
   return `From **${source.replace(/[*_`]/g, '')}**, ${when}:\n\n${fence}\n${body}\n${fence}\n`
 }
 
+/** A selection sent to an agent linked to the window: where it's from, then the text as it was, in a block. */
+export function sentSelectionText(source: string, selection: string): string {
+  const body = selection.replace(/\r\n?/g, '\n').replace(/\s+$/, '')
+  const fence = fenceFor(body)
+  return `Output from ${source}:\n\n${fence}\n${body}\n${fence}`
+}
+
 /** Nothing worth pinning: an empty or blank selection. */
 export const worthPinning = (selection: string | undefined): selection is string => !!selection && selection.trim().length > 0
