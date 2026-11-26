@@ -64,6 +64,30 @@ export async function openFolder(
   }
 }
 
+/**
+ * A file at a line, as Code.exe's own `-g file:line[:column]` takes it (its main process reads `goto` from its
+ * arguments, not only code.cmd's). One argument and no shell, as for a folder. False when VS Code isn't there or won't
+ * start, so the file opens as it would have.
+ */
+export function openInVsCodeAt(
+  path: string,
+  line: number,
+  column: number | undefined,
+  io: { vsCode: () => string | null; start: (exe: string, args: string[]) => void } = {
+    vsCode: () => findVsCode(),
+    start: (exe, args) => spawn(exe, args, { detached: true, stdio: 'ignore' }).unref()
+  }
+): boolean {
+  const exe = io.vsCode()
+  if (!exe) return false
+  try {
+    io.start(exe, ['-g', `${path}:${line}${column ? `:${column}` : ''}`])
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** pb:folder:open and pb:folder:hasVsCode, for the app's own window only. */
 export function serveOpenFolder(store: CanvasStore, isAppUi: (e: IpcMainInvokeEvent) => boolean): void {
   let vsCode: string | null | undefined

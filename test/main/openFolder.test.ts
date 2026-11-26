@@ -6,7 +6,7 @@ import { memoryStore } from '../control/fakes'
 import { removeTemp } from '../support/realProcess'
 
 vi.mock('electron', () => ({ ipcMain: { handle: () => undefined }, shell: { openPath: async () => '' } }))
-const { findVsCode, openFolder } = await import('../../src/main/openFolder')
+const { findVsCode, openFolder, openInVsCodeAt } = await import('../../src/main/openFolder')
 
 const dirs: string[] = []
 afterEach(async () => {
@@ -45,4 +45,18 @@ test("a window's own folder opens in Explorer or VS Code, as one argument; no fo
   expect(await openFolder(store, 'gone', 'explorer', io)).toEqual({ ok: false, reason: `${join(folder, 'nope')} isn't there any more.` })
   expect(await openFolder(store, 't', 'vscode', { ...io, vsCode: () => null })).toEqual({ ok: false, reason: "VS Code wasn't found: its `code` command isn't on PATH." })
   expect(await openFolder(store, 't', 'explorer', { ...io, openPath: async () => 'Access denied' })).toEqual({ ok: false, reason: 'Access denied' })
+})
+
+// F42: a file at a line, as Code.exe's own -g takes it, in one argument and with no shell.
+test('a file opens at its line in VS Code with -g, or not at all when VS Code is not found', () => {
+  const started: Array<{ exe: string; args: string[] }> = []
+  const start = (exe: string, args: string[]) => void started.push({ exe, args })
+  expect(openInVsCodeAt('C:/w/a & b.ts', 42, 7, { vsCode: () => 'C:/VS/Code.exe', start })).toBe(true)
+  expect(openInVsCodeAt('C:/w/a.ts', 3, undefined, { vsCode: () => 'C:/VS/Code.exe', start })).toBe(true)
+  expect(started).toEqual([
+    { exe: 'C:/VS/Code.exe', args: ['-g', 'C:/w/a & b.ts:42:7'] },
+    { exe: 'C:/VS/Code.exe', args: ['-g', 'C:/w/a.ts:3'] }
+  ])
+  expect(openInVsCodeAt('C:/w/a.ts', 3, undefined, { vsCode: () => null, start })).toBe(false)
+  expect(openInVsCodeAt('C:/w/a.ts', 3, undefined, { vsCode: () => 'C:/VS/Code.exe', start: () => { throw new Error('gone') } })).toBe(false)
 })

@@ -166,6 +166,40 @@ describe('openTerminalLink', () => {
     expect(d.calls).toEqual([`open ${want}`])
   })
 
+  // F42: a test failure's file:line opens at that line in VS Code, not at the top of the file.
+  describe('a link with a line', () => {
+    function at(existing: string[], vsCode = true): LinkDeps & { calls: string[] } {
+      const d = deps(existing)
+      return { ...d, openAt: (p: string, line: number, col?: number) => (vsCode ? (d.calls.push(`at ${p} ${line} ${col ?? '-'}`), true) : false) }
+    }
+    test.each([
+      ['a.ts:42:7', 42, 7],
+      ['a.ts:42', 42, undefined],
+      ['a.ts(12,5)', 12, 5],
+      ['a.ts#L12', 12, undefined],
+      ['a.ts#L12C3-L20', 12, 3]
+    ])('%s opens at its line in VS Code', async (target, line, col) => {
+      const want = resolve('C:\\repo', 'a.ts')
+      const d = at([want])
+      expect(await openTerminalLink('C:\\repo', target as string, d)).toEqual({ ok: true })
+      expect(d.calls).toEqual([`at ${want} ${line} ${col ?? '-'}`])
+    })
+
+    test('without VS Code it opens as before; without a line VS Code is not asked; a runnable file is only revealed', async () => {
+      const file = resolve('C:\\repo', 'a.ts')
+      const noCode = at([file], false)
+      await openTerminalLink('C:\\repo', 'a.ts:3', noCode)
+      expect(noCode.calls).toEqual([`open ${file}`])
+      const plain = at([file])
+      await openTerminalLink('C:\\repo', 'a.ts', plain)
+      expect(plain.calls).toEqual([`open ${file}`])
+      const script = resolve('C:\\repo', 'x.ps1')
+      const runnable = at([script])
+      await openTerminalLink('C:\\repo', 'x.ps1:3', runnable)
+      expect(runnable.calls).toEqual([`reveal ${script}`])
+    })
+  })
+
   test('openTerminalLink opens http and https', async () => {
     const d = deps()
     await openTerminalLink('C:\\repo', 'https://example.com/a', d)
