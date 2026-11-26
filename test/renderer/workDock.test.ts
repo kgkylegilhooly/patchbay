@@ -59,6 +59,13 @@ describe('workMenu', () => {
     expect(workLabel(0)).toBe('Work')
     expect(workLabel(3)).toBe('Work: 3 waiting for review')
   })
+
+  // F54 left the pause visible only inside the menu: a forgotten pause stopped every trigger, unseen from the dock.
+  test('the button also says when all triggers are paused', () => {
+    expect(workLabel(0, true)).toBe('Work: all triggers are paused')
+    expect(workLabel(3, true)).toBe('Work: 3 waiting for review, all triggers are paused')
+    expect(workLabel(0, false)).toBe('Work')
+  })
 })
 
 describe('menuLeftWithin', () => {
