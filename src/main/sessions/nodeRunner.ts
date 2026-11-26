@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { CanvasStore, NodeError, RunResult, SessionHost } from '../../shared/contract'
 import { AGENT_NAMES, agentOf, type ClaudeNode, type RunNode, type TerminalNode } from '../../shared/model'
+import { hasDefaultTitle, titleFromPrompt } from '../../shared/agentTitle'
 import type { Settings } from '../../shared/settings'
 import { agentChoice, agentOffReason } from '../../shared/agents'
 import { agentLimitReason, parseAgentLimit } from '../../core/resources/agentLimit'
@@ -669,10 +670,16 @@ export function createNodeRunner({
         store.dispatch({ op: 'patchNode', id, patch: learned })
       }
       if (name === 'UserPromptSubmit') {
+        const first = !run.hasConversation
         run.hasConversation = true
-        // It has done its job. Kept, it would start the same work again after /clear and a relaunch.
         const node = nodeById(id)
+        // It has done its job. Kept, it would start the same work again after /clear and a relaunch.
         if (node?.kind === 'claude' && node.prompt !== undefined) store.dispatch({ op: 'patchNode', id, patch: { prompt: undefined } })
+        // A new conversation's first prompt names a window that still has its default name (F29). Not a subagent's.
+        if (first && node?.kind === 'claude' && hasDefaultTitle(node) && typeof payload.prompt === 'string' && payload.agent_id === undefined) {
+          const title = titleFromPrompt(payload.prompt)
+          if (title) store.dispatch({ op: 'patchNode', id, patch: { title } })
+        }
       }
       // Any later hook means the prompt was answered in the terminal. The exceptions aren't answers:
       // the permission notification arrives about 6 s into the same prompt, and a further request

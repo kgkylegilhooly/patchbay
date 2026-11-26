@@ -339,6 +339,10 @@ Each window's header has Find, Maximize, **⋯** and Close. **⋯**, or Shift+F1
 Refresh, Show as a chat, Name with AI, the text size and Copy folder path. The header shows the folder only when
 it isn't the project's own, by its folder name. On narrow windows the folder goes first, then labels.
 
+A new agent still called "Claude" or "Codex" takes its name from the first thing it's asked: the first line of that
+prompt, cut short (a team member's brief, not the team rules before it). A name you gave it, or one from Name with AI,
+is never replaced, and a slash command or a resumed conversation doesn't rename it.
+
 Right-click an agent's window for **Copy last reply**: its latest answer, as the Markdown it wrote, from its
 conversation, ready to paste into an email or an issue. **Save conversation…** writes everything you and the agent
 said as one Markdown file, where you pick (it starts in the agent's folder). **Reveal transcript** shows the agent's

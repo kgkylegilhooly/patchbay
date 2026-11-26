@@ -238,6 +238,48 @@ test('a SessionEnd hook never changes the stored session', async () => {
   expect(node('c').sessionId).toBe('good')
 })
 
+// F29 (src/shared/agentTitle.ts): the first thing an agent is asked names it, while it still has its default name.
+describe('an agent named by its first prompt', () => {
+  const ask = (runner: ReturnType<typeof setup>['runner'], prompt: string) => runner.handleHook('c', { hook_event_name: 'UserPromptSubmit', prompt })
+
+  test('a new Claude or Codex takes its first prompt as its title, and later prompts leave it alone', async () => {
+    const { runner, node } = setup([claude(), claude({ id: 'x', title: 'Codex', agent: 'codex' })])
+    await runner.startNode('c')
+    await ask(runner, 'Fix the login redirect loop\nIt happens after a timeout.')
+    expect(node('c').title).toBe('Fix the login redirect loop')
+    await ask(runner, 'Now add a test')
+    expect(node('c').title).toBe('Fix the login redirect loop')
+    await runner.startNode('x')
+    await runner.handleHook('x', { hook_event_name: 'UserPromptSubmit', prompt: 'Bump electron' })
+    expect(node('x').title).toBe('Bump electron')
+  })
+
+  test('a name someone chose, a resumed conversation or a slash command is never used or replaced', async () => {
+    const named = setup([claude({ title: 'Release notes' })])
+    await named.runner.startNode('c')
+    await ask(named.runner, 'Fix the login')
+    expect(named.node('c').title).toBe('Release notes')
+
+    const resumed = setup([claude({ sessionId: 'old', transcriptPath: 'C:\\t\\old.jsonl' })])
+    await resumed.runner.startNode('c')
+    await resumed.runner.handleHook('c', { hook_event_name: 'SessionStart', source: 'resume', session_id: 'old', transcript_path: 'C:\\t\\old.jsonl' })
+    await ask(resumed.runner, 'Carry on')
+    expect(resumed.node('c').title).toBe('Claude')
+
+    const slash = setup([claude()])
+    await slash.runner.startNode('c')
+    await ask(slash.runner, '/model opus')
+    expect(slash.node('c').title).toBe('Claude')
+  })
+
+  test('a prompt from a subagent never names the window', async () => {
+    const { runner, node } = setup([claude()])
+    await runner.startNode('c')
+    await runner.handleHook('c', { hook_event_name: 'UserPromptSubmit', prompt: 'Search the repo', agent_id: 'sub-1' })
+    expect(node('c').title).toBe('Claude')
+  })
+})
+
 test('hooks drive the status, with notification type and end reason passed along', async () => {
   const { runner, tracker } = setup([claude()])
   await runner.startNode('c')
