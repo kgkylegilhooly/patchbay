@@ -4,7 +4,7 @@ import { ClaudeIcon, CodexIcon, Icon, type IconName } from './icons'
 import { MenuPanel } from './Menu'
 import { addMenu, type Commands } from './menus'
 import { useStore } from './store'
-import { workingInProject } from './restartStopped'
+import { runningInProject, workingInProject } from './restartStopped'
 import { useAgentChoice } from './agentChoice'
 import { commandAllowed } from '../shared/agents'
 import { toggleFoldedMap, useChromeLayout } from './safeArea'
@@ -88,7 +88,7 @@ function DockView({
       {adding && <MenuPanel entries={addMenu(commands)} label="Add" onClose={close} style={{ position: 'absolute', left: 0, bottom: 'calc(100% + 8px)' }} />}
       {working && (
         <MenuPanel
-          entries={workMenu(commands, { waiting, triggersPaused, working: workingInProject(useStore.getState().doc, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) })}
+          entries={workMenu(commands, { waiting, triggersPaused, working: workingInProject(useStore.getState().doc, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })), running: runningInProject(useStore.getState().doc, useStore.getState().runs).map((r) => ({ id: r.id, title: r.title })) })}
           label="Work"
           onClose={close}
           panelRef={workPanel}

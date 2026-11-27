@@ -1,4 +1,4 @@
-import type { NodeError } from '../shared/contract'
+import type { NodeError, RunResult } from '../shared/contract'
 import { inActiveProject, type AgentStatus, type CanvasDoc, type CanvasNode } from '../shared/model'
 
 /**
@@ -25,6 +25,19 @@ export function workingIn(nodes: CanvasNode[], groupId: string, statuses: Partia
 export function workingInProject(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'> | null | undefined, statuses: Partial<Record<string, AgentStatus>>): CanvasNode[] {
   if (!doc) return []
   return doc.nodes.filter((n) => n.kind === 'claude' && inActiveProject(doc, n) && statuses[n.id] === 'working')
+}
+
+type Runs = Partial<Record<string, Pick<RunResult, 'running'>>>
+
+/** The run windows inside a group, at any depth, whose command is still running (F73). */
+export function runningIn(nodes: CanvasNode[], groupId: string, runs: Runs): CanvasNode[] {
+  return insideGroup(nodes, groupId).filter((n) => n.kind === 'run' && !!runs[n.id]?.running)
+}
+
+/** The run windows in the project on screen whose command is still running (F73), for Stop N running commands. */
+export function runningInProject(doc: Pick<CanvasDoc, 'nodes' | 'activeProjectId'> | null | undefined, runs: Runs): CanvasNode[] {
+  if (!doc) return []
+  return doc.nodes.filter((n) => n.kind === 'run' && inActiveProject(doc, n) && !!runs[n.id]?.running)
 }
 
 /**

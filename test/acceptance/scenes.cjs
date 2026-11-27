@@ -1156,6 +1156,41 @@ const scenes = {
     })
     console.log(`restart as done: ${JSON.stringify(s)}`)
   },
+  // F73: two servers left running in the project, and the Work menu: Stop 2 running commands.
+  'stop-runs-menu': async (page, { profile }) => {
+    const path = require('node:path')
+    const dir = path.join(profile, 'stop-work')
+    require('node:fs').mkdirSync(dir, { recursive: true })
+    require('node:fs').writeFileSync(path.join(dir, 'serve.cjs'), "require('http').createServer((q, s) => s.end('ok')).listen(0, '127.0.0.1', function () { console.log('Listening on ' + this.address().port) })\n")
+    const run = (id, title, x) => ({ ...box, id, kind: 'run', title, x, y: 640, width: 560, height: 260, parentId: null, projectId: 'p1', cwd: dir, command: 'node serve.cjs' })
+    await page.evaluate(async (nodes) => {
+      for (const n of nodes) {
+        await window.patchbay.dispatch({ op: 'addNode', node: n })
+        await window.patchbay.restartNode(n.id)
+      }
+    }, [run('srv-a', 'Site server', 930), run('srv-b', 'Docs server', 1530)])
+    await page.waitForFunction(() => window.patchbay.getRuns().then((r) => !!r['srv-a']?.running && !!r['srv-b']?.running), { timeout: 30000, polling: 500 }).catch(() => {})
+    await sleep(1500)
+    await page.evaluate(() => [...document.querySelectorAll('[data-cmd="work"]')].find((b) => b.closest('.dock'))?.click())
+    await page.waitForSelector('.dock .menu-panel [data-cmd="recent"]', { timeout: 5000 })
+    await sleep(300)
+  },
+  // The same, then Stop 2 running commands: the confirmation names them.
+  'stop-runs-confirm': async (page, ctx) => {
+    await scenes['stop-runs-menu'](page, ctx)
+    await page.click('.dock .menu-panel [data-cmd="stop-runs"]').catch(() => {})
+    await page.waitForSelector('[data-confirm="stop-runs"]', { timeout: 5000 }).catch(() => {})
+    await sleep(300)
+  },
+  // Confirmed: both stop, and their windows stay.
+  'stop-runs-done': async (page, ctx) => {
+    await scenes['stop-runs-confirm'](page, ctx)
+    await page.click('[data-confirm="stop-runs"] .btn-solid, [data-confirm="stop-runs"] .btn-danger').catch(() => {})
+    await page.waitForFunction(() => window.patchbay.getRuns().then((r) => !r['srv-a']?.running && !r['srv-b']?.running), { timeout: 30000, polling: 500 }).catch(() => {})
+    await sleep(1200)
+    const runs = await page.evaluate(() => window.patchbay.getRuns())
+    console.log(`stop runs done: ${JSON.stringify({ a: runs['srv-a'], b: runs['srv-b'] })}`)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())

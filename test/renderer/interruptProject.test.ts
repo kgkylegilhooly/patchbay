@@ -34,7 +34,7 @@ test('the canvas menu offers Interrupt N working agents, naming them before Esc 
 
 test('the Work menu offers it too, only with agents working', () => {
   const interruptNodes = vi.fn()
-  const items = (w: typeof working) => workMenu({ toggleRecent: vi.fn(), interruptNodes }, { waiting: 0, triggersPaused: false, working: w }).filter((e): e is MenuItem => e !== 'separator')
+  const items = (w: typeof working) => workMenu({ toggleRecent: vi.fn(), interruptNodes, stopRuns: vi.fn() }, { waiting: 0, triggersPaused: false, working: w }).filter((e): e is MenuItem => e !== 'separator')
   const item = items(working).find((i) => i.id === 'interrupt-working')
   expect(item?.label).toBe('Interrupt 2 working agents…')
   item!.run()

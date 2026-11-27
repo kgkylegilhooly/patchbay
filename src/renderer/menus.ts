@@ -139,6 +139,8 @@ export interface Commands {
   restartNodes(ids: string[]): void
   /** Sends Esc to each of these agents, as the person would, to stop what they are doing. */
   interruptNodes(ids: string[]): void
+  /** Stops each run window's command, as its Stop button does (F73). */
+  stopRuns(ids: string[]): void
   /** Closes a group's idle agents, after checking what each left uncommitted and asking (F60). See closeFinished.ts. */
   closeFinished(agents: Array<{ id: string; title: string }>): void
   /** Each member's last reply and files, and the branch's own commits, as one Markdown file (F66). */
@@ -191,6 +193,8 @@ export interface MenuState {
   selectedAgents?: number
   /** The agents in the project on screen that are working now, for Interrupt N working agents (F67). */
   projectWorking?: Array<{ id: string; title: string }>
+  /** The run windows in the project on screen still running, for Stop N running commands (F73). */
+  projectRunning?: Array<{ id: string; title: string }>
   canCopy: boolean
   canFind: boolean
   sidebar: boolean
@@ -390,6 +394,7 @@ export function canvasMenu(c: Commands, s: MenuState, at: Point): MenuEntry[] {
     { id: 'fit-view', label: 'Fit view', icon: 'fit', run: c.fitView },
     { id: 'tidy', label: s.selectedCount > 1 ? 'Tidy selection' : 'Tidy canvas', icon: 'tidy', run: () => c.tidy() },
     ...interruptEntry(c, s.projectWorking ?? []),
+    ...stopRunsEntry(c, s.projectRunning ?? []),
     'separator',
     { id: 'recent', label: 'Closed conversations', icon: 'recent', run: c.toggleRecent }
   ]
@@ -421,11 +426,29 @@ export function interruptEntry(c: Pick<Commands, 'interruptNodes'>, working: Arr
   ]
 }
 
+/** Stop N running commands (F73), asking first with their names: dev servers and watchers left running after a session. */
+export function stopRunsEntry(c: Pick<Commands, 'stopRuns'>, running: Array<{ id: string; title: string }>): MenuItem[] {
+  if (!running.length) return []
+  const n = running.length
+  const what = `${n} running command${n === 1 ? '' : 's'}`
+  return [
+    {
+      id: 'stop-runs',
+      label: `Stop ${what}…`,
+      icon: 'stop',
+      danger: true,
+      confirmTitle: `Stop ${what}?`,
+      confirm: `Stops ${names(running.map((r) => r.title))}, as ${n === 1 ? 'its' : 'each one\'s'} Stop button would, along with anything ${n === 1 ? 'it' : 'they'} started. ${n === 1 ? 'Its window stays' : 'Their windows stay'}, with Run to start again.`,
+      run: () => c.stopRuns(running.map((r) => r.id))
+    }
+  ]
+}
+
 export function nodeMenu(
   c: Commands,
   node: CanvasNode,
   status: AgentStatus | null,
-  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }>; finished?: Array<{ id: string; title: string }>; watching?: string | null }
+  ctx: { at: Point; canCopy: boolean; canRestart: boolean; runFailed?: boolean; agents?: Array<{ id: string; title: string }>; stopped?: string[]; working?: Array<{ id: string; title: string }>; running?: Array<{ id: string; title: string }>; finished?: Array<{ id: string; title: string }>; watching?: string | null }
 ): MenuEntry[] {
   const close = (label: string, confirm?: string): MenuItem => ({
     id: 'close',
@@ -474,6 +497,7 @@ export function nodeMenu(
       ...(node.worktree ? [{ id: 'remove-worktree', label: 'Remove worktree…', icon: 'trash' as const, danger: true, run: () => void askRemoveWorktree(node.id, node.worktree!.branch) }] : []),
       ...(ctx.stopped?.length ? [{ id: 'restart-stopped', label: `Restart ${ctx.stopped.length} stopped window${ctx.stopped.length === 1 ? '' : 's'}`, icon: 'restart' as const, run: () => c.restartNodes(ctx.stopped!) }] : []),
       ...interruptEntry(c, ctx.working ?? []),
+      ...stopRunsEntry(c, ctx.running ?? []),
       { id: 'save-report', label: 'Save a report…', icon: 'file', run: () => c.saveGroupReport(node.id) },
       ...(ctx.finished?.length ? [{ id: 'close-finished', label: `Close ${ctx.finished.length} finished agent${ctx.finished.length === 1 ? '' : 's'}…`, icon: 'close' as const, run: () => c.closeFinished(ctx.finished!) }] : []),
       { id: 'rename', label: 'Rename', icon: 'edit', run: () => c.renameNode(node.id) },

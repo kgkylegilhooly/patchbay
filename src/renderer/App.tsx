@@ -80,7 +80,7 @@ import { createStager } from './stagedFlow'
 import { afterNextPaint } from './mountQueue'
 import { linkedAgents } from './noteSend'
 import { selectedAgents } from './sendToAgents'
-import { stoppedIn, workingIn, workingInProject } from './restartStopped'
+import { runningIn, runningInProject, stoppedIn, workingIn, workingInProject } from './restartStopped'
 import { finishedIn } from './closeFinished'
 import { useOutputWatch } from './outputWatchUi'
 import { useSettingsAsk } from './settingsAsk'
@@ -275,6 +275,7 @@ function Canvas(): React.JSX.Element | null {
       selectedCount: selectedRef.current.length,
       selectedAgents: current ? selectedAgents(current, selectedRef.current).length : 0,
       projectWorking: workingInProject(current, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })),
+      projectRunning: runningInProject(current, useStore.getState().runs).map((r) => ({ id: r.id, title: r.title })),
       canCopy: !!terminal?.hasSelection(),
       canFind: !!terminal,
       sidebar: prefsRef.current.sidebar,
@@ -372,9 +373,10 @@ function Canvas(): React.JSX.Element | null {
     const current = useStore.getState().doc
     const stopped = current && node.kind === 'group' ? stoppedIn(current.nodes, node.id, useStore.getState().statuses, useStore.getState().errors) : []
     const working = current && node.kind === 'group' ? workingIn(current.nodes, node.id, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) : []
+    const running = current && node.kind === 'group' ? runningIn(current.nodes, node.id, useStore.getState().runs).map((r) => ({ id: r.id, title: r.title })) : []
     const finished = current && node.kind === 'group' ? finishedIn(current.nodes, node.id, useStore.getState().statuses).map((a) => ({ id: a.id, title: a.title })) : []
     const agents = current ? linkedAgents(current, node.id).filter((a) => a.id !== node.id).map((a) => ({ id: a.id, title: a.title })) : []
-    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped, working, finished, watching: useOutputWatch.getState().watches[node.id] ?? null }), label: node.title })
+    setMenu({ at, entries: nodeMenu(commands, node, status, { at, canCopy, canRestart, runFailed: failed, agents, stopped, working, running, finished, watching: useOutputWatch.getState().watches[node.id] ?? null }), label: node.title })
   }, [commands])
 
   const onNodesChange = useCallback((changes: NodeChange<FlowNode>[]) => {
