@@ -1,8 +1,8 @@
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { WhiteboardNode } from '../shared/model'
 import { boardArea, describeBoard, whiteboardSvg } from '../shared/whiteboard'
-import { readBoardImage } from './boardImages'
+import { readBoardImageAsync } from './boardImages'
 
 /** Exports kept on disk. Older ones go, oldest first, so they can't pile up. */
 const KEPT = 50
@@ -28,12 +28,12 @@ export function isPng(bytes: unknown): bytes is Uint8Array {
   return bytes instanceof Uint8Array && bytes.length > PNG.length && bytes.length <= MAX_PNG && PNG.every((b, i) => bytes[i] === b)
 }
 
-function prune(dir: string): void {
-  const files = readdirSync(dir, { withFileTypes: true })
-    .filter((f) => f.isFile() && /^board-.*\.(png|svg)$/.test(f.name))
-    .map((f) => ({ name: f.name, at: statSync(join(dir, f.name)).mtimeMs }))
-    .sort((a, b) => b.at - a.at)
-  for (const old of files.slice(KEPT * 2)) rmSync(join(dir, old.name), { force: true })
+async function prune(dir: string): Promise<void> {
+  const names = (await readdir(dir, { withFileTypes: true })).filter((f) => f.isFile() && /^board-.*\.(png|svg)$/.test(f.name)).map((f) => f.name)
+  // One removed meanwhile, by another export's prune, is simply left out.
+  const files = (await Promise.all(names.map((name) => stat(join(dir, name)).then((s) => ({ name, at: s.mtimeMs }), () => null)))).filter((f) => f !== null)
+  files.sort((a, b) => b.at - a.at)
+  await Promise.all(files.slice(KEPT * 2).map((old) => rm(join(dir, old.name), { force: true })))
 }
 
 /**
@@ -44,18 +44,23 @@ export function createWhiteboardExporter({ dir, render }: { dir: string; render:
   return {
     async export(node) {
       const area = boardArea(node)
-      // Pictures go into the SVG itself, so it shows them wherever it's opened, and so the window can draw them.
-      const { svg, width, height } = whiteboardSvg(node.shapes, area.width, area.height, (file) => readBoardImage(join(dir, 'images'), file))
-      mkdirSync(dir, { recursive: true })
+      // Pictures go into the SVG itself, so it shows them wherever it's opened, and so the window can draw them. They're
+      // read first, off the main thread, through the cache the window's own reads fill: an agent looks at a board the
+      // person has on screen, so its pictures are usually there already. Reading, encoding and writing ten 10 MB ones
+      // synchronously held the main process for about 160 ms.
+      const files = [...new Set(node.shapes.flatMap((s) => (s.type === 'image' ? [s.file] : [])))]
+      const urls = new Map(await Promise.all(files.map(async (file) => [file, await readBoardImageAsync(join(dir, 'images'), file)] as const)))
+      const { svg, width, height } = whiteboardSvg(node.shapes, area.width, area.height, (file) => urls.get(file) ?? null)
+      await mkdir(dir, { recursive: true })
       const base = join(dir, `board-${new Date().toISOString().replace(/[:.]/g, '-')}-${node.id.slice(0, 8)}`)
-      writeFileSync(`${base}.svg`, svg)
+      await writeFile(`${base}.svg`, svg)
       let image: string | null = null
       const png = await render(svg, width, height).catch(() => null)
       if (isPng(png)) {
         image = `${base}.png`
-        writeFileSync(image, png)
+        await writeFile(image, png)
       }
-      prune(dir)
+      await prune(dir).catch(() => {})
       return { image, svg: `${base}.svg`, width, height, ...describeBoard(node.shapes) }
     }
   }
