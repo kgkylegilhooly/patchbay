@@ -355,6 +355,9 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
       interruptNodes: (ids) => {
         for (const id of ids) bridge.input(id, '\x1b')
       },
+      stopRuns: (ids) => {
+        for (const id of ids) void bridge.stopRun(id)
+      },
       closeFinished: (agents) =>
         void closeFinishedAgents(
           agents,

@@ -23,7 +23,7 @@ describe('waitingForReview', () => {
 })
 
 describe('workMenu', () => {
-  const items = (waiting: number): MenuItem[] => workMenu({ toggleRecent: vi.fn(), interruptNodes: vi.fn() }, { waiting, triggersPaused: false }).filter((e): e is MenuItem => e !== 'separator')
+  const items = (waiting: number): MenuItem[] => workMenu({ toggleRecent: vi.fn(), interruptNodes: vi.fn(), stopRuns: vi.fn() }, { waiting, triggersPaused: false }).filter((e): e is MenuItem => e !== 'separator')
 
   test('gives one-click access to search, recipes and workflows, review, comparisons, files, closed conversations and projects', () => {
     expect(items(0).map((i) => i.id)).toEqual(['search', 'new-from-recipe', 'review-inbox', 'comparisons', 'pause-triggers', 'file-shelf', 'recent', 'manage-projects'])
@@ -42,7 +42,7 @@ describe('workMenu', () => {
 
   test('closed conversations runs the canvas command', () => {
     const toggleRecent = vi.fn()
-    const recent = workMenu({ toggleRecent, interruptNodes: vi.fn() }, { waiting: 0, triggersPaused: false }).find((e) => e !== 'separator' && e.id === 'recent') as MenuItem
+    const recent = workMenu({ toggleRecent, interruptNodes: vi.fn(), stopRuns: vi.fn() }, { waiting: 0, triggersPaused: false }).find((e) => e !== 'separator' && e.id === 'recent') as MenuItem
     recent.run()
     expect(toggleRecent).toHaveBeenCalledOnce()
   })
@@ -50,7 +50,7 @@ describe('workMenu', () => {
   // F54: one switch, beside the other things that run on their own, ticked while it holds them.
   test('Pause all triggers is a switch that shows whether they are paused', () => {
     const pause = (paused: boolean): MenuItem | undefined =>
-      workMenu({ toggleRecent: vi.fn(), interruptNodes: vi.fn() }, { waiting: 0, triggersPaused: paused }).find((e): e is MenuItem => e !== 'separator' && e.id === 'pause-triggers')
+      workMenu({ toggleRecent: vi.fn(), interruptNodes: vi.fn(), stopRuns: vi.fn() }, { waiting: 0, triggersPaused: paused }).find((e): e is MenuItem => e !== 'separator' && e.id === 'pause-triggers')
     expect(pause(false)).toMatchObject({ label: 'Pause all triggers', checked: false })
     expect(pause(true)).toMatchObject({ label: 'Pause all triggers', checked: true })
   })
