@@ -36,7 +36,8 @@ import { openSendToAgents, selectedAgents } from './sendToAgents'
 import { laterTrigger, useSendLater } from './sendLater'
 import { canonicalSpec } from '../core/trigger/arming'
 import { duplicateOf } from './duplicateNode'
-import { say } from './reader/readerUi'
+import { openDocument, say } from './reader/readerUi'
+import { openProjectDoc } from './projectDocs'
 import { confirmThen } from './shell/confirmStore'
 import { closeFinishedAgents } from './closeFinished'
 import { copyLastReply, revealTranscript, saveConversation, saveOutput } from './lastReplyUi'
@@ -210,6 +211,19 @@ export function useCommands({ selectedRef, prefsRef, setNodes, setForm, setPref,
         dispatch({ op: 'switchProject', id })
       },
       setProjectName: (id, name) => dispatch({ op: 'patchProject', id, patch: { name } }),
+      openProjectDoc: (id, name) => {
+        const project = doc().projects.find((p) => p.id === id)
+        if (!project) return
+        void openProjectDoc(project, name, {
+          activeProjectId: doc().activeProjectId,
+          switchProject: async (to) => {
+            keepView()
+            await bridge.dispatch({ op: 'switchProject', id: to })
+          },
+          open: (path) => openDocument(path),
+          say
+        })
+      },
       chooseProjectFolder: (id) => {
         void bridge.pickFolder().then((folder) => folder && dispatch({ op: 'patchProject', id, patch: { folder } }))
       },

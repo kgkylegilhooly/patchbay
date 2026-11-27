@@ -1,3 +1,4 @@
+import { projectDocEntries, type ProjectDoc } from './projectDocs'
 import { agentOf } from '../shared/model'
 import { openRestartAs } from './restartAs'
 import { isArmed } from '../core/trigger/arming'
@@ -69,6 +70,8 @@ export interface Commands {
   switchProject(id: string): void
   setProjectName(id: string, name: string): void
   chooseProjectFolder(id: string): void
+  /** The project's CLAUDE.md or AGENTS.md, in a Reader on its canvas (F74). */
+  openProjectDoc(id: string, name: ProjectDoc): void
   /** Hides a project, leaving its sessions running. With no id, the one on screen. */
   closeProject(id?: string): void
   /** Brings a closed project back onto the tabs and the screen. */
@@ -259,11 +262,12 @@ export function deleteProjectWarning(sessionTitles: string[], items: number): st
 export function projectMenu(
   c: Commands,
   id: string,
-  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null; name?: string }
+  ctx: { sessionTitles: string[]; items: number; canClose: boolean; last: boolean; rename: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; archiveRefusal?: string | null; name?: string; folder?: string }
 ): MenuEntry[] {
   return [
     { id: 'rename-project', label: 'Rename', icon: 'edit', run: ctx.rename },
     { id: 'project-folder', label: 'Choose folder…', icon: 'folder', run: () => c.chooseProjectFolder(id) },
+    ...projectDocEntries({ folder: ctx.folder ?? '' }, (name) => c.openProjectDoc(id, name)),
     { id: 'move-project-left', label: 'Move left', icon: 'arrow-left', disabled: !ctx.canMoveLeft, run: () => c.moveProjectTab(-1, id) },
     { id: 'move-project-right', label: 'Move right', icon: 'arrow-right', disabled: !ctx.canMoveRight, run: () => c.moveProjectTab(1, id) },
     'separator',
