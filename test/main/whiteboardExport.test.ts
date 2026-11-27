@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
+import { clearBoardImageCache, readBoardImageAsync, saveBoardImageAsync } from '../../src/main/boardImages'
 import { createWhiteboardExporter, isPng } from '../../src/main/whiteboardExport'
 import type { WhiteboardNode } from '../../src/shared/model'
 
@@ -20,7 +21,7 @@ const board: WhiteboardNode = {
 
 let dir: string
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'pb-boards-'))))
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => (rmSync(dir, { recursive: true, force: true }), clearBoardImageCache()))
 
 test('saves the SVG and the PNG the window drew, and says what is on the board', async () => {
   const asked: Array<[number, number]> = []
@@ -52,4 +53,17 @@ test('only the newest exports are kept', async () => {
   const files = readdirSync(dir)
   expect(files).toHaveLength(100)
   expect(existsSync(first.svg)).toBe(false)
+})
+
+// An agent looking at a board with large pictures blocked the main process for up to ~160 ms (ten 10 MB pictures:
+// reading and encoding each again, then writing a 140 MB SVG, all synchronously). The window has usually just loaded
+// those pictures, so they come from the same cache it uses, and the files are written without blocking.
+test('pictures come from the cache the window filled, not read from disk again', async () => {
+  const images = join(dir, 'images')
+  const file = await saveBoardImageAsync(images, PNG, 'image/png')
+  const url = await readBoardImageAsync(images, file)
+  rmSync(join(images, file))
+  const exporter = createWhiteboardExporter({ dir, render: async () => PNG })
+  const out = await exporter.export({ ...board, shapes: [{ type: 'image', color: '#000', size: 2, x: 0, y: 0, width: 40, height: 30, file }] })
+  expect(readFileSync(out.svg, 'utf8')).toContain(url!)
 })
