@@ -248,7 +248,8 @@ export function ProjectTabs({ commands }: { commands: Commands }): React.JSX.Ele
             canMoveLeft: indexOf(menu.project.id) > 0,
             canMoveRight: indexOf(menu.project.id) < open.length - 1,
             archiveRefusal: archiveRefusal({ projects }, menu.project.id),
-            name: menu.project.name
+            name: menu.project.name,
+            folder: menu.project.folder
           })}
           onClose={() => setMenu(null)}
         />

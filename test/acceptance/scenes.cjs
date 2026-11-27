@@ -1191,6 +1191,33 @@ const scenes = {
     const runs = await page.evaluate(() => window.patchbay.getRuns())
     console.log(`stop runs done: ${JSON.stringify({ a: runs['srv-a'], b: runs['srv-b'] })}`)
   },
+  // F74: Patchbay's folder holds a CLAUDE.md, and its tab's menu offers Open CLAUDE.md and Open AGENTS.md.
+  'project-docs-menu': async (page, { profile }) => {
+    const path = require('node:path')
+    const dir = path.join(profile, 'proj-docs')
+    require('node:fs').mkdirSync(dir, { recursive: true })
+    require('node:fs').writeFileSync(path.join(dir, 'CLAUDE.md'), '# Patchbay\n\n## How to work here\n\n- Run `npm test` and `npm run typecheck` before committing.\n- Keep diffs small; one change per branch.\n- Never run `npm install`.\n')
+    await page.evaluate((folder) => window.patchbay.dispatch({ op: 'patchProject', id: 'p1', patch: { folder } }), dir)
+    await sleep(400)
+    const tab = await page.$('.project-tab')
+    await tab.click({ button: 'right' })
+    await sleep(300)
+  },
+  // Open CLAUDE.md: a Reader with it, on Patchbay's canvas.
+  'project-docs-open': async (page, ctx) => {
+    await scenes['project-docs-menu'](page, ctx)
+    await page.click('.menu-panel [data-cmd="open-claude-md"]').catch(() => {})
+    await page.waitForSelector('.react-flow__node-reader', { timeout: 10000 }).catch(() => {})
+    await sleep(1200)
+    const r = await page.evaluate(async () => (await window.patchbay.getDoc()).nodes.filter((n) => n.kind === 'reader').map((n) => ({ path: n.path, projectId: n.projectId ?? null })))
+    console.log(`project docs open: ${JSON.stringify(r)}`)
+  },
+  // Open AGENTS.md, which the folder hasn't got: it says so.
+  'project-docs-missing': async (page, ctx) => {
+    await scenes['project-docs-menu'](page, ctx)
+    await page.click('.menu-panel [data-cmd="open-agents-md"]').catch(() => {})
+    await sleep(800)
+  },
   // Review the docs' window menu: Mute notifications.
   'mute-menu': async (page) => {
     await page.evaluate(() => [...document.querySelectorAll('.session')].find((s) => s.textContent.includes('Review the docs'))?.click())
